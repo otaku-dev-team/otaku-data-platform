@@ -268,9 +268,9 @@ components:
           type: string
           nullable: true
           description: |
-            绝对地址（来源相对路径已由 Python 拼好）。`null` 表示无封面，客户端显示占位图。
-            客户端直连还是走后端代理待定，见契约第 8 节。
-          example: http://154.8.194.198:8000/media/full/cover_313852.jpg
+            平台后端代理 + 本地缓存地址（Java 首次回源后缓存，之后由平台服务；客户端不直连来源站）。
+            `null` 表示无封面，客户端显示占位图。
+          example: https://api.example.com/covers/W-8f3a91
         tags:
           type: array
           nullable: true
@@ -300,7 +300,7 @@ components:
           description: |
             换行已统一为 `\n`，**不截断**（最长 7225 字），折叠由客户端处理。
             `null` 表示来源没有简介，客户端显示"暂无简介"。
-        cover_url: { type: string, nullable: true }
+        cover_url: { type: string, nullable: true, description: 平台后端代理+缓存地址（同列表项）；null 表示无封面 }
         tags:
           type: array
           nullable: true
