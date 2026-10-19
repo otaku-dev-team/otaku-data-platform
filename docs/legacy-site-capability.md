@@ -20,8 +20,8 @@
 | 内容详情 | `GET /api/contents/{id}` | 与列表同构，字段一致 | 无需逐个拉取 |
 | 搜索 | `GET /api/contents/search?q=&page=&page_size=` | 真分页，返回 `{total, page, page_size, total_pages, type, items}` | 增量同步候选 |
 | **封面图** | `cover_url` 字段 + `/media/full\|thumb/cover_{N}.jpg` | 100% 有值，可直连下载。full 约 95 KB，thumb 约 26–32 KB | `cover_url` 是**站内相对路径**，须拼站点域名 |
-| **标签** | `tags` 字段 | 约 **80% 有值**；空值是 `[]` 不是 `null` | 直接入库，无需反查 |
-| 标签词表 | `GET /api/tags?type=anime&limit=N` | ⚠️ 返回 **dict `{type, total, items:[{name,count}]}`**，不是站主描述的裸数组；默认 `limit=30` | 取 `items`。top 混有 TV / 剧场版 / 漫画改 等**形式词**，需自行过滤 |
+| **标签** | `tags` 字段 | 抽样 400 条约 **90% 有值**；空值是 `[]` 不是 `null`。⚠️ **每条最多 5 个**，见下方风险 | 直接入库，无需反查 |
+| 标签词表 | `GET /api/tags?type=anime&limit=N` | ⚠️ 返回 **dict `{type, total, items:[{name,count}]}`**，不是站主描述的裸数组；默认 `limit=500`，上限 2000 | 取 `items`。top 混有 TV / 剧场版 / 漫画改 等**形式词**，需自行过滤 |
 | 健康检查 | `GET /api/health` | `{"status":"ok","service":"acgn-test-platform"}` | 同步前存活探测 |
 | 放送表 | `GET /api/schedule`、`/api/schedule/seasons` | 4 个季度共 201 条；含 `title_cn` `title_jp` `weekday` `image_url` `source_url` | 可用，但见下方风险 |
 
@@ -68,9 +68,10 @@
 | **封面是相对路径** | `cover_url` 为站内相对路径，域名**必须走配置**（对方可能上 CDN）。不要硬编码 |
 | **WebP 不是 bug** | `/media/full\|thumb/` 是压缩衍生图（≤1200px、≤400KB 的 WebP），路径里的 `.jpg` 只是**源文件名**不是格式声明。站主明确说**永远不会改成真 JPEG**，按 `Content-Type` 处理是对的。原始 JPEG 走 `/covers/{文件名}`，体积大 3–5 倍，不推荐 |
 | **档期图是 B 站外链** | `/api/schedule` 的 `image_url` 是外链且**未本地化**，B 站防盗链或换域名就会挂。**首期不要把档期图片作为强依赖**，先用标题 + 播出时间 |
-| **标签可能截断** | 实测每条标签数 `min 0 / 中位 5 / max 5`，卡在 5 整，疑似有上限。站主未提及，**待确认** |
+| **标签截断已确认** | 抽样 400 条，标签数分布**只有 0（39 条）与 5（361 条）**，无 1–4 的中间值。根因已定位到站主源码 `app/crud.py:3250` 的 `split_tags(...)[0][:5]`，是**硬截断**。含义：按标签筛选的召回会明显低于标签实际水平。已列入追加提问 |
 | **标签含形式词** | `/api/tags` 的 top 是 TV / 漫画改 / 剧场版 / 原创 这类**形式词**，不是题材。按 `count` 或自建词表过滤 |
-| **`/api/tags` 结构与站主描述不符** | 站主说返回 `[{name,count}]`，实测是 `{type,total,items:[...]}`，默认 `limit=30`。按实测实现 |
+| **`/api/tags` 结构与站主描述不符** | 站主说返回 `[{name,count}]`，实测是 `{type,total,items:[...]}`。默认 `limit=500`（上限 2000）——此前记录的「默认 30」有误，已更正 |
+| **限流不在应用层** | 站主源码中**没有任何限流中间件**（`grep app/*.py` 无命中），所述「IP 级限流」属运维/防火墙层。含义：超限时**不一定返回标准 429**，可能是超时或丢包。同步作业要有超时与退避，不能只依赖 429 判定 |
 | **更新频率不高** | 档期 + 资讯每 4 小时（cron `17 */4`），备份每天 05:41；**作品库按周从 Bangumi 官方归档选品入库**，非实时。同步作业 4 小时或 1 天一次足够，没必要更勤 |
 
 ## 六、与既有文档的关系
@@ -81,3 +82,11 @@
 `sync-python` 侧对应调整（已实现并通过测试）：`source.py` 改为分页拉取并按 1–2 req/s 限速，
 `cleaning.py` 新增 `clean_tags` / `clean_year` / `clean_cover_url`；
 文本与评分的清洗规则不受影响。
+
+## 七、延伸复核
+
+站主另提供了一份源码侧《能力盘点》，我方对其做了逐项复核，结果见
+[`legacy-asset-review.md`](legacy-asset-review.md)。其中最重要的一条不在盘点里：
+**`contents` 表 25 列，JSON API 只出口 9 个，`title_original` / `aliases` / `series_id` /
+`episodes` / `media` / `source_material` 等 10 个已存在的字段没有出口**，
+争取它们的收益远高于我方自建。第二轮提问清单也该文档里。

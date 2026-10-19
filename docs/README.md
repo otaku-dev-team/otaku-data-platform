@@ -72,4 +72,9 @@
 - [`docs/acceptance.md`](acceptance.md)：双端浏览、跨端个人管理与同步可靠性的逐条验收步骤。
 - [`docs/samples/stage0-sample.json`](samples/stage0-sample.json)：10 组取自真实数据的边界用例样本。
 
+## 来源站核查文档
+
+- [`docs/legacy-site-capability.md`](legacy-site-capability.md)：现有 Otaku 网站的能力复用清单，分「可直接复用 / 不需要了 / 不复用」，附站主答复与实测数据。
+- [`docs/legacy-asset-review.md`](legacy-asset-review.md)：对站主《能力盘点》的逐项复核与补充，含 API 未暴露字段清单、三处事实更正，以及第二轮提问清单。
+
 有修改意见请在对应 Issue 提出，涉及其他模块的变更需团队协商。
