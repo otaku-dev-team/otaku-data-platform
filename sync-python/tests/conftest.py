@@ -15,6 +15,11 @@ from urllib.parse import parse_qs, urlparse
 import pytest
 
 # 三条同名的动画记录，用来验证"重名不得合并"（验收 D10）
+# 字段按 2026-10-20 站主升级后的真实结构给出，覆盖三种情况：
+#   476   完整字段（含封面、标签、无年份）
+#   979   标签为空列表 -> 明确无标签，应映射为 [] 而非 None
+#   10900 comic，来源未返回 cover_url/tags/year -> 应映射为 None
+#   9999  空标题，应在校验阶段被拒绝
 SAMPLE_ITEMS: list[dict[str, Any]] = [
     {
         "id": 476,
@@ -22,6 +27,10 @@ SAMPLE_ITEMS: list[dict[str, Any]] = [
         "type": "anime",
         "summary": "第一行\r\n第二行\r\n第三行",
         "rating": 7.8,
+        "cover_url": "/media/full/cover_313852.jpg",
+        "tags": ["搞笑", "百合", "日常"],
+        "year": None,
+        "bangumi_id": 313852,
     },
     {
         "id": 979,
@@ -29,6 +38,10 @@ SAMPLE_ITEMS: list[dict[str, Any]] = [
         "type": "anime",
         "summary": "某日突然觉醒暗之力的女子高中生 吉田优子。",
         "rating": 7.5,
+        "cover_url": "/media/full/cover_272510.jpg",
+        "tags": [],
+        "year": 2021,
+        "bangumi_id": 272510,
     },
     {
         "id": 10900,
@@ -36,6 +49,7 @@ SAMPLE_ITEMS: list[dict[str, Any]] = [
         "type": "comic",
         "summary": "　",  # 空白字符串，应被清洗为 None
         "rating": 8.5,
+        # 来源未提供 cover_url / tags / year 三个字段
     },
     {
         "id": 9999,
@@ -44,6 +58,14 @@ SAMPLE_ITEMS: list[dict[str, Any]] = [
         "summary": "无标题记录",
         "rating": 5.0,
     },
+]
+
+# /api/tags 的实际形态是 {type, total, items:[{name, count}]}
+SAMPLE_TAGS: list[dict[str, Any]] = [
+    {"name": "TV", "count": 2974},
+    {"name": "漫画改", "count": 1543},
+    {"name": "剧场版", "count": 1476},
+    {"name": "搞笑", "count": 964},
 ]
 
 
@@ -63,15 +85,46 @@ class _Handler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
+        query = parse_qs(parsed.query)
         if parsed.path == "/api/contents":
-            query = parse_qs(parsed.query)
             work_type = (query.get("type") or [""])[0]
-            items = [
+            matched = [
                 item
                 for item in self.server.state["items"]
                 if not work_type or item.get("type") == work_type
             ]
-            self._send(200, {"items": items})
+            # 不传 page/page_size 时保持老的全量行为
+            raw_page = query.get("page")
+            if raw_page is None:
+                self._send(200, {"items": matched})
+                return
+            page = int(raw_page[0])
+            page_size = int((query.get("page_size") or ["20"])[0])
+            start = (page - 1) * page_size
+            total_pages = max(1, (len(matched) + page_size - 1) // page_size)
+            self.server.state["pages_requested"].append(page)
+            self._send(
+                200,
+                {
+                    "total": len(matched),
+                    "page": page,
+                    "page_size": page_size,
+                    "total_pages": total_pages,
+                    "items": matched[start : start + page_size],
+                },
+            )
+            return
+        if parsed.path == "/api/tags":
+            tags = self.server.state.get("tags") or SAMPLE_TAGS
+            limit = int((query.get("limit") or [str(len(tags))])[0])
+            self._send(
+                200,
+                {
+                    "type": (query.get("type") or [""])[0],
+                    "total": len(tags),
+                    "items": tags[:limit],
+                },
+            )
             return
         self._send(404, {"code": "NOT_FOUND", "message": self.path})
 
@@ -134,6 +187,8 @@ class _StubServer(ThreadingHTTPServer):
         super().__init__(("127.0.0.1", 0), _Handler)
         self.state: dict[str, Any] = {
             "items": list(SAMPLE_ITEMS),
+            "tags": list(SAMPLE_TAGS),
+            "pages_requested": [],
             "attempts": 0,
             "received": [],
             "fail_times": 0,
@@ -159,7 +214,15 @@ class Stub:
         return self._server.state
 
     def reset(self, **kwargs: Any) -> None:
-        self.state.update({"attempts": 0, "received": [], "fail_times": 0, "status": None})
+        self.state.update(
+            {
+                "attempts": 0,
+                "received": [],
+                "fail_times": 0,
+                "status": None,
+                "pages_requested": [],
+            }
+        )
         self.state.update(kwargs)
 
     def stop(self) -> None:

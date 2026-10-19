@@ -10,6 +10,13 @@ DEFAULT_WORKS = ("anime",)
 RATING_SCALE = "0-10"
 SOURCE_NAME = "otaku_site"
 
+# 来源方给出的限流口径（2026-10-20 站主答复，见 docs/legacy-site-capability.md）：
+# 单次全量走分页 page_size=200；并发不超过 2；控制在 1-2 req/s；每天不超过 5 万请求。
+# 本作业为串行拉取（并发 1），只需保证请求间隔落在 1-2 req/s 区间。
+DEFAULT_PAGE_SIZE = 200
+DEFAULT_REQUEST_INTERVAL_SECONDS = 0.6  # 约 1.67 req/s
+DEFAULT_MAX_PAGES = 1000  # 安全阀，防止接口异常时无限翻页
+
 
 @dataclass(frozen=True)
 class SyncConfig:
@@ -20,6 +27,9 @@ class SyncConfig:
     internal_token: str | None = None
     work_types: tuple[str, ...] = DEFAULT_WORKS
     batch_size: int = 100
+    source_page_size: int = DEFAULT_PAGE_SIZE
+    request_interval_seconds: float = DEFAULT_REQUEST_INTERVAL_SECONDS
+    max_pages: int = DEFAULT_MAX_PAGES
     timeout_seconds: float = 30.0
     max_attempts: int = 3
     backoff_seconds: float = 2.0
@@ -42,6 +52,11 @@ class SyncConfig:
             "internal_token": os.getenv("OTAKU_INTERNAL_TOKEN"),
             "work_types": work_types,
             "batch_size": int(os.getenv("OTAKU_BATCH_SIZE", "100")),
+            "source_page_size": int(os.getenv("OTAKU_SOURCE_PAGE_SIZE", str(DEFAULT_PAGE_SIZE))),
+            "request_interval_seconds": float(
+                os.getenv("OTAKU_REQUEST_INTERVAL_SECONDS", str(DEFAULT_REQUEST_INTERVAL_SECONDS))
+            ),
+            "max_pages": int(os.getenv("OTAKU_MAX_PAGES", str(DEFAULT_MAX_PAGES))),
             "timeout_seconds": float(os.getenv("OTAKU_TIMEOUT_SECONDS", "30")),
             "max_attempts": int(os.getenv("OTAKU_MAX_ATTEMPTS", "3")),
             "backoff_seconds": float(os.getenv("OTAKU_BACKOFF_SECONDS", "2")),
