@@ -61,7 +61,7 @@ class WorkItem:
     work_type: str
     title: str
     summary: str | None = None
-    rating: Rating | None = None
+    main_rating: Rating | None = None
     cover_url: str | None = None
     release_year: int | None = None
     tags: list[str] | None = None
@@ -71,18 +71,20 @@ class WorkItem:
         return self.source_record.source_id
 
     def to_payload(self) -> dict[str, Any]:
-        """转成导入接口的 JSON 体。空值一律传 null，不传空字符串。"""
+        """转成导入接口（接口②）的 JSON 体。
+
+        只输出契约约定的 7 个字段，字段名与契约、openapi.yaml 完全一致。
+        `release_year`（第一阶段不纳入）、`source_url`、`source_updated_at`
+        仅作本地记录，不提交。空值一律传 null，不传空字符串。
+        """
         return {
             "source_id": self.source_record.source_id,
-            "source_url": self.source_record.source_url,
-            "source_updated_at": self.source_record.source_updated_at,
             "work_type": self.work_type,
             "title": self.title,
             "summary": self.summary,
             "cover_url": self.cover_url,
-            "release_year": self.release_year,
             "tags": self.tags,
-            "rating": self.rating.to_payload() if self.rating else None,
+            "main_rating": self.main_rating.to_payload() if self.main_rating else None,
         }
 
 
@@ -102,7 +104,7 @@ class ItemResult:
             source_id=str(payload.get("source_id", "")),
             result=payload.get("result", RESULT_REJECTED),
             work_id=payload.get("work_id"),
-            reason_code=payload.get("reason_code"),
+            reason_code=payload.get("code") or payload.get("reason_code"),
             message=payload.get("message"),
         )
 

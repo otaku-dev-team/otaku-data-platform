@@ -20,7 +20,7 @@
 | --- | --- | --- |
 | D1 | 导入 50–100 条真实动画数据 | Java 侧作品数与来源映射数一致，无孤立记录 |
 | D2 | 同一批次**连跑两次** | 作品数与来源映射数均不增长，第二次 `inserted=0`、`unchanged=N` |
-| D3 | 修改样本的 `rating` 后再次导入 | `work_id` 不变，仅 `rating` 更新，其余字段保持原值 |
+| D3 | 修改样本的 `main_rating` 后再次导入 | `work_id` 不变，仅 `main_rating` 更新，其余字段保持原值 |
 | D4 | 把样本的 `summary` 置空后再次导入 | 计为 `unchanged`，**已有 summary 未被清空** |
 | D5 | 伪造一条 `title` 为空的记录 | 计为 `rejected`，原因码 `TITLE_REQUIRED`，同批其他记录不受影响 |
 | D6 | 提交后 Java 已写入但响应丢失，Python 重试 | 用同一 `batch_id` 重试不产生重复作品 |

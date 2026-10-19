@@ -161,7 +161,7 @@ class _Handler(BaseHTTPRequestHandler):
                         "source_id": item.get("source_id"),
                         "result": "rejected",
                         "work_id": None,
-                        "reason_code": "TITLE_REQUIRED",
+                        "code": "TITLE_REQUIRED",
                         "message": "title 为空",
                     }
                 )

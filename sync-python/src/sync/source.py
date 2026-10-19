@@ -164,7 +164,7 @@ class OtakuSiteSource:
             work_type=str(raw.get("type") or ""),
             title=clean_title(raw.get("title")),
             summary=clean_summary(raw.get("summary")),
-            rating=clean_rating(raw.get("rating")),
+            main_rating=clean_rating(raw.get("rating")),
             cover_url=clean_cover_url(raw.get("cover_url"), self.base_url),
             release_year=clean_year(raw.get("year")),
             tags=clean_tags(raw.get("tags")),

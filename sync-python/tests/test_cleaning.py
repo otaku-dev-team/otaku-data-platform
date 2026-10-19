@@ -10,7 +10,7 @@ def make_item(title: str = "标题", work_type: str = "anime", rating: object = 
         work_type=work_type,
         title=title,
         summary=None,
-        rating=clean_rating(rating),
+        main_rating=clean_rating(rating),
     )
 
 

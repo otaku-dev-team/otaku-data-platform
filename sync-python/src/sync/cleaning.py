@@ -122,11 +122,13 @@ def validate(item: WorkItem) -> list[tuple[str, str]]:
         problems.append(
             (REASON_INVALID_TYPE, f"work_type 非法：{item.work_type!r}")
         )
-    if item.rating is not None and not rating_in_scale(item.rating, item.rating.scale):
+    if item.main_rating is not None and not rating_in_scale(
+        item.main_rating, item.main_rating.scale
+    ):
         problems.append(
             (
                 REASON_RATING_OUT_OF_SCALE,
-                f"评分 {item.rating.value} 超出尺度 {item.rating.scale}",
+                f"评分 {item.main_rating.value} 超出尺度 {item.main_rating.scale}",
             )
         )
     return problems
