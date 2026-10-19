@@ -32,3 +32,6 @@ venv/
 
 # 同步作业产物（载荷与运行报告，含来源原始数据）
 sync-python/runs/
+
+# AI 会话记忆目录（非项目代码，不应提交）
+.workbuddy/
