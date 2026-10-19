@@ -25,4 +25,4 @@ Java 业务后端。负责人：**Java 负责人**。
 
 - 接口契约与数据契约以 `docs/` 中经三人确认的文档为准，未确认前不视为已生效。
 - 面向客户端的接口需同时满足手机端与桌面端的调用方式。
-- 详细范围与验收标准见 [`../docs/otaku-project-plan-v2.md`](../docs/otaku-project-plan-v2.md)。
+- 接口与字段以 [`../docs/stage1-minimal-contract.md`](../docs/stage1-minimal-contract.md) 为准（第一阶段）；更完整的范围、阶段划分与验收步骤见 [`../docs/otaku-project-plan-v2.md`](../docs/otaku-project-plan-v2.md) 与 [`../docs/acceptance.md`](../docs/acceptance.md)。

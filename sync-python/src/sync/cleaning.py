@@ -57,6 +57,54 @@ def clean_rating(value: object, scale: str = RATING_SCALE) -> Rating | None:
     return Rating(value=numeric, scale=scale)
 
 
+def clean_tags(raw: object) -> list[str] | None:
+    """清洗标签。
+
+    三态语义（见 docs/data-contract.md）：
+    - 来源没给这个字段 -> None，表示"来源未提供"，下游不覆盖已有内容
+    - 给了空列表 -> []，表示"明确无标签"，下游可据此清空
+    """
+    if raw is None:
+        return None
+    if not isinstance(raw, (list, tuple)):
+        return None
+    out: list[str] = []
+    for entry in raw:
+        text = normalize_newlines(str(entry)) if entry is not None else ""
+        if text and text not in out:
+            out.append(text)
+    return out
+
+
+def clean_year(raw: object) -> int | None:
+    """清洗年份。来源侧 98.5% 为空（已知数据缺口），非法值一律按缺失处理。"""
+    if raw is None or raw == "":
+        return None
+    try:
+        year = int(raw)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+    return year if 1900 <= year <= 2100 else None
+
+
+def clean_cover_url(raw: object, base_url: str = "") -> str | None:
+    """来源返回的是站内相对路径，拼成绝对 URL。
+
+    站主说明：相对路径会长期保持（可能上 CDN），因此不要硬编码域名，
+    只能用配置的 base_url 拼接。
+    """
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    if not text:
+        return None
+    if text.startswith(("http://", "https://")):
+        return text
+    if not base_url:
+        return None
+    return f"{base_url.rstrip('/')}/{text.lstrip('/')}"
+
+
 def rating_in_scale(rating: Rating, scale: str = RATING_SCALE) -> bool:
     """校验评分落在声明的尺度内。尺度未知时放宽通过。"""
     if scale == "0-10":

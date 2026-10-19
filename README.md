@@ -78,12 +78,13 @@ https://github.com/users/zhengmin486/projects/4
 完成相关工作时，应确保必要的接口信息、运行方式和验证结果能够交接给其他成员。
 具体功能的实现细节和模块内部验收方式，由对应负责人结合项目目标自行确定；涉及整体集成的事项，由相关成员共同确认。
 
-> 项目合作说明书（团队分工、详细协作规则等）见 `docs/README.md`。
-
 ## 8. 仓库结构
 ```text
 app-client/       Flutter 客户端
 backend-java/     Java 业务后端
 sync-python/      Python 数据服务
-docs/             项目文档（含项目合作说明书 README.md）
+docs/             项目文档
 ```
+
+各模块目录下另有 README，说明该模块的职责、边界与负责人。
+`docs/README.md` 是**文档索引**，列出当前生效的契约、草案、来源站核查与产品规划文档。

@@ -50,7 +50,8 @@ PYTHONPATH=src python -m sync --type anime --limit 100 --dry-run --out runs
 
 产物在 `runs/`：`batch-<batch_id>.json` 为将要提交给 Java 的载荷，`run-<时间>.json` 为运行报告。
 
-已实测确认：回车换行已统一为 `\n`；封面、年份、标签一律为 `null`；评分尺度 `0-10`；
+已实测确认：回车换行已统一为 `\n`；封面为绝对地址（来源相对路径 + 站点域名）；
+标签按三态语义映射（有值取列表、空列表为 `[]`、字段缺失才为 `null`）；年份多数为空；评分尺度 `0-10`；
 同一批输入重复运行得到**同一个** `batch_id`（幂等键），这是验收 D2「重跑不新增作品」的前提。
 
 ## 提交给 Java（待验证）
@@ -71,6 +72,9 @@ PYTHONPATH=src python -m sync --type anime --limit 100
 | `OTAKU_INTERNAL_TOKEN` | 无 | 内部导入令牌，**不得写入仓库** |
 | `OTAKU_WORK_TYPES` | `anime` | 逗号分隔的作品类型 |
 | `OTAKU_BATCH_SIZE` | `100` | 每批条数，上限 500 |
+| `OTAKU_SOURCE_PAGE_SIZE` | `200` | 来源分页大小，**来源方要求不超过 200** |
+| `OTAKU_REQUEST_INTERVAL_SECONDS` | `0.6` | 来源请求间隔，对应来源方要求的 1–2 req/s |
+| `OTAKU_MAX_PAGES` | `1000` | 翻页上限，安全阀 |
 | `OTAKU_TIMEOUT_SECONDS` | `30` | 请求超时 |
 | `OTAKU_MAX_ATTEMPTS` | `3` | 最大尝试次数 |
 | `OTAKU_BACKOFF_SECONDS` | `2` | 重试间隔 |
@@ -82,3 +86,4 @@ PYTHONPATH=src python -m sync --type anime --limit 100
 - 只有网络错误、超时、5xx、429 才重试；4xx 与认证失败不重试，直接记为未送达。
 - 缺失字段传 `null`，不传空字符串、不填 0 分、不造占位值。
 - 请求失败不静默吞掉，逐条记进运行报告，便于定位与重提。
+- 提交的字段集以 [`../docs/stage1-minimal-contract.md`](../docs/stage1-minimal-contract.md) 为准（第一阶段）；来源站能力、限流与待确认问题见 [`../docs/旧站能力复用清单`](../docs/旧站能力复用清单)。

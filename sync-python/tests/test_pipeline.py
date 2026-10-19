@@ -64,7 +64,10 @@ def test_dry_run_writes_payload_and_report(stub, tmp_path):
     assert os.path.exists(payload_path)
     payload = json.loads(open(payload_path, encoding="utf-8").read())
     assert len(payload["items"]) == 2
-    assert all(i["cover_url"] is None for i in payload["items"])
+    # 来源升级后提供了封面与标签，载荷里应带上绝对地址的封面
+    covers = [i["cover_url"] for i in payload["items"]]
+    assert all(c and c.startswith(stub.base_url) for c in covers)
+    assert payload["items"][0]["tags"] == ["搞笑", "百合", "日常"]
     assert os.path.exists(os.path.join(str(tmp_path), f"run-{report.started_at.replace(':', '').replace('+', 'Z')}.json"))
 
 
