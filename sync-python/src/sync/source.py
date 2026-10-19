@@ -1,16 +1,24 @@
 """来源适配：现有 Otaku 网站的 JSON API。
 
-实测结论（2026-10-20 站主升级接口后复核，见 docs/旧站能力复用清单）：
+实测结论（2026-10-20 03:10 第三轮复核，见 docs/旧站能力复用清单）：
 - `/api/contents` 支持**可选分页** `?page=1&page_size=200`；不传分页参数才是老的全量行为
-  （全量现在约 11.6 MB / 25 秒，站主要求必须改用分页）
+  （全量现在约 11.6 MB / 25 秒，站主要求必须改用分页）。`page_size` 硬上限 500（超限 422），
+  但按站主要求仍用 200。
 - 列表与详情均返回 id / title / type / summary / rating + cover_url / tags / year / bangumi_id
+- `type` 必须显式传；传错值返回 **400**（不是空列表），必须当致命错误，不能理解为"该类没有作品"
+- `page` 越界返回 200 + `items: []`，以 items 为空判定结束，不以 HTTP 状态判定
 - `cover_url` 为站内**相对路径**，须用配置的 base_url 拼成绝对地址
 - `cover_{N}.jpg` 的 N 是 bangumi_id，不是 content_id；`cover_url` 已拼好，无需自行映射
 - `year` 约 98.5% 为空，是来源已知的数据缺口，不可依赖
+- `tags` 空值是 `[]` 不是 `null`，且实测 38.5% 为空（数据缺口，非"明确无标签"），
+  故本适配器把 `[]` 统一按"未提供"处理，见 `_normalize_tags`
 - 标题会重复：同类型 55 组、跨类型 341 组，因此**只认 (source, source_id)**
 
 限流口径（站主给定，必须遵守）：page_size <= 200、并发 <= 2、1-2 req/s、每天 <= 5 万请求。
 本模块串行拉取，只需控制请求间隔。
+
+错误信封：站点是 FastAPI 默认 `{"detail": ...}`，与本项目第 7 节的 `{error:{...}}` 不同，
+本模块只依赖 HTTP 状态码判定，不解析对方错误体。
 """
 
 from __future__ import annotations
@@ -167,8 +175,21 @@ class OtakuSiteSource:
             main_rating=clean_rating(raw.get("rating")),
             cover_url=clean_cover_url(raw.get("cover_url"), self.base_url),
             release_year=clean_year(raw.get("year")),
-            tags=clean_tags(raw.get("tags")),
+            tags=self._normalize_tags(raw.get("tags")),
         )
+
+    @staticmethod
+    def _normalize_tags(raw: object) -> list[str] | None:
+        """把站点的 tags 归一成契约的三态语义。
+
+        站点只有一个空值形态 ``[]``，无法区分"确实没有标签"与"还没录入"
+        （实测 anime 均匀抽样 1125 条中 38.5% 是 ``[]``，多数属于后者）。
+        契约里 ``null`` = 未提供（不覆盖）、``[]`` = 明确无标签（可清空），
+        所以这里把 ``[]`` 一律归为 ``null``：宁可保留旧标签，也不因一次
+        缺数据把已有标签清空。见 docs/stage1-minimal-contract.md 第 4.4.3 节。
+        """
+        tags = clean_tags(raw)
+        return tags or None
 
     def fetch(self, work_type: str, fetched_at: str) -> list[WorkItem]:
         return [self.to_work_item(r, fetched_at) for r in self.fetch_raw(work_type)]
