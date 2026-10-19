@@ -12,6 +12,8 @@ info:
     - `/api/works/*`、`/api/auth/*`、`/api/me/*` 为 Java 提供给 Flutter 手机端与桌面端的公开接口。
 
     当前状态：草案。路径、字段名、错误码均为建议值，经三人确认后方可实现。
+    第一阶段查询契约（Java → Flutter）以 docs/stage1-minimal-contract.md 第 5 节为准；
+    本文件为完整草案，两者冲突时第一阶段以前者为准（例如列表不返回 summary / release_year）。
     数据规则见 data-contract.md，边界样本见 samples/stage0-sample.json。
 
 servers:
@@ -409,6 +411,7 @@ components:
 
     WorkSummary:
       type: object
+      description: 第一阶段列表项。以 docs/stage1-minimal-contract.md 第 5 节为准——不含 summary、release_year、source。
       required: [work_id, work_type, title]
       properties:
         work_id: { type: string, example: W000001 }
@@ -418,18 +421,13 @@ components:
           type: string
           nullable: true
           example: null
-          description: 首期来源不提供，恒为 null，客户端需显示占位
-        release_year:
-          type: integer
+          description: 首期来源不提供时为 null，客户端显示占位
+        tags:
+          type: array
           nullable: true
-          example: null
+          items: { type: string }
+          description: null 表示来源未提供，[] 表示明确无标签
         main_rating: { $ref: "#/components/schemas/SourceRating" }
-        summary_excerpt:
-          type: string
-          nullable: true
-          maxLength: 120
-          description: 列表用摘要片段。来源不提供摘要时为 null，不得填充占位文案
-          example: 2021年，随着超光速航行技术的实现，人类得以在太阳系范围内方便的自由移动……
 
     Work:
       type: object
@@ -443,13 +441,14 @@ components:
           nullable: true
           description: 保留来源换行，换行符统一为 \n；来源不提供时为 null
         cover_url: { type: string, nullable: true }
-        release_year: { type: integer, nullable: true }
         tags:
           type: array
           nullable: true
           items: { type: string }
           description: null 表示来源未提供（不覆盖），空数组表示明确无标签
         main_rating: { $ref: "#/components/schemas/SourceRating" }
+        source: { type: string, example: otaku_site, description: 站点标识，第一阶段固定 otaku_site }
+        source_id: { type: string, description: 来源侧标识，仅在同一 source 内唯一 }
         source_record: { $ref: "#/components/schemas/SourceRecord" }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }

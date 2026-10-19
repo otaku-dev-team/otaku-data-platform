@@ -169,9 +169,13 @@
 
 ---
 
-## 5. 接口链路二：Flutter → Java（列表与详情）
+## 5. 接口链路二：Flutter → Java（第一阶段查询契约）
 
-> URL 路径、DTO、鉴权实现**由 Java 负责人决定**。本文只定语义与字段。
+> 本节是第一阶段 Java → Flutter 的**权威查询契约**；`openapi.yaml` 为完整草案，两者冲突时第一阶段以本节为准。URL 路径、DTO 命名、鉴权实现**由 Java 负责人决定**，本文只定语义、字段与响应形态。
+
+**列表返回字段（固定）**：`work_id`、`work_type`、`title`、`cover_url`、`tags`、`main_rating`，以及分页字段 `total`、`page`、`page_size`、`total_pages`。**不返回** `summary`、`source`、`source_id`、`updated_at`。
+
+**详情返回字段（固定）**：第 2.1 节全部十个字段（含 `summary`、`source`、`source_id`、`updated_at`）。
 
 ### 5.1 作品列表
 
@@ -274,3 +278,14 @@
 | 7 | 列表不返回 `summary` 是否被接受 | Flutter |
 
 未确认的条目按本文草案执行；有结论后回填 `data-contract.md`。
+
+---
+
+## 9. 站点标识与客户端区分（第一阶段口径）
+
+本节只写接口层的事实；网站接入的完整模型见 [`otaku-project-plan-v2.md`](otaku-project-plan-v2.md) 第 4 节。
+
+- **站点标识**：数据用 `source` 标识站点，第一阶段固定为 `otaku_site`；`(source, source_id)` 在同一站点内唯一。
+- **第一阶段客户端只服务 Otaku 单站点**：客户端通过构建/配置确定站点（Java 后端 base URL + 站点标识 + 品牌资源），**运行期不切换站点**；调用查询接口时**不需要传站点参数**。
+- **列表/详情响应不返回站点选择字段**；`source` 只在详情中作为溯源信息返回，客户端**不得**用它做业务判断。
+- **未来多站点**：每站一个 `source`；若确需“一个客户端多站点”，再引入 `site_id` 查询/响应维度与站点选择机制（待后续阶段，不在本契约）。
