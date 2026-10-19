@@ -28,4 +28,4 @@ Flutter 跨平台客户端。负责人：**Flutter 负责人**。
 
 - 两端共享作品模型、API 调用与登录逻辑，仅按屏幕尺寸与输入方式调整界面。
 - 两端分别构建、运行和验收，不以一端运行成功推定另一端可用。
-- 详细范围与验收标准见 [`../docs/otaku-project-plan-v2.md`](../docs/otaku-project-plan-v2.md)。
+- 接口与字段以 [`../docs/stage1-minimal-contract.md`](../docs/stage1-minimal-contract.md) 为准（第一阶段）；更完整的范围、阶段划分与验收步骤见 [`../docs/otaku-project-plan-v2.md`](../docs/otaku-project-plan-v2.md) 与 [`../docs/acceptance.md`](../docs/acceptance.md)。

@@ -116,6 +116,9 @@ def run(
         config.source_base_url,
         timeout=config.timeout_seconds,
         user_agent=config.user_agent,
+        page_size=config.source_page_size,
+        request_interval_seconds=config.request_interval_seconds,
+        max_pages=config.max_pages,
     ) as source:
         raw_items = source.fetch_many(types, started)
 
