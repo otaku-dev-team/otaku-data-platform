@@ -16,15 +16,17 @@
       "title",
       "type",
       "summary",
-      "rating"
+      "rating",
+      "cover_url",
+      "tags",
+      "year",
+      "bangumi_id"
     ],
-    "field_missing_rate": "5 个字段在四类数据中缺失率均为 0%",
+    "field_missing_rate": "id / title / type / rating / cover_url / bangumi_id 缺失率为 0%；tags 约 10% 为空（空值是 [] 不是 null）；year 约 98.5% 为空",
     "not_provided_by_source": [
-      "封面 cover_url",
-      "年份 release_year",
-      "标签 tags",
       "来源更新时间 source_updated_at"
     ],
+    "stage1_note": "expected_work 是阶段 0 完整契约的期望形态。第一阶段实际提交与出口的只有 10 个字段，release_year 不纳入（98.5% 为空）；封面 cover_url 与标签 tags 已由来源直接提供，不再恒为 null",
     "title_duplicates": {
       "same_type_anime_groups": 55,
       "cross_type_groups": 341

@@ -1,28 +1,39 @@
 openapi: 3.0.3
 
 info:
-  title: Otaku Data Platform API 契约草案
-  version: 0.1.0-draft
-  summary: 阶段 0 草案，用于三人评审后锁定接口
+  title: Otaku Data Platform · 第一阶段接口契约
+  version: 1.0.0-draft
   description: |
-    本文件由 Python 负责人在阶段 0 起草，目的是把三个模块之间的接口一次性摊开讨论。
+    本文件是《第一阶段最小契约》（docs/stage1-minimal-contract.md）的机器可读版本，
+    只覆盖第一阶段四个接口中的 HTTP 部分：
 
-    分层约定：
-    - `/internal/*` 为 Python 同步作业调用 Java 的内部导入接口，使用内部服务令牌，**不对外暴露**。
-    - `/api/works/*`、`/api/auth/*`、`/api/me/*` 为 Java 提供给 Flutter 手机端与桌面端的公开接口。
+    - **② 数据写入接口** `POST /internal/import/batches`（Python → Java）
+    - **③ 作品列表接口** `GET /api/works`（Flutter → Java）
+    - **④ 作品详情接口** `GET /api/works/{work_id}`（Flutter → Java）
 
-    当前状态：草案。路径、字段名、错误码均为建议值，经三人确认后方可实现。
-    数据规则见 data-contract.md，边界样本见 samples/stage0-sample.json。
+    **接口①「网站接入」不在本文件。** 那是平台**只读拉取**来源站，来源站的接口不由我们定义，
+    接入规范（拿什么、不拿什么、网站需具备什么能力）见契约第 4 节。
+
+    **第一阶段不包含账号、收藏、观看状态接口**，相关路径在第二阶段另行定义。
+    本文件只描述请求与响应的**形状**；字段语义、可空规则、创建与更新规则以契约正文为准。
+
+    三条边界：
+    1. 数据单向流动：网站 → 平台 → 客户端，平台不回写网站。
+    2. 只有 Java 写业务数据库；Python 只经接口②提交。
+    3. 空值一律 `null`，不用 `""`、`0`、"暂无" 之类的伪值填充。
+  contact:
+    name: 契约讨论
+    url: https://github.com/zhengmin486/otaku-data-platform/issues/3
 
 servers:
   - url: http://localhost:8080
-    description: Java 后端（本地联调占位，待 Java 负责人确认）
+    description: Java 后端（本地联调占位地址，由 Java 负责人确认后替换）
 
 tags:
-  - name: 作品查询
-  - name: 账号
-  - name: 个人管理
   - name: 内部导入
+    description: 仅供 Python 同步作业调用，客户端不得持有内部令牌
+  - name: 作品查询
+    description: Flutter 手机端与桌面端共用的公开读接口
 
 security: []
 
@@ -31,33 +42,36 @@ paths:
   /api/works:
     get:
       tags: [作品查询]
-      summary: 作品列表与关键词搜索
+      summary: 作品列表与关键词搜索（接口③）
       operationId: listWorks
+      description: |
+        分页返回作品列表。**列表不返回 `summary`**——来源简介最长 7225 字，会把列表响应撑爆。
+
+        边界约定：
+        - 无匹配时返回 `200` + `items: []` + `total: 0`，不是 404。
+        - `page` 超出 `total_pages` 时返回 `200` + 空数组。
+        - `page_size` 超过 50 时**按 50 截断**，不报错。
+        - 排序规则由 Java 决定，但必须**稳定**（同一查询多次返回顺序一致）。
       parameters:
-        - name: q
-          in: query
-          description: 标题关键词，空或省略表示不过滤
-          schema: { type: string, maxLength: 100 }
         - name: type
           in: query
           description: 作品类型过滤，省略表示全部类型
           schema:
             type: string
             enum: [anime, comic, game, novel]
+        - name: q
+          in: query
+          description: |
+            标题关键词，子串匹配、忽略大小写。不支持别名与拼音
+            （别名来源未出口，第一阶段做不到）。省略表示不过滤。
+          schema: { type: string, maxLength: 100 }
         - name: page
           in: query
           schema: { type: integer, minimum: 1, default: 1 }
         - name: page_size
           in: query
-          description: 上限 50，超过按上限处理
+          description: 单页条数，上限 50
           schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
-        - name: sort
-          in: query
-          description: 白名单排序，未知取值回退为默认值
-          schema:
-            type: string
-            enum: [updated_desc, rating_desc, rating_asc, title_asc]
-            default: updated_desc
       responses:
         "200":
           description: 成功
@@ -77,193 +91,41 @@ paths:
   /api/works/{work_id}:
     get:
       tags: [作品查询]
-      summary: 作品详情
+      summary: 作品详情（接口④）
       operationId: getWork
+      description: |
+        按 `work_id` 取全部 10 个字段。
+
+        `work_id` 一律当作**不透明字符串**：不解析其结构，不做数值比较。
+        不存在与格式非法**都返回 404**，不用错误码区分"是否存在"。
       parameters:
         - $ref: "#/components/parameters/WorkId"
       responses:
         "200":
-          description: 成功
+          description: 成功，直接返回作品对象（不再套一层 data）
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Work" }
         "404": { $ref: "#/components/responses/NotFound" }
-
-  /api/auth/register:
-    post:
-      tags: [账号]
-      summary: 注册
-      operationId: register
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/Credentials" }
-      responses:
-        "201":
-          description: 注册成功
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/AuthResult" }
-        "409":
-          description: 账号已存在
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/ErrorResponse" }
-        "400": { $ref: "#/components/responses/BadRequest" }
-
-  /api/auth/login:
-    post:
-      tags: [账号]
-      summary: 登录
-      operationId: login
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/Credentials" }
-      responses:
-        "200":
-          description: 登录成功，返回新的独立会话令牌
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/AuthResult" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-
-  /api/auth/logout:
-    post:
-      tags: [账号]
-      summary: 退出当前设备会话
-      operationId: logout
-      security:
-        - bearerAuth: []
-      responses:
-        "204":
-          description: 已退出。仅结束当前设备会话，不影响其他设备的登录状态与个人数据
-        "401": { $ref: "#/components/responses/Unauthorized" }
-
-  /api/auth/me:
-    get:
-      tags: [账号]
-      summary: 当前登录用户
-      operationId: currentUser
-      security:
-        - bearerAuth: []
-      responses:
-        "200":
-          description: 成功
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/CurrentUser" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-
-  /api/me/collections:
-    get:
-      tags: [个人管理]
-      summary: 我的收藏列表
-      operationId: listCollections
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: page
-          in: query
-          schema: { type: integer, minimum: 1, default: 1 }
-        - name: page_size
-          in: query
-          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
-      responses:
-        "200":
-          description: 成功
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: "#/components/schemas/Paging"
-                  - type: object
-                    properties:
-                      items:
-                        type: array
-                        items: { $ref: "#/components/schemas/CollectionItem" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-
-  /api/me/collections/{work_id}:
-    put:
-      tags: [个人管理]
-      summary: 设置收藏状态（明确目标值，非切换）
-      operationId: setCollection
-      description: |
-        提交明确的最终状态而非“切换”，避免失败重试时把操作反向执行。
-        取消收藏会同时删除该作品的观看状态。
-      security:
-        - bearerAuth: []
-      parameters:
-        - $ref: "#/components/parameters/WorkId"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [collected]
-              properties:
-                collected:
-                  type: boolean
-                  description: true 表示收藏，false 表示取消收藏。重复提交同一值视为幂等成功
-      responses:
-        "200":
-          description: 成功
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/CollectionItem" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-
-  /api/me/collections/{work_id}/status:
-    patch:
-      tags: [个人管理]
-      summary: 设置观看状态
-      operationId: setStatus
-      description: |
-        只更新本次涉及的字段。要求收藏仍然存在，否则返回 409，不会由过期请求自动重新收藏。
-      security:
-        - bearerAuth: []
-      parameters:
-        - $ref: "#/components/parameters/WorkId"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [status]
-              properties:
-                status:
-                  type: string
-                  nullable: true
-                  enum: [want, watching, watched, null]
-                  description: 状态枚举两端一致，传 null 表示清空观看状态
-      responses:
-        "200":
-          description: 成功
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/CollectionItem" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "409":
-          description: 收藏已不存在，需先刷新
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/ErrorResponse" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/InternalError" }
 
   /internal/import/batches:
     post:
       tags: [内部导入]
-      summary: 提交一个同步批次
+      summary: 提交一个同步批次（接口②）
       operationId: submitImportBatch
       description: |
-        Python 同步作业专用。以 batch_id 作为幂等键：同一 batch_id 重复提交返回首次结果，不重复入库。
-        Python 不直接写业务数据库，全部经由此接口。
+        Python 同步作业专用，不对外暴露。
+
+        幂等：同一个 `batch_id` 重复提交返回首次结果，不重复入库。
+        单批上限 500 条，超出返回 `413 BATCH_TOO_LARGE`，Python 需自行拆批。
+
+        创建与更新规则：
+        - `(source, source_id)` 未命中 → 创建；必填项缺失则整条 rejected。
+        - 命中 → 只覆盖本次**出现且非 `null`** 的字段；`null` 表示本次没数据，不覆盖。
+        - `tags: []` 表示明确无标签，会清空；`tags: null` 不清空。
+        - `work_id` 首次创建时生成，此后不因内容变更而改变。
+        - 来源侧消失的作品**不删除**。
       security:
         - internalToken: []
       requestBody:
@@ -273,25 +135,20 @@ paths:
             schema: { $ref: "#/components/schemas/ImportBatchRequest" }
       responses:
         "200":
-          description: 批次处理完成
+          description: 批次处理完成，逐条结果见 counts 与 errors
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ImportBatchResult" }
-        "401":
-          description: 内部令牌缺失或无效
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/ErrorResponse" }
-        "422":
-          description: 批次整体校验失败，未写入任何数据
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "413": { $ref: "#/components/responses/BatchTooLarge" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "500": { $ref: "#/components/responses/InternalError" }
 
   /internal/import/batches/{batch_id}:
     get:
       tags: [内部导入]
-      summary: 查询批次结果，用于重跑核对
+      summary: 查询批次结果（重跑前核对用）
       operationId: getImportBatch
       security:
         - internalToken: []
@@ -299,53 +156,62 @@ paths:
         - name: batch_id
           in: path
           required: true
-          schema: { type: string, maxLength: 64 }
+          schema: { type: string, maxLength: 128 }
       responses:
         "200":
           description: 成功
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ImportBatchResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
 
 components:
 
   securitySchemes:
-    bearerAuth:
-      type: http
-      scheme: bearer
-      description: 用户登录会话令牌，每个设备独立
     internalToken:
       type: apiKey
       in: header
       name: X-Internal-Token
-      description: 内部服务令牌，仅限同步作业持有，客户端不得持有该密钥
+      description: 内部服务令牌。仅同步作业持有，客户端与前端**不得**持有该密钥。
 
   parameters:
     WorkId:
       name: work_id
       in: path
       required: true
+      description: 平台内部标识，由 Java 生成，客户端只当不透明字符串使用
       schema: { type: string }
 
   responses:
     BadRequest:
-      description: 参数不合法
+      description: 请求格式或参数不合法（不重试，修正后重发）
       content:
         application/json:
           schema: { $ref: "#/components/schemas/ErrorResponse" }
     Unauthorized:
-      description: 未认证或令牌过期
+      description: 内部令牌缺失或无效（不重试）
       content:
         application/json:
           schema: { $ref: "#/components/schemas/ErrorResponse" }
     NotFound:
-      description: 资源不存在
+      description: 作品或批次不存在
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    BatchTooLarge:
+      description: 单批条数超过 500（Python 拆批后重发）
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    RateLimited:
+      description: 限流（重试，带退避）
       content:
         application/json:
           schema: { $ref: "#/components/schemas/ErrorResponse" }
     InternalError:
-      description: 服务内部错误
+      description: 服务端错误（重试，带退避）
       content:
         application/json:
           schema: { $ref: "#/components/schemas/ErrorResponse" }
@@ -358,41 +224,21 @@ components:
       properties:
         page: { type: integer, example: 1 }
         page_size: { type: integer, example: 20 }
-        total: { type: integer, example: 7894 }
+        total:
+          type: integer
+          description: 符合条件的总数。客户端靠它判断是否末页，必须返回
+          example: 7894
         total_pages: { type: integer, example: 395 }
         items:
           type: array
           items: {}
 
-    SourceRecord:
-      type: object
-      required: [source, source_id, fetched_at]
-      properties:
-        source:
-          type: string
-          enum: [otaku_site]
-          example: otaku_site
-        source_id:
-          type: string
-          description: 来源侧标识，字符串存储。仅在 source 内部唯一
-          example: "476"
-        source_url:
-          type: string
-          nullable: true
-          example: http://154.8.194.198:8000/api/contents/476
-        fetched_at:
-          type: string
-          format: date-time
-          description: RFC 3339 UTC 时间
-        source_updated_at:
-          type: string
-          format: date-time
-          nullable: true
-          description: 来源不提供更新时间，恒为 null
-
     SourceRating:
       type: object
       nullable: true
+      description: |
+        来源评分。`null` 表示来源没有评分，**不是 0 分**，客户端必须不显示评分区域，
+        不得显示 `0.0`。
       required: [value, scale, source]
       properties:
         value:
@@ -401,102 +247,79 @@ components:
         scale:
           type: string
           enum: ["0-10"]
-          example: "0-10"
-          description: 评分尺度待确认，见 data-contract.md 待确认事项 1
+          description: 评分尺度。当前来源为 0-10，是否原样入库待团队确认
         source:
           type: string
           example: otaku_site
 
     WorkSummary:
       type: object
+      description: |
+        列表项。**6 个字段，不含 `summary`**——简介最长 7225 字，列表带上会把响应撑爆，
+        客户端需要简介时按 `work_id` 拉详情。
       required: [work_id, work_type, title]
       properties:
-        work_id: { type: string, example: W000001 }
-        work_type: { type: string, enum: [anime, comic, game, novel] }
-        title: { type: string, example: 星际牛仔 }
+        work_id: { type: string, example: "W-8f3a91" }
+        work_type:
+          type: string
+          enum: [anime, comic, game, novel]
+        title: { type: string, example: 街角魔族 2丁目 }
         cover_url:
           type: string
           nullable: true
-          example: null
-          description: 首期来源不提供，恒为 null，客户端需显示占位
-        release_year:
-          type: integer
+          description: |
+            绝对地址（来源相对路径已由 Python 拼好）。`null` 表示无封面，客户端显示占位图。
+            客户端直连还是走后端代理待定，见契约第 8 节。
+          example: http://154.8.194.198:8000/media/full/cover_313852.jpg
+        tags:
+          type: array
           nullable: true
-          example: null
+          description: |
+            `null` = 来源未提供；`[]` = 明确无标签（客户端不渲染标签区）。
+            来源侧每条最多 5 个（站方截断），不宜作为主要筛选维度。
+          items: { type: string }
+          example: ["日常", "搞笑"]
         main_rating: { $ref: "#/components/schemas/SourceRating" }
-        summary_excerpt:
-          type: string
-          nullable: true
-          maxLength: 120
-          description: 列表用摘要片段。来源不提供摘要时为 null，不得填充占位文案
-          example: 2021年，随着超光速航行技术的实现，人类得以在太阳系范围内方便的自由移动……
 
     Work:
       type: object
-      required: [work_id, work_type, title]
+      description: 详情。**全部 10 个字段。**
+      required: [work_id, work_type, title, source, source_id, updated_at]
       properties:
-        work_id: { type: string }
-        work_type: { type: string, enum: [anime, comic, game, novel] }
-        title: { type: string }
+        work_id:
+          type: string
+          description: 平台内部标识，不透明，客户端所有业务只认它
+          example: "W-8f3a91"
+        work_type:
+          type: string
+          enum: [anime, comic, game, novel]
+        title: { type: string, example: 街角魔族 2丁目 }
         summary:
           type: string
           nullable: true
-          description: 保留来源换行，换行符统一为 \n；来源不提供时为 null
+          description: |
+            换行已统一为 `\n`，**不截断**（最长 7225 字），折叠由客户端处理。
+            `null` 表示来源没有简介，客户端显示"暂无简介"。
         cover_url: { type: string, nullable: true }
-        release_year: { type: integer, nullable: true }
         tags:
           type: array
           nullable: true
           items: { type: string }
-          description: null 表示来源未提供（不覆盖），空数组表示明确无标签
         main_rating: { $ref: "#/components/schemas/SourceRating" }
-        source_record: { $ref: "#/components/schemas/SourceRecord" }
-        created_at: { type: string, format: date-time }
-        updated_at: { type: string, format: date-time }
-
-    Credentials:
-      type: object
-      required: [username, password]
-      properties:
-        username: { type: string, minLength: 3, maxLength: 64 }
-        password: { type: string, minLength: 8, maxLength: 128 }
-
-    AuthResult:
-      type: object
-      required: [access_token, expires_at, user]
-      properties:
-        access_token: { type: string }
-        expires_at: { type: string, format: date-time }
-        user:
-          type: object
-          required: [user_id, username]
-          properties:
-            user_id: { type: string }
-            username: { type: string }
-
-    CurrentUser:
-      type: object
-      required: [user_id, username]
-      properties:
-        user_id: { type: string }
-        username: { type: string }
-
-    CollectionItem:
-      type: object
-      required: [work_id, collected, updated_at]
-      properties:
-        work_id: { type: string }
-        collected: { type: boolean }
-        status:
+        source:
           type: string
-          nullable: true
-          enum: [want, watching, watched, null]
-          description: 收藏存在时可为空；取消收藏后该字段随记录删除
-        updated_at: { type: string, format: date-time }
-        work:
-          nullable: true
-          allOf:
-            - $ref: "#/components/schemas/WorkSummary"
+          description: 接入方唯一标识。第一阶段只有 otaku_site
+          example: otaku_site
+        source_id:
+          type: string
+          description: |
+            来源站内作品 ID，字符串存储。可返回给客户端做溯源展示，
+            但**客户端不得用它做业务判断**（跨站可能重复）。
+          example: "476"
+        updated_at:
+          type: string
+          format: date-time
+          description: 该记录最后一次变更时间，由 Java 维护，RFC 3339
 
     ImportBatchRequest:
       type: object
@@ -504,15 +327,19 @@ components:
       properties:
         batch_id:
           type: string
-          maxLength: 64
-          description: 幂等键，同一批次重跑必须复用同一 batch_id
-          example: otaku_site-2026-10-20T01-00-00Z
+          maxLength: 128
+          description: |
+            幂等键，格式 `{source}-{类型}-{日期}-{内容指纹}`，
+            指纹为排序后 source_id 集合的哈希。同一批输入重跑必须得到同一个 batch_id。
+          example: otaku_site-anime-20261020-3a9f1c
         source:
           type: string
           enum: [otaku_site]
         fetched_at:
           type: string
           format: date-time
+          nullable: true
+          description: 本次拉取时间，仅作排查参考，不参与业务判断
         items:
           type: array
           maxItems: 500
@@ -520,24 +347,40 @@ components:
 
     ImportItem:
       type: object
+      description: |
+        提交项 7 个字段。`work_id` 由 Java 生成、`updated_at` 由 Java 维护、`source` 在批次级，
+        因此都不出现在条目里。
       required: [source_id, work_type, title]
       properties:
-        source_id: { type: string, example: "476" }
-        source_url: { type: string, nullable: true }
-        source_updated_at: { type: string, format: date-time, nullable: true }
-        work_type: { type: string, enum: [anime, comic, game, novel] }
-        title: { type: string, minLength: 1, maxLength: 500 }
+        source_id:
+          type: string
+          minLength: 1
+          description: 来源站作品 ID。与批次级 source 共同构成唯一键
+          example: "476"
+        work_type:
+          type: string
+          enum: [anime, comic, game, novel]
+        title:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: 来源标题原文，不做跨类型转换、不做截断
         summary:
           type: string
           nullable: true
-          description: 已清洗为单一 \n 换行；缺失传 null，不传空字符串
-        cover_url: { type: string, nullable: true }
-        release_year: { type: integer, nullable: true }
+          description: 换行已统一为 \n；来源缺失传 null，不传空字符串
+        cover_url:
+          type: string
+          nullable: true
+          description: 已拼成绝对地址；空串在 Python 侧已转为 null
         tags:
           type: array
           nullable: true
+          description: |
+            `null` = 本次没拿到（不覆盖已有值）；`[]` = 明确无标签（清空）。
+            两者语义不同，不要混用。
           items: { type: string }
-        rating: { $ref: "#/components/schemas/SourceRating" }
+        main_rating: { $ref: "#/components/schemas/SourceRating" }
 
     ImportBatchResult:
       type: object
@@ -548,14 +391,15 @@ components:
           type: object
           required: [inserted, updated, unchanged, rejected]
           properties:
-            inserted: { type: integer, example: 100 }
-            updated: { type: integer, example: 0 }
+            inserted: { type: integer, example: 97 }
+            updated: { type: integer, example: 3 }
             unchanged: { type: integer, example: 0 }
             rejected: { type: integer, example: 0 }
         started_at: { type: string, format: date-time }
         finished_at: { type: string, format: date-time }
         errors:
           type: array
+          description: 只需失败明细与提示项，成功条目不必逐条回传
           items: { $ref: "#/components/schemas/ImportItemResult" }
 
     ImportItemResult:
@@ -563,41 +407,49 @@ components:
       required: [source_id, result]
       properties:
         source_id: { type: string }
+        result:
+          type: string
+          enum: [inserted, updated, unchanged, rejected]
         work_id:
           type: string
           nullable: true
           description: rejected 时为 null
-        result:
-          type: string
-          enum: [inserted, updated, unchanged, rejected]
-        reason_code:
+        code:
           type: string
           nullable: true
-          enum: [INVALID_TYPE, TITLE_REQUIRED, RATING_OUT_OF_SCALE, DUPLICATE_SOURCE_ID, INTERNAL_ERROR, null]
+          description: |
+            逐条错误码，走本数组而不走统一错误信封——一条坏记录不该拖垮整批。
+            `DUPLICATE_IN_BATCH` 只是提示（同批内 source_id 重复，最后一次生效），不算失败。
+          enum:
+            - TITLE_REQUIRED
+            - INVALID_TYPE
+            - RATING_OUT_OF_SCALE
+            - DUPLICATE_IN_BATCH
+            - INTERNAL_ERROR
         message:
           type: string
           nullable: true
 
     ErrorResponse:
       type: object
-      required: [code, message]
+      description: 统一错误信封，接口②③④共用（接口①是平台主动拉取，失败记适配器日志）
+      required: [error]
       properties:
-        code:
-          type: string
-          enum:
-            - INVALID_ARGUMENT
-            - UNAUTHORIZED
-            - TOKEN_EXPIRED
-            - FORBIDDEN
-            - NOT_FOUND
-            - CONFLICT
-            - COLLECTION_REQUIRED
-            - RATE_LIMITED
-            - INTERNAL_ERROR
-        message:
-          type: string
-          description: 面向开发者的说明，不直接展示给终端用户
-        details:
+        error:
           type: object
-          nullable: true
-          additionalProperties: true
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum:
+                - UNAUTHORIZED
+                - BAD_REQUEST
+                - WORK_NOT_FOUND
+                - BATCH_TOO_LARGE
+                - RATE_LIMITED
+                - INTERNAL
+            message:
+              type: string
+              description: 面向开发者的说明，不直接展示给终端用户
+      example:
+        error: { code: WORK_NOT_FOUND, message: 作品不存在 }

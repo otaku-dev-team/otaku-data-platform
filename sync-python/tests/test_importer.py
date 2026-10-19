@@ -79,6 +79,6 @@ def test_payload_uses_null_for_unprovided_fields(stub):
         importer.close()
     item = stub.state["received"][0]["items"][0]
     assert item["cover_url"] is None
-    assert item["release_year"] is None
+    assert "release_year" not in item  # 第一阶段不提交该字段
     assert item["tags"] is None
-    assert item["rating"] is None
+    assert item["main_rating"] is None
