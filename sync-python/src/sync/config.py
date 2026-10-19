@@ -10,7 +10,7 @@ DEFAULT_WORKS = ("anime",)
 RATING_SCALE = "0-10"
 SOURCE_NAME = "otaku_site"
 
-# 来源方给出的限流口径（2026-10-20 站主答复，见 docs/legacy-site-capability.md）：
+# 来源方给出的限流口径（2026-10-20 站主答复，见 docs/旧站能力复用清单）：
 # 单次全量走分页 page_size=200；并发不超过 2；控制在 1-2 req/s；每天不超过 5 万请求。
 # 本作业为串行拉取（并发 1），只需保证请求间隔落在 1-2 req/s 区间。
 DEFAULT_PAGE_SIZE = 200

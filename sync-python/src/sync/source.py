@@ -1,6 +1,6 @@
 """来源适配：现有 Otaku 网站的 JSON API。
 
-实测结论（2026-10-20 站主升级接口后复核，见 docs/legacy-site-capability.md）：
+实测结论（2026-10-20 站主升级接口后复核，见 docs/旧站能力复用清单）：
 - `/api/contents` 支持**可选分页** `?page=1&page_size=200`；不传分页参数才是老的全量行为
   （全量现在约 11.6 MB / 25 秒，站主要求必须改用分页）
 - 列表与详情均返回 id / title / type / summary / rating + cover_url / tags / year / bangumi_id
