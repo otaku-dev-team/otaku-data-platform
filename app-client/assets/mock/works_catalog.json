@@ -1,0 +1,323 @@
+{
+  "total": 24,
+  "page": 1,
+  "page_size": 20,
+  "total_pages": 2,
+  "items": [
+    {
+      "work_id": "W-ff9d01",
+      "work_type": "anime",
+      "title": "NHK15个动画短片",
+      "cover_url": null,
+      "tags": null,
+      "main_rating": {
+        "value": 7.4,
+        "scale": "0-10",
+        "source": "otaku_site"
+      }
+    },
+    {
+      "work_id": "W-851b38",
+      "work_type": "anime",
+      "title": "你的名字。",
+      "cover_url": "https://picsum.photos/seed/otaku-90012/600/800",
+      "tags": [
+        "剧情",
+        "爱情"
+      ],
+      "main_rating": {
+        "value": 8.4,
+        "scale": "0-10",
+        "source": "otaku_site"
+      }
+    },
+    {
+      "work_id": "W-e21d97",
+      "work_type": "anime",
+      "title": "千与千寻",
+      "cover_url": "https://picsum.photos/seed/otaku-90007/600/800",
+      "tags": [
+        "奇幻",
+        "经典"
+      ],
+      "main_rating": {
+        "value": 9.2,
+        "scale": "0-10",
+        "source": "otaku_site"
+      }
+    },
+    {
+      "work_id": "W-e29205",
+      "work_type": "anime",
+      "title": "天气之子",
+      "cover_url": null,
+      "tags": [
+        "剧情",
+        "奇幻"
+      ],
+      "main_rating": null
+    },
+    {
+      "work_id": "W-f3179e",
+      "work_type": "anime",
+      "title": "孤独摇滚！",
+      "cover_url": "https://picsum.photos/seed/otaku-9/600/800",
+      "tags": null,
+      "main_rating": {
+        "value": 8.4,
+        "scale": "0-10",
+        "source": "otaku_site"
+      }
+    },
+    {
+      "work_id": "W-1adbaa",
+      "work_type": "anime",
+      "title": "攻壳机动队",
+      "cover_url": null,
+      "tags": [
+        "科幻",
+        "赛博朋克"
+      ],
+      "main_rating": {
+        "value": 8.9,
+        "scale": "0-10",
+        "source": "otaku_site"
+      }
+    },
+    {
+      "work_id": "W-a4dd65",
+      "work_type": "anime",
+      "title": "新世纪福音战士",
+      "cover_url": "https://picsum.photos/seed/otaku-90009/600/800",
+      "tags": [
+        "科幻",
+        "经典"
+      ],
+      "main_rating": {
+        "value": 8.8,
+        "scale": "0-10",
+        "source": "otaku_site"
+      }
+    },
+    {
+      "work_id": "W-923c18",
+      "work_type": "anime",
+      "title": "星际牛仔",
+      "cover_url": null,
+      "tags": null,
+      "main_rating": {
+        "value": 9.1,
+        "scale": "0-10",
+        "source": "otaku_site"
+      }
+    },
+    {
+      "work_id": "W-5711f4",
+      "work_type": "anime",
+      "title": "紫罗兰永恒花园",
+      "cover_url": "https://picsum.photos/seed/otaku-90006/600/800",
+      "tags": [
+        "剧情",
+        "治愈"
+      ],
+      "main_rating": {
+        "value": 8.5,
+        "scale": "0-10",
+        "source": "otaku_site"
+      }
+    },
+    {
+      "work_id": "W-790c41",
+      "work_type": "anime",
+      "title": "航海王",
+      "cover_url": null,
+      "tags": null,
+      "main_rating": {
+        "value": 8.3,
+        "scale": "0-10",
+        "source": "otaku_site"
+      }
+    },
+    {
+      "work_id": "W-cf12ac",
+      "work_type": "anime",
+      "title": "虫师",
+      "cover_url": null,
+      "tags": [
+        "奇幻",
+        "治愈"
+      ],
+      "main_rating": {
+        "value": 8.7,
+        "scale": "0-10",
+        "source": "otaku_site"
+      }
+    },
+    {
+      "work_id": "W-1ee159",
+      "work_type": "anime",
+      "title": "街角魔族",
+      "cover_url": null,
+      "tags": null,
+      "main_rating": {
+        "value": 7.5,
+        "scale": "0-10",
+        "source": "otaku_site"
+      }
+    },
+    {
+      "work_id": "W-4e4867",
+      "work_type": "anime",
+      "title": "街角魔族 2丁目",
+      "cover_url": null,
+      "tags": null,
+      "main_rating": {
+        "value": 7.8,
+        "scale": "0-10",
+        "source": "otaku_site"
+      }
+    },
+    {
+      "work_id": "W-58e28d",
+      "work_type": "anime",
+      "title": "进击的巨人",
+      "cover_url": "https://picsum.photos/seed/otaku-90005/600/800",
+      "tags": [
+        "热血",
+        "剧情"
+      ],
+      "main_rating": {
+        "value": 8.9,
+        "scale": "0-10",
+        "source": "otaku_site"
+      }
+    },
+    {
+      "work_id": "W-044b84",
+      "work_type": "anime",
+      "title": "钢之炼金术师 FULLMETAL ALCHEMIST",
+      "cover_url": "https://picsum.photos/seed/otaku-90010/600/800",
+      "tags": [
+        "热血",
+        "剧情"
+      ],
+      "main_rating": {
+        "value": 9.4,
+        "scale": "0-10",
+        "source": "otaku_site"
+      }
+    },
+    {
+      "work_id": "W-e3e502",
+      "work_type": "anime",
+      "title": "铁臂阿童木",
+      "cover_url": null,
+      "tags": null,
+      "main_rating": {
+        "value": 7.7,
+        "scale": "0-10",
+        "source": "otaku_site"
+      }
+    },
+    {
+      "work_id": "W-c385fe",
+      "work_type": "anime",
+      "title": "铁臂阿童木",
+      "cover_url": "https://picsum.photos/seed/otaku-1299/600/800",
+      "tags": null,
+      "main_rating": {
+        "value": 7.4,
+        "scale": "0-10",
+        "source": "otaku_site"
+      }
+    },
+    {
+      "work_id": "W-c98853",
+      "work_type": "anime",
+      "title": "铁臂阿童木",
+      "cover_url": null,
+      "tags": null,
+      "main_rating": {
+        "value": 7.4,
+        "scale": "0-10",
+        "source": "otaku_site"
+      }
+    },
+    {
+      "work_id": "W-5b9a5b",
+      "work_type": "anime",
+      "title": "零度战姬Vibration",
+      "cover_url": null,
+      "tags": null,
+      "main_rating": null
+    },
+    {
+      "work_id": "W-ae65e1",
+      "work_type": "comic",
+      "title": "航海王",
+      "cover_url": "https://picsum.photos/seed/otaku-10860/600/800",
+      "tags": null,
+      "main_rating": {
+        "value": 8.8,
+        "scale": "0-10",
+        "source": "otaku_site"
+      }
+    },
+    {
+      "work_id": "W-f131b3",
+      "work_type": "game",
+      "title": "塞尔达传说 王国之泪",
+      "cover_url": "https://picsum.photos/seed/otaku-90001/600/800",
+      "tags": [
+        "冒险",
+        "开放世界"
+      ],
+      "main_rating": {
+        "value": 9.3,
+        "scale": "0-10",
+        "source": "otaku_site"
+      }
+    },
+    {
+      "work_id": "W-064281",
+      "work_type": "game",
+      "title": "女神异闻录5",
+      "cover_url": "https://picsum.photos/seed/otaku-90002/600/800",
+      "tags": [
+        "角色扮演",
+        "校园"
+      ],
+      "main_rating": {
+        "value": 9.0,
+        "scale": "0-10",
+        "source": "otaku_site"
+      }
+    },
+    {
+      "work_id": "W-ec01e1",
+      "work_type": "novel",
+      "title": "凉宫春日的忧郁",
+      "cover_url": null,
+      "tags": [
+        "校园",
+        "科幻"
+      ],
+      "main_rating": {
+        "value": 8.2,
+        "scale": "0-10",
+        "source": "otaku_site"
+      }
+    },
+    {
+      "work_id": "W-9e00db",
+      "work_type": "novel",
+      "title": "狼与香辛料",
+      "cover_url": "https://picsum.photos/seed/otaku-90003/600/800",
+      "tags": [
+        "奇幻",
+        "旅行"
+      ],
+      "main_rating": null
+    }
+  ]
+}

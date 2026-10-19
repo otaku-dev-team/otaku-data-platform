@@ -1,0 +1,144 @@
+import 'package:flutter/material.dart';
+
+import '../../core/theme/app_layout.dart';
+
+/// 首屏加载用骨架屏，而不是盖一层转圈遮罩——遮罩会让人误以为页面卡死。
+class SkeletonList extends StatefulWidget {
+  const SkeletonList({super.key, this.itemCount = 6});
+
+  final int itemCount;
+
+  @override
+  State<SkeletonList> createState() => _SkeletonListState();
+}
+
+class _SkeletonListState extends State<SkeletonList>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.separated(
+      physics: const NeverScrollableScrollPhysics(),
+      padding: const EdgeInsets.all(AppLayout.pagePadding),
+      itemCount: widget.itemCount,
+      separatorBuilder: (context, index) => const SizedBox(height: 12),
+      itemBuilder: (context, index) => _Pulse(
+        animation: _controller,
+        child: const _SkeletonRow(),
+      ),
+    );
+  }
+}
+
+class _SkeletonRow extends StatelessWidget {
+  const _SkeletonRow();
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _Bar(
+          width: AppLayout.coverWidth,
+          height: AppLayout.coverHeight,
+          radius: 8,
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(height: 4),
+              const _Bar(width: double.infinity, height: 16),
+              const SizedBox(height: 10),
+              const _Bar(width: 180, height: 12),
+              const SizedBox(height: 10),
+              const _Bar(width: 120, height: 12),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// 详情页骨架：封面 + 标题 + 正文若干行。
+class SkeletonDetail extends StatelessWidget {
+  const SkeletonDetail({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      physics: const NeverScrollableScrollPhysics(),
+      padding: const EdgeInsets.all(AppLayout.pagePadding),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const _Bar(width: double.infinity, height: 180, radius: 12),
+          const SizedBox(height: 20),
+          const _Bar(width: 240, height: 24),
+          const SizedBox(height: 12),
+          const _Bar(width: 160, height: 14),
+          const SizedBox(height: 24),
+          for (var i = 0; i < 5; i++) ...[
+            const _Bar(width: double.infinity, height: 12),
+            const SizedBox(height: 10),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _Pulse extends StatelessWidget {
+  const _Pulse({required this.animation, required this.child});
+
+  final Animation<double> animation;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: animation,
+      builder: (context, child) => Opacity(
+        opacity: 0.35 + 0.45 * animation.value,
+        child: child,
+      ),
+      child: child,
+    );
+  }
+}
+
+class _Bar extends StatelessWidget {
+  const _Bar({
+    required this.width,
+    required this.height,
+    this.radius = 6,
+  });
+
+  final double width;
+  final double height;
+  final double radius;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(radius),
+      ),
+    );
+  }
+}

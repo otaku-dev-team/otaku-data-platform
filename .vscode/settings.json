@@ -1,0 +1,4 @@
+{
+    // Flutter 工程位于 monorepo 的 app-client/ 子目录下（假定工作区根目录为仓库根）
+    "cmake.sourceDirectory": "${workspaceFolder}/app-client/windows"
+}
