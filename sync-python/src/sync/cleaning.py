@@ -63,6 +63,11 @@ def clean_tags(raw: object) -> list[str] | None:
     三态语义（见 docs/data-contract.md）：
     - 来源没给这个字段 -> None，表示"来源未提供"，下游不覆盖已有内容
     - 给了空列表 -> []，表示"明确无标签"，下游可据此清空
+
+    注意：本函数只做通用清洗。**Otaku 站点无法区分这两种空值**，其 `[]` 既有
+    "确实没有标签"也有"还没录入"（实测占 38.5%），因此 `source.py` 的
+    `_normalize_tags` 会把该站点的 `[]` 再转成 `None`。判断属于具体适配器的职责，
+    不要塞进本函数，否则换个能区分两种空值的站点就没法表达"明确无标签"。
     """
     if raw is None:
         return None

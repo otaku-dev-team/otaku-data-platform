@@ -50,15 +50,20 @@ def test_cover_url_is_absolutized(stub):
     assert item.cover_url.startswith("http")
 
 
-def test_tags_three_state_semantics(stub):
-    """标签三态：有值取列表；空列表是"明确无标签"；字段缺失才是 None。"""
+def test_tags_empty_is_treated_as_absent(stub):
+    """站点的 [] 一律按"未提供"处理，不当作"明确无标签"。
+
+    站点只有一个空值形态，无法区分"确实没有标签"与"还没录入"（实测 38.5% 为 []）。
+    契约里 null 不覆盖、[] 可清空，若把 [] 当"明确无标签"，一次缺数据就会
+    清空平台已有标签。故适配器统一转 null。见契约第 4.4.3 节。
+    """
     with OtakuSiteSource(stub.base_url, request_interval_seconds=0) as source:
         anime = source.fetch("anime", "2026-10-20T00:00:00+00:00")
         comic = source.fetch("comic", "2026-10-20T00:00:00+00:00")
 
     assert anime[0].tags == ["搞笑", "百合", "日常"]
-    assert anime[1].tags == []  # 明确无标签，不是 None
-    assert comic[0].tags is None  # 来源未提供
+    assert anime[1].tags is None  # 站点返回 []，转成"未提供"
+    assert comic[0].tags is None  # 字段缺失，同样是"未提供"
 
 
 def test_year_maps_when_present(stub):
