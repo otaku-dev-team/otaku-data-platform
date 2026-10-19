@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 9+ 默认禁止明文 HTTP。这里只放行 Otaku 网站所在的单一主机，
+     不使用全局 usesCleartextTraffic，避免 release 包被安全扫描标记。 -->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">154.8.194.198</domain>
+    </domain-config>
+</network-security-config>
