@@ -62,3 +62,14 @@
 - `backend-java/`：Java 后端
 - `sync-python/`：Python 数据服务
 - `docs/`：项目文档
+
+## 阶段 0 契约文档（草案，待评审）
+
+以下文档为 Python 负责人起草的草案，用于三人确认后据此实现，尚未生效：
+
+- [`docs/data-contract.md`](data-contract.md)：作品身份、来源映射、字段与更新规则，含源站实测数据事实。
+- [`docs/openapi.yaml`](openapi.yaml)：接口契约草案。`/internal/*` 为 Python 同步作业专用，`/api/*` 为 Java 提供给客户端的接口。
+- [`docs/acceptance.md`](acceptance.md)：双端浏览、跨端个人管理与同步可靠性的逐条验收步骤。
+- [`docs/samples/stage0-sample.json`](samples/stage0-sample.json)：10 组取自真实数据的边界用例样本。
+
+有修改意见请在对应 Issue 提出，涉及其他模块的变更需团队协商。
