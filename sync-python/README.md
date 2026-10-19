@@ -13,6 +13,7 @@ src/sync/
   models.py     与 data-contract.md 对应的数据结构
   cleaning.py   清洗与校验（换行规范化、空值处理、评分校验）
   source.py     来源适配：现有网站的 JSON API
+  bangumi.py    来源适配：Bangumi 官方数据集档案（本地 jsonlines 快照）
   importer.py   内部导入接口客户端：重试、幂等、失败记录
   pipeline.py   编排：拉取 -> 校验 -> 分批 -> 提交 -> 记录
   __main__.py   命令行入口
@@ -31,8 +32,9 @@ pip install -r requirements.txt
 python -m pytest -q
 ```
 
-已验证：29 项通过。测试使用本地桩服务，**不访问外网，不依赖 Java**，
-覆盖验收项 D5（空标题拒绝）、D7（未授权拒绝）、D8（换行规范化）、D9（长文本不截断）、D10（重名各自成作品）。
+已验证：45 项通过。测试使用本地桩服务与临时 zip，**不访问外网，不依赖 Java**，
+覆盖验收项 D5（空标题拒绝）、D7（未授权拒绝）、D8（换行规范化）、D9（长文本不截断）、D10（重名各自成作品），
+以及 Bangumi 档案的类型映射、`score=0` 语义、标签三态、标题回落。
 
 ## 脱离 Java 试跑（已验证）
 
@@ -54,6 +56,69 @@ PYTHONPATH=src python -m sync --type anime --limit 100 --dry-run --out runs
 标签按三态语义映射（有值取列表、空列表为 `[]`、字段缺失才为 `null`）；年份多数为空；评分尺度 `0-10`；
 同一批输入重复运行得到**同一个** `batch_id`（幂等键），这是验收 D2「重跑不新增作品」的前提。
 
+## 从 Bangumi 档案入库（本地快照）
+
+`dump.zip` 是 Bangumi 官方数据集档案（9 个 jsonlines，解压约 1.86 GB），
+本项目只用其中的 `subject.jsonlines`（695909 条作品）。档案**不进仓库**，
+路径由 `--archive` 或 `OTAKU_ARCHIVE_PATH` 指定。
+
+先看档案里各类有多少条、会被排除多少：
+
+```bash
+PYTHONPATH=src python -m sync --source bangumi --archive <dump.zip> --stats
+```
+
+再按契约整理后落盘（不联系 Java）：
+
+```bash
+PYTHONPATH=src python -m sync --source bangumi --archive <dump.zip> \
+  --type anime --limit 100 --dry-run --out runs
+```
+
+### 类型映射（用全量 695909 条实测确定）
+
+| Bangumi | 判据 | 档案条数 | 映射 |
+| --- | --- | --- | --- |
+| `type=2` | 动画 | 31174 | `anime` |
+| `type=4` | 游戏 | 117295 | `game` |
+| `type=1` + `platform=1001` | 漫画（含 29416 条泛用 `Book` 模板的单行本） | 320631 | `comic` |
+| `type=1` + `platform=1002` | 小说（含 2079 条 `Book` 模板） | 87116 | `novel` |
+| `type=1` + 其他 platform | 画集 / 写真 / 公式书 / 杂项 | 12317 | 排除 |
+| `type=3` | 音乐 | 100751 | 排除（契约无此类型） |
+| `type=6` | 三次元 | 26625 | 排除（契约无此类型） |
+
+判据用 `platform` 而不是 `infobox` 模板名：`Book` 模板横跨漫画与小说，
+只看模板会漏掉 3 万多条漫画单行本。
+
+### 字段映射与实测缺口
+
+| 契约字段 | 来源 | 实测 |
+| --- | --- | --- |
+| `source_id` | `id` | 转字符串 |
+| `work_type` | `type` + `platform` | 见上表 |
+| `title` | `name_cn`，为空回落 `name` | **78.91% 无中文名**，回落后多为日文原名 |
+| `summary` | `summary` | 17.76% 为空；`\r\n` 已统一为 `\n` |
+| `cover_url` | —— | **档案不含图片字段，恒为 `null`** |
+| `tags` | `tags[].name` | 50.13% 为 `[]`，原样保留为"明确无标签" |
+| `main_rating` | `score` | **`score == 0` 表示无人评分**，占 58.83%，映射为 `null` |
+
+`release_year` 能从 `date` 取到（92.3% 有值），但第一阶段接口不出口，仅本地记录。
+
+### 与站点来源的差异（换源的代价）
+
+| 项 | 站点 API | Bangumi 档案 |
+| --- | --- | --- |
+| 封面 | 100% 有值 | **完全没有** |
+| 中文标题 | 全部是中文 | 21.09% 有，其余是原文 |
+| 简介缺失 | 较少 | 17.76% 为空 |
+| 评分 | 有值比例高 | 58.83% 无评分 |
+| 系列 / 别名 / 话数 | 接口未出口 | 档案里有（`infobox` / `subject-relations` / `episode.jsonlines`），第一阶段不解析 |
+| 限流 | 必须遵守 1–2 req/s | 无（本地文件） |
+
+`source` 取值定为 `bangumi`，与站点来源的 `otaku_site` 并存：两者 id 体系不同
+（站点 `content_id` vs Bangumi `subject_id`），不能共用同一个 `source`，
+否则 `(source, source_id)` 唯一键会把两套 id 混在一起。
+
 ## 提交给 Java（待验证）
 
 **以下命令尚未验证**，Java 后端与内部令牌就绪后才可用：
@@ -67,6 +132,8 @@ PYTHONPATH=src python -m sync --type anime --limit 100
 
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
+| `OTAKU_SOURCE` | `otaku_site` | 来源：`otaku_site`（在线站点）或 `bangumi`（本地档案） |
+| `OTAKU_ARCHIVE_PATH` | 无 | Bangumi 档案路径，`OTAKU_SOURCE=bangumi` 时必填 |
 | `OTAKU_SOURCE_BASE_URL` | `http://154.8.194.198:8000` | 来源站点 |
 | `OTAKU_JAVA_BASE_URL` | `http://localhost:8080` | Java 后端 |
 | `OTAKU_INTERNAL_TOKEN` | 无 | 内部导入令牌，**不得写入仓库** |

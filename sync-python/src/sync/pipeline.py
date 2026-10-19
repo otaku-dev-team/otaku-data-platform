@@ -14,7 +14,8 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Iterable, Sequence
 
-from .config import SOURCE_NAME, SyncConfig
+from .bangumi import BangumiArchiveSource
+from .config import SOURCE_BANGUMI, SOURCE_NAME, SyncConfig
 from .importer import ImportDeliveryError, JavaImporter
 from .models import (
     REASON_INTERNAL_ERROR,
@@ -37,12 +38,19 @@ def fingerprint(items: Sequence[WorkItem]) -> str:
 
 
 def build_batch_id(
-    items: Sequence[WorkItem], work_types: Sequence[str], run_at: str
+    items: Sequence[WorkItem],
+    work_types: Sequence[str],
+    run_at: str,
+    source: str = SOURCE_NAME,
 ) -> str:
-    """生成批次标识。来源 id 集合相同即得到相同结果。"""
+    """生成批次标识。来源 id 集合相同即得到相同结果。
+
+    `source` 进到 batch_id 里，避免两个来源在同一个类型、同一天、
+    又恰好撞上相同指纹时共用一个批次号。
+    """
     day = run_at[:10].replace("-", "")
     types = "-".join(work_types) or "all"
-    return f"{SOURCE_NAME}-{types}-{day}-{fingerprint(items)}"
+    return f"{source}-{types}-{day}-{fingerprint(items)}"
 
 
 def chunked(items: Sequence[WorkItem], size: int) -> list[list[WorkItem]]:
@@ -100,6 +108,33 @@ def _write_json(path: str, data: Any) -> str:
     return path
 
 
+def _fetch_items(
+    config: SyncConfig,
+    types: Sequence[str],
+    started: str,
+    limit: int | None,
+) -> list[WorkItem]:
+    """按配置的来源取数据。
+
+    档案来源流式读本地 zip；站点来源走在线 JSON API。
+    两条路径都产出 `WorkItem` 列表，后续清洗、分批、提交完全共用。
+    """
+    if config.source == SOURCE_BANGUMI:
+        with BangumiArchiveSource(config.archive_path or "") as source:
+            return source.fetch_many(types, started, limit=limit)
+
+    with OtakuSiteSource(
+        config.source_base_url,
+        timeout=config.timeout_seconds,
+        user_agent=config.user_agent,
+        page_size=config.source_page_size,
+        request_interval_seconds=config.request_interval_seconds,
+        max_pages=config.max_pages,
+    ) as source:
+        items = source.fetch_many(types, started)
+    return items[:limit] if limit is not None else items
+
+
 def run(
     config: SyncConfig,
     work_types: Sequence[str] | None = None,
@@ -112,22 +147,12 @@ def run(
     started = utc_now()
     out_dir = output_dir or config.output_dir
 
-    with OtakuSiteSource(
-        config.source_base_url,
-        timeout=config.timeout_seconds,
-        user_agent=config.user_agent,
-        page_size=config.source_page_size,
-        request_interval_seconds=config.request_interval_seconds,
-        max_pages=config.max_pages,
-    ) as source:
-        raw_items = source.fetch_many(types, started)
-
-    if limit is not None:
-        raw_items = raw_items[:limit]
+    raw_items = _fetch_items(config, types, started, limit)
 
     accepted, rejected = _validate(raw_items)
     report = RunReport(
         started_at=started,
+        source=config.source,
         work_types=types,
         fetched=len(raw_items),
         accepted=len(accepted),
@@ -152,10 +177,10 @@ def run(
 
     try:
         for batch_items in chunked(accepted, max(1, config.batch_size)):
-            batch_id = build_batch_id(batch_items, types, started)
+            batch_id = build_batch_id(batch_items, types, started, config.source)
             payload = {
                 "batch_id": batch_id,
-                "source": SOURCE_NAME,
+                "source": config.source,
                 "fetched_at": started,
                 "items": [item.to_payload() for item in batch_items],
             }
