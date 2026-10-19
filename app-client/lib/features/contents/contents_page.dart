@@ -1,0 +1,290 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../core/config/app_config.dart';
+import '../../core/network/api_exception.dart';
+import '../../core/theme/app_layout.dart';
+import '../../data/models/work_summary.dart';
+import '../../data/models/work_type.dart';
+import '../../shared/widgets/empty_state.dart';
+import '../../shared/widgets/error_state.dart';
+import '../../shared/widgets/skeleton_list.dart';
+import 'contents_controller.dart';
+import 'work_card.dart';
+
+/// 作品列表：搜索 + 类型筛选 + 无限滚动分页。
+///
+/// 状态矩阵（验收时逐条对）：
+/// - 首屏加载 → 骨架屏
+/// - 无数据 / 搜索无结果 → 空状态
+/// - 首屏失败 → 错误状态 + 重试
+/// - 加载下一页失败 → 底部重试条，**不清空已有数据**
+class ContentsPage extends ConsumerStatefulWidget {
+  const ContentsPage({super.key});
+
+  @override
+  ConsumerState<ContentsPage> createState() => _ContentsPageState();
+}
+
+class _ContentsPageState extends ConsumerState<ContentsPage> {
+  final TextEditingController _searchController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
+  Timer? _debounce;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_handleScroll);
+    // 从详情返回时，搜索框要保留已经生效的关键词。
+    _searchController.text = ref.read(contentsFilterProvider).query;
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _searchController.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _handleScroll() {
+    if (!_scrollController.hasClients) return;
+    final position = _scrollController.position;
+    if (position.maxScrollExtent - position.pixels < 320) {
+      ref.read(contentsControllerProvider.notifier).loadMore();
+    }
+  }
+
+  void _handleQueryChanged(String value) {
+    // 输入时不要每个字符都打一次接口，300ms 后再查。
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 300), () {
+      if (!mounted) return;
+      ref.read(contentsFilterProvider.notifier).search(value);
+    });
+  }
+
+  void _clearQuery() {
+    _debounce?.cancel();
+    _searchController.clear();
+    ref.read(contentsFilterProvider.notifier).search('');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final filter = ref.watch(contentsFilterProvider);
+    final contents = ref.watch(contentsControllerProvider);
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('作品库')),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: AppLayout.listMaxWidth),
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppLayout.pagePadding,
+                  4,
+                  AppLayout.pagePadding,
+                  0,
+                ),
+                child: TextField(
+                  controller: _searchController,
+                  onChanged: _handleQueryChanged,
+                  textInputAction: TextInputAction.search,
+                  decoration: InputDecoration(
+                    hintText: '搜索作品标题',
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: filter.query.isEmpty
+                        ? null
+                        : IconButton(
+                            tooltip: '清除',
+                            icon: const Icon(Icons.close),
+                            onPressed: _clearQuery,
+                          ),
+                    isDense: true,
+                    border: const OutlineInputBorder(),
+                  ),
+                ),
+              ),
+              _TypeFilters(
+                selected: filter.type,
+                onSelected: (type) =>
+                    ref.read(contentsFilterProvider.notifier).selectType(type),
+              ),
+              Expanded(child: _buildBody(filter, contents)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBody(ContentsFilter filter, AsyncValue<ContentsData> contents) {
+    if (contents.isLoading && !contents.hasValue) {
+      return const SkeletonList();
+    }
+
+    if (contents.hasError && !contents.hasValue) {
+      final error = ApiException.fromAny(contents.error);
+      return ErrorState(
+        error: error,
+        onRetry: () => ref.invalidate(contentsControllerProvider),
+      );
+    }
+
+    final data = contents.requireValue;
+    if (data.items.isEmpty) return _buildEmpty(filter);
+    return _buildList(data);
+  }
+
+  Widget _buildEmpty(ContentsFilter filter) {
+    final searching = filter.query.isNotEmpty;
+    final hasType = filter.type != null;
+
+    return RefreshIndicator(
+      onRefresh: () => ref.read(contentsControllerProvider.notifier).refresh(),
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: [
+          const SizedBox(height: 72),
+          EmptyState(
+            icon: searching
+                ? Icons.search_off_rounded
+                : Icons.movie_filter_outlined,
+            title: searching ? '没有匹配的作品' : '这里还没有作品',
+            message: searching
+                ? '换个更短的关键词试试，搜索只匹配标题，不支持拼音与别名'
+                : (hasType ? '这个分类下暂时没有内容，换个分类看看' : '等同步任务跑完就有了'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildList(ContentsData data) {
+    return RefreshIndicator(
+      onRefresh: () => ref.read(contentsControllerProvider.notifier).refresh(),
+      child: ListView.separated(
+        controller: _scrollController,
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(
+          AppLayout.pagePadding,
+          8,
+          AppLayout.pagePadding,
+          24,
+        ),
+        itemCount: data.items.length + 1,
+        separatorBuilder: (context, index) => const SizedBox(height: 8),
+        itemBuilder: (context, index) {
+          if (index == data.items.length) return _buildFooter(data);
+          return _buildCard(data.items[index]);
+        },
+      ),
+    );
+  }
+
+  Widget _buildCard(WorkSummary work) => WorkCard(work: work);
+
+  Widget _buildFooter(ContentsData data) {
+    if (data.isLoadingMore) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 16),
+        child: Center(
+          child: SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ),
+      );
+    }
+
+    final error = data.loadMoreError;
+    if (error != null) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Flexible(
+              child: Text(
+                error.userMessage,
+                style: Theme.of(context).textTheme.bodySmall,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 4),
+            TextButton(
+              onPressed: () =>
+                  ref.read(contentsControllerProvider.notifier).loadMore(),
+              child: const Text('重试'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // 只有确实翻过页才提示到底，单页列表不需要这句话。
+    if (!data.hasMore && data.items.length >= AppConfig.pageSize) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        child: Center(
+          child: Text(
+            '已经到底了',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return const SizedBox(height: 8);
+  }
+}
+
+class _TypeFilters extends StatelessWidget {
+  const _TypeFilters({required this.selected, required this.onSelected});
+
+  final WorkType? selected;
+  final ValueChanged<WorkType?> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 52,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppLayout.pagePadding,
+          vertical: 8,
+        ),
+        children: [
+          _chip(context, label: '全部', type: null),
+          for (final type in WorkType.selectable)
+            _chip(context, label: type.label, type: type),
+        ],
+      ),
+    );
+  }
+
+  Widget _chip(
+    BuildContext context, {
+    required String label,
+    required WorkType? type,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: ChoiceChip(
+        label: Text(label),
+        selected: selected == type,
+        onSelected: (_) => onSelected(type),
+        visualDensity: VisualDensity.compact,
+      ),
+    );
+  }
+}
