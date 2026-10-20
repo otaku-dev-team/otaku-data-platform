@@ -1,0 +1,34 @@
+{
+  "batch_id": "otaku_site-anime-20261020-sample",
+  "source": "otaku_site",
+  "fetched_at": "2026-10-20T06:00:00+00:00",
+  "items": [
+    {
+      "source_id": "476",
+      "work_type": "anime",
+      "title": "街角魔族 2丁目",
+      "summary": "第一行\n第二行",
+      "cover_url": "http://154.8.194.198:8000/media/full/cover_313852.jpg",
+      "tags": ["日常", "搞笑"],
+      "main_rating": { "value": 7.8, "scale": "0-10", "source": "otaku_site" }
+    },
+    {
+      "source_id": "477",
+      "work_type": "anime",
+      "title": "无封面无简介的样本",
+      "summary": null,
+      "cover_url": null,
+      "tags": null,
+      "main_rating": null
+    },
+    {
+      "source_id": "478",
+      "work_type": "comic",
+      "title": "标签明确为空的样本",
+      "summary": "单段简介。",
+      "cover_url": "http://154.8.194.198:8000/media/full/cover_1.jpg",
+      "tags": [],
+      "main_rating": { "value": 9.1, "scale": "0-10", "source": "otaku_site" }
+    }
+  ]
+}

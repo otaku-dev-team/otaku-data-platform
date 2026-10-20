@@ -1,0 +1,61 @@
+{
+  "batch_id": "otaku_site-anime-20261020-edge",
+  "source": "otaku_site",
+  "fetched_at": "2026-10-20T06:10:00+00:00",
+  "items": [
+    {
+      "source_id": "900",
+      "work_type": "anime",
+      "title": "",
+      "summary": null,
+      "cover_url": null,
+      "tags": null,
+      "main_rating": null
+    },
+    {
+      "source_id": "901",
+      "work_type": "movie",
+      "title": "类型非法",
+      "summary": null,
+      "cover_url": null,
+      "tags": null,
+      "main_rating": null
+    },
+    {
+      "source_id": "902",
+      "work_type": "anime",
+      "title": "评分越界",
+      "summary": null,
+      "cover_url": null,
+      "tags": null,
+      "main_rating": { "value": 11, "scale": "0-10", "source": "otaku_site" }
+    },
+    {
+      "source_id": "",
+      "work_type": "anime",
+      "title": "缺少来源 ID",
+      "summary": null,
+      "cover_url": null,
+      "tags": null,
+      "main_rating": null
+    },
+    {
+      "source_id": "476",
+      "work_type": "anime",
+      "title": "重复的来源 ID（第一次）",
+      "summary": null,
+      "cover_url": null,
+      "tags": null,
+      "main_rating": { "value": 6.0, "scale": "0-10", "source": "otaku_site" }
+    },
+    {
+      "source_id": "476",
+      "work_type": "anime",
+      "title": "重复的来源 ID（最后一次生效）",
+      "summary": null,
+      "cover_url": null,
+      "tags": null,
+      "main_rating": { "value": 8.5, "scale": "0-10", "source": "otaku_site" }
+    }
+  ]
+}
