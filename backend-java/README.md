@@ -85,6 +85,22 @@ PYTHONPATH=src OTAKU_INTERNAL_TOKEN=dev-token OTAKU_JAVA_BASE_URL=http://localho
 > （`inserted=100` → `unchanged=100`），而不是回放首轮结果。若按 openapi 原文字面短路，第二轮会返回
 > `inserted=100`，D2 直接误判。
 
+## 多来源兼容性（bangumi）
+
+`sync-python` 的 `feat/bangumi-archive-source` 分支会提交 `source=bangumi` 的记录（该分支内附有一份
+`backend-java/bangumi-source-notes.md`，列了 4 个需要后端配合的点）。当前实现已兼容，并逐条实测：
+
+| 提醒项 | 本实现的处理 | 实测结果 |
+| --- | --- | --- |
+| `source` 需可扩展 | 只校验非空与 ≤64 字符，**不设白名单** | `source=bangumi` 正常入库，`inserted=4`、0 rejected |
+| `cover_url` 恒为 null | 存 SQL NULL，出参 null，封面端点 404，不回源 | 详情 `cover_url=null`；`/api/covers/{id}` → 404 |
+| `tags` 的 `[]` 与 `null` 必须区分 | `TagsJson` 保留三态：`[]` 清空、`null` 不覆盖 | 传 `null` → `unchanged` 且旧标签保留；传 `[]` → `updated` 且标签变 `[]` |
+| 评分对象内 `source` 不设白名单 | 原样保存 `rating.source` | 入库 `rating_source=bangumi`，详情原样返回 |
+| 同号不同源是两个作品 | 唯一键 `(source, source_id)` | `source_id=70` 在 `otaku_site`／`bangumi` 下是两条，`work_id` 不同 |
+
+> 仍待团队处理：`docs/openapi.yaml` 里 `source` 还是 `enum: [otaku_site]`，需要把枚举放开
+> （Python 侧已在提醒中提出）。代码侧不受影响，但文档不改会让联调的人以为 `bangumi` 会被拒。
+
 ## 技术选型
 
 | 项 | 选择 | 理由 |
