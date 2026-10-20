@@ -195,9 +195,9 @@ void main() {
     expect(cards, lessThan(200));
   });
 
-  test('滚完 10000 条要发 500 次请求（pageSize=20 的真实代价）', () async {
-    // 这不是渲染问题，是分页策略问题：单页 20 条、需要翻 500 页才能看完 1 万条。
-    // 基线数据写进文档时，这个数字比帧率更值得讨论。
+  test('滚完 10000 条要发多少次请求（分页策略的真实代价）', () async {
+    // 这不是渲染问题，是分页策略问题：请求次数 = 总量 / 单页条数。
+    // pageSize=20 要 500 次，取契约上限 50 只需 200 次——这个数字比帧率更值得讨论。
     final source = _PagedCountingDataSource(total: 10000);
     final container = ProviderContainer(
       overrides: [workDataSourceProvider.overrideWithValue(source)],
