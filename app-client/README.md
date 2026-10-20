@@ -27,6 +27,9 @@ Flutter 跨平台客户端。负责人：**Flutter 负责人**。
 - 分层结构：`core`（配置、网络、路由、主题）、`data`（模型、数据源、仓储）、`features`（列表、详情）、`shared`（公共组件）。
 - 两条页面能力：作品列表（搜索 + 类型筛选 + 分页）与作品详情。
 - 默认走 **Mock 数据源**，不依赖后端即可运行；真接口就绪后只替换 `data/datasources/`。
+- **真接口已联调**（2026-10-21）：Windows 与 Android 双端跑通，数据为来源站真实记录
+  （108 条，含 7225 字超长简介、三条同名「铁臂阿童木」、跨类型同名「航海王」、无封面记录），
+  接口③④⑤ 按契约逐项核验通过，详见下方「切换真实接口」。
 
 ## 环境要求
 
@@ -56,20 +59,50 @@ flutter run -d <device-id>
 
 ### 切换真实接口
 
-默认 `USE_MOCK=true`。后端就绪后：
+默认 `USE_MOCK=true`，不依赖后端即可运行。跑真接口**必须先把 Java 后端起来**，
+否则界面只会停在「网络好像不太行 / 请求超时」，这不是客户端的问题：
 
 ```bash
-flutter run -d windows \
-  --dart-define=USE_MOCK=false \
-  --dart-define=API_BASE_URL=http://127.0.0.1:8080
+# 1. 准备库（MySQL 8，任意实例均可；表结构由 Flyway 自动建）
+mysql -u root -p < ../backend-java/src/main/resources/db/manual/00-create-database.sql
+
+# 2. 起后端（换掉 DB_PORT / DB_USER / DB_PASSWORD 以匹配你的实例）
+cd ../backend-java
+DB_HOST=127.0.0.1 DB_PORT=3306 DB_USER=root DB_PASSWORD=*** \
+  OTAKU_INTERNAL_TOKEN=dev-token ./mvnw spring-boot:run
+curl http://localhost:8080/actuator/health    # 期望 {"status":"UP"}
+
+# 3. 灌数据（Java 自带样本，3 条；真数据可跑 sync-python）
+curl -X POST http://localhost:8080/internal/import/batches \
+  -H "Content-Type: application/json" -H "X-Internal-Token: dev-token" \
+  -d @samples/import-batch-sample.json
 ```
 
-不传 `API_BASE_URL` 时，桌面端默认 `http://127.0.0.1:8080`，Android 模拟器默认
-`http://10.0.2.2:8080`（模拟器里的 `127.0.0.1` 指向模拟器自己）。
+然后客户端关掉 Mock：
 
-> Android 只对 `154.8.194.198` 放行了明文 HTTP（见
-> `android/app/src/main/res/xml/network_security_config.xml`）。
-> 如果后端跑在其他 `http://` 地址上，需要把该地址加进去，或者直接上 HTTPS。
+```bash
+# Windows 桌面（不传 API_BASE_URL 时默认就是 127.0.0.1:8080）
+flutter run -d windows --dart-define=USE_MOCK=false
+
+# Android 模拟器（默认 10.0.2.2:8080，不用传 API_BASE_URL）
+flutter run -d emulator-5554 --dart-define=USE_MOCK=false
+```
+
+- 桌面端默认 `http://127.0.0.1:8080`，Android **模拟器**默认 `http://10.0.2.2:8080`
+  （模拟器里的 `127.0.0.1` 指向模拟器自己）。
+- **真机**不要用 `10.0.2.2`：要么传局域网 IP，要么做端口反向映射后仍是 `127.0.0.1`：
+
+  ```bash
+  adb reverse tcp:8080 tcp:8080
+  flutter run -d <设备id> --dart-define=USE_MOCK=false \
+    --dart-define=API_BASE_URL=http://127.0.0.1:8080
+  ```
+
+- `cover_url` 由后端按**当前请求的 host** 拼成自己的代理地址（`/api/covers/{work_id}`），
+  所以桌面、模拟器、真机都不需要改后端配置，客户端原样消费即可，**不要自己拼来源站域名**。
+- 明文 HTTP：`network_security_config.xml` 目前只对 `154.8.194.198` 放行，但客户端走的是
+  dart:io 裸 socket，实测 `10.0.2.2` / `127.0.0.1` 的明文请求正常。这个行为不要当作契约依赖——
+  换成 HTTPS 域名，或将来引入走系统网络栈的插件时，仍需把地址补进该配置。
 
 ### 检查与测试
 

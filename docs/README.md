@@ -21,11 +21,18 @@
 
 - [`docs/旧站能力复用清单`](旧站能力复用清单)：现有 Otaku 网站的能力清单，分「可直接复用 / 不需要了 / 不复用」，含站主给定的限流约束、接口未暴露字段清单与待确认问题。
 
-## 四、产品规划
+## 四、Flutter 客户端实施文档
+
+- [`docs/dev-setup.md`](dev-setup.md)：Flutter / Android / Windows 桌面开发环境的本机配置记录，含踩坑根因与修复步骤（路径为示例，按自己机器调整）。
+- [`docs/flutter-git-branches.md`](flutter-git-branches.md)：客户端侧 Git 分支操作手册——一次性接入、6 条分支的职责与依赖顺序、命名规则、分支从生到死、冲突处理。
+- [`docs/flutter-lead-plan.md`](flutter-lead-plan.md)：客户端负责人执行方案——技术选型、目录结构、六周节奏、给 Java 的接口需求单、两端差异清单、验收 checklist。
+- [`docs/flutter-scaffold-spec.md`](flutter-scaffold-spec.md)：脚手架开工时确定的实现规格（页面边界、目录、双端差异）。**已按此落地**，保留作追溯，实际行为以代码与 `app-client/README.md` 为准。
+
+## 五、产品规划
 
 - [`docs/otaku-project-plan-v2.md`](otaku-project-plan-v2.md)：产品范围、总体架构、两种同步的边界、阶段划分与验收口径（规划 v0.2 讨论稿）。
 
-## 五、文档维护约定
+## 六、文档维护约定
 
 - 同一主题只在一份文档里写。修订时改对应文件，不新建平行版本。
 - 来源站的任何结论必须来自实测或站主明确答复，未验证的一律标注「未验证」。
