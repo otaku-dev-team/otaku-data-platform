@@ -9,6 +9,7 @@ import '../../data/models/collection_entry.dart';
 import '../../shared/widgets/cover_image.dart';
 import '../../shared/widgets/empty_state.dart';
 import '../../shared/widgets/error_state.dart';
+import '../../shared/widgets/poster_card.dart';
 import '../../shared/widgets/skeleton_list.dart';
 import '../../shared/widgets/work_type_tag.dart';
 import '../auth/auth_controller.dart';
@@ -173,16 +174,33 @@ class _CollectionBody extends ConsumerWidget {
     return RefreshIndicator(
       onRefresh: () =>
           ref.read(collectionControllerProvider.notifier).refresh(),
-      child: ListView.separated(
-        padding: const EdgeInsets.fromLTRB(
-          AppLayout.pagePadding,
-          4,
-          AppLayout.pagePadding,
-          24,
-        ),
-        itemCount: data.length,
-        separatorBuilder: (_, _) => const SizedBox(height: 8),
-        itemBuilder: (context, index) => _CollectionTile(entry: data[index]),
+      // 与作品库同一套海报网格，两个页面切换时不会有"换了个版面"的割裂感。
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final usable = constraints.maxWidth - AppLayout.pagePadding * 2;
+          final metrics = AppLayout.gridMetrics(usable);
+          final extent =
+              metrics.cardWidth / AppLayout.posterAspect +
+              AppLayout.cardBodyHeight;
+
+          return GridView.builder(
+            padding: const EdgeInsets.fromLTRB(
+              AppLayout.pagePadding,
+              4,
+              AppLayout.pagePadding,
+              24,
+            ),
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: metrics.columns,
+              mainAxisExtent: extent,
+              crossAxisSpacing: AppLayout.gridGap,
+              mainAxisSpacing: AppLayout.gridGap,
+            ),
+            itemCount: data.length,
+            itemBuilder: (context, index) =>
+                _CollectionTile(entry: data[index]),
+          );
+        },
       ),
     );
   }
@@ -259,65 +277,101 @@ class _CollectionTile extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final status = entry.status;
+    final firstChar = entry.title.characters.isEmpty
+        ? null
+        : entry.title.characters.first;
+    final updatedAt = entry.updatedAt;
 
-    return Card(
-      margin: EdgeInsets.zero,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(AppLayout.cardRadius),
-        onTap: () => context.push(RoutePaths.workDetail(entry.workId)),
-        child: Padding(
-          padding: const EdgeInsets.all(10),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              CoverImage(
-                url: entry.coverUrl,
-                width: AppLayout.coverWidth,
-                height: AppLayout.coverHeight,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
+    return PosterCardShell(
+      onTap: () => context.push(RoutePaths.workDetail(entry.workId)),
+      overlay: _RemoveButton(onPressed: () => _remove(context, ref)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          AspectRatio(
+            aspectRatio: AppLayout.posterAspect,
+            child: CoverImage(
+              url: entry.coverUrl,
+              width: double.infinity,
+              height: double.infinity,
+              radius: 0,
+              placeholderLabel: firstChar,
+            ),
+          ),
+          SizedBox(
+            height: AppLayout.cardBodyHeight,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    height: 40,
+                    child: Text(
                       entry.title,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.titleMedium?.copyWith(
+                      style: theme.textTheme.bodyMedium?.copyWith(
                         fontWeight: FontWeight.w600,
+                        height: 1.35,
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 6,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        WorkTypeTag(type: entry.workType),
-                        _StatusMenu(
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      WorkTypeTag(type: entry.workType),
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: _StatusMenu(
                           status: status,
                           onSelected: (value) =>
                               _changeStatus(context, ref, value),
                         ),
-                        if (entry.updatedAt != null)
-                          Text(
-                            _relativeTime(entry.updatedAt!),
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.outline,
-                            ),
-                          ),
-                      ],
+                      ),
+                    ],
+                  ),
+                  const Spacer(),
+                  if (updatedAt != null)
+                    Text(
+                      _relativeTime(updatedAt),
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: theme.colorScheme.outline,
+                      ),
                     ),
-                  ],
-                ),
+                ],
               ),
-              IconButton(
-                tooltip: '取消收藏',
-                onPressed: () => _remove(context, ref),
-                icon: const Icon(Icons.bookmark_remove_outlined),
-              ),
-            ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 封面右上角的取消收藏。压在图上而不是占正文一行，正文只留给标题与状态。
+class _RemoveButton extends StatelessWidget {
+  const _RemoveButton({required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: '取消收藏',
+      child: Material(
+        color: Colors.black.withValues(alpha: 0.45),
+        shape: const CircleBorder(),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onPressed,
+          child: const Padding(
+            padding: EdgeInsets.all(6),
+            child: Icon(
+              Icons.bookmark_remove_rounded,
+              size: 16,
+              color: Colors.white,
+            ),
           ),
         ),
       ),

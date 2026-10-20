@@ -40,6 +40,92 @@ class _SkeletonListState extends State<SkeletonList>
   }
 }
 
+/// 首屏加载用骨架屏，网格版：与 [WorkCard] 同尺寸，避免加载完成后跳一下。
+class SkeletonGrid extends StatefulWidget {
+  const SkeletonGrid({super.key, this.itemCount = 10});
+
+  final int itemCount;
+
+  @override
+  State<SkeletonGrid> createState() => _SkeletonGridState();
+}
+
+class _SkeletonGridState extends State<SkeletonGrid>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final usable =
+            constraints.maxWidth - AppLayout.pagePadding * 2;
+        final metrics = AppLayout.gridMetrics(usable);
+        final extent =
+            metrics.cardWidth / AppLayout.posterAspect +
+            AppLayout.cardBodyHeight;
+
+        return GridView.builder(
+          physics: const NeverScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(
+            AppLayout.pagePadding,
+            8,
+            AppLayout.pagePadding,
+            AppLayout.pagePadding,
+          ),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: metrics.columns,
+            mainAxisExtent: extent,
+            crossAxisSpacing: AppLayout.gridGap,
+            mainAxisSpacing: AppLayout.gridGap,
+          ),
+          itemCount: widget.itemCount,
+          itemBuilder: (context, index) => _Pulse(
+            animation: _controller,
+            child: const _SkeletonPoster(),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _SkeletonPoster extends StatelessWidget {
+  const _SkeletonPoster();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 封面位占满卡片剩余高度，与真实卡片的 2:3 版面一致。
+        Expanded(
+          child: Container(
+            width: double.infinity,
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(AppLayout.cardRadius),
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        const _Bar(width: double.infinity, height: 12),
+        const SizedBox(height: 8),
+        const _Bar(width: 90, height: 12),
+      ],
+    );
+  }
+}
+
 class _SkeletonRow extends StatelessWidget {
   const _SkeletonRow();
 

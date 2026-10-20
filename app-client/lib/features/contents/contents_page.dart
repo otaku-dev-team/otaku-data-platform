@@ -168,7 +168,7 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
     final isStale = data != null && data.filter != filter;
 
     if (contents.isLoading && (data == null || isStale)) {
-      return const SkeletonList();
+      return const SkeletonGrid();
     }
 
     if (contents.hasError) {
@@ -225,20 +225,52 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
     _flushScrollReset();
     return RefreshIndicator(
       onRefresh: () => ref.read(contentsControllerProvider.notifier).refresh(),
-      child: ListView.separated(
-        controller: _scrollController,
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(
-          AppLayout.pagePadding,
-          8,
-          AppLayout.pagePadding,
-          24,
-        ),
-        itemCount: data.items.length + 1,
-        separatorBuilder: (context, index) => const SizedBox(height: 8),
-        itemBuilder: (context, index) {
-          if (index == data.items.length) return _buildFooter(data);
-          return _buildCard(data.items[index]);
+      // 海报网格：列数按可用宽度算，卡片高度写死，保证长短标题不会让行高参差。
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final usable = constraints.maxWidth - AppLayout.pagePadding * 2;
+          final metrics = AppLayout.gridMetrics(usable);
+          final extent =
+              metrics.cardWidth / AppLayout.posterAspect +
+              AppLayout.cardBodyHeight;
+
+          return CustomScrollView(
+            controller: _scrollController,
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: [
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppLayout.pagePadding,
+                  8,
+                  AppLayout.pagePadding,
+                  0,
+                ),
+                sliver: SliverGrid(
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: metrics.columns,
+                    mainAxisExtent: extent,
+                    crossAxisSpacing: AppLayout.gridGap,
+                    mainAxisSpacing: AppLayout.gridGap,
+                  ),
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) => _buildCard(data.items[index]),
+                    childCount: data.items.length,
+                  ),
+                ),
+              ),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    AppLayout.pagePadding,
+                    12,
+                    AppLayout.pagePadding,
+                    24,
+                  ),
+                  child: _buildFooter(data),
+                ),
+              ),
+            ],
+          );
         },
       ),
     );
