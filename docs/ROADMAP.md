@@ -9,13 +9,12 @@
 
 | 模块 | 负责人 | 状态 |
 |---|---|---|
-| backend-java | @pyxz0 | 第一阶段完工；bangumi 4 个兼容点已实测落地；`(source, source_id)` 唯一键生效。待：全量吞吐验证、生产化 |
-| app-client | @riceyu02 | 脚手架 + 双数据源就绪；**PR #26 已提（Windows + Android 真接口联调）**，待在组织仓库内评审合并 |
-| sync-python | @zhengmin486 | 1 万均匀样本已真推；流式全量能力就绪（55.6 万扫描峰值 2.5MB）；参数兜底与长任务可观测已修，**55 项测试通过**；适配器已合并（PR #24）。待：无（全量推送已定"不推，走档案分发"） |
+| backend-java | @pyxz0 | 第一阶段完工；bangumi 4 个兼容点已实测落地；`(source, source_id)` 唯一键生效。待：全量吞吐验证、生产化、阶段 2 契约确认（3/4/8 项） |
+| app-client | @riceyu02 | 阶段 1 联调已合并（PR #26–#30）；**阶段 2 骨架已合并（PR #33：登录/收藏/令牌存储/401 兜底）**；契约草案已提（Issue #32 / PR #31），待三人确认 |
+| sync-python | @zhengmin486 | 完结：适配器 + 流式分批 + 均匀抽样 + CLI 兜底（PR #24 已合并）；55 项测试 + CI 绿；1 万均匀样本在库；全量推送定案不推（走档案分发） |
 
 > 仓库已迁至组织 **[otaku-dev-team/otaku-data-platform](https://github.com/otaku-dev-team/otaku-data-platform)**；
-> 三人均为 admin。PR **#24 已合并**（merge commit `7316138`），分支已清理。
-> 档案分发：draft release `data-bangumi-2026-10-21`（268MB 瘦身档，详见 [`bangumi-archive-handover.md`](bangumi-archive-handover.md)）。
+> 三人均为 admin。档案分发：draft release `data-bangumi-2026-10-21`（268MB 瘦身档，详见 [`bangumi-archive-handover.md`](bangumi-archive-handover.md)）。
 
 ## 2. 任务分配（只定目标）
 
@@ -76,3 +75,11 @@
       PR #24 上实测 24 秒通过，后续 Python 改动自动跑 55 项测试。
 - [x] **评审 PR #26**（客户端 Windows + Android 真接口联调）——已合并进 main。
 - [x] **合并 PR #24**：已合并（merge commit `7316138`），main CI 绿，分支已清理。
+- [x] **阶段 2 契约评审（负责人）**：已在 Issue #32 回复——三个决策（平台自建账号 / 不透明令牌 / LWW）全部采纳，
+      确认三人项 1/2/7；补数据侧意见（`work_id` 示例风格统一、联调不依赖全量、双向隔离成立）。
+- [ ] **阶段 2 契约确认收尾**（@pyxz0 确认 3/4/8 → Java + Flutter 确认 5/6）：
+      - [ ] @pyxz0 把接口写进 `openapi.yaml`（草案 `docs/stage2-account-collection-contract.md` 留作设计理由）
+      - [ ] @riceyu02 提 PR 改 `flutter-lead-plan.md` §8 第 1 条验收表述
+      - [ ] 三人确认齐后，提 PR 改 `stage1-minimal-contract.md` 铁律 2 原文
+      - [ ] 全部落地后回 Issue #32 标记完成
+- [ ] **阶段 2 联调**：A/B 账号（附录 A 内部接口或 SQL 建号）+ 现有 10,001 条数据即可覆盖 C1–C11，不依赖全量导入。
