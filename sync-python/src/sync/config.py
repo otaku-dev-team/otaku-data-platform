@@ -38,6 +38,7 @@ class SyncConfig:
     batch_size: int = 100
     source: str = SOURCE_NAME
     archive_path: str | None = None
+    sample_method: str = "head"  # head=按档案顺序取前 N 条；uniform=蓄水池随机抽样
     source_page_size: int = DEFAULT_PAGE_SIZE
     request_interval_seconds: float = DEFAULT_REQUEST_INTERVAL_SECONDS
     max_pages: int = DEFAULT_MAX_PAGES
@@ -65,6 +66,7 @@ class SyncConfig:
             "batch_size": int(os.getenv("OTAKU_BATCH_SIZE", "100")),
             "source": os.getenv("OTAKU_SOURCE", SOURCE_NAME),
             "archive_path": os.getenv("OTAKU_ARCHIVE_PATH"),
+            "sample_method": os.getenv("OTAKU_SAMPLE_METHOD", "head"),
             "source_page_size": int(os.getenv("OTAKU_SOURCE_PAGE_SIZE", str(DEFAULT_PAGE_SIZE))),
             "request_interval_seconds": float(
                 os.getenv("OTAKU_REQUEST_INTERVAL_SECONDS", str(DEFAULT_REQUEST_INTERVAL_SECONDS))

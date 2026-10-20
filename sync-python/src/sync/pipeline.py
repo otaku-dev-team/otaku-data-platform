@@ -121,6 +121,8 @@ def _fetch_items(
     """
     if config.source == SOURCE_BANGUMI:
         with BangumiArchiveSource(config.archive_path or "") as source:
+            if config.sample_method == "uniform" and limit is not None:
+                return source.fetch_sample(types, started, limit)
             return source.fetch_many(types, started, limit=limit)
 
     with OtakuSiteSource(

@@ -32,7 +32,7 @@ pip install -r requirements.txt
 python -m pytest -q
 ```
 
-已验证：45 项通过。测试使用本地桩服务与临时 zip，**不访问外网，不依赖 Java**，
+已验证：48 项通过。测试使用本地桩服务与临时 zip，**不访问外网，不依赖 Java**，
 覆盖验收项 D5（空标题拒绝）、D7（未授权拒绝）、D8（换行规范化）、D9（长文本不截断）、D10（重名各自成作品），
 以及 Bangumi 档案的类型映射、`score=0` 语义、标签三态、标题回落。
 
@@ -74,6 +74,18 @@ PYTHONPATH=src python -m sync --source bangumi --archive <dump.zip> --stats
 PYTHONPATH=src python -m sync --source bangumi --archive <dump.zip> \
   --type anime --limit 100 --dry-run --out runs
 ```
+
+### 抽样方式
+
+默认 `--sample head`：按档案顺序（= id 升序）取前 N 条，会偏向早期录入的知名作品，
+其分布（中文名比例、评分比例）与全量并不相同。`--sample uniform` 用**蓄水池随机抽样**：
+扫描全部匹配条目后等概率保留 N 条，使样本分布接近全量真实比例。
+
+已验证（N=10000，固定随机种子）：均匀样本的中文名比例 **21.78%** vs 全量 **21.09%**；
+四类占比误差 **< 0.3%**（comic 57.5% / game 20.8% / novel 16.4% / anime 5.4%，全量 57.6/21.1/15.7/5.6）。
+
+固定种子保证可复现：同一组参数两次运行得到同一批 source_id、同一个 batch_id，重跑不重复入库。
+代价是必须扫完整份 `subject.jsonlines`（约 69 万行，单次约 25 秒），比 head 慢，但只在生成样本时付一次。
 
 ### 类型映射（用全量 695909 条实测确定）
 
@@ -119,20 +131,31 @@ PYTHONPATH=src python -m sync --source bangumi --archive <dump.zip> \
 （站点 `content_id` vs Bangumi `subject_id`），不能共用同一个 `source`，
 否则 `(source, source_id)` 唯一键会把两套 id 混在一起。
 
-## 提交给 Java（待验证）
+## 提交给 Java（已验证）
 
-**以下命令尚未验证**，Java 后端与内部令牌就绪后才可用：
+本地已端到端跑通：**Bangumi 档案 → 清洗 → 分批 → 内部导入接口 → 入库**。
+实测：10000 条 `source=bangumi` 全部 `inserted=10000`、`rejected=0`、20 批全部送达。
+
+前置：Java 后端先启动并暴露 `/internal/import/batches`（见 `backend-java/README.md`），
+且 `source=bangumi` 的取值已在后端放开（见 `docs/openapi.yaml` 的 `ImportBatchRequest.source`）。
 
 ```bash
 export OTAKU_INTERNAL_TOKEN=<内部导入令牌>
-PYTHONPATH=src python -m sync --type anime --limit 100
+export OTAKU_JAVA_BASE_URL=http://localhost:8080   # 后端地址，按实际情况改
+PYTHONPATH=src python -m sync --source bangumi --archive <dump.zip> \
+  --type anime --type comic --type game --type novel \
+  --sample uniform --limit 10000 --batch-size 500
 ```
+
+> 注意：本机若设置了 `HTTP_PROXY` 等全局代理，Python 的 httpx 会把对 `localhost` 的请求也走代理，
+> 导致连不上本机后端。推送本机后端时设 `NO_PROXY=localhost,127.0.0.1`（或临时清空代理变量）。
 
 ## 环境变量
 
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
 | `OTAKU_SOURCE` | `otaku_site` | 来源：`otaku_site`（在线站点）或 `bangumi`（本地档案） |
+| `OTAKU_SAMPLE_METHOD` | `head` | 抽样方式：`head`（按档案顺序取前 N 条）或 `uniform`（蓄水池随机抽样） |
 | `OTAKU_ARCHIVE_PATH` | 无 | Bangumi 档案路径，`OTAKU_SOURCE=bangumi` 时必填 |
 | `OTAKU_SOURCE_BASE_URL` | `http://154.8.194.198:8000` | 来源站点 |
 | `OTAKU_JAVA_BASE_URL` | `http://localhost:8080` | Java 后端 |

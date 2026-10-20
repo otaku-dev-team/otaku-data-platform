@@ -3,6 +3,7 @@
     python -m sync --type anime --limit 100 --dry-run
     python -m sync --source bangumi --archive <dump.zip> --stats
     python -m sync --source bangumi --archive <dump.zip> --type anime --limit 100 --dry-run
+    python -m sync --source bangumi --archive <dump.zip> --limit 10000 --sample uniform --dry-run
 
 Java 后端就绪后再去掉 --dry-run 并配置 OTAKU_INTERNAL_TOKEN。
 """
@@ -49,6 +50,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--archive", default=None, help="Bangumi 档案路径（dump.zip），仅 --source bangumi 用"
     )
     parser.add_argument(
+        "--sample",
+        choices=["head", "uniform"],
+        default="head",
+        help="抽样方式：head=按档案顺序取前 N 条（默认）；uniform=蓄水池随机抽样，"
+        "消除按 id 顺序的偏差，使样本分布接近全量真实比例",
+    )
+    parser.add_argument(
         "--stats",
         action="store_true",
         help="只统计档案里各类型条数，不生成载荷",
@@ -70,6 +78,7 @@ def main(argv: list[str] | None = None) -> int:
         batch_size=args.batch_size,
         source=args.source,
         archive_path=args.archive,
+        sample_method=args.sample,
         source_base_url=args.source_base_url,
         java_base_url=args.java_base_url,
     )

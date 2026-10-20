@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import json
 import os
+import random
 import zipfile
 from typing import Any, Iterable, Iterator
 
@@ -195,7 +196,11 @@ class BangumiArchiveSource:
         fetched_at: str,
         limit: int | None = None,
     ) -> list[WorkItem]:
-        """按需类型拉取，`limit` 命中即停——避免为了取 100 条而扫完 69 万条。"""
+        """按需类型拉取，`limit` 命中即停——避免为了取 100 条而扫完 69 万条。
+
+        注意：这是按档案顺序（= id 升序）取前 N 条，会偏向早期录入的知名作品
+        （中文名更多、评分更多）。做有代表性的样本请用 `fetch_sample`。
+        """
         self._check_archive()
         wanted = tuple(work_types)
         items: list[WorkItem] = []
@@ -209,6 +214,46 @@ class BangumiArchiveSource:
             if limit is not None and len(items) >= limit:
                 break
         return items
+
+    def fetch_sample(
+        self,
+        work_types: Iterable[str],
+        fetched_at: str,
+        limit: int,
+        seed: int = 1234,
+    ) -> list[WorkItem]:
+        """蓄水池抽样：流式扫描全部匹配条目，等概率保留 `limit` 条。
+
+        用途：消除"按 id 顺序取前 N 条"的偏差。档案里 id 小的是早期录入的知名作品，
+        中文名比例（全量 21.09%）和无评分比例（58.83%）都与整体不同；蓄水池抽样
+        让样本的分布接近全量真实分布，而不是被经典作品拉偏。
+
+        固定 `seed` 保证可复现：同样的参数两次运行得到同一批 source_id，从而 batch_id
+        不变、后端幂等键命中、重跑不重复入库。
+
+        代价：必须扫完整份 subject.jsonlines（约 69 万行），比 fetch_many 慢，
+        但只在生成样本时付出一次。
+        """
+        self._check_archive()
+        wanted = tuple(work_types)
+        rng = random.Random(seed)
+        reservoir: list[WorkItem] = []
+        seen = 0
+        for raw in _subject_iterator(self.archive_path):
+            work_type = map_work_type(raw)
+            if work_type is None:
+                continue
+            if wanted and work_type not in wanted:
+                continue
+            seen += 1
+            item = self.to_work_item(raw, fetched_at, work_type)
+            if len(reservoir) < limit:
+                reservoir.append(item)
+            else:
+                j = rng.randint(0, seen - 1)
+                if j < limit:
+                    reservoir[j] = item
+        return reservoir
 
     def count_by_work_type(self) -> dict[str, int]:
         """统计档案里各契约类型各有多少条，以及被排除的条目数。

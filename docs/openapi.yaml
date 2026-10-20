@@ -311,7 +311,7 @@ components:
         main_rating: { $ref: "#/components/schemas/SourceRating" }
         source:
           type: string
-          description: 接入方唯一标识。第一阶段只有 otaku_site
+          description: 接入方唯一标识。已知取值 otaku_site（站点 API）、bangumi（Bangumi 档案）
           example: otaku_site
         source_id:
           type: string
@@ -337,7 +337,11 @@ components:
           example: otaku_site-anime-20261020-3a9f1c
         source:
           type: string
-          enum: [otaku_site]
+          description: |
+            接入方唯一标识（见契约第 4.6 节）。已知取值：otaku_site（现有站点 API）、
+            bangumi（Bangumi 官方数据集档案，见 sync-python 适配器）。后端按字符串存储、
+            不做白名单校验，新增来源按约定加适配器和 source 取值即可。
+          enum: [otaku_site, bangumi]
         fetched_at:
           type: string
           format: date-time

@@ -206,3 +206,24 @@ def test_missing_archive_path_fails_loudly(tmp_path):
         assert "档案" in str(exc)
     else:
         raise AssertionError("未指定档案时应抛错")
+
+
+def test_fetch_sample_is_deterministic_and_within_limit(tmp_path):
+    """蓄水池抽样：固定 seed 可复现，结果数量不超过 limit，且都来自合法集合。"""
+    archive = make_archive(tmp_path)
+    with BangumiArchiveSource(archive) as source:
+        a = source.fetch_sample(("anime", "comic", "novel", "game"), "t", 3)
+        b = source.fetch_sample(("anime", "comic", "novel", "game"), "t", 3)
+    assert len(a) == 3
+    assert [i.source_id for i in a] == [i.source_id for i in b]  # 同参同果 -> batch_id 幂等
+    valid = {"8", "999", "100", "200", "300"}
+    assert all(i.source_id in valid for i in a)
+
+
+def test_fetch_sample_returns_full_population_when_limit_too_large(tmp_path):
+    """limit 超过总体规模时返回全部匹配条目，不报错。"""
+    archive = make_archive(tmp_path)
+    with BangumiArchiveSource(archive) as source:
+        items = source.fetch_sample(("anime", "comic", "novel", "game"), "t", 100)
+    assert len(items) == 5  # 迷你档案里匹配的共 5 条
+
