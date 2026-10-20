@@ -10,6 +10,8 @@ import 'package:otaku_app/data/models/work.dart';
 import 'package:otaku_app/data/models/work_summary.dart';
 import 'package:otaku_app/data/models/work_type.dart';
 import 'package:otaku_app/data/repositories/work_repository.dart';
+import 'package:otaku_app/features/contents/contents_controller.dart';
+import 'package:otaku_app/features/contents/contents_page.dart';
 import 'package:otaku_app/features/contents/work_card.dart';
 import 'package:otaku_app/features/detail/work_detail_page.dart';
 
@@ -65,15 +67,56 @@ class _FakeDataSource implements WorkDataSource {
   }
 }
 
+/// 不筛选时正常返回，一旦按类型筛选就断网——用来复现"换条件后请求失败"。
+class _OfflineOnFilterDataSource extends _FakeDataSource {
+  @override
+  Future<PagedResult<WorkSummary>> fetchWorks({
+    WorkType? type,
+    String? query,
+    int page = 1,
+    int pageSize = 20,
+  }) async {
+    if (type != null) {
+      throw const ApiException(
+        code: ApiErrorCode.network,
+        message: '网络连接失败',
+      );
+    }
+    return super.fetchWorks(type: type, query: query, page: page);
+  }
+}
+
+/// 第一次成功、之后全部失败——用来复现"同条件刷新失败"。
+class _OfflineAfterFirstLoadDataSource extends _FakeDataSource {
+  int calls = 0;
+
+  @override
+  Future<PagedResult<WorkSummary>> fetchWorks({
+    WorkType? type,
+    String? query,
+    int page = 1,
+    int pageSize = 20,
+  }) async {
+    calls++;
+    if (calls > 1) {
+      throw const ApiException(
+        code: ApiErrorCode.network,
+        message: '网络连接失败',
+      );
+    }
+    return super.fetchWorks(type: type, query: query, page: page);
+  }
+}
+
 /// 这些测试直接读 `assets/mock/` 里的真实样本，校验资源是否已声明进 pubspec，
 /// 以及 Mock 数据源是否保留了契约要求的查询语义。
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  Widget wrap(Widget child) {
+  Widget wrap(Widget child, {WorkDataSource? source}) {
     return ProviderScope(
       overrides: [
-        workDataSourceProvider.overrideWithValue(_FakeDataSource()),
+        workDataSourceProvider.overrideWithValue(source ?? _FakeDataSource()),
       ],
       child: child,
     );
@@ -180,5 +223,44 @@ void main() {
     await tester.tap(find.text('展开全文'));
     await tester.pump();
     expect(find.text('收起'), findsOneWidget);
+  });
+
+  testWidgets('换类型后请求失败：报错并可重试，不把旧类型的结果当新结果', (tester) async {
+    await tester.pumpWidget(
+      wrap(const OtakuApp(), source: _OfflineOnFilterDataSource()),
+    );
+    await settle(tester);
+    expect(find.byType(WorkCard), findsNWidgets(3));
+
+    await tester.tap(find.widgetWithText(ChoiceChip, '动画'));
+    await settle(tester);
+
+    // 旧结果必须让位给错误状态：切到"动画"却还显示全部类型的三条卡片是误导。
+    expect(find.byType(WorkCard), findsNothing);
+    expect(find.text('网络好像不太行'), findsOneWidget);
+    expect(find.text('重试'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('同一条件刷新失败：保留内容，但显示错误提示条与重试', (tester) async {
+    final source = _OfflineAfterFirstLoadDataSource();
+    await tester.pumpWidget(wrap(const OtakuApp(), source: source));
+    await settle(tester);
+    expect(find.byType(WorkCard), findsNWidgets(3));
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(ContentsPage)),
+    );
+    await container.read(contentsControllerProvider.notifier).refresh();
+    await settle(tester);
+
+    // 内容还在，但失败必须说清楚，不能静默。
+    expect(find.byType(WorkCard), findsNWidgets(3));
+    expect(find.text('网络连接失败，请检查网络后重试'), findsOneWidget);
+    expect(
+      find.widgetWithText(TextButton, '重试'),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
   });
 }

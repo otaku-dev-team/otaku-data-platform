@@ -151,21 +151,39 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
   }
 
   Widget _buildBody(ContentsFilter filter, AsyncValue<ContentsData> contents) {
-    if (contents.isLoading && !contents.hasValue) {
+    final data = contents.value;
+    // 换条件后 Riverpod 会把上一组数据保留在 AsyncLoading/AsyncError 里，
+    // 那份数据不属于当前条件，不能当结果展示。
+    final isStale = data != null && data.filter != filter;
+
+    if (contents.isLoading && (data == null || isStale)) {
       return const SkeletonList();
     }
 
-    if (contents.hasError && !contents.hasValue) {
+    if (contents.hasError) {
       final error = ApiException.fromAny(contents.error);
-      return ErrorState(
-        error: error,
-        onRetry: () => ref.invalidate(contentsControllerProvider),
+      if (data == null || isStale) {
+        return ErrorState(
+          error: error,
+          onRetry: () => ref.invalidate(contentsControllerProvider),
+        );
+      }
+      // 同一条件刷新失败：已有内容继续展示，但必须把失败明说出来，
+      // 否则用户会以为看到的就是最新数据（契约 7：不能静默失败）。
+      return Column(
+        children: [
+          _RefreshErrorBar(
+            error: error,
+            onRetry: () => ref.invalidate(contentsControllerProvider),
+          ),
+          Expanded(child: _buildList(data)),
+        ],
       );
     }
 
-    final data = contents.requireValue;
-    if (data.items.isEmpty) return _buildEmpty(filter);
-    return _buildList(data);
+    final resolved = contents.requireValue;
+    if (resolved.items.isEmpty) return _buildEmpty(filter);
+    return _buildList(resolved);
   }
 
   Widget _buildEmpty(ContentsFilter filter) {
@@ -312,6 +330,51 @@ class _TypeFilters extends StatelessWidget {
         selected: selected == type,
         onSelected: (_) => onSelected(type),
         visualDensity: VisualDensity.compact,
+      ),
+    );
+  }
+}
+
+/// 刷新失败提示条：保留已有内容，但把失败和重试入口摆在列表上方。
+class _RefreshErrorBar extends StatelessWidget {
+  const _RefreshErrorBar({required this.error, required this.onRetry});
+
+  final ApiException error;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      margin: const EdgeInsets.fromLTRB(
+        AppLayout.pagePadding,
+        8,
+        AppLayout.pagePadding,
+        0,
+      ),
+      padding: const EdgeInsets.only(left: 12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.errorContainer,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.wifi_off_rounded,
+            size: 18,
+            color: theme.colorScheme.onErrorContainer,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              error.userMessage,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onErrorContainer,
+              ),
+            ),
+          ),
+          TextButton(onPressed: onRetry, child: const Text('重试')),
+        ],
       ),
     );
   }

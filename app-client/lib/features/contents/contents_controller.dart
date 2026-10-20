@@ -51,6 +51,7 @@ final contentsFilterProvider =
 @immutable
 class ContentsData {
   const ContentsData({
+    required this.filter,
     required this.items,
     required this.page,
     required this.total,
@@ -58,6 +59,12 @@ class ContentsData {
     this.isLoadingMore = false,
     this.loadMoreError,
   });
+
+  /// 这份数据是用哪组条件查出来的。
+  ///
+  /// 换条件后 Riverpod 会把旧数据带进新的 AsyncLoading/AsyncError，
+  /// 界面据此判断"看到的内容是不是当前条件的"，避免把上一组结果当成新结果。
+  final ContentsFilter filter;
 
   final List<WorkSummary> items;
   final int page;
@@ -78,6 +85,7 @@ class ContentsData {
     bool clearLoadMoreError = false,
   }) {
     return ContentsData(
+      filter: filter,
       items: items ?? this.items,
       page: page ?? this.page,
       total: total ?? this.total,
@@ -100,6 +108,7 @@ class ContentsController extends AsyncNotifier<ContentsData> {
         .fetchWorks(type: filter.type, query: filter.query, page: 1);
 
     return ContentsData(
+      filter: filter,
       items: result.items,
       page: result.page,
       total: result.total,
