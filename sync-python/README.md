@@ -2,8 +2,7 @@
 
 从现有 Otaku 网站读取作品数据，清洗校验后经内部导入 API 提交给 Java 后端。
 
-**当前状态**：骨架与清洗逻辑已实现，可脱离 Java 独立运行（dry-run）。
-内部导入接口的实际行为待 `docs/openapi.yaml` 评审通过后按最终契约调整。
+**当前状态**：作业与清洗逻辑已实现，可脱离 Java 独立运行（dry-run），也已按 `docs/openapi.yaml` 的最终形状对接真实后端跑通——来源站真实数据 108 条提交后 `inserted=108`、`rejected=0`，入库 `summary` 中 `\r\n` 已统一为 `\n`。
 
 ## 目录
 
