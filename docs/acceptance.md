@@ -128,5 +128,5 @@ curl -s "http://154.8.194.198:8000/api/contents?type=anime" | python -c "import 
 
 ### 6.4 尚未覆盖
 
-- **阶段 2 全部条目（C1–C11）未开始**，账号与收藏契约为空。
+- **阶段 2 全部条目（C1–C11）未开始**：契约草案已出（[`stage2-account-collection-contract.md`](stage2-account-collection-contract.md)），待三人确认「账号来源」等 8 项后进入实现；接口尚未写入 `openapi.yaml`。
 - B1 只验证到第 5 页（库内 237 条）；万级数据下的滚动性能未测，属阶段 3 范围。

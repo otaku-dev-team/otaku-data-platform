@@ -14,6 +14,7 @@
 以下为阶段 0 起草的材料，供追溯与评审；**与上一节冲突时以上一节为准**。
 
 - [`docs/data-contract.md`](data-contract.md)：完整数据契约草案（含后续阶段字段），含来源站实测数据事实。
+- [`docs/stage2-account-collection-contract.md`](stage2-account-collection-contract.md)：**第二阶段（账号与收藏）契约草案**，对应验收 C1–C11。含三个必先定的决策（账号来源、令牌形态、并发策略）、8 个新接口、新增错误码与 C1–C11 的逐条映射。**尚未生效**，需三人确认后再落 `openapi.yaml`。
 - [`docs/acceptance.md`](acceptance.md)：双端浏览、跨端个人管理与同步可靠性的逐条验收步骤；第 6 节是**阶段 1 实测记录**（2026-10-21，B1–B11 全部通过）。
 - [`docs/samples/stage0-sample.json`](samples/stage0-sample.json)：10 组取自真实数据的边界用例样本。
 
