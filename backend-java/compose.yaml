@@ -1,0 +1,61 @@
+# 本地开发用的 MySQL 容器。
+#
+# 为什么端口映射到 3307：本机很可能已经有一个 3306 的 MySQL 服务在跑（这台机器上就有），
+# 直接占 3306 会撞车。需要换端口时用 MYSQL_PORT 覆盖即可。
+#
+# 用法：
+#   docker compose up -d            # 起库，首次会初始化
+#   docker compose ps               # 看健康状态
+#   docker compose logs -f mysql    # 看日志
+#   docker compose down             # 停掉，数据保留在命名卷里
+#   docker compose down -v          # 连数据一起删（重建空库时用）
+#   docker compose --profile tools up -d   # 额外起 Adminer 网页版客户端（:8081）
+
+name: otaku-backend
+
+services:
+  mysql:
+    # 拉不动 Docker Hub 时用镜像站覆盖，例如：
+    #   MYSQL_IMAGE=docker.m.daocloud.io/library/mysql:8.0 docker compose up -d
+    image: ${MYSQL_IMAGE:-mysql:8.0}
+    container_name: otaku-mysql
+    restart: unless-stopped
+    environment:
+      # 仅本地开发使用；不要把这组口令带到任何共享/线上环境
+      MYSQL_ROOT_PASSWORD: root-local-only
+      MYSQL_DATABASE: otaku
+      MYSQL_USER: otaku
+      MYSQL_PASSWORD: otaku123
+      TZ: UTC
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      # 与应用一致：库里一律 UTC，出参再转 RFC 3339
+      - --default-time-zone=+00:00
+    ports:
+      - "${MYSQL_PORT:-3307}:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 30s
+
+  # 可选：网页版数据库客户端，只读排查用。不写 profiles 的话每次都会跟着起，所以放 tools 里。
+  adminer:
+    image: adminer:latest
+    container_name: otaku-adminer
+    restart: unless-stopped
+    profiles: ["tools"]
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      ADMINER_DEFAULT_SERVER: mysql
+    ports:
+      - "${ADMINER_PORT:-8081}:8080"
+
+volumes:
+  mysql-data:

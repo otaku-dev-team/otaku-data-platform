@@ -1,0 +1,74 @@
+package com.otaku.importer;
+
+import com.otaku.importer.dto.ImportBatchRequest.ImportItem;
+import com.otaku.importer.dto.ImportBatchRequest.SourceRating;
+import com.otaku.work.WorkType;
+
+import java.math.BigDecimal;
+import java.util.Optional;
+
+/**
+ * 逐条校验。
+ *
+ * 为什么不用 Bean Validation 打在 items 数组上：那样一条坏数据会抛出
+ * MethodArgumentNotValidException，整批返回 400，违反契约"一条坏记录不该拖垮整批"
+ * （5.6 节、验收 D5）。所以批次级校验用 Spring，条目级校验在这里手写。
+ */
+final class ImportItemValidator {
+
+    static final String SOURCE_ID_REQUIRED = "SOURCE_ID_REQUIRED";
+    static final String TITLE_REQUIRED = "TITLE_REQUIRED";
+    static final String TITLE_TOO_LONG = "TITLE_TOO_LONG";
+    static final String INVALID_TYPE = "INVALID_TYPE";
+    static final String RATING_OUT_OF_SCALE = "RATING_OUT_OF_SCALE";
+
+    static final int MAX_SOURCE_ID_LENGTH = 128;
+    static final int MAX_TITLE_LENGTH = 500;
+    private static final String SCALE_ZERO_TO_TEN = "0-10";
+
+    private ImportItemValidator() {
+    }
+
+    record Problem(String code, String message) {
+    }
+
+    static Optional<Problem> validate(ImportItem item) {
+        String sourceId = item.sourceId();
+        if (sourceId == null || sourceId.isBlank()) {
+            // Python 侧 validate() 不校验 source_id，这里必须兜住（契约 2.3 的四必填之一）。
+            return Optional.of(new Problem(SOURCE_ID_REQUIRED, "source_id 为空"));
+        }
+        if (sourceId.length() > MAX_SOURCE_ID_LENGTH) {
+            return Optional.of(new Problem(SOURCE_ID_REQUIRED,
+                    "source_id 超过 " + MAX_SOURCE_ID_LENGTH + " 字符"));
+        }
+
+        String title = item.title() == null ? "" : item.title().trim();
+        if (title.isEmpty()) {
+            return Optional.of(new Problem(TITLE_REQUIRED, "title 为空"));
+        }
+        if (title.length() > MAX_TITLE_LENGTH) {
+            return Optional.of(new Problem(TITLE_TOO_LONG,
+                    "title 超过 " + MAX_TITLE_LENGTH + " 字符，契约要求不做截断，故整条拒收"));
+        }
+
+        if (!WorkType.isValid(item.workType())) {
+            return Optional.of(new Problem(INVALID_TYPE, "work_type 非法：" + item.workType()));
+        }
+
+        SourceRating rating = item.mainRating();
+        if (rating != null && rating.value() != null) {
+            String scale = rating.scale() == null || rating.scale().isBlank()
+                    ? SCALE_ZERO_TO_TEN : rating.scale();
+            if (SCALE_ZERO_TO_TEN.equals(scale)) {
+                BigDecimal value = rating.value();
+                if (value.compareTo(BigDecimal.ZERO) < 0
+                        || value.compareTo(BigDecimal.TEN) > 0) {
+                    return Optional.of(new Problem(RATING_OUT_OF_SCALE,
+                            "评分 " + value.toPlainString() + " 超出尺度 " + scale));
+                }
+            }
+        }
+        return Optional.empty();
+    }
+}

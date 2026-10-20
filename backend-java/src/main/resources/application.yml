@@ -1,0 +1,56 @@
+server:
+  port: 8080
+  shutdown: graceful
+
+spring:
+  application:
+    name: backend-java
+  datasource:
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:otaku}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&characterEncoding=utf8
+    username: ${DB_USER:root}
+    password: ${DB_PASSWORD:}
+    hikari:
+      maximum-pool-size: 10
+      connection-timeout: 5000
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    locations: classpath:db/migration
+  jackson:
+    # 契约通篇 snake_case：work_id / page_size / main_rating / batch_id …
+    property-naming-strategy: SNAKE_CASE
+    default-property-inclusion: always
+    serialization:
+      write-dates-as-timestamps: false
+    deserialization:
+      fail-on-unknown-properties: false
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+
+app:
+  # 内部导入令牌。为空时 /internal/** 一律 401（安全默认），联调前必须设置。
+  internal-token: ${OTAKU_INTERNAL_TOKEN:}
+  # 留空则按请求 host 推导，便于 Android 模拟器(10.0.2.2)/桌面(127.0.0.1)/真机(局域网 IP) 共用一套代码。
+  public-base-url: ${OTAKU_PUBLIC_BASE_URL:}
+  cover:
+    cache-dir: ${OTAKU_COVER_CACHE_DIR:./data/covers}
+    rate-per-second: 2
+    max-concurrency: 2
+    timeout: 10s
+    max-bytes: 5242880
+    allowed-hosts:
+      - 154.8.194.198:8000
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    root: INFO
+    com.otaku: DEBUG

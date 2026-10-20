@@ -1,0 +1,13 @@
+# 构建产物
+target/
+
+# 封面本地缓存（由应用运行时创建）
+data/
+
+# 日志
+*.log
+
+# IDE
+.idea/
+*.iml
+.vscode/
