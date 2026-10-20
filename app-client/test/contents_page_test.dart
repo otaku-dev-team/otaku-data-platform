@@ -133,12 +133,14 @@ void main() {
     test('24 条数据按 20 条分页，共两页', () async {
       final source = MockWorkDataSource(latency: Duration.zero);
 
-      final first = await source.fetchWorks(page: 1);
+      // 显式给 pageSize：这条测的是分页机制，不该被 AppConfig.pageSize 的默认值牵着走
+      // （它已经从 20 提到 50，否则这里 24 条一页就完了，测不到「翻页」）。
+      final first = await source.fetchWorks(page: 1, pageSize: 20);
       expect(first.total, 24);
       expect(first.items, hasLength(20));
       expect(first.hasNext, isTrue);
 
-      final second = await source.fetchWorks(page: 2);
+      final second = await source.fetchWorks(page: 2, pageSize: 20);
       expect(second.items, hasLength(4));
       expect(second.hasNext, isFalse);
     });
