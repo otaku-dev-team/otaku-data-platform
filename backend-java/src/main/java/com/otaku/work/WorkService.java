@@ -86,10 +86,28 @@ public class WorkService {
 
     /** 封面地址永远指向本服务，客户端不直连来源站（契约 2.1、8.1）。 */
     public String coverUrl(WorkRecord record) {
-        if (record.coverSourceUrl() == null) {
+        return coverUrl(record.workId(), record.coverSourceUrl());
+    }
+
+    /** 供收藏列表等其它视图复用：有来源地址才给平台代理地址。 */
+    public String coverUrl(String workId, String coverSourceUrl) {
+        if (coverSourceUrl == null) {
             return null;
         }
-        return publicUrlResolver.baseUrl() + "/api/covers/" + record.workId();
+        return publicUrlResolver.baseUrl() + "/api/covers/" + workId;
+    }
+
+    /** 供其它视图复用：把库里的 tags JSON 转成响应形态；null 与 [] 语义保持不同。 */
+    public List<String> tagsOf(String tagsJson) {
+        return parseTags(tagsJson);
+    }
+
+    /** 供其它视图复用：缺失评分返回 null，绝不折算成 0 分。 */
+    public SourceRatingDto ratingOf(java.math.BigDecimal value, String scale, String source) {
+        if (value == null) {
+            return null;
+        }
+        return new SourceRatingDto(value, scale, source);
     }
 
     private WorkSummaryDto toSummary(WorkRecord record) {
