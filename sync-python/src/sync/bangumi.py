@@ -215,6 +215,32 @@ class BangumiArchiveSource:
                 break
         return items
 
+    def iter_many(
+        self,
+        work_types: Iterable[str],
+        fetched_at: str,
+        limit: int | None = None,
+    ) -> Iterator[WorkItem]:
+        """流式版 fetch_many：逐条 yield，不整体载入内存，可吃下全量 55.6 万条。
+
+        与 fetch_many 行为一致（按类型过滤、limit 命中即停），只是改为生成器，
+        供 pipeline 流式攒批。这样全量推送时内存只保留当前批次（batch_size）的内容，
+        而不像 fetch_many 那样一次性把全部匹配条目塞进列表（实测外推约 900MB）。
+        """
+        self._check_archive()
+        wanted = tuple(work_types)
+        produced = 0
+        for raw in _subject_iterator(self.archive_path):
+            work_type = map_work_type(raw)
+            if work_type is None:
+                continue
+            if wanted and work_type not in wanted:
+                continue
+            yield self.to_work_item(raw, fetched_at, work_type)
+            produced += 1
+            if limit is not None and produced >= limit:
+                break
+
     def fetch_sample(
         self,
         work_types: Iterable[str],

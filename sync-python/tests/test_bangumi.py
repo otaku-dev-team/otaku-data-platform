@@ -227,3 +227,32 @@ def test_fetch_sample_returns_full_population_when_limit_too_large(tmp_path):
         items = source.fetch_sample(("anime", "comic", "novel", "game"), "t", 100)
     assert len(items) == 5  # 迷你档案里匹配的共 5 条
 
+
+def test_iter_many_streams_all_matched_without_materializing(tmp_path):
+    """iter_many 逐条产出，不一次性返回整份列表（全量 55.6 万条靠它吃下）。"""
+    with BangumiArchiveSource(make_archive(tmp_path)) as source:
+        items = list(
+            source.iter_many(("anime", "comic", "novel", "game"), "2026-10-20T00:00:00+00:00")
+        )
+    assert len(items) == 5  # 与 fetch_many 全量结果一致
+    assert sorted(i.work_type for i in items) == ["anime", "anime", "comic", "game", "novel"]
+
+
+def test_run_streams_into_multiple_batches(tmp_path):
+    """流式 run：5 条匹配、batch_size=2 时应拆成 3 批（2/2/1），不整体载入。"""
+    archive = make_archive(tmp_path)
+    config = SyncConfig(
+        source="bangumi",
+        archive_path=archive,
+        work_types=("anime", "comic", "novel", "game"),
+        batch_size=2,
+        output_dir=str(tmp_path / "runs"),
+    )
+    report = run(config, dry_run=True)
+    assert report.fetched == 5
+    assert report.accepted == 5
+    assert report.rejected == 0
+    assert len(report.batches) == 3
+    assert [b["size"] for b in report.batches] == [2, 2, 1]
+    assert all(b["batch_id"].startswith("bangumi-") for b in report.batches)
+

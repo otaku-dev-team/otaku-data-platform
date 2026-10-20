@@ -1,5 +1,10 @@
 # 后端接入提醒：新增 `bangumi` 数据来源
 
+> **状态（2026-10-20）**：后端负责人已在 `backend-java/README.md` 的「多来源兼容性（bangumi）」
+> 一节逐条实测并确认下文 4 个必改点全部处理（source 放开、cover_url=null 不回源、
+> tags 三态区分、rating.source 原样保存）。本提醒的改点已落地，仅作历史留痕。
+> `docs/openapi.yaml` 的 `ImportBatchRequest.source` 也已放开（不再写死 `otaku_site` 枚举）。
+
 > 来源：Python 负责人（sync-python，分支 `feat/bangumi-archive-source`）
 > 对象：backend-java 负责人
 > 背景：sync-python 已支持第二种数据来源——Bangumi 官方数据集档案（本地 jsonlines 快照）。
