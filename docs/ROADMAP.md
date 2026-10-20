@@ -11,11 +11,11 @@
 |---|---|---|
 | backend-java | @pyxz0 | 第一阶段完工；bangumi 4 个兼容点已实测落地；`(source, source_id)` 唯一键生效。待：全量吞吐验证、生产化 |
 | app-client | @riceyu02 | 脚手架 + 双数据源就绪；**PR #26 已提（Windows + Android 真接口联调）**，待在组织仓库内评审合并 |
-| sync-python | @zhengmin486 | 1 万均匀样本已真推；流式全量能力就绪（55.6 万扫描峰值 2.5MB）；参数兜底与长任务可观测已修，**55 项测试通过**。待：全量推送决策 |
+| sync-python | @zhengmin486 | 1 万均匀样本已真推；流式全量能力就绪（55.6 万扫描峰值 2.5MB）；参数兜底与长任务可观测已修，**55 项测试通过**；适配器已合并（PR #24）。待：无（全量推送已定"不推，走档案分发"） |
 
 > 仓库已迁至组织 **[otaku-dev-team/otaku-data-platform](https://github.com/otaku-dev-team/otaku-data-platform)**；
-> 三人均为 admin。`feat/bangumi-archive-source` 的 PR 为 **#24（OPEN）**：
-> https://github.com/otaku-dev-team/otaku-data-platform/pull/24
+> 三人均为 admin。PR **#24 已合并**（merge commit `7316138`），分支已清理。
+> 档案分发：draft release `data-bangumi-2026-10-21`（268MB 瘦身档，详见 [`bangumi-archive-handover.md`](bangumi-archive-handover.md)）。
 
 ## 2. 任务分配（只定目标）
 
@@ -33,9 +33,10 @@
 - 🔓 自由度：架构、状态管理、页面细节自行决定；只要求"能联调、能反馈契约问题"。
 
 ### 2.3 sync-python（zm）
-- **T1 等待决策**：是否推全量 55.6 万（能力已就绪，指令即执行）。
+- [x] **T1 全量推送决策**：已定——**不推**。理由：本机推全量只充实本机库（C 盘余量仅 3.2GB，MySQL 在 C 盘），
+      同事环境仍为空；改为档案分发，各自导入。能力已就绪，将来共享服务器上一条命令即可执行。
 - **T2 封面补全（可选）**：bangumi 档案无封面字段，`cover_url` 全 `null`——是否补封面抓取待与产品 / 后端确认，**不擅自加外部抓取负担**。
-- **T3 收尾 PR**：推动 `feat/bangumi-archive-source` 合并（PR 需负责人或 @pyxz0 手动建）。
+- [x] **T3 收尾 PR**：PR #24 已合并进 main（`7316138`），分支已删。
 
 ## 3. 负责人边界（不越位）
 - **唯一强约束**：跨模块接口 / 数据结构变更 → 三人确认 → 落 docs/ 契约生效。
@@ -59,20 +60,19 @@
 | `--source bangumi` 缺档案路径 / 环境变量拼错 | 抛裸 traceback 或静默走去联网 | 统一友好报错（exit 2） |
 | 长任务无进度、被中断不落报告 | 全量上千批时无法判断是否卡死，中断即丢记录 | 每 50 批打进度 + Ctrl-C 先落盘运行报告 |
 
-### 4.3 下一目标（M2）
-- **目标**：把 `source=bangumi` 的可用数据从 1.8%（1 万）推进到全量 55.6 万，且可观测、可中断、可重跑。
-- **验收口径**：入库 `rejected=0`；`source=bangumi` 总数与档案匹配数一致（55.6 万 + 既有 smoke）；中断后能用同一批数据重跑且不产生重复作品。
-- **前置**：后端在 8088、`NO_PROXY=localhost,127.0.0.1`、`OTAKU_INTERNAL_TOKEN` 就绪（现已满足）。
-- **规模**：约 1113 批 × 500。
+### 4.3 M2 全量数据落地（已定案：不推）
+- ~~目标：把可用数据从 1.8% 推进到全量 55.6 万~~ → **决策（2026-10-21）：不在本机推全量**。
+- **理由**：本机推全量只充实本机库，同事环境仍为空；且 C 盘仅剩 3.2GB、MySQL datadir 在 C 盘，有磁盘风险。
+- **定案方式**：档案分发（draft release），协作者各自导入到本地后端；将来后端部署到共享服务器时，用同一命令执行全量即可。
+- 验收口径保留备查：入库 `rejected=0`、总数与档案匹配（55.6 万 + smoke）、中断可幂等重跑。
 
 ## 5. 下一步（待决策 / 待办）
 - [x] **仓库迁入组织** `otaku-dev-team`：三人（@zhengmin486 / @riceyu02 / @pyxz0）均为 admin；
       组织默认仓库权限已设为 admin；PR、draft release、协作者均随仓库迁移。
 - [x] **B. 分发档案**：瘦身档 268MB 已上传为 draft release `data-bangumi-2026-10-21`
       （详见 [`bangumi-archive-handover.md`](bangumi-archive-handover.md)）。协作者接受组织邀请后可下载。
-- [ ] **A. 本机推全量（待定）**：约 15 分钟、内存 2.5MB、数据库 +600–700MB；
-      C 盘仅剩 3.2GB 且 MySQL 在 C 盘，执行前需先迁 datadir。
+- [x] **A. 本机推全量**：已决策**不推**（理由见 4.3）。能力与命令已备于交接文档，待共享服务器就位再执行。
 - [x] **CI**：新增 `.github/workflows/sync-python.yml`（checkout@v7 / setup-python@v7），
       PR #24 上实测 24 秒通过，后续 Python 改动自动跑 55 项测试。
 - [x] **评审 PR #26**（客户端 Windows + Android 真接口联调）——已合并进 main。
-- [ ] **合并 PR #24**（CI 绿、MERGEABLE、已合入最新 main）。
+- [x] **合并 PR #24**：已合并（merge commit `7316138`），main CI 绿，分支已清理。
