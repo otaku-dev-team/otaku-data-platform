@@ -1,8 +1,12 @@
 """同步流程编排：拉取 -> 清洗校验 -> 分批 -> 提交 -> 记录结果。
 
 安全重跑的关键在于 batch_id 的确定性：
-同一批输入（来源 id 集合相同）生成同一个 batch_id，Java 侧按幂等键返回首次结果，
-因此"重复跑一次"不会新增作品（验收 D2）；数据真的变了才会生成新 batch_id 走更新（验收 D3）。
+同一批输入（来源 id 集合相同、同一天）生成同一个 batch_id。Java 侧对每次提交都会
+重新处理，最终幂等由 `(source, source_id)` 唯一键 + 合并逻辑保证——所以同批重跑
+不会新增作品（验收 D2），内容变更时按唯一键走更新（验收 D3）。
+
+长任务可观测：每提交 N 批向 stderr 打一行进度；被 Ctrl-C 中断时也会先落盘
+已完成的运行报告，避免全量推送跑了一半却没有任何记录。
 """
 
 from __future__ import annotations
@@ -10,6 +14,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import sys
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Iterator, Sequence
@@ -205,7 +210,18 @@ def run(
                 )
         report.batches.append(entry)
         buffer.clear()
+        # 全量推送会有上千批，长时间无输出无法判断是否卡住；每 50 批打一行进度。
+        if len(report.batches) % 50 == 0:
+            print(
+                f"[进度] 已提交 {len(report.batches)} 批，抓取 {report.fetched}，"
+                f"通过 {report.accepted}，拒绝 {report.rejected}",
+                file=sys.stderr,
+                flush=True,
+            )
 
+    report_path = os.path.join(
+        out_dir, f"run-{started.replace(':', '').replace('+', 'Z')}.json"
+    )
     try:
         for item in _iter_items(config, types, started, limit):
             report.fetched += 1
@@ -222,15 +238,17 @@ def run(
                 if len(buffer) >= batch_size:
                     flush()
         flush()  # 收尾：不足一批的剩余条目也要提交
+    except KeyboardInterrupt:
+        # 全量推送可能跑上千批；中断时先把已完成部分落盘，再向上抛出让进程退出。
+        report.finished_at = utc_now()
+        _write_json(report_path, report.to_dict())
+        raise
     finally:
         if importer is not None:
             importer.close()
 
     report.finished_at = utc_now()
-    _write_json(
-        os.path.join(out_dir, f"run-{started.replace(':', '').replace('+', 'Z')}.json"),
-        report.to_dict(),
-    )
+    _write_json(report_path, report.to_dict())
     return report
 
 

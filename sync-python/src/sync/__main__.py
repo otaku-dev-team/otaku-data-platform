@@ -52,9 +52,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--sample",
         choices=["head", "uniform"],
-        default="head",
+        default=None,
         help="抽样方式：head=按档案顺序取前 N 条（默认）；uniform=蓄水池随机抽样，"
-        "消除按 id 顺序的偏差，使样本分布接近全量真实比例",
+        "消除按 id 顺序的偏差，使样本分布接近全量真实比例。不传时读 OTAKU_SAMPLE_METHOD",
     )
     parser.add_argument(
         "--stats",
@@ -83,6 +83,26 @@ def main(argv: list[str] | None = None) -> int:
         java_base_url=args.java_base_url,
     )
 
+    # 环境变量也能改来源/抽样方式，这里统一兜底校验，避免拼错时静默退化。
+    if config.source not in VALID_SOURCES:
+        print(
+            f"错误：未知来源 {config.source!r}，可选 {', '.join(VALID_SOURCES)}",
+            file=sys.stderr,
+        )
+        return 2
+    if config.sample_method not in ("head", "uniform"):
+        print(
+            f"错误：未知抽样方式 {config.sample_method!r}，可选 head、uniform",
+            file=sys.stderr,
+        )
+        return 2
+    if config.source == "bangumi" and not config.archive_path:
+        print(
+            "错误：--source bangumi 需要 --archive <dump.zip> 或 OTAKU_ARCHIVE_PATH",
+            file=sys.stderr,
+        )
+        return 2
+
     if args.stats:
         if config.source != "bangumi":
             print("错误：--stats 只支持 --source bangumi", file=sys.stderr)
@@ -93,6 +113,14 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  {name:6s} {label}  {counts[name]}")
         print(f"  排除（音乐/三次元/其他书籍）  {counts['excluded']}")
         return 0
+
+    # 蓄水池抽样必须知道样本量；缺 --limit 时若静默按 head 顺序取，等于没抽样且样本有偏。
+    if config.sample_method == "uniform" and args.limit is None:
+        print(
+            "错误：--sample uniform 必须配合 --limit N（蓄水池抽样需要明确的样本量）",
+            file=sys.stderr,
+        )
+        return 2
 
     report = run(
         config,
