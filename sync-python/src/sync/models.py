@@ -35,10 +35,7 @@ class SourceRecord:
     source_url: str | None = None
     fetched_at: str = field(default_factory=utc_now)
     source_updated_at: str | None = None
-
-    @property
-    def source(self) -> str:
-        return SOURCE_NAME
+    source: str = SOURCE_NAME
 
 
 @dataclass

@@ -1,0 +1,78 @@
+# 任务看板 · ROADMAP
+
+> 负责人任务协调文档 · 2026-10-20 · 负责人：zm
+>
+> **性质说明**：本文是负责人的协调看板，**只定目标/产出与验收口径，不规定技术选型、实现顺序与内部重构**。契约仍以 [`openapi.yaml`](openapi.yaml) 与 [`data-contract.md`](data-contract.md) 为准；跨模块接口/数据结构变更须经三人确认后方生效。
+> 详细产品范围与架构见 [`otaku-project-plan-v2.md`](otaku-project-plan-v2.md)，第一阶段契约见 [`stage1-minimal-contract.md`](stage1-minimal-contract.md)。
+
+## 1. 现状快照（2026-10-21）
+
+| 模块 | 负责人 | 状态 |
+|---|---|---|
+| backend-java | @pyxz0 | 第一阶段完工；bangumi 4 个兼容点已实测落地；`(source, source_id)` 唯一键生效。待：全量吞吐验证、生产化 |
+| app-client | @riceyu02 | 脚手架 + 双数据源就绪；**PR #26 已提（Windows + Android 真接口联调）**，待在组织仓库内评审合并 |
+| sync-python | @zhengmin486 | 1 万均匀样本已真推；流式全量能力就绪（55.6 万扫描峰值 2.5MB）；参数兜底与长任务可观测已修，**55 项测试通过**。待：全量推送决策 |
+
+> 仓库已迁至组织 **[otaku-dev-team/otaku-data-platform](https://github.com/otaku-dev-team/otaku-data-platform)**；
+> 三人均为 admin。`feat/bangumi-archive-source` 的 PR 为 **#24（OPEN）**：
+> https://github.com/otaku-dev-team/otaku-data-platform/pull/24
+
+## 2. 任务分配（只定目标）
+
+### 2.1 后端 @pyxz0
+- **T1 全量导入稳定性**：等 sync-python 推全量（约 55.6 万）时，确认分批导入不丢批、不超时、错误可见。
+  - 验收口径：导入过程零 `rejected`、批次进度可观测、失败可重试。
+- **T2 客户端联调支撑**：app-client 切真实接口后，配合定位字段 / 分页 / 鉴权问题。
+  - 约束：以 `openapi.yaml` 为唯一契约，**不临时改字段**。
+- **T3 生产化（自主排期）**：部署方式、DB 迁移、鉴权 / 限流、健康检查与告警——方案自定，负责人只看里程碑节点。
+- 🔓 自由度：技术选型、实现顺序、内部重构不干预；仅跨模块接口变更需同步三人确认。
+
+### 2.2 客户端 Flutter 负责人
+- **T1 跑通真实接口**：本地起后端后，关闭 Mock 开关，联调列表 / 详情两页；记录并反馈任何契约偏差。
+- **T2 数据呈现打磨**：封面占位（bangumi 暂无封面）、评分 / 标签展示——按产品判断，**不定 UI 细节**。
+- 🔓 自由度：架构、状态管理、页面细节自行决定；只要求"能联调、能反馈契约问题"。
+
+### 2.3 sync-python（zm）
+- **T1 等待决策**：是否推全量 55.6 万（能力已就绪，指令即执行）。
+- **T2 封面补全（可选）**：bangumi 档案无封面字段，`cover_url` 全 `null`——是否补封面抓取待与产品 / 后端确认，**不擅自加外部抓取负担**。
+- **T3 收尾 PR**：推动 `feat/bangumi-archive-source` 合并（PR 需负责人或 @pyxz0 手动建）。
+
+## 3. 负责人边界（不越位）
+- **唯一强约束**：跨模块接口 / 数据结构变更 → 三人确认 → 落 docs/ 契约生效。
+- **不过问**：代码细节、实现顺序、技术栈选择。
+- **只盯**：里程碑节点 + 契约一致性；进度按需同步，不日常盯。
+
+## 4. 进度更新（2026-10-21）
+
+### 4.1 复核结果（实测，非推测）
+- 本机后端健康检查 `GET /actuator/health` → **200**；MySQL 3306 在监听；档案（445MB）在位。
+- 库内 `work` 表：`source=bangumi` **10,001 条**（含 1 条 smoke），类型分布 anime 543 / comic 5746 / game 2075 / novel 1637。
+- sync-python 测试 **55 项全部通过**（原 50 + 新增 5）。
+- 真实档案全量统计复核：anime 31174 / comic 320631 / game 117295 / novel 87116，合计 **556,216**，与文档一致。
+- 数据缺口复核：`infobox` 为模板字符串，能补出中文名的比例仅 **0.02%**——标题/封面/评分的缺失是档案本身的硬限制，不再作为代码问题处理。
+
+### 4.2 本轮已解决（sync-python 自身问题）
+| 问题 | 影响 | 处理 |
+|---|---|---|
+| `--sample uniform` 缺 `--limit` 时静默退化为按 id 顺序取 | 以为抽了样，实际样本有偏 | 改为直接报错退出（exit 2） |
+| `--sample` 默认值恒为 `head`，覆盖 `OTAKU_SAMPLE_METHOD` | README 记录的该环境变量实际失效 | 默认改 `None`，环境变量恢复生效 |
+| `--source bangumi` 缺档案路径 / 环境变量拼错 | 抛裸 traceback 或静默走去联网 | 统一友好报错（exit 2） |
+| 长任务无进度、被中断不落报告 | 全量上千批时无法判断是否卡死，中断即丢记录 | 每 50 批打进度 + Ctrl-C 先落盘运行报告 |
+
+### 4.3 下一目标（M2）
+- **目标**：把 `source=bangumi` 的可用数据从 1.8%（1 万）推进到全量 55.6 万，且可观测、可中断、可重跑。
+- **验收口径**：入库 `rejected=0`；`source=bangumi` 总数与档案匹配数一致（55.6 万 + 既有 smoke）；中断后能用同一批数据重跑且不产生重复作品。
+- **前置**：后端在 8088、`NO_PROXY=localhost,127.0.0.1`、`OTAKU_INTERNAL_TOKEN` 就绪（现已满足）。
+- **规模**：约 1113 批 × 500。
+
+## 5. 下一步（待决策 / 待办）
+- [x] **仓库迁入组织** `otaku-dev-team`：三人（@zhengmin486 / @riceyu02 / @pyxz0）均为 admin；
+      组织默认仓库权限已设为 admin；PR、draft release、协作者均随仓库迁移。
+- [x] **B. 分发档案**：瘦身档 268MB 已上传为 draft release `data-bangumi-2026-10-21`
+      （详见 [`bangumi-archive-handover.md`](bangumi-archive-handover.md)）。协作者接受组织邀请后可下载。
+- [ ] **A. 本机推全量（待定）**：约 15 分钟、内存 2.5MB、数据库 +600–700MB；
+      C 盘仅剩 3.2GB 且 MySQL 在 C 盘，执行前需先迁 datadir。
+- [x] **CI**：新增 `.github/workflows/sync-python.yml`（checkout@v7 / setup-python@v7），
+      PR #24 上实测 24 秒通过，后续 Python 改动自动跑 55 项测试。
+- [x] **评审 PR #26**（客户端 Windows + Android 真接口联调）——已合并进 main。
+- [ ] **合并 PR #24**（CI 绿、MERGEABLE、已合入最新 main）。

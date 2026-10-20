@@ -1,8 +1,12 @@
 """同步流程编排：拉取 -> 清洗校验 -> 分批 -> 提交 -> 记录结果。
 
 安全重跑的关键在于 batch_id 的确定性：
-同一批输入（来源 id 集合相同）生成同一个 batch_id，Java 侧按幂等键返回首次结果，
-因此"重复跑一次"不会新增作品（验收 D2）；数据真的变了才会生成新 batch_id 走更新（验收 D3）。
+同一批输入（来源 id 集合相同、同一天）生成同一个 batch_id。Java 侧对每次提交都会
+重新处理，最终幂等由 `(source, source_id)` 唯一键 + 合并逻辑保证——所以同批重跑
+不会新增作品（验收 D2），内容变更时按唯一键走更新（验收 D3）。
+
+长任务可观测：每提交 N 批向 stderr 打一行进度；被 Ctrl-C 中断时也会先落盘
+已完成的运行报告，避免全量推送跑了一半却没有任何记录。
 """
 
 from __future__ import annotations
@@ -10,11 +14,13 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import sys
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Iterable, Sequence
+from typing import Any, Iterator, Sequence
 
-from .config import SOURCE_NAME, SyncConfig
+from .bangumi import BangumiArchiveSource
+from .config import SOURCE_BANGUMI, SOURCE_NAME, SyncConfig
 from .importer import ImportDeliveryError, JavaImporter
 from .models import (
     REASON_INTERNAL_ERROR,
@@ -37,12 +43,19 @@ def fingerprint(items: Sequence[WorkItem]) -> str:
 
 
 def build_batch_id(
-    items: Sequence[WorkItem], work_types: Sequence[str], run_at: str
+    items: Sequence[WorkItem],
+    work_types: Sequence[str],
+    run_at: str,
+    source: str = SOURCE_NAME,
 ) -> str:
-    """生成批次标识。来源 id 集合相同即得到相同结果。"""
+    """生成批次标识。来源 id 集合相同即得到相同结果。
+
+    `source` 进到 batch_id 里，避免两个来源在同一个类型、同一天、
+    又恰好撞上相同指纹时共用一个批次号。
+    """
     day = run_at[:10].replace("-", "")
     types = "-".join(work_types) or "all"
-    return f"{SOURCE_NAME}-{types}-{day}-{fingerprint(items)}"
+    return f"{source}-{types}-{day}-{fingerprint(items)}"
 
 
 def chunked(items: Sequence[WorkItem], size: int) -> list[list[WorkItem]]:
@@ -77,21 +90,6 @@ class RunReport:
         return data
 
 
-def _validate(items: Iterable[WorkItem]) -> tuple[list[WorkItem], list[RejectedItem]]:
-    accepted: list[WorkItem] = []
-    rejected: list[RejectedItem] = []
-    for item in items:
-        problems = validate(item)
-        if problems:
-            for code, message in problems:
-                rejected.append(
-                    RejectedItem(item.source_id, code, message)
-                )
-        else:
-            accepted.append(item)
-    return accepted, rejected
-
-
 def _write_json(path: str, data: Any) -> str:
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     with open(path, "w", encoding="utf-8") as fh:
@@ -100,17 +98,26 @@ def _write_json(path: str, data: Any) -> str:
     return path
 
 
-def run(
+def _iter_items(
     config: SyncConfig,
-    work_types: Sequence[str] | None = None,
-    limit: int | None = None,
-    dry_run: bool = False,
-    output_dir: str | None = None,
-) -> RunReport:
-    """执行一次同步。dry_run=True 时不联系 Java，只落盘将要发送的载荷。"""
-    types = list(work_types or config.work_types)
-    started = utc_now()
-    out_dir = output_dir or config.output_dir
+    types: Sequence[str],
+    started: str,
+    limit: int | None,
+) -> Iterator[WorkItem]:
+    """按配置的来源逐条产出 WorkItem（流式，不整体载入内存）。
+
+    档案来源走 `iter_many` 直接流式读本地 zip——即使全量 55.6 万条，
+    内存里也只保留当前批次（batch_size）的内容；站点来源走在线 JSON API，
+    规模可控，仍一次性取回后逐条 yield。两条路径产出一致，后续清洗、分批、
+    提交完全共用。
+    """
+    if config.source == SOURCE_BANGUMI:
+        with BangumiArchiveSource(config.archive_path or "") as source:
+            if config.sample_method == "uniform" and limit is not None:
+                yield from source.fetch_sample(types, started, limit)
+            else:
+                yield from source.iter_many(types, started, limit=limit)
+        return
 
     with OtakuSiteSource(
         config.source_base_url,
@@ -120,25 +127,33 @@ def run(
         request_interval_seconds=config.request_interval_seconds,
         max_pages=config.max_pages,
     ) as source:
-        raw_items = source.fetch_many(types, started)
+        items = source.fetch_many(types, started)
+    for item in (items[:limit] if limit is not None else items):
+        yield item
 
-    if limit is not None:
-        raw_items = raw_items[:limit]
 
-    accepted, rejected = _validate(raw_items)
+def run(
+    config: SyncConfig,
+    work_types: Sequence[str] | None = None,
+    limit: int | None = None,
+    dry_run: bool = False,
+    output_dir: str | None = None,
+) -> RunReport:
+    """执行一次同步。dry_run=True 时不联系 Java，只落盘将要发送的载荷。
+
+    流式处理：来源逐条产出作品，边校验边攒批，攒满 batch_size 立即提交，
+    内存只保留当前批次。因此全量 55.6 万条也不会整体载入。
+    """
+    types = list(work_types or config.work_types)
+    started = utc_now()
+    out_dir = output_dir or config.output_dir
+
     report = RunReport(
         started_at=started,
+        source=config.source,
         work_types=types,
-        fetched=len(raw_items),
-        accepted=len(accepted),
-        rejected=len(rejected),
         dry_run=dry_run,
-        rejected_items=rejected,
     )
-
-    if not accepted:
-        report.finished_at = utc_now()
-        return report
 
     importer: JavaImporter | None = None
     if not dry_run:
@@ -150,52 +165,90 @@ def run(
             backoff_seconds=config.backoff_seconds,
         )
 
-    try:
-        for batch_items in chunked(accepted, max(1, config.batch_size)):
-            batch_id = build_batch_id(batch_items, types, started)
-            payload = {
-                "batch_id": batch_id,
-                "source": SOURCE_NAME,
-                "fetched_at": started,
-                "items": [item.to_payload() for item in batch_items],
-            }
-            entry: dict[str, Any] = {"batch_id": batch_id, "size": len(batch_items)}
+    batch_size = max(1, config.batch_size)
+    buffer: list[WorkItem] = []
 
-            if dry_run:
-                entry["payload_path"] = _write_json(
-                    os.path.join(out_dir, f"batch-{batch_id}.json"), payload
+    def flush() -> None:
+        if not buffer:
+            return
+        batch_items = buffer  # 提交/落盘都是同步操作，用完即弃，随后清空
+        batch_id = build_batch_id(batch_items, types, started, config.source)
+        payload = {
+            "batch_id": batch_id,
+            "source": config.source,
+            "fetched_at": started,
+            "items": [item.to_payload() for item in batch_items],
+        }
+        entry: dict[str, Any] = {"batch_id": batch_id, "size": len(batch_items)}
+
+        if dry_run:
+            entry["payload_path"] = _write_json(
+                os.path.join(out_dir, f"batch-{batch_id}.json"), payload
+            )
+            entry["delivered"] = False
+        else:
+            assert importer is not None
+            try:
+                result = importer.submit_batch(
+                    batch_id, batch_items, started, config.source
                 )
-                entry["delivered"] = False
+                entry.update(
+                    delivered=True,
+                    counts=result.counts,
+                    errors=[
+                        asdict(e)
+                        for e in result.errors
+                        if e.result == RESULT_REJECTED
+                    ],
+                )
+            except (ImportDeliveryError, RuntimeError) as exc:
+                entry.update(
+                    delivered=False,
+                    error=str(exc),
+                    reason_code=REASON_INTERNAL_ERROR,
+                    failed_source_ids=[i.source_id for i in batch_items],
+                )
+        report.batches.append(entry)
+        buffer.clear()
+        # 全量推送会有上千批，长时间无输出无法判断是否卡住；每 50 批打一行进度。
+        if len(report.batches) % 50 == 0:
+            print(
+                f"[进度] 已提交 {len(report.batches)} 批，抓取 {report.fetched}，"
+                f"通过 {report.accepted}，拒绝 {report.rejected}",
+                file=sys.stderr,
+                flush=True,
+            )
+
+    report_path = os.path.join(
+        out_dir, f"run-{started.replace(':', '').replace('+', 'Z')}.json"
+    )
+    try:
+        for item in _iter_items(config, types, started, limit):
+            report.fetched += 1
+            problems = validate(item)
+            if problems:
+                report.rejected += 1
+                for code, message in problems:
+                    report.rejected_items.append(
+                        RejectedItem(item.source_id, code, message)
+                    )
             else:
-                assert importer is not None
-                try:
-                    result = importer.submit_batch(batch_id, batch_items, started)
-                    entry.update(
-                        delivered=True,
-                        counts=result.counts,
-                        errors=[
-                            asdict(e)
-                            for e in result.errors
-                            if e.result == RESULT_REJECTED
-                        ],
-                    )
-                except (ImportDeliveryError, RuntimeError) as exc:
-                    entry.update(
-                        delivered=False,
-                        error=str(exc),
-                        reason_code=REASON_INTERNAL_ERROR,
-                        failed_source_ids=[i.source_id for i in batch_items],
-                    )
-            report.batches.append(entry)
+                report.accepted += 1
+                buffer.append(item)
+                if len(buffer) >= batch_size:
+                    flush()
+        flush()  # 收尾：不足一批的剩余条目也要提交
+    except KeyboardInterrupt:
+        # 全量推送可能跑上千批；中断时先把已完成部分落盘，再向上抛出让进程退出。
+        report.finished_at = utc_now()
+        _write_json(report_path, report.to_dict())
+        raise
     finally:
         if importer is not None:
             importer.close()
 
     report.finished_at = utc_now()
-    _write_json(
-        os.path.join(out_dir, f"run-{started.replace(':', '').replace('+', 'Z')}.json"),
-        report.to_dict(),
-    )
+    _write_json(report_path, report.to_dict())
     return report
 
 

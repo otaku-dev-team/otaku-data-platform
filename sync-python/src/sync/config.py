@@ -8,7 +8,15 @@ from dataclasses import dataclass, field
 DEFAULT_SOURCE_BASE_URL = "http://154.8.194.198:8000"
 DEFAULT_WORKS = ("anime",)
 RATING_SCALE = "0-10"
+
+# 来源标识。契约第 4.6 节：新增一个网站 = 加一份适配器配置 + 一个 source 取值。
+#   otaku_site: 现有 Otaku 站点 JSON API（在线拉取）
+#   bangumi   : Bangumi 官方数据集档案（本地 jsonlines 快照，见 docs 说明）
+# 两者 id 体系不同（站点 content_id vs Bangumi subject_id），不能共用同一个 source，
+# 否则 (source, source_id) 唯一键会把两套 id 混在一起。
 SOURCE_NAME = "otaku_site"
+SOURCE_BANGUMI = "bangumi"
+VALID_SOURCES = (SOURCE_NAME, SOURCE_BANGUMI)
 
 # 来源方给出的限流口径（2026-10-20 站主答复，见 docs/旧站能力复用清单）：
 # 单次全量走分页 page_size=200；并发不超过 2；控制在 1-2 req/s；每天不超过 5 万请求。
@@ -28,6 +36,9 @@ class SyncConfig:
     internal_token: str | None = None
     work_types: tuple[str, ...] = DEFAULT_WORKS
     batch_size: int = 100
+    source: str = SOURCE_NAME
+    archive_path: str | None = None
+    sample_method: str = "head"  # head=按档案顺序取前 N 条；uniform=蓄水池随机抽样
     source_page_size: int = DEFAULT_PAGE_SIZE
     request_interval_seconds: float = DEFAULT_REQUEST_INTERVAL_SECONDS
     max_pages: int = DEFAULT_MAX_PAGES
@@ -53,6 +64,9 @@ class SyncConfig:
             "internal_token": os.getenv("OTAKU_INTERNAL_TOKEN"),
             "work_types": work_types,
             "batch_size": int(os.getenv("OTAKU_BATCH_SIZE", "100")),
+            "source": os.getenv("OTAKU_SOURCE", SOURCE_NAME),
+            "archive_path": os.getenv("OTAKU_ARCHIVE_PATH"),
+            "sample_method": os.getenv("OTAKU_SAMPLE_METHOD", "head"),
             "source_page_size": int(os.getenv("OTAKU_SOURCE_PAGE_SIZE", str(DEFAULT_PAGE_SIZE))),
             "request_interval_seconds": float(
                 os.getenv("OTAKU_REQUEST_INTERVAL_SECONDS", str(DEFAULT_REQUEST_INTERVAL_SECONDS))

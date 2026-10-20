@@ -75,7 +75,7 @@ Otaku 是第一个接入对象，但继续独立运营：不合并网站、不�
 
 ## 5. GitHub 协作
 
-- 代码仓库：https://github.com/zhengmin486/otaku-data-platform
+- 代码仓库：https://github.com/otaku-dev-team/otaku-data-platform
 - GitHub Projects：https://github.com/users/zhengmin486/projects/4
 
 团队使用 GitHub Issues 记录需要跟踪的任务、问题和讨论，使用 Projects 查看整体进度。当前看板状态：
