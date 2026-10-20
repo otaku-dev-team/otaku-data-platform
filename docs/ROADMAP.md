@@ -72,5 +72,7 @@
       （详见 [`bangumi-archive-handover.md`](bangumi-archive-handover.md)）。协作者接受组织邀请后可下载。
 - [ ] **A. 本机推全量（待定）**：约 15 分钟、内存 2.5MB、数据库 +600–700MB；
       C 盘仅剩 3.2GB 且 MySQL 在 C 盘，执行前需先迁 datadir。
-- [ ] **评审并合并 PR #24**（sync-python Bangumi 适配器）。
-- [ ] **评审 PR #26**（客户端 Windows + Android 真接口联调）。
+- [x] **CI**：新增 `.github/workflows/sync-python.yml`（checkout@v7 / setup-python@v7），
+      PR #24 上实测 24 秒通过，后续 Python 改动自动跑 55 项测试。
+- [x] **评审 PR #26**（客户端 Windows + Android 真接口联调）——已合并进 main。
+- [ ] **合并 PR #24**（CI 绿、MERGEABLE、已合入最新 main）。
