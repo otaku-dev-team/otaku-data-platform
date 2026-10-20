@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../config/app_config.dart';
+import '../diagnostics/frame_stats.dart';
 import 'api_exception.dart';
 import 'error_interceptor.dart';
 import 'session_expiry.dart';
@@ -22,6 +23,16 @@ Dio createDio({String? baseUrl}) {
   );
 
   dio.interceptors.add(ErrorInterceptor());
+
+  // 性能统计开关关着时 noteRequest() 立刻返回，等于没有这个拦截器。
+  if (FrameStats.enabled) {
+    dio.interceptors.add(
+      InterceptorsWrapper(onRequest: (options, handler) {
+        FrameStats.noteRequest();
+        handler.next(options);
+      }),
+    );
+  }
 
   if (kDebugMode) {
     dio.interceptors.add(

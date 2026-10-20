@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'app.dart';
+import 'core/diagnostics/frame_stats.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -13,6 +14,9 @@ Future<void> main() async {
   if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
     await _setupDesktopWindow();
   }
+
+  // 只在 OTAKU_FRAME_STATS=true 时生效，正常构建是空操作。
+  FrameStats.start();
 
   runApp(const ProviderScope(child: OtakuApp()));
 }
