@@ -33,6 +33,28 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
   final ScrollController _scrollController = ScrollController();
   Timer? _debounce;
 
+  /// 换筛选条件后要把列表拉回顶部：`ScrollController` 默认会恢复上一份数据的
+  /// 偏移，从长列表（10000 条）切到短列表时会停在中间，看起来像"跳页"。
+  /// 数据是异步换的，所以先打标记，等新列表挂上去后再跳。
+  bool _pendingScrollReset = false;
+
+  void _requestScrollReset() {
+    if (_scrollController.hasClients && _scrollController.offset == 0) return;
+    _pendingScrollReset = true;
+    _flushScrollReset();
+  }
+
+  void _flushScrollReset() {
+    if (!_pendingScrollReset) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      // 还在骨架屏阶段，没有可跳的位置；等下一次 build 再接。
+      if (!_scrollController.hasClients) return;
+      _scrollController.jumpTo(0);
+      _pendingScrollReset = false;
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -76,6 +98,11 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
   Widget build(BuildContext context) {
     final filter = ref.watch(contentsFilterProvider);
     final contents = ref.watch(contentsControllerProvider);
+
+    ref.listen<ContentsFilter>(contentsFilterProvider, (previous, next) {
+      if (previous == null || previous == next) return;
+      _requestScrollReset();
+    });
 
     return Scaffold(
       appBar: AppBar(title: const Text('作品库')),
@@ -166,6 +193,7 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
   }
 
   Widget _buildList(ContentsData data) {
+    _flushScrollReset();
     return RefreshIndicator(
       onRefresh: () => ref.read(contentsControllerProvider.notifier).refresh(),
       child: ListView.separated(
