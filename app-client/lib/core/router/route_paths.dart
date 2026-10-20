@@ -4,6 +4,13 @@ abstract final class RoutePaths {
 
   static const String contents = '/works';
 
+  /// 登录页。从收藏页跳来时用 push，登录成功后 pop 回去。
+  static const String login = '/login';
+
+  /// 我的收藏。未登录时页面自己显示登录引导，不在这里做重定向——
+  /// 冷启动直接落到收藏页时，用户需要知道「为什么看不到东西」。
+  static const String collections = '/collections';
+
   /// 相对 `contents` 的子路由。
   static const String workDetailSegment = ':workId';
 

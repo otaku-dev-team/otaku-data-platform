@@ -182,6 +182,65 @@ flutter build windows --debug
 - 若日后用 VS Installer 重装或修复，它会重写 `Setup` 目录与注册表，属于正常覆盖，不会与上述手工修复冲突。
 - `C:\Program Files\Microsoft Visual Studio\2022\Community` 是孤儿安装，未被使用，确认不需要后可卸载以释放空间。
 
+## 5.1 阶段 2：补装 ATL（`flutter_secure_storage` 的 Windows 依赖）
+
+> 2026-10-21 引入 `flutter_secure_storage` 时暴露。与第 5 节是**两件事**：
+> 注册修好后 Flutter 已经能编 Windows 了，但 BuildTools 里没有 ATL 组件。
+
+### 症状
+
+```text
+flutter_secure_storage_windows_plugin.cpp(6,10): error C1083:
+无法打开包括文件: "atlstr.h": No such file or directory
+Build process failed.
+```
+
+`flutter_secure_storage_windows` 的实现里有 `#include <atlstr.h>`，这是 ATL 的字符串封装，不是纯 Win32 API，所以没装 ATL 就一定编不过。**编译期就失败，不是运行时问题。**
+
+### 为什么不是「装一下就好」
+
+本机两个 VS 的处境很尴尬：
+
+| 位置 | ATL | Flutter 是否使用 |
+| --- | --- | --- |
+| `D:\Microsoft Visual Studio\2022\BuildTools` | ❌ 无 `atlmfc` | ✅ 在用（CMakeCache 的 `CMAKE_GENERATOR_INSTANCE` 指向它） |
+| `C:\Program Files\Microsoft Visual Studio\2022\Community` | ✅ 有完整 `atlmfc`（含 `atlstr.h`、`atls.lib`） | ❌ 孤儿安装，`vswhere` 不返回 |
+
+正规做法是在 VS Installer 勾选 **「C++ ATL for latest v143 build tools」**。本机执行失败：
+
+```text
+vs_installer.exe modify --installPath "D:\...\BuildTools" --add Microsoft.VisualStudio.Component.VC.ATL --quiet
+→ Exit Code 87（参数无效，去掉 --wait 后）
+→ Exit Code 1（「找不到与以下参数匹配的已安装产品」）
+```
+
+第 5 节已经补过 `_Instances\f8c332e0\state.json` 让 `vswhere` 认得出这个实例，但 **VS Installer 自己的产品注册仍不完整**，所以它找不到可修改的产品。
+
+### 实际做法：从同名 MSVC 版本补齐
+
+```bash
+# 前提：两边 MSVC 版本号必须完全一致（本机都是 14.44.35207）
+cp -r "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.44.35207/atlmfc" \
+      "D:/Microsoft Visual Studio/2022/BuildTools/VC/Tools/MSVC/14.44.35207/"
+```
+
+- 只 **新增** `atlmfc` 目录，不覆盖 BuildTools 任何已有文件（它本来就没有这个目录）。
+- 8.6 MB，`include/` + `lib/` + `src/` 齐全；MSVC 的 `$(VC_IncludePath)` 默认就包含 `atlmfc\include`，无需改 CMake。
+- 验证：
+
+```text
+flutter build windows --debug
+→ √ Built build\windows\x64\runner\Debug\otaku_app.exe
+```
+
+- 撤销：删掉 `D:\...\BuildTools\VC\Tools\MSVC\14.44.35207\atlmfc` 即可，不留其他痕迹。
+
+### 注意事项
+
+- **这是孤儿安装的救急手段，不是标准做法。** 换机器请先用 VS Installer 正规勾选 ATL；只有 Installer 报「找不到已安装产品」时才用上面这条。
+- 两边 MSVC 版本号不一致时**不要复制**，头文件与链接库必须同版本，否则会出现更隐蔽的链接错误。
+- VS 更新后该目录可能被覆盖，届时重做一次；升级后记得重跑一次 `flutter build windows`。
+
 ## 6. 工程侧已做的配置
 
 - `applicationId` / `namespace` 均为 `com.otaku.app`，`MainActivity` 包路径同步调整。
