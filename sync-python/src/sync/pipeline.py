@@ -194,7 +194,9 @@ def run(
             else:
                 assert importer is not None
                 try:
-                    result = importer.submit_batch(batch_id, batch_items, started)
+                    result = importer.submit_batch(
+                        batch_id, batch_items, started, config.source
+                    )
                     entry.update(
                         delivered=True,
                         counts=result.counts,

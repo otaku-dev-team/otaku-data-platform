@@ -85,16 +85,25 @@ class JavaImporter:
         return resp
 
     def submit_batch(
-        self, batch_id: str, items: Sequence[WorkItem], fetched_at: str
+        self,
+        batch_id: str,
+        items: Sequence[WorkItem],
+        fetched_at: str,
+        source: str = SOURCE_NAME,
     ) -> BatchResult:
-        """提交一个批次。成功返回 BatchResult，失败抛 ImportDeliveryError。"""
+        """提交一个批次。成功返回 BatchResult，失败抛 ImportDeliveryError。
+
+        `source` 必须显式传入并跟随配置（如 `bangumi`），不能写死为
+        `SOURCE_NAME`——否则真推时批次级 source 会被错标成 otaku_site，
+        与 dry-run 落盘的载荷不一致，也会让后端把不同来源的记录混在一起。
+        """
         if not self.token:
             raise InternalImportError(
                 "缺少内部导入令牌，请设置环境变量 OTAKU_INTERNAL_TOKEN"
             )
         payload = {
             "batch_id": batch_id,
-            "source": SOURCE_NAME,
+            "source": source,
             "fetched_at": fetched_at,
             "items": [item.to_payload() for item in items],
         }
