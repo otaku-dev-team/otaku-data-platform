@@ -8,18 +8,43 @@ import '../../core/config/app_config.dart';
 import '../../core/network/api_exception.dart';
 import '../../core/router/route_paths.dart';
 import '../../core/theme/app_layout.dart';
-import '../../data/models/work_summary.dart';
+import '../../core/theme/app_theme.dart';
 import '../../data/models/work_type.dart';
 import '../../shared/widgets/empty_state.dart';
 import '../../shared/widgets/error_state.dart';
 import '../../shared/widgets/skeleton_list.dart';
+import 'catalog_counts.dart';
 import 'contents_controller.dart';
 import 'work_card.dart';
+import 'work_list_tile.dart';
 
-/// 作品列表：搜索 + 类型筛选 + 无限滚动分页。
+/// 列表的呈现方式。
+///
+/// 站点给了三种（卡片 / 网格 / 列表），这里只有两种：「卡片」视图的核心是
+/// 两行摘要 + 排名角标，而列表接口不返回 `summary`、契约里也没有 rank 字段，
+/// 做出来会和网格视图长得一模一样，不如不做。
+enum CatalogView { grid, list }
+
+class CatalogViewController extends Notifier<CatalogView> {
+  @override
+  CatalogView build() => CatalogView.grid;
+
+  void select(CatalogView view) {
+    if (state == view) return;
+    state = view;
+  }
+}
+
+/// 会话内记住偏好即可：项目里还没有通用的本地偏好存储，
+/// 为了一个视图开关单独引一个插件不值当。
+final catalogViewProvider = NotifierProvider<CatalogViewController, CatalogView>(
+  CatalogViewController.new,
+);
+
+/// 作品列表：搜索 + 类型筛选 + 无限滚动分页 + 网格/列表切换。
 ///
 /// 状态矩阵（验收时逐条对）：
-/// - 首屏加载 → 骨架屏
+/// - 首屏加载 → 骨架屏（与当前视图同构，切换视图不会跳一下）
 /// - 无数据 / 搜索无结果 → 空状态
 /// - 首屏失败 → 错误状态 + 重试
 /// - 加载下一页失败 → 底部重试条，**不清空已有数据**
@@ -100,11 +125,22 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
   Widget build(BuildContext context) {
     final filter = ref.watch(contentsFilterProvider);
     final contents = ref.watch(contentsControllerProvider);
+    final view = ref.watch(catalogViewProvider);
+    final counts = ref.watch(catalogCountsProvider).value;
 
     ref.listen<ContentsFilter>(contentsFilterProvider, (previous, next) {
       if (previous == null || previous == next) return;
       _requestScrollReset();
     });
+    // 两种视图的行高完全不同，沿用旧偏移会落到毫无关系的位置。
+    ref.listen<CatalogView>(catalogViewProvider, (previous, next) {
+      if (previous == null || previous == next) return;
+      _requestScrollReset();
+    });
+
+    // "共 N 部"只认当前条件的数据，切换条件时的旧值不能拿来显示。
+    final data = contents.value;
+    final liveTotal = data != null && data.filter == filter ? data.total : null;
 
     return Scaffold(
       appBar: AppBar(
@@ -148,12 +184,17 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
                   ),
                 ),
               ),
-              _TypeFilters(
+              _FilterRow(
                 selected: filter.type,
+                counts: counts,
+                total: liveTotal,
+                view: view,
                 onSelected: (type) =>
                     ref.read(contentsFilterProvider.notifier).selectType(type),
+                onViewChanged: (next) =>
+                    ref.read(catalogViewProvider.notifier).select(next),
               ),
-              Expanded(child: _buildBody(filter, contents)),
+              Expanded(child: _buildBody(filter, contents, view)),
             ],
           ),
         ),
@@ -161,14 +202,18 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
     );
   }
 
-  Widget _buildBody(ContentsFilter filter, AsyncValue<ContentsData> contents) {
+  Widget _buildBody(
+    ContentsFilter filter,
+    AsyncValue<ContentsData> contents,
+    CatalogView view,
+  ) {
     final data = contents.value;
     // 换条件后 Riverpod 会把上一组数据保留在 AsyncLoading/AsyncError 里，
     // 那份数据不属于当前条件，不能当结果展示。
     final isStale = data != null && data.filter != filter;
 
     if (contents.isLoading && (data == null || isStale)) {
-      return const SkeletonGrid();
+      return view == CatalogView.list ? const SkeletonList() : const SkeletonGrid();
     }
 
     if (contents.hasError) {
@@ -187,14 +232,14 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
             error: error,
             onRetry: () => ref.invalidate(contentsControllerProvider),
           ),
-          Expanded(child: _buildList(data)),
+          Expanded(child: _buildList(data, view)),
         ],
       );
     }
 
     final resolved = contents.requireValue;
     if (resolved.items.isEmpty) return _buildEmpty(filter);
-    return _buildList(resolved);
+    return _buildList(resolved, view);
   }
 
   Widget _buildEmpty(ContentsFilter filter) {
@@ -221,62 +266,97 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
     );
   }
 
-  Widget _buildList(ContentsData data) {
+  Widget _buildList(ContentsData data, CatalogView view) {
     _flushScrollReset();
     return RefreshIndicator(
       onRefresh: () => ref.read(contentsControllerProvider.notifier).refresh(),
-      // 海报网格：列数按可用宽度算，卡片高度写死，保证长短标题不会让行高参差。
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final usable = constraints.maxWidth - AppLayout.pagePadding * 2;
-          final metrics = AppLayout.gridMetrics(usable);
-          final extent =
-              metrics.cardWidth / AppLayout.posterAspect +
-              AppLayout.cardBodyHeight;
-
-          return CustomScrollView(
-            controller: _scrollController,
-            physics: const AlwaysScrollableScrollPhysics(),
-            slivers: [
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(
-                  AppLayout.pagePadding,
-                  8,
-                  AppLayout.pagePadding,
-                  0,
-                ),
-                sliver: SliverGrid(
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: metrics.columns,
-                    mainAxisExtent: extent,
-                    crossAxisSpacing: AppLayout.gridGap,
-                    mainAxisSpacing: AppLayout.gridGap,
-                  ),
-                  delegate: SliverChildBuilderDelegate(
-                    (context, index) => _buildCard(data.items[index]),
-                    childCount: data.items.length,
-                  ),
-                ),
-              ),
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                    AppLayout.pagePadding,
-                    12,
-                    AppLayout.pagePadding,
-                    24,
-                  ),
-                  child: _buildFooter(data),
-                ),
-              ),
-            ],
-          );
-        },
-      ),
+      child: view == CatalogView.list
+          ? _buildRows(data)
+          : _buildGrid(data),
     );
   }
 
-  Widget _buildCard(WorkSummary work) => WorkCard(work: work);
+  Widget _buildGrid(ContentsData data) {
+    // 海报网格：列数按可用宽度算，卡片高度写死，保证长短标题不会让行高参差。
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final usable = constraints.maxWidth - AppLayout.pagePadding * 2;
+        final metrics = AppLayout.gridMetrics(usable);
+        final extent =
+            metrics.cardWidth / AppLayout.posterAspect +
+            AppLayout.cardBodyHeight;
+
+        return CustomScrollView(
+          controller: _scrollController,
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(
+                AppLayout.pagePadding,
+                8,
+                AppLayout.pagePadding,
+                0,
+              ),
+              sliver: SliverGrid(
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: metrics.columns,
+                  mainAxisExtent: extent,
+                  crossAxisSpacing: AppLayout.gridGap,
+                  mainAxisSpacing: AppLayout.gridGap,
+                ),
+                delegate: SliverChildBuilderDelegate(
+                  (context, index) => WorkCard(work: data.items[index]),
+                  childCount: data.items.length,
+                ),
+              ),
+            ),
+            _buildFooterSliver(data),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildRows(ContentsData data) {
+    return CustomScrollView(
+      controller: _scrollController,
+      physics: const AlwaysScrollableScrollPhysics(),
+      slivers: [
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(
+            AppLayout.pagePadding,
+            8,
+            AppLayout.pagePadding,
+            0,
+          ),
+          sliver: SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (context, index) => Padding(
+                padding: const EdgeInsets.only(bottom: AppLayout.gridGap),
+                child: WorkListTile(work: data.items[index]),
+              ),
+              childCount: data.items.length,
+            ),
+          ),
+        ),
+        _buildFooterSliver(data),
+      ],
+    );
+  }
+
+  Widget _buildFooterSliver(ContentsData data) {
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          AppLayout.pagePadding,
+          12,
+          AppLayout.pagePadding,
+          24,
+        ),
+        child: _buildFooter(data),
+      ),
+    );
+  }
 
   Widget _buildFooter(ContentsData data) {
     if (data.isLoadingMore) {
@@ -336,27 +416,68 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
   }
 }
 
-class _TypeFilters extends StatelessWidget {
-  const _TypeFilters({required this.selected, required this.onSelected});
+/// 筛选栏：类型胶囊（带作品数）+ 结果数 + 视图切换。
+///
+/// 数量来自 [catalogCountsProvider]，对应站点 `.type-tab-count`；
+/// 拿不到就只显示文字，不占位、不显示 0。
+class _FilterRow extends StatelessWidget {
+  const _FilterRow({
+    required this.selected,
+    required this.counts,
+    required this.total,
+    required this.view,
+    required this.onSelected,
+    required this.onViewChanged,
+  });
 
   final WorkType? selected;
+  final CatalogCounts? counts;
+  final int? total;
+  final CatalogView view;
   final ValueChanged<WorkType?> onSelected;
+  final ValueChanged<CatalogView> onViewChanged;
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
       height: 52,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppLayout.pagePadding,
-          vertical: 8,
-        ),
-        children: [
-          _chip(context, label: '全部', type: null),
-          for (final type in WorkType.selectable)
-            _chip(context, label: type.label, type: type),
-        ],
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          // 窄屏优先保住胶囊和视图开关，结果数最先让位。
+          final showTotal = total != null && constraints.maxWidth >= 560;
+          return Row(
+            children: [
+              Expanded(
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.only(
+                    left: AppLayout.pagePadding,
+                    right: 8,
+                  ),
+                  children: [
+                    _chip(context, label: '全部', type: null),
+                    for (final type in WorkType.selectable)
+                      _chip(context, label: type.label, type: type),
+                  ],
+                ),
+              ),
+              if (showTotal)
+                Padding(
+                  padding: const EdgeInsets.only(right: 10),
+                  child: Text(
+                    '共 $total 部',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              Padding(
+                padding: const EdgeInsets.only(right: AppLayout.pagePadding),
+                child: _ViewSwitch(value: view, onChanged: onViewChanged),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -366,13 +487,112 @@ class _TypeFilters extends StatelessWidget {
     required String label,
     required WorkType? type,
   }) {
+    final isSelected = selected == type;
+    final count = counts?.countOf(type);
+
     return Padding(
-      padding: const EdgeInsets.only(right: 8),
+      padding: const EdgeInsets.only(right: 8, top: 8, bottom: 8),
       child: ChoiceChip(
-        label: Text(label),
-        selected: selected == type,
+        label: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(label),
+            if (count != null) ...[
+              const SizedBox(width: 6),
+              Text(
+                '$count',
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  // 数量是次要信息，但不能淡到看不清——之前用 outlineVariant
+                  // 在浅蓝底上几乎看不见。
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ],
+        ),
+        selected: isSelected,
         onSelected: (_) => onSelected(type),
         visualDensity: VisualDensity.compact,
+      ),
+    );
+  }
+}
+
+/// 视图切换。做成站点 `.view-switch` 那种双段胶囊，比两个独立图标按钮更明确。
+class _ViewSwitch extends StatelessWidget {
+  const _ViewSwitch({required this.value, required this.onChanged});
+
+  final CatalogView value;
+  final ValueChanged<CatalogView> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.all(2),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppTheme.borderColor(context)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _segment(
+            context,
+            icon: Icons.grid_view_rounded,
+            tooltip: '网格视图',
+            target: CatalogView.grid,
+          ),
+          _segment(
+            context,
+            icon: Icons.view_list_rounded,
+            tooltip: '列表视图',
+            target: CatalogView.list,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _segment(
+    BuildContext context, {
+    required IconData icon,
+    required String tooltip,
+    required CatalogView target,
+  }) {
+    final theme = Theme.of(context);
+    final isSelected = value == target;
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: () => onChanged(target),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          width: 34,
+          height: 28,
+          decoration: BoxDecoration(
+            color: isSelected ? AppTheme.cardColor(context) : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+            boxShadow: isSelected
+                ? const [
+                    BoxShadow(
+                      color: Color(0x1A143652),
+                      blurRadius: 3,
+                      offset: Offset(0, 1),
+                    ),
+                  ]
+                : null,
+          ),
+          child: Icon(
+            icon,
+            size: 18,
+            color: isSelected
+                ? theme.colorScheme.onSurface
+                : theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
       ),
     );
   }

@@ -13,6 +13,7 @@ import 'package:otaku_app/data/repositories/work_repository.dart';
 import 'package:otaku_app/features/contents/contents_controller.dart';
 import 'package:otaku_app/features/contents/contents_page.dart';
 import 'package:otaku_app/features/contents/work_card.dart';
+import 'package:otaku_app/features/contents/work_list_tile.dart';
 import 'package:otaku_app/features/detail/work_detail_page.dart';
 
 /// 内存数据源：不读资源、不发网络，让 widget 测试只关注界面。
@@ -261,6 +262,64 @@ void main() {
       find.widgetWithText(TextButton, '重试'),
       findsOneWidget,
     );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('筛选胶囊显示作品数，数量来自列表接口的 total', (tester) async {
+    await tester.pumpWidget(wrap(const OtakuApp()));
+    await settle(tester);
+
+    // _FakeDataSource 对每个类型都返回 total = 3。
+    for (final label in ['全部', '动画', '漫画', '游戏', '小说']) {
+      expect(
+        find.descendant(
+          of: find.widgetWithText(ChoiceChip, label),
+          matching: find.text('3'),
+        ),
+        findsOneWidget,
+        reason: '「$label」胶囊上应该带作品数',
+      );
+    }
+    expect(find.text('共 3 部'), findsOneWidget);
+  });
+
+  testWidgets('切到列表视图：卡片换成行式，总数不变', (tester) async {
+    await tester.pumpWidget(wrap(const OtakuApp()));
+    await settle(tester);
+    expect(find.byType(WorkCard), findsNWidgets(3));
+
+    await tester.tap(find.byTooltip('列表视图'));
+    await settle(tester);
+
+    expect(find.byType(WorkListTile), findsNWidgets(3));
+    expect(find.byType(WorkCard), findsNothing);
+
+    // 切回网格，状态要能来回切。
+    await tester.tap(find.byTooltip('网格视图'));
+    await settle(tester);
+    expect(find.byType(WorkCard), findsNWidgets(3));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('详情页列出收录信息，缺失的行不占位', (tester) async {
+    tester.view.physicalSize = const Size(800, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      wrap(const MaterialApp(home: WorkDetailPage(workId: 'W-1'))),
+    );
+    await settle(tester);
+
+    expect(find.text('收录信息'), findsOneWidget);
+    // 作品 ID / 来源 / 来源 ID / 收录更新 四行都来自假数据源。
+    expect(find.text('W-1'), findsOneWidget);
+    expect(find.text('otaku_site'), findsOneWidget);
+    expect(find.text('662'), findsOneWidget);
+    expect(find.text('2026-10-19'), findsOneWidget);
+    // 假数据没有封面、没有评分、没有标签：不该凭空出现「0.0」或空标签区。
+    expect(find.text('0.0'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 }

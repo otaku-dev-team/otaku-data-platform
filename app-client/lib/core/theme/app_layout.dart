@@ -9,7 +9,10 @@ abstract final class AppLayout {
   static const double detailMaxWidth = 960;
 
   /// 达到这个宽度后详情改成左右两栏。
-  static const double twoColumnBreakpoint = 900;
+  ///
+  /// 定 720 而不是 900：Windows 上 1280 物理像素的窗口在 150% 缩放后逻辑宽度
+  /// 只有 853，用 900 会让桌面端永远落到手机版堆叠布局，封面占掉半屏。
+  static const double twoColumnBreakpoint = 720;
 
   static const double pagePadding = 16;
   static const double cardRadius = 12;
