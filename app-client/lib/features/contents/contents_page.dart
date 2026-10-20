@@ -2,9 +2,11 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/config/app_config.dart';
 import '../../core/network/api_exception.dart';
+import '../../core/router/route_paths.dart';
 import '../../core/theme/app_layout.dart';
 import '../../data/models/work_summary.dart';
 import '../../data/models/work_type.dart';
@@ -105,7 +107,16 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
     });
 
     return Scaffold(
-      appBar: AppBar(title: const Text('作品库')),
+      appBar: AppBar(
+        title: const Text('作品库'),
+        actions: [
+          IconButton(
+            tooltip: '我的收藏',
+            onPressed: () => context.push(RoutePaths.collections),
+            icon: const Icon(Icons.bookmark_border_rounded),
+          ),
+        ],
+      ),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: AppLayout.listMaxWidth),
