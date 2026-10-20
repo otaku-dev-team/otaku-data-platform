@@ -1,6 +1,8 @@
 # 第二阶段契约草案（账号与收藏）
 
 > 状态：**草案（DRAFT）**，需 Java（@pyxz0）与 Flutter（@riceyu02）负责人确认后生效；确认后再落 `openapi.yaml`。
+> **评审进展（2026-10-21）**：§11 的 1 / 2 / 7 已由 @zhengmin486 确认，三个决策（账号自建 / 不透明令牌 / LWW）全部采纳；
+> 3 / 4 / 8 待 @pyxz0（Java）；5 / 6 待 Java + Flutter 双方。**未确认前本文仍不生效，接口一律以 `openapi.yaml` 为准。**
 > 范围：只覆盖验收清单 C1–C11（[`acceptance.md`](acceptance.md) 第 3 节）。**不含**注册流程、找回密码、社交、评论、评分提交、浏览历史、跨端实时推送。
 > 与阶段 1 的关系：阶段 1 的四个接口（含封面代理）**一个都不改**，本文只新增客户端接口，另加一个仅内部使用的建号接口。
 > 起草：Flutter 侧。凡「由 Java 决定」的事项，本文只给约束，不给实现。
@@ -187,10 +189,10 @@
   "page": 1, "page_size": 20, "total": 37, "total_pages": 2,
   "items": [
     {
-      "work_id": "w_...",
+      "work_id": "W-8f3a91",
       "work_type": "anime",
       "title": "…",
-      "cover_url": "http://<host>/api/covers/w_...",
+      "cover_url": "http://<host>/api/covers/W-8f3a91",
       "status": "watching",
       "created_at": "2026-10-20T12:00:00Z",
       "updated_at": "2026-10-21T03:00:00Z"
@@ -208,10 +210,10 @@
 
 ```json
 // 200（已收藏）
-{ "work_id": "w_...", "collected": true, "status": "want", "updated_at": "2026-10-21T03:00:00Z" }
+{ "work_id": "W-8f3a91", "collected": true, "status": "want", "updated_at": "2026-10-21T03:00:00Z" }
 
 // 200（未收藏）
-{ "work_id": "w_...", "collected": false, "status": null, "updated_at": null }
+{ "work_id": "W-8f3a91", "collected": false, "status": null, "updated_at": null }
 
 // 404（作品本身不存在）
 { "error": { "code": "WORK_NOT_FOUND", "message": "作品不存在" } }
@@ -226,7 +228,7 @@
 { "status": "want" }
 
 // 200
-{ "work_id": "w_...", "collected": true, "status": "want",
+{ "work_id": "W-8f3a91", "collected": true, "status": "want",
   "created_at": "2026-10-21T03:00:00Z", "updated_at": "2026-10-21T03:00:00Z" }
 ```
 
@@ -242,7 +244,7 @@
 { "status": "watched" }   // 或 { "status": null } 清除状态但保留收藏
 
 // 200
-{ "work_id": "w_...", "collected": true, "status": "watched",
+{ "work_id": "W-8f3a91", "collected": true, "status": "watched",
   "created_at": "2026-10-21T03:00:00Z", "updated_at": "2026-10-21T04:00:00Z" }
 
 // 409（该作品当前不在收藏里）
