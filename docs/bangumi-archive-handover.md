@@ -69,7 +69,7 @@ PYTHONPATH=src python -m sync --source bangumi --archive <dump.zip> \
 | 网盘（阿里云盘 / 百度 / 123 等） | 异步、跨网络 | 最省事；上传瘦身档 268 MB，附本文与 SHA256 |
 | 对象存储（腾讯云 COS / 阿里云 OSS / 七牛） | 需要稳定链接或多次分发 | 上传后生成带有效期的签名 URL |
 | 局域网 HTTP | 同事同网段且能立即接收 | 需双方同时在线、放行端口，属同步传输 |
-| GitHub Release | 团队内、有仓库权限 | **本仓库为公开仓库，Release 附件对全网可见**；如用此渠道，请建私有仓库或使用不公开发布的 draft release |
+| GitHub Release | 团队内、有仓库权限 | 已上传为 **draft release** `data-bangumi-2026-10-21`（268MB 瘦身档）：https://github.com/otaku-dev-team/otaku-data-platform/releases/tag/untagged-1904bbf720d2aa41f91b 。draft 不公开发布，仅对仓库有写权限的成员可见 |
 
 ## 6. 注意事项
 

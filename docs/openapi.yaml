@@ -23,7 +23,7 @@ info:
     3. 空值一律 `null`，不用 `""`、`0`、"暂无" 之类的伪值填充。
   contact:
     name: 契约讨论
-    url: https://github.com/zhengmin486/otaku-data-platform/issues/3
+    url: https://github.com/otaku-dev-team/otaku-data-platform/issues/3
 
 servers:
   - url: http://localhost:8080

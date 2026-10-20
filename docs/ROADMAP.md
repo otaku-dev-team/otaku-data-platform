@@ -5,16 +5,17 @@
 > **性质说明**：本文是负责人的协调看板，**只定目标/产出与验收口径，不规定技术选型、实现顺序与内部重构**。契约仍以 [`openapi.yaml`](openapi.yaml) 与 [`data-contract.md`](data-contract.md) 为准；跨模块接口/数据结构变更须经三人确认后方生效。
 > 详细产品范围与架构见 [`otaku-project-plan-v2.md`](otaku-project-plan-v2.md)，第一阶段契约见 [`stage1-minimal-contract.md`](stage1-minimal-contract.md)。
 
-## 1. 现状快照（2026-10-20）
+## 1. 现状快照（2026-10-21）
 
 | 模块 | 负责人 | 状态 |
 |---|---|---|
-| backend-java | @pyxz0 | 第一阶段完工；bangumi 4 个兼容点已实测落地；`(source, source_id)` 唯一键生效。待：全量吞吐验证、客户端联调、生产化 |
-| app-client | Flutter 负责人 | 脚手架 + 双数据源（Mock/远程）就绪，列表/详情两页；未切真实接口实跑（缺 SDK/运行环境） |
-| sync-python | zm | 1 万均匀样本已真推（`source=bangumi`）；全量流式能力就绪（全量 55.6 万条扫描峰值堆内存 2.5MB）。待：是否推全量的决策 |
+| backend-java | @pyxz0 | 第一阶段完工；bangumi 4 个兼容点已实测落地；`(source, source_id)` 唯一键生效。待：全量吞吐验证、生产化 |
+| app-client | @riceyu02 | 脚手架 + 双数据源就绪；**PR #26 已提（Windows + Android 真接口联调）**，待在组织仓库内评审合并 |
+| sync-python | @zhengmin486 | 1 万均匀样本已真推；流式全量能力就绪（55.6 万扫描峰值 2.5MB）；参数兜底与长任务可观测已修，**55 项测试通过**。待：全量推送决策 |
 
-> 分支 `feat/bangumi-archive-source` 已推远端，PR 待手动创建：
-> https://github.com/zhengmin486/otaku-data-platform/pull/new/feat/bangumi-archive-source
+> 仓库已迁至组织 **[otaku-dev-team/otaku-data-platform](https://github.com/otaku-dev-team/otaku-data-platform)**；
+> 三人均为 admin。`feat/bangumi-archive-source` 的 PR 为 **#24（OPEN）**：
+> https://github.com/otaku-dev-team/otaku-data-platform/pull/24
 
 ## 2. 任务分配（只定目标）
 
@@ -65,8 +66,11 @@
 - **规模**：约 1113 批 × 500。
 
 ## 5. 下一步（待决策 / 待办）
-- [ ] **M2 执行方式二选一**：
-  - **A. 本机推全量**：约 15 分钟、内存 2.5MB、数据库 +600–700MB；但本机 C 盘仅剩 3.2GB 且 MySQL 在 C 盘，需先迁 datadir 到空间充足的盘。
-  - **B. 分发档案各自导入（推荐）**：档案 426MB + 适配器（分支已就绪）+ 一条命令；见 [`bangumi-archive-handover.md`](bangumi-archive-handover.md)。推全量只充实本机库，同事环境仍需各自导入，故分发更划算。
-- [ ] 创建并合并 `feat/bangumi-archive-source` 的 PR（需手动建，本机无 `gh`）。
-- [ ] 客户端联调出结论后，据实细化任务看板。
+- [x] **仓库迁入组织** `otaku-dev-team`：三人（@zhengmin486 / @riceyu02 / @pyxz0）均为 admin；
+      组织默认仓库权限已设为 admin；PR、draft release、协作者均随仓库迁移。
+- [x] **B. 分发档案**：瘦身档 268MB 已上传为 draft release `data-bangumi-2026-10-21`
+      （详见 [`bangumi-archive-handover.md`](bangumi-archive-handover.md)）。协作者接受组织邀请后可下载。
+- [ ] **A. 本机推全量（待定）**：约 15 分钟、内存 2.5MB、数据库 +600–700MB；
+      C 盘仅剩 3.2GB 且 MySQL 在 C 盘，执行前需先迁 datadir。
+- [ ] **评审并合并 PR #24**（sync-python Bangumi 适配器）。
+- [ ] **评审 PR #26**（客户端 Windows + Android 真接口联调）。
