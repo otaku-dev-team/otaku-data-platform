@@ -1,0 +1,33 @@
+{
+    // Flutter 工程在 monorepo 的 app-client/ 子目录里。
+    // 必须显式指定 program 与 cwd，否则从仓库根按 F5 会找不到 pubspec.yaml。
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "otaku_app · Windows",
+            "type": "dart",
+            "request": "launch",
+            "program": "${workspaceFolder}/app-client/lib/main.dart",
+            "cwd": "${workspaceFolder}/app-client",
+            "deviceId": "windows"
+        },
+        {
+            "name": "otaku_app · 选择设备（Android 等）",
+            "type": "dart",
+            "request": "launch",
+            "program": "${workspaceFolder}/app-client/lib/main.dart",
+            "cwd": "${workspaceFolder}/app-client"
+        },
+        {
+            "name": "otaku_app · 连接真实接口（需先起 Java 后端）",
+            "type": "dart",
+            "request": "launch",
+            "program": "${workspaceFolder}/app-client/lib/main.dart",
+            "cwd": "${workspaceFolder}/app-client",
+            "deviceId": "windows",
+            "args": [
+                "--dart-define=USE_MOCK=false"
+            ]
+        }
+    ]
+}
