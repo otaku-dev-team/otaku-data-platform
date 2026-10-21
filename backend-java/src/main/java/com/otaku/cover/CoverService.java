@@ -27,7 +27,10 @@ import java.util.HexFormat;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.LockSupport;
 
 /**
@@ -72,6 +75,11 @@ public class CoverService {
     private final Semaphore concurrency;
     private final long minIntervalNanos;
     private final HttpClient httpClient;
+
+    /** 单飞表：封面地址 → 正在进行的回源。完成后立刻移除，不占内存。 */
+    private final ConcurrentHashMap<String, CompletableFuture<Optional<CoverPayload>>> inflight =
+            new ConcurrentHashMap<>();
+    private static final long FLIGHT_TIMEOUT_SECONDS = 20;
 
     private long nextSlotNanos = System.nanoTime();
 
@@ -130,7 +138,41 @@ public class CoverService {
                 return hit;
             }
         }
-        return download(work);
+        return downloadOnce(work);
+    }
+
+    /**
+     * 单飞：同一张封面在同一时刻只允许一次回源，其余请求等这一次的结果。
+     *
+     * 为什么需要：缓存未命中时，滚动列表会同时触发多个请求，若各自回源，
+     * 同一张图会被下载 N 次（issue #39 讨论里提到的并发场景）。限流能保证不打爆来源站，
+     * 但没必要把同一份字节传两遍。
+     */
+    private Optional<CoverPayload> downloadOnce(WorkRecord work) {
+        String flightKey = work.coverSourceUrl();
+        CompletableFuture<Optional<CoverPayload>> mine = new CompletableFuture<>();
+        CompletableFuture<Optional<CoverPayload>> running = inflight.putIfAbsent(flightKey, mine);
+        if (running != null) {
+            try {
+                return running.get(FLIGHT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+                return Optional.empty();
+            } catch (Exception ex) {
+                log.warn("等待同封面并发回源失败 url={}：{}", flightKey, ex.toString());
+                return Optional.empty();
+            }
+        }
+        try {
+            Optional<CoverPayload> result = download(work);
+            mine.complete(result);
+            return result;
+        } catch (RuntimeException ex) {
+            mine.complete(Optional.empty());
+            throw ex;
+        } finally {
+            inflight.remove(flightKey, mine);
+        }
     }
 
     private Optional<CoverPayload> readCache(String cacheKey) {
@@ -210,6 +252,11 @@ public class CoverService {
             byte[] bytes = readBounded(response.body(), properties.getCover().getMaxBytes());
             if (bytes == null) {
                 log.warn("封面超过大小上限 {}，不缓存：{}", properties.getCover().getMaxBytes(), uri);
+                return Optional.empty();
+            }
+            if (bytes.length == 0) {
+                // 200 但空 body：不能落盘也不能回填 key，否则会把这具"空图"永久缓存下去
+                log.warn("封面回源返回空内容，不缓存：{}", uri);
                 return Optional.empty();
             }
 
