@@ -13,6 +13,7 @@ record NormalizedItem(
         String tagsJson,
         java.math.BigDecimal ratingValue,
         String ratingScale,
-        String ratingSource
+        String ratingSource,
+        String sourceUrl
 ) {
 }

@@ -27,6 +27,7 @@ public record WorkRecord(
         String ratingSource,
         String source,
         String sourceId,
+        String sourceUrl,
         LocalDateTime createdAt,
         LocalDateTime updatedAt
 ) {

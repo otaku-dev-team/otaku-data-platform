@@ -22,7 +22,8 @@ public record ImportBatchRequest(
             String summary,
             String coverUrl,
             List<String> tags,
-            SourceRating mainRating
+            SourceRating mainRating,
+            String sourceUrl
     ) {
     }
 

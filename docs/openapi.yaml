@@ -602,7 +602,9 @@ components:
 
     Work:
       type: object
-      description: 详情。**全部 10 个字段。**
+      description: |
+        详情。**全部 11 个字段**（含本阶段新增的可空 `source_url`）。
+        列表项仍是 6 字段，不含 `summary` / `source` / `source_id` / `source_url` / `updated_at`。
       required: [work_id, work_type, title, source, source_id, updated_at]
       properties:
         work_id:
@@ -635,6 +637,17 @@ components:
             来源站内作品 ID，字符串存储。可返回给客户端做溯源展示，
             但**客户端不得用它做业务判断**（跨站可能重复）。
           example: "476"
+        source_url:
+          type: string
+          nullable: true
+          description: |
+            来源站的**人读原页**地址（不是 API 地址），由来源适配器在入库时提供，平台原样返回。
+
+            - `null` 表示适配器无法可靠确定原页，客户端**不要**自己拼接、不要猜；
+            - 客户端只用于「打开原页」这类导航，**不得**用它抓取数据；
+            - 只允许打开可信的 HTTP/HTTPS 地址，其它协议的数据在入库时已被丢弃；
+            - 缺失不影响作品的其他功能。
+          example: "http://154.8.194.198:8000/contents/476"
         updated_at:
           type: string
           format: date-time
@@ -671,8 +684,11 @@ components:
     ImportItem:
       type: object
       description: |
-        提交项 7 个字段。`work_id` 由 Java 生成、`updated_at` 由 Java 维护、`source` 在批次级，
+        提交项。`work_id` 由 Java 生成、`updated_at` 由 Java 维护、`source` 在批次级，
         因此都不出现在条目里。
+
+        `source_url` 是**可选**的第 8 个字段（契约 §2.1）：适配器能可靠确定人读原页时提供，
+        确定不了就传 `null`（或不传），**不要猜**。平台原样入库，详情接口返回。
       required: [source_id, work_type, title]
       properties:
         source_id:
@@ -704,6 +720,14 @@ components:
             两者语义不同，不要混用。
           items: { type: string }
         main_rating: { $ref: "#/components/schemas/SourceRating" }
+        source_url:
+          type: string
+          nullable: true
+          maxLength: 1024
+          description: |
+            来源站**人读原页**地址（不是 `/api/...` 接口地址）。
+            只接受 http/https；其它协议或超长值会被平台丢弃（不拒收整条，只把该字段置 null）。
+          example: "http://154.8.194.198:8000/contents/476"
 
     ImportBatchResult:
       type: object

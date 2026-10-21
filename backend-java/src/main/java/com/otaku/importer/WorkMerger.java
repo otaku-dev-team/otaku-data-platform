@@ -31,7 +31,7 @@ final class WorkMerger {
                 null, workId, item.workType(), item.title(), item.summary(),
                 item.coverUrl(), null, null, item.tagsJson(),
                 item.ratingValue(), item.ratingScale(), item.ratingSource(),
-                source, item.sourceId(), now, now);
+                source, item.sourceId(), item.sourceUrl(), now, now);
     }
 
     static MergeResult merge(WorkRecord old, NormalizedItem item) {
@@ -45,6 +45,7 @@ final class WorkMerger {
         BigDecimal ratingValue = item.ratingValue() != null ? item.ratingValue() : old.ratingValue();
         String ratingScale = item.ratingScale() != null ? item.ratingScale() : old.ratingScale();
         String ratingSource = item.ratingSource() != null ? item.ratingSource() : old.ratingSource();
+        String sourceUrl = item.sourceUrl() != null ? item.sourceUrl() : old.sourceUrl();
 
         boolean changed = coverChanged
                 || !Objects.equals(title, old.title())
@@ -52,7 +53,8 @@ final class WorkMerger {
                 || !Objects.equals(tagsJson, old.tagsJson())
                 || !sameDecimal(ratingValue, old.ratingValue())
                 || !Objects.equals(ratingScale, old.ratingScale())
-                || !Objects.equals(ratingSource, old.ratingSource());
+                || !Objects.equals(ratingSource, old.ratingSource())
+                || !Objects.equals(sourceUrl, old.sourceUrl());
 
         if (!changed) {
             return new MergeResult(old, false);
@@ -63,7 +65,7 @@ final class WorkMerger {
                 old.id(), old.workId(), old.workType(), title, summary,
                 cover, cacheKey, cachedAt, tagsJson,
                 ratingValue, ratingScale, ratingSource,
-                old.source(), old.sourceId(), old.createdAt(), now), true);
+                old.source(), old.sourceId(), sourceUrl, old.createdAt(), now), true);
     }
 
     private static boolean sameDecimal(BigDecimal left, BigDecimal right) {

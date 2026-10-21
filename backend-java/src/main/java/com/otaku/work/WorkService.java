@@ -81,6 +81,7 @@ public class WorkService {
                 toRating(record),
                 record.source(),
                 record.sourceId(),
+                record.sourceUrl(),
                 record.updatedAt() == null ? null : record.updatedAt().toInstant(ZoneOffset.UTC));
     }
 

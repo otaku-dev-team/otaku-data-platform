@@ -49,17 +49,33 @@ class ContractJsonShapeTest {
     }
 
     @Test
-    @DisplayName("详情是 10 个字段，可空字段以 null 出现而不是被省略")
+    @DisplayName("详情是 11 个字段（含可空 source_url），空值以 null 出现而不是被省略")
     void detailShape() {
         WorkDto dto = new WorkDto("W-abc123", "anime", "标题", null, null, null, null,
-                "otaku_site", "476", UPDATED_AT);
+                "otaku_site", "476", null, UPDATED_AT);
 
         JsonNode json = objectMapper.valueToTree(dto);
 
-        assertThat(json.size()).isEqualTo(10);
+        assertThat(json.size()).isEqualTo(11);
+        assertThat(json.has("source_url")).isTrue();
+        assertThat(json.get("source_url").isNull()).isTrue();
         assertThat(json.get("summary").isNull()).isTrue();
         assertThat(json.get("cover_url").isNull()).isTrue();
         assertThat(json.get("updated_at").asText()).isEqualTo("2026-10-20T06:00:00Z");
+    }
+
+    @Test
+    @DisplayName("source_url 有值时原样输出，列表结构不受影响（仍 6 字段）")
+    void sourceUrlIsPassedThrough() {
+        WorkDto dto = new WorkDto("W-abc123", "anime", "标题", null, null, null, null,
+                "otaku_site", "476", "http://154.8.194.198:8000/contents/476", UPDATED_AT);
+
+        JsonNode json = objectMapper.valueToTree(dto);
+
+        assertThat(json.get("source_url").asText())
+                .isEqualTo("http://154.8.194.198:8000/contents/476");
+        WorkSummaryDto summary = new WorkSummaryDto("W-abc123", "anime", "标题", null, null, null);
+        assertThat(objectMapper.valueToTree(summary).size()).isEqualTo(6);
     }
 
     @Test
