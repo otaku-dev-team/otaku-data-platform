@@ -206,11 +206,23 @@ class OtakuSiteSource:
         先抓完 55 页再导入，任何一页失败整批报废——跑一次颗粒无收。
         这里改成拿到一页就 yield 一页，配合调用方逐批提交，跑一次能收
         多少是多少；失败的页记在 `failed_pages` 里，重跑补齐。
+
+        只跳过**可恢复**的失败（网络断连、重试过的 5xx/429）。400 / 404 / 422
+        这类「请求本身不对」直接抛出去：契约第 4.2 节明确 `type` 传错返回 400
+        必须当致命错误，不能理解成"该类没有作品"——把它算成坏页跳过，就等于
+        又退回到那个错误语义。
         """
         for page in range(1, self.max_pages + 1):
             try:
                 payload = self.fetch_page(work_type, page)
-            except Exception as exc:  # noqa: BLE001 - 已重试过，此处只做隔离
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code not in RETRYABLE_STATUS:
+                    raise
+                self.failed_pages.append(
+                    FailedPage(work_type, page, f"HTTP {exc.response.status_code}")
+                )
+                continue
+            except httpx.TransportError as exc:
                 self.failed_pages.append(
                     FailedPage(work_type, page, f"{type(exc).__name__}: {exc}")
                 )

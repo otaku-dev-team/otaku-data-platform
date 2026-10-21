@@ -105,7 +105,9 @@ class _Handler(BaseHTTPRequestHandler):
                 self._send(503, {"code": "INTERNAL_ERROR", "message": "temporary"})
                 return
             if page in (self.server.state.get("failing_pages") or set()):
-                self._send(503, {"code": "INTERNAL_ERROR", "message": "permanent"})
+                # 默认 503（可恢复，坏页跳过）；测试可改成 400 制造"请求本身不对"。
+                status = self.server.state.get("failing_pages_status", 503)
+                self._send(status, {"detail": f"stub failure {status}"})
                 return
             page_size = int((query.get("page_size") or ["20"])[0])
             start = (page - 1) * page_size
@@ -202,6 +204,7 @@ class _StubServer(ThreadingHTTPServer):
             "fail_times": 0,
             "get_fail_times": 0,
             "failing_pages": set(),
+            "failing_pages_status": 503,
             "status": None,
         }
 
@@ -231,6 +234,7 @@ class Stub:
                 "fail_times": 0,
                 "get_fail_times": 0,
                 "failing_pages": set(),
+                "failing_pages_status": 503,
                 "status": None,
                 "pages_requested": [],
             }
