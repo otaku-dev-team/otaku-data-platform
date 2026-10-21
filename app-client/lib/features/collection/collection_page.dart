@@ -133,9 +133,12 @@ class _CollectionBody extends ConsumerWidget {
         builder: (context, constraints) {
           final usable = constraints.maxWidth - AppLayout.pagePadding * 2;
           final metrics = AppLayout.gridMetrics(usable);
+          // 正文高度跟着系统字体缩放走：手机上把字体调大后，固定高度会撑爆
+          // 卡片（Flutter 会画黄黑条纹），按缩放比一起放大才撑得住。
+          final textScale = MediaQuery.textScalerOf(context).scale(1);
           final extent =
               metrics.cardWidth / AppLayout.posterAspect +
-              AppLayout.cardBodyHeight;
+              AppLayout.collectionCardBodyHeight * textScale;
 
           return GridView.builder(
             padding: const EdgeInsets.fromLTRB(
@@ -253,14 +256,16 @@ class _CollectionTile extends ConsumerWidget {
             ),
           ),
           SizedBox(
-            height: AppLayout.cardBodyHeight,
+            height: AppLayout.collectionCardBodyHeight,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  SizedBox(
-                    height: 40,
+                  // 标题用 Expanded 而不是固定 40：固定高度只在「标题正好两行、
+                  // 其余元素尺寸不变」时才成立，字体一缩放就撑爆卡片。让标题
+                  // 吃掉剩余空间，多出来的高度它自己承接，不会溢出到卡片外。
+                  Expanded(
                     child: Text(
                       entry.title,
                       maxLines: 2,
@@ -285,14 +290,15 @@ class _CollectionTile extends ConsumerWidget {
                       ),
                     ],
                   ),
-                  const Spacer(),
-                  if (updatedAt != null)
+                  if (updatedAt != null) ...[
+                    const SizedBox(height: 4),
                     Text(
                       _relativeTime(updatedAt),
                       style: theme.textTheme.labelSmall?.copyWith(
                         color: theme.colorScheme.outline,
                       ),
                     ),
+                  ],
                 ],
               ),
             ),
