@@ -1,6 +1,7 @@
 # 生产部署（Linux 轻量应用服务器）
 
 > **状态：服务器尚未到位。** 本文是把步骤先定下来，机器一到照着执行。
+> **进度与待决策事项见 [Issue #78](https://github.com/otaku-dev-team/otaku-data-platform/issues/78)。**
 > **主责**：@pyxz0（`ROADMAP.md` §2.1 T3「生产化：部署方式、DB 迁移、鉴权/限流、健康检查与告警」）。
 > 本文只是执行清单，不新增任何接口或字段约定。
 
