@@ -1,5 +1,8 @@
 """来源适配，对应验收 D10（重名各自成作品）。"""
 
+import httpx
+import pytest
+
 from sync.source import OtakuSiteSource, unwrap
 
 
@@ -187,3 +190,25 @@ def test_iter_work_items_keeps_going_after_a_bad_page(stub):
 
     # 三条 anime 里，第 2 页那条（979）丢了，第 3 页的（9999）还在
     assert ids == ["476", "9999"]
+
+
+def test_non_retryable_4xx_is_fatal_not_skipped(stub):
+    """400 必须抛出去，不能当"坏页"跳过。
+
+    契约第 4.2 节：`type` 传错返回 400（不是空列表），必须当致命错误，
+    不能理解成"该类没有作品"。若把它算成坏页、记进 failed_pages 继续跑，
+    就等于又退回到那个被明确否定的语义——跑完一堆 0 条还显示"成功"。
+    """
+    stub.reset(failing_pages={2}, failing_pages_status=400)
+    with OtakuSiteSource(
+        stub.base_url,
+        request_interval_seconds=0,
+        page_size=2,
+        max_attempts=2,
+        backoff_seconds=0,
+    ) as source:
+        with pytest.raises(httpx.HTTPStatusError) as excinfo:
+            list(source.iter_raw("anime"))
+
+    assert excinfo.value.response.status_code == 400
+    assert source.failed_pages == []  # 没被当成可跳过的坏页
