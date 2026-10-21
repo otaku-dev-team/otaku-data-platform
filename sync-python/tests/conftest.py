@@ -163,12 +163,26 @@ class _Handler(BaseHTTPRequestHandler):
         items = payload.get("items") or []
         errors = []
         counts = {"inserted": 0, "updated": 0, "unchanged": 0, "rejected": 0}
+        fault_ids = state.get("server_fault_ids") or set()
         for item in items:
-            if not (item.get("title") or "").strip():
+            source_id = item.get("source_id")
+            if source_id in fault_ids:
+                # 模拟 Issue #81：并发竞争下 DuplicateKeyException 被归类成 rejected
                 counts["rejected"] += 1
                 errors.append(
                     {
-                        "source_id": item.get("source_id"),
+                        "source_id": source_id,
+                        "result": "rejected",
+                        "work_id": None,
+                        "code": "INTERNAL_ERROR",
+                        "message": "入库失败：DuplicateKeyException",
+                    }
+                )
+            elif not (item.get("title") or "").strip():
+                counts["rejected"] += 1
+                errors.append(
+                    {
+                        "source_id": source_id,
                         "result": "rejected",
                         "work_id": None,
                         "code": "TITLE_REQUIRED",
@@ -205,6 +219,8 @@ class _StubServer(ThreadingHTTPServer):
             "get_fail_times": 0,
             "failing_pages": set(),
             "failing_pages_status": 503,
+            # 这些 source_id 提交后会被拒成 INTERNAL_ERROR（模拟 Issue #81 的并发竞争）
+            "server_fault_ids": set(),
             "status": None,
         }
 
@@ -235,6 +251,7 @@ class Stub:
                 "get_fail_times": 0,
                 "failing_pages": set(),
                 "failing_pages_status": 503,
+                "server_fault_ids": set(),
                 "status": None,
                 "pages_requested": [],
             }

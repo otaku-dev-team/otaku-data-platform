@@ -113,3 +113,44 @@ def test_failed_batch_is_recorded_not_swallowed(stub, tmp_path):
     report = run(config, dry_run=False)
     assert report.batches[0]["delivered"] is False
     assert report.batches[0]["failed_source_ids"] == ["476", "979"]
+
+
+def test_server_fault_rejects_are_split_from_data_rejects(stub, tmp_path):
+    """Issue #81：INTERNAL_ERROR 是服务端故障（重跑能补齐），
+    不能和 TITLE_REQUIRED 这类数据问题混在一起被当成"重试无益"。
+
+    后端在并发导入时会把 DuplicateKeyException 归类成 rejected
+    （Issue #81 的实测场景）。同步侧只有把这类分开记、并在摘要里
+    说明"要重跑"，运维才不会按契约口径「rejected = 数据有问题」
+    把它们放过，导致静默丢数据。
+    """
+    stub.reset(server_fault_ids={"476"})
+    config = SyncConfig(
+        source_base_url=stub.base_url,
+        java_base_url=stub.base_url,
+        internal_token="secret",
+        work_types=("anime",),
+        batch_size=10,
+        output_dir=str(tmp_path),
+    )
+    report = run(config, dry_run=False)
+
+    batch = report.batches[0]
+    assert batch["delivered"] is True
+    # 476 进服务端故障列表，不在数据拒绝列表里
+    assert [e["source_id"] for e in batch["server_errors"]] == ["476"]
+    assert batch["server_errors"][0]["reason_code"] == "INTERNAL_ERROR"
+    assert batch["errors"] == []
+    # 运行级汇总同样分开记，并落进运行报告 JSON
+    assert [(i.source_id, i.reason_code) for i in report.server_error_items] == [
+        ("476", "INTERNAL_ERROR")
+    ]
+    assert report.to_dict()["server_error_items"][0]["source_id"] == "476"
+    # 本地校验拒绝（9999 空标题）不受影响，仍走 rejected_items
+    assert ("9999", "TITLE_REQUIRED") in {
+        (r.source_id, r.reason_code) for r in report.rejected_items
+    }
+    # 摘要必须明确告诉运维：这类要重跑，且重跑是幂等安全的
+    summary = summarize(report)
+    assert "服务端故障" in summary
+    assert "重跑" in summary
