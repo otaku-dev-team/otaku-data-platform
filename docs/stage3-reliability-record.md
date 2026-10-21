@@ -23,6 +23,7 @@
 | E7 | 越权读取：不能读取或修改他人个人数据 | ✅ | **本次补完**（此前只覆盖「读不到」，没覆盖「改不动」） |
 | E8 | 新人按 README 能独立启动服务并跑通两端 | 🟡 | PR #74 clean-room 演练负责 |
 | 附 | 并发导入（两个作业同时提交同一批） | ⚠️ | **本次补测**：数据一致，但错误分类有缺陷，见 §5 |
+| 附 | 中断恢复（提交到一半进程被杀） | ✅ | **本次补测**：500 条崩溃留 123 条，重跑补到 500/500，见 §6 |
 
 **结论：E1–E7 全部有验证，只剩 E8。**
 
@@ -122,26 +123,40 @@ E1–E7 验的都是串行。这一节补并发：**两个同步作业同时跑�
 **数据完整性是守住的**：唯一键 `(source, source_id)` + upsert 保证了不会产生重复作品。
 三个场景合计入库 200 条，与预期完全一致，零重复。
 
-### 但 `rejected` 里混进了不该有的东西
+### 根因：兜底逻辑被隔离级别打败（不是「没有兜底」）
 
-`import_batch.errors` 里的实际内容：
+> 这一节修正过一次。第一版把根因写成「`apply()` 没有兜底，异常被直接归类」，
+> 但读代码发现**第 201–206 行已经有 `DuplicateKeyException` 兜底**。真实原因更微妙。
 
-```json
-{"code": "INTERNAL_ERROR", "result": "rejected",
- "message": "入库失败：DuplicateKeyException", "source_id": "c-0"}
+`ImportService.apply()` 的实际结构：
+
+```java
+return transactionTemplate.execute(status -> {
+    Optional<WorkRecord> existing = findBySourceKey(source, item.sourceId());  // ① 建立快照
+    if (existing.isPresent()) return updateExisting(existing.get(), item);
+    try {
+        workRepository.insert(created);          // ② 撞唯一键，InnoDB 会等 A 提交
+        return INSERTED;
+    } catch (DuplicateKeyException ex) {
+        WorkRecord current = findBySourceKey(source, item.sourceId())
+                .orElseThrow(() -> ex);          // ③ 查不到 -> 重抛原异常
+        return updateExisting(current, item);    //   「退化为更新」的兜底
+    }
+});
 ```
 
-**根因**是 `ImportService.apply()` 的 check-then-act：
+链条：
 
-```
-查 (source, source_id) 是否存在
-  ├─ 不存在 → workRepository.insert()   ← 纯 INSERT，不是 upsert
-  └─ 存在   → updateContent() / unchanged
-```
+1. 事务 B 执行 ①，此时 A 还没提交 → **快照里没有这条记录**
+2. B 执行 ②，唯一键检查会等 A 提交，然后抛 `DuplicateKeyException`
+3. B 在 catch 里执行 ③ 再查 —— **但 `REPEATABLE READ` 下，这个事务的一致性读快照在 ① 就固定了**，
+   ③ 看到的还是空 → `orElseThrow(() -> ex)` 把原异常抛出去
+4. 外层 `catch (Exception)` 记成 `rejected` + `INTERNAL_ERROR`
 
-两个事务同时查、都查不到，就都去 `insert`，其中一个撞 `UNIQUE(source, source_id)` 抛
-`DuplicateKeyException`，被 `ImportService` 第 124 行的 `catch (Exception)` 兜住，
-记成 `rejected` + `INTERNAL_ERROR`。
+环境已确认：`SELECT @@transaction_isolation` → **REPEATABLE-READ**，
+JDBC URL 与 `application.yml` 都未指定隔离级别。
+
+**所以那条「退化为更新」的兜底，在真实并发下基本不会生效**——它只在二次查询碰巧能看到新数据时才有用。
 
 ### 为什么这是个真问题
 
@@ -156,21 +171,57 @@ E1–E7 验的都是串行。这一节补并发：**两个同步作业同时跑�
 
 ### 建议修法（未实施，留给 @pyxz0 判断）
 
-1. **最小改动**：`apply()` 内 catch `DuplicateKeyException` → 重新读一次记录，
-   当作「已存在」走 `updateContent()` / `unchanged` 分支。
-2. **或** 把 `workRepository.insert()` 换成 `INSERT ... ON DUPLICATE KEY UPDATE`（原子）。
+1. **兜底里改用当前读**：把 ③ 的 `findBySourceKey` 换成 `SELECT ... FOR UPDATE`（读最新已提交版本，
+   绕过快照），或者用一个 `REQUIRES_NEW` 的独立事务去读——新事务 = 新快照。
+   （注意：现有的「重新读一次」写法属于同一事务，改不动这个问题的根本原因）
+2. **或** 把 `workRepository.insert()` 换成 `INSERT ... ON DUPLICATE KEY UPDATE`（原子，不依赖二次查询）。
 3. **无论选哪个，`INTERNAL_ERROR` 都不该计入 `rejected`**——它是服务端故障，
    应当返回 5xx 或单独的 `failed` 计数，让调用方能区分「重试有用」和「重试没用」。
 
-第 3 条与前两条独立，即使不修并发也应该改：现在这个分类会让同步侧误判。
+第 3 条与前两条独立，即使不修并发也应该改：现在这个分类会让同步侧误判，进而静默丢数据。
 
-## 6. 没覆盖到的
+## 6. 中断恢复：提交到一半进程被杀，会留下什么
+
+**场景**：提交 500 条（契约上限）的过程中，用 `taskkill /F` 强杀后端进程。
+
+| 阶段 | 结果 |
+|---|---|
+| 崩溃后库里 | **123 条**（500 条中的 123 条已提交） |
+| 崩溃后 `import_batch` | **没有记录** |
+| 崩溃后 `import_batch_run` | **没有记录** |
+| 重启后重跑同一批 | `inserted=377, unchanged=123, rejected=0` |
+| 最终 | **500 / 500 条，重复 0** |
+
+### 为什么会有 123 条残留
+
+`ImportService.apply()` 里每条记录一个 `transactionTemplate.execute(...)`，
+**逐条独立事务**。已提交的 123 条不会因为进程被杀而回滚——这是正常的、也是想要的
+（否则一次崩溃就要从头重跑）。
+
+`import_batch` / `import_batch_run` 的写入发生在**全部处理完之后**，所以崩溃时还没轮到它。
+
+### 恢复靠的是幂等，不是事务
+
+重跑时那 123 条命中 `findBySourceKey` 走 `unchanged`，剩下的 377 条正常插入。
+所以「崩溃 → 重跑」这条路是通的，**不会重复也不会丢**。
+
+### 可观测性上的一个空缺
+
+崩溃的那次尝试**没有留下任何记录**：批次表和明细表都查不到 `e2e-interrupt-01`。
+
+运维无法从批次表看出「这批曾经失败过一次」，只能从「`work` 里有 123 条数据但批次记录不存在」
+这种间接证据反推。如果要补，可以在请求进来时先写一条 `status=running` 的记录，
+结束后更新——但这属于可观测性改造，不在本次验收范围内。
+
+## 7. 没覆盖到的
 
 - **E8 新人上手**：由 PR #74 的 clean-room 演练负责（换一台干净机器、只看 README 能否跑起来）。
   本机环境被我改过多次（MySQL 3310、模拟器、旧后端进程），不能算「新人」。
 - **并发导入**：已补（见 §5）。**数据完整性通过，但发现 `DuplicateKeyException` 被错误归类为
   `rejected`**，需要后端确认修法（§5 末尾给了三个建议）。
-- **超大批次**：单批上限 500 是契约约束，但没验「1100 批连续跑完」这种量级的中断恢复。
+- **超大批次**：单批 500 条（契约上限）的中断恢复已验（见 §6）。但**没验「1100 批连续跑完」**
+  这种量级——真实的 55.6 万条全量导入会分成 1100 多批，中途出问题时的表现和单批不同
+  （比如批次表积累、磁盘增长、连接池耗尽）。
 - **UI 侧**：阶段 3 全是服务端行为，客户端不参与。
 
 ---
