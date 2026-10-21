@@ -25,7 +25,7 @@ Java 业务后端。负责人：**Java 负责人**（@pyxz0）。
 | 接口③ 作品列表 / 搜索 | ✅ 已实现 |
 | 接口④ 作品详情 | ✅ 已实现 |
 | 封面代理 + 本地缓存（契约要求，openapi 未定义） | ✅ 已实现 |
-| 单元测试 | ✅ 31 项，`mvnw.cmd test` 通过（含对外 JSON 键名形状测试） |
+| 单元测试 | ✅ 56 项，`mvnw.cmd test` 通过（含对外 JSON 键名形状测试） |
 | 启动与鉴权冒烟 | ✅ `java -jar` 5–6 秒内启动；无/错令牌 POST 均返回 `401 {"error":{"code":"UNAUTHORIZED"}}` |
 | 数据侧验收 D1–D10 | ✅ 已在真实 MySQL 8.0.46 实例上逐条跑通，见下节 |
 | 容器化本地环境 | ✅ `compose.yaml` 起 MySQL 8.0.46（:3307），`local` profile 直连验证过 D1/D2、列表、封面 |
@@ -167,9 +167,25 @@ mysql -u root -p < src/main/resources/db/manual/00-create-database.sql
 
 两种方式都不用手动建表：Flyway 启动时自动执行 `src/main/resources/db/migration/V1__init.sql`。
 
+### 1.1 常见卡点（clean-room 演练过）
+
+下面四条是**真的按本文从零跑一遍**时撞到的，先看这里能省一轮排查：
+
+| 现象 | 原因 | 处理 |
+| --- | --- | --- |
+| `./mvnw` 报 `Failed to fetch ...apache-maven-3.9.9-bin.zip` | wrapper 要从 `repo.maven.apache.org` 下载 Maven 发行包，网络受限时直接失败 | 用已装好的 Maven（`mvn spring-boot:run`），或在 `~/.m2/settings.xml` 配镜像；wrapper 缓存已存在时也可直接用 `~/.m2/wrapper/dists/` 下的 `mvn` |
+| `Bind for 0.0.0.0:3307 failed` | 本机已有 MySQL 或另一个 compose 项目占着 3307 | `MYSQL_PORT=3311 docker compose up -d`；**应用侧也会读同一个变量**（见配置项表），不用改 profile |
+| `container name "/otaku-mysql" is already in use` | `compose.yaml` 里 `container_name` 是写死的，同一个仓库克隆两份就撞名 | 换 `-p <项目名>` 并把 `container_name` 改掉（或先 `docker compose down` 掉旧的） |
+| 启动报 `Port 8080 was already in use` | 常有别的服务占着 8080 | `./mvnw spring-boot:run -Dspring-boot.run.arguments=--server.port=8089` |
+
+> 演练结论（2026-10-22）：干净克隆（2.8 MB）→ compose 起库 → 应用启动 **3.9 秒**，
+> Flyway 自动跑完 **V1–V5** 五个迁移 → 健康检查 200 → 导入样例 3 条 → 列表 7 字段 / 详情 12 字段 →
+> 封面 `image/webp`（97 KB）→ 建号、登录（token 43 字符）、收藏、收藏列表全部通过。
+
 ### 2. 启动后端
 
-**配方式 A（Docker）——一条命令**，`local` profile 已经把端口、账号、开发令牌都配好：
+**配方式 A（Docker）——一条命令**，`local` profile 已经把端口、账号、开发令牌都配好
+（8080 被占用时追加 `-Dspring-boot.run.arguments=--server.port=8089`）：
 
 ```powershell
 $env:SPRING_PROFILES_ACTIVE = "local"
@@ -198,7 +214,8 @@ $env:DB_USER="root"; $env:DB_PASSWORD="<你的密码>"; $env:OTAKU_INTERNAL_TOKE
 | `DB_USER` / `DB_PASSWORD` | 是 | 默认 `root` / 空 |
 | `DB_HOST` / `DB_PORT` / `DB_NAME` | 否 | 默认 `localhost` / `3306` / `otaku`（用 `local` profile 时端口默认 3307） |
 | `SPRING_PROFILES_ACTIVE` | 否 | 设为 `local` 即套用容器配套的数据库与开发令牌 |
-| `MYSQL_PORT` / `MYSQL_IMAGE` | 否 | 只影响 `compose.yaml`：宿主端口（默认 3307）与镜像地址 |
+| `MYSQL_PORT` | 否 | 宿主端口（默认 3307）。**同时影响 `compose.yaml` 和 `local` profile 的 JDBC 地址**，改一处两边一致 |
+| `MYSQL_IMAGE` | 否 | 只影响 `compose.yaml`：镜像地址（拉不动 Docker Hub 时换镜像站） |
 | `OTAKU_PUBLIC_BASE_URL` | 否 | 封面地址前缀。**留空按请求 host 推导**，这样模拟器 `10.0.2.2`、桌面 `127.0.0.1`、真机局域网 IP 都不用改配置 |
 | `OTAKU_COVER_CACHE_DIR` | 否 | 默认 `./data/covers` |
 
@@ -210,8 +227,8 @@ $env:DB_USER="root"; $env:DB_PASSWORD="<你的密码>"; $env:OTAKU_INTERNAL_TOKE
 | --- | --- | --- | --- |
 | ② 提交批次 | `POST /internal/import/batches` | `X-Internal-Token` | 单批 ≤500 条，逐条返回四类计数与失败明细 |
 | ②b 查批次 | `GET /internal/import/batches/{batch_id}` | `X-Internal-Token` | 重跑前核对用 |
-| ③ 列表 | `GET /api/works?type=&q=&page=&page_size=` | 无 | 6 字段，**不含 summary**；`page_size` 上限 50 自动截断 |
-| ④ 详情 | `GET /api/works/{work_id}` | 无 | 10 字段；不存在或格式非法都是 404 |
+| ③ 列表 | `GET /api/works?type=&q=&page=&page_size=` | 无 | 7 字段（含 `release_year`），**不含 summary**；`page_size` 上限 50 自动截断 |
+| ④ 详情 | `GET /api/works/{work_id}` | 无 | 12 字段（含 `release_year`、`source_url`）；不存在或格式非法都是 404 |
 | ⑤ 封面 | `GET /api/covers/{work_id}` | 无 | 代理 + 本地缓存，30 天缓存 + ETag；无封面/回源失败返回 404 |
 
 **阶段 2（账号与个人数据）**——字段与语义以
