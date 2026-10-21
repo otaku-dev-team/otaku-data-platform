@@ -3,6 +3,10 @@ package com.otaku.common;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.otaku.importer.dto.ImportBatchRequest;
+import com.otaku.importer.dto.Counts;
+import com.otaku.importer.dto.ImportBatchDetail;
+import com.otaku.importer.dto.ImportBatchResult;
+import com.otaku.importer.dto.ImportBatchRunDto;
 import com.otaku.work.dto.SourceRatingDto;
 import com.otaku.work.dto.WorkDto;
 import com.otaku.work.dto.WorkSummaryDto;
@@ -13,6 +17,7 @@ import org.springframework.boot.test.autoconfigure.json.JsonTest;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -133,5 +138,44 @@ class ContractJsonShapeTest {
         assertThat(request.items().get(0).sourceId()).isEqualTo("476");
         assertThat(request.items().get(0).mainRating().value()).isEqualByComparingTo("7.8");
         assertThat(request.items().get(0).tags()).containsExactly("日常");
+    }
+
+    @Test
+    @DisplayName("批次汇总仍是 5 个字段（不带 with_runs 时形状不变）")
+    void batchResultShapeStays() {
+        ImportBatchResult result = new ImportBatchResult("b-1", new Counts(1, 0, 2, 0),
+                OffsetDateTime.parse("2026-10-22T01:00:00Z"),
+                OffsetDateTime.parse("2026-10-22T01:00:02Z"), List.of());
+
+        JsonNode json = objectMapper.valueToTree(result);
+
+        assertThat(json.size()).isEqualTo(5);
+        assertThat(json.has("run_count")).isFalse();
+        assertThat(json.get("counts").get("unchanged").asInt()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("with_runs 形状：汇总字段 + run_count / last_run_at / runs[]")
+    void batchDetailShape() {
+        ImportBatchResult batch = new ImportBatchResult("b-1", new Counts(0, 3, 0, 0),
+                OffsetDateTime.parse("2026-10-22T01:10:00Z"),
+                OffsetDateTime.parse("2026-10-22T01:10:01Z"), List.of());
+        ImportBatchRunDto run1 = new ImportBatchRunDto(1, new Counts(3, 0, 0, 0),
+                OffsetDateTime.parse("2026-10-22T01:00:00Z"),
+                OffsetDateTime.parse("2026-10-22T01:00:02Z"), List.of());
+        ImportBatchRunDto run2 = new ImportBatchRunDto(2, new Counts(0, 3, 0, 0),
+                OffsetDateTime.parse("2026-10-22T01:10:00Z"),
+                OffsetDateTime.parse("2026-10-22T01:10:01Z"), List.of());
+
+        JsonNode json = objectMapper.valueToTree(ImportBatchDetail.of(batch, 2,
+                OffsetDateTime.parse("2026-10-22T01:10:01Z"), List.of(run1, run2)));
+
+        assertThat(json.size()).isEqualTo(8);
+        assertThat(json.get("run_count").asInt()).isEqualTo(2);
+        assertThat(json.get("last_run_at").asText()).isEqualTo("2026-10-22T01:10:01Z");
+        assertThat(json.get("runs")).hasSize(2);
+        assertThat(json.get("runs").get(0).get("run_seq").asInt()).isEqualTo(1);
+        assertThat(json.get("runs").get(0).get("counts").get("inserted").asInt()).isEqualTo(3);
+        assertThat(json.get("runs").get(1).get("counts").get("updated").asInt()).isEqualTo(3);
     }
 }
