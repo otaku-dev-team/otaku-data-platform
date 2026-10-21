@@ -19,7 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ImportItemValidatorTest {
 
     private static ImportItem item(String sourceId, String type, String title, SourceRating rating) {
-        return new ImportItem(sourceId, type, title, null, null, List.of(), rating);
+        return new ImportItem(sourceId, type, title, null, null, List.of(), rating, null);
     }
 
     private static SourceRating rating(String value) {

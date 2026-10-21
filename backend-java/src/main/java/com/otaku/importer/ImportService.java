@@ -50,6 +50,9 @@ public class ImportService {
 
     static final int MAX_ITEMS_PER_BATCH = 500;
     private static final int MAX_BATCH_ID_LENGTH = 128;
+
+    /** 与 work.source_url 列宽一致；超长直接丢弃，不截断（契约不允许存半截地址）。 */
+    private static final int MAX_SOURCE_URL_LENGTH = 1024;
     private static final int MAX_SOURCE_LENGTH = 64;
     private static final int RATING_SCALE_DIGITS = 2;
     private static final String DEFAULT_SOURCE = "otaku_site";
@@ -210,7 +213,31 @@ public class ImportService {
 
         return new NormalizedItem(item.sourceId() == null ? null : item.sourceId().trim(),
                 item.workType(), title, summary, coverUrl, tagsJson,
-                ratingValue, ratingScale, ratingSource);
+                ratingValue, ratingScale, ratingSource,
+                normalizeSourceUrl(item.sourceUrl()));
+    }
+
+    /**
+     * 来源原页地址（契约 §2.1）：
+     * - 空串视为未提供；
+     * - **只接受 http/https**，其它协议（javascript:、file: 等）一律丢弃——
+     *   这个值最终会被客户端当作可点击的回流入口，不能让怪协议进库；
+     * - 超长截断不做，超过列宽直接丢（宁可没有回跳，也不存半截地址）。
+     * 这里只丢值、不拒收整条：契约明确「source_url 缺失不应影响作品的其他功能」。
+     */
+    private static String normalizeSourceUrl(String raw) {
+        String text = normalizeText(raw);
+        if (text == null) {
+            return null;
+        }
+        if (text.length() > MAX_SOURCE_URL_LENGTH) {
+            return null;
+        }
+        String lower = text.toLowerCase(java.util.Locale.ROOT);
+        if (!lower.startsWith("http://") && !lower.startsWith("https://")) {
+            return null;
+        }
+        return text;
     }
 
     /** 空字符串一律视为"未提供"（契约 2.3），并把换行统一为 \n（D8 的兜底）。 */

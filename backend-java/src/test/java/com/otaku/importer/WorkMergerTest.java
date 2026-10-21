@@ -24,7 +24,7 @@ class WorkMergerTest {
                 tagsJson, rating,
                 rating == null ? null : "0-10",
                 rating == null ? null : "otaku_site",
-                "otaku_site", "476", T, T);
+                "otaku_site", "476", null, T, T);
     }
 
     private static NormalizedItem item(String title, String summary, String tagsJson,
@@ -32,7 +32,20 @@ class WorkMergerTest {
         BigDecimal rating = ratingValue == null ? null : new BigDecimal(ratingValue);
         return new NormalizedItem("476", "anime", title, summary, coverUrl, tagsJson, rating,
                 rating == null ? null : "0-10",
-                rating == null ? null : "otaku_site");
+                rating == null ? null : "otaku_site", null);
+    }
+
+    /** 只带 source_url 的旧记录，其余可空字段都为 null，便于隔离验证。 */
+    private static WorkRecord workWithSourceUrl(String sourceUrl) {
+        return new WorkRecord(1L, "W-test", "anime", "原标题", null,
+                "http://154.8.194.198:8000/media/full/cover_1.jpg", "cache-key", T,
+                null, null, null, null, "otaku_site", "476", sourceUrl, T, T);
+    }
+
+    /** 带 source_url 的条目，其余字段与 {@link #item} 一致。 */
+    private static NormalizedItem itemWithSourceUrl(String sourceUrl) {
+        return new NormalizedItem("476", "anime", "原标题", null, null, null, null,
+                null, null, sourceUrl);
     }
 
     @Test
@@ -122,5 +135,29 @@ class WorkMergerTest {
         assertThat(created.id()).isNull();
         assertThat(created.createdAt()).isEqualTo(T);
         assertThat(created.updatedAt()).isEqualTo(T);
+    }
+
+    @Test
+    @DisplayName("source_url 提供新值时覆盖，并计入变化")
+    void sourceUrlIsUpdated() {
+        WorkRecord old = workWithSourceUrl("https://old.example/1");
+
+        WorkMerger.MergeResult result = WorkMerger.merge(
+                old, itemWithSourceUrl("https://bgm.tv/subject/476"));
+
+        assertThat(result.changed()).isTrue();
+        assertThat(result.work().sourceUrl()).isEqualTo("https://bgm.tv/subject/476");
+    }
+
+    @Test
+    @DisplayName("source_url 为 null 时保留旧值，不推进 updated_at")
+    void sourceUrlNullKeepsOld() {
+        WorkRecord old = workWithSourceUrl("https://old.example/1");
+
+        WorkMerger.MergeResult result = WorkMerger.merge(old, itemWithSourceUrl(null));
+
+        assertThat(result.changed()).isFalse();
+        assertThat(result.work().sourceUrl()).isEqualTo("https://old.example/1");
+        assertThat(result.work().updatedAt()).isEqualTo(T);
     }
 }

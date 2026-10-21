@@ -25,7 +25,7 @@ public class WorkRepository {
             id, work_id, work_type, title, summary,
             cover_source_url, cover_cache_key, cover_cached_at,
             tags, rating_value, rating_scale, rating_source,
-            source, source_id, created_at, updated_at
+            source, source_id, source_url, created_at, updated_at
             """;
 
     private static final RowMapper<WorkRecord> MAPPER = WorkRepository::map;
@@ -57,11 +57,11 @@ public class WorkRepository {
                 INSERT INTO work (work_id, work_type, title, summary,
                                   cover_source_url, cover_cache_key, cover_cached_at,
                                   tags, rating_value, rating_scale, rating_source,
-                                  source, source_id, created_at, updated_at)
+                                  source, source_id, source_url, created_at, updated_at)
                 VALUES (:workId, :workType, :title, :summary,
                         :coverSourceUrl, :coverCacheKey, :coverCachedAt,
                         :tagsJson, :ratingValue, :ratingScale, :ratingSource,
-                        :source, :sourceId, :createdAt, :updatedAt)
+                        :source, :sourceId, :sourceUrl, :createdAt, :updatedAt)
                 """;
         jdbc.update(sql, baseParams(record)
                 .addValue("createdAt", record.createdAt())
@@ -80,6 +80,7 @@ public class WorkRepository {
                                 rating_value = :ratingValue,
                                 rating_scale = :ratingScale,
                                 rating_source = :ratingSource,
+                                source_url = :sourceUrl,
                                 updated_at = :updatedAt
                 WHERE id = :id
                 """;
@@ -141,7 +142,8 @@ public class WorkRepository {
                 .addValue("ratingScale", record.ratingScale())
                 .addValue("ratingSource", record.ratingSource())
                 .addValue("source", record.source())
-                .addValue("sourceId", record.sourceId());
+                .addValue("sourceId", record.sourceId())
+                .addValue("sourceUrl", record.sourceUrl());
     }
 
     private static WorkRecord map(ResultSet rs, int rowNum) throws SQLException {
@@ -160,6 +162,7 @@ public class WorkRepository {
                 rs.getString("rating_source"),
                 rs.getString("source"),
                 rs.getString("source_id"),
+                rs.getString("source_url"),
                 rs.getObject("created_at", LocalDateTime.class),
                 rs.getObject("updated_at", LocalDateTime.class)
         );
