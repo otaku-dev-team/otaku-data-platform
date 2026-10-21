@@ -120,6 +120,13 @@ PYTHONPATH=src OTAKU_INTERNAL_TOKEN=dev-token OTAKU_JAVA_BASE_URL=http://localho
 两端并存、跨端可见、未收藏返回 200（不是 404）、`status=none` 过滤、取消后另一端消失、
 409 `COLLECTION_REQUIRED`、被退出令牌 401、重复 logout 仍 204。
 
+已知未做（不隐瞒，避免文档比实现好看）：
+
+- **登录失败限流**：契约 §4.1 建议「同账号 5 次 / 15 分钟 → 429 `RATE_LIMITED`」，当前未实现，
+  因此 `openapi.yaml` 里也没有声明 429。
+- **过期会话清理**：只按 `expires_at` 过滤，没有定时清理任务，`user_session` 会缓慢增长。
+- **`trace_id`**：错误信封保持阶段 1 形状，未加 trace_id。
+
 ## 技术选型
 
 | 项 | 选择 | 理由 |
