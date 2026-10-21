@@ -14,6 +14,11 @@
   故本适配器把 `[]` 统一按"未提供"处理，见 `_normalize_tags`
 - 标题会重复：同类型 55 组、跨类型 341 组，因此**只认 (source, source_id)**
 
+人读详情页（2026-10-21 实测确认，用于契约的 `source_url`）：
+站点自身渲染的作品卡片链接是 `/contents/{content_id}`，`GET /contents/476` 返回
+200 且 `<title>` 是作品名（人读页，非 JSON）。故 `source_url` 用这个真实原页，
+不再用 `/api/contents/{id}`（那是接口地址，不是给人看的原页）。
+
 限流口径（站主给定，必须遵守）：page_size <= 200、并发 <= 2、1-2 req/s、每天 <= 5 万请求。
 本模块串行拉取，只需控制请求间隔。
 
@@ -42,6 +47,10 @@ from .config import (
     DEFAULT_REQUEST_INTERVAL_SECONDS,
 )
 from .models import SourceRecord, WorkItem
+
+# 站点人读作品详情页。2026-10-21 实测：首页 HTML 里站点自己生成的卡片链接即此形态，
+# /contents/476 返回 200 且标题为作品名。见模块 docstring。
+CONTENT_PAGE_PATH = "/contents/{content_id}"
 
 
 def unwrap(payload: Any) -> list[dict[str, Any]]:
@@ -165,7 +174,8 @@ class OtakuSiteSource:
         return WorkItem(
             source_record=SourceRecord(
                 source_id=source_id,
-                source_url=f"{self.base_url}/api/contents/{source_id}",
+                source_url=f"{self.base_url}"
+                + CONTENT_PAGE_PATH.format(content_id=source_id),
                 fetched_at=fetched_at,
                 source_updated_at=None,
             ),

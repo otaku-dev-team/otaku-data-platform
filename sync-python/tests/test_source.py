@@ -38,7 +38,7 @@ def test_missing_optional_fields_map_to_none(stub):
     assert item.release_year is None
     assert item.tags is None
     assert item.source_record.source_updated_at is None
-    assert item.source_record.source_url.endswith("/api/contents/10900")
+    assert item.source_record.source_url.endswith("/contents/10900")
 
 
 def test_cover_url_is_absolutized(stub):
@@ -104,6 +104,30 @@ def test_fetch_tags_unwraps_items(stub):
 
     assert len(tags) == 3
     assert tags[0] == {"name": "TV", "count": 2974}
+
+
+def test_source_url_is_human_readable_page(stub):
+    """`source_url` 必须是人读原页 `/contents/{id}`，不是 `/api/contents/{id}`。
+
+    2026-10-21 实测：站点首页渲染的卡片链接就是 `/contents/{id}`，
+    `GET /contents/476` 返回 200 且标题为作品名。客户端拿它做「在来源站查看」回流入口，
+    指到 API 地址（返回 JSON）等于给个无效入口。
+    """
+    with OtakuSiteSource(stub.base_url, request_interval_seconds=0) as source:
+        item = source.fetch("anime", "2026-10-20T00:00:00+00:00")[0]
+
+    assert item.source_record.source_url == f"{stub.base_url}/contents/476"
+    assert "/api/" not in item.source_record.source_url
+    assert item.to_payload()["source_url"] == f"{stub.base_url}/contents/476"
+
+
+def test_payload_carries_null_source_url_when_unknown(stub):
+    """无法可靠确定原页时提交 null，不猜测生成地址（契约第 2.1 节）。"""
+    with OtakuSiteSource(stub.base_url, request_interval_seconds=0) as source:
+        item = source.fetch("anime", "2026-10-20T00:00:00+00:00")[0]
+
+    item.source_record.source_url = None
+    assert item.to_payload()["source_url"] is None
 
 
 def test_blank_summary_maps_to_none(stub):
