@@ -1,0 +1,91 @@
+# 生产部署：MySQL + 后端，一条命令起。
+#
+# 与本地 compose.yaml 的区别（别混用）：
+#   compose.yaml        只起 MySQL，端口 3307，弱口令，给本地开发用
+#   compose.prod.yaml   起 MySQL + 后端，MySQL 不对外暴露，口令从 .env 读
+#
+# 用法：
+#   cp .env.production.example .env     # 然后填进去，别提交 .env
+#   docker compose -f compose.prod.yaml up -d --build
+#   docker compose -f compose.prod.yaml logs -f backend
+#
+# 数据迁移见 docs/deploy-production.md §4。
+
+name: otaku-prod
+
+services:
+  mysql:
+    image: ${MYSQL_IMAGE:-mysql:8.0}
+    container_name: otaku-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${DB_NAME:-otaku}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?db/.env 里必须设置 DB_ROOT_PASSWORD}
+      MYSQL_USER: ${DB_USER:-otaku}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?db/.env 里必须设置 DB_PASSWORD}
+      TZ: ${TZ:-Asia/Shanghai}
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      # 轻量服务器常见 2G 内存，默认 128M 偏小、调太大会 OOM。
+      - --innodb-buffer-pool-size=${MYSQL_BUFFER_POOL:-256M}
+      # 生产不该长慢日志到磁盘塞满；确需排查再打开
+      - --slow-query-log=0
+    volumes:
+      - mysql-data:/var/lib/mysql
+    # 只 expose、不 ports：库不对外网开放。需要本地连过去排查时用
+    #   docker compose -f compose.prod.yaml exec mysql mysql -u root -p
+    expose:
+      - "3306"
+    healthcheck:
+      # $$ 是 compose 的转义，容器里拿到的是 $MYSQL_ROOT_PASSWORD
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: otaku-backend:latest
+    container_name: otaku-backend
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      DB_HOST: mysql
+      DB_PORT: "3306"
+      DB_NAME: ${DB_NAME:-otaku}
+      DB_USER: ${DB_USER:-otaku}
+      DB_PASSWORD: ${DB_PASSWORD:?}
+      # 空值会让 /internal/** 全部 401（安全默认），生产必须设
+      OTAKU_INTERNAL_TOKEN: ${OTAKU_INTERNAL_TOKEN:?必须设置 OTAKU_INTERNAL_TOKEN}
+      # ⚠️ 生产**必须**显式设置，见 docs/deploy-production.md §3.2：
+      #    留空会按请求 host 推导，前面有 Nginx 时推导出来的封面地址可能是 localhost
+      OTAKU_PUBLIC_BASE_URL: ${OTAKU_PUBLIC_BASE_URL:-}
+      OTAKU_COVER_CACHE_DIR: /app/data/covers
+      # application.yml 里开发默认是 DEBUG 且 health 暴露全部细节，生产都收掉。
+      # 用环境变量覆盖，不必为了上线去改代码里的默认值。
+      LOGGING_LEVEL_COM_OTAKU: ${LOG_LEVEL_APP:-INFO}
+      LOGGING_LEVEL_ROOT: ${LOG_LEVEL_ROOT:-INFO}
+      MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS: never
+      TZ: ${TZ:-Asia/Shanghai}
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+    volumes:
+      # 封面缓存必须持久化：不挂卷的话每次重启都要回源重抓，
+      # 而来源站 42% 的页会断连，用户侧会看到大量糊图。
+      - cover-cache:/app/data/covers
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/actuator/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  mysql-data:
+  cover-cache:

@@ -18,6 +18,8 @@ services:
     # 拉不动 Docker Hub 时用镜像站覆盖，例如：
     #   MYSQL_IMAGE=docker.m.daocloud.io/library/mysql:8.0 docker compose up -d
     image: ${MYSQL_IMAGE:-mysql:8.0}
+    # 写死容器名是为了好认（docker logs otaku-mysql）。副作用：同一台机器上克隆两份仓库会撞名，
+    # 第二份请用 `-p <项目名>` 并把这一行改掉，见 README「1.1 常见卡点」。
     container_name: otaku-mysql
     restart: unless-stopped
     environment:
