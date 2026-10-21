@@ -17,6 +17,21 @@ abstract final class AppLayout {
   static const double pagePadding = 16;
   static const double cardRadius = 12;
 
+  /// 达到这个宽度后，桌面端在左侧常驻 [NavigationRail]。
+  ///
+  /// 定 600 而不是 900：与 Flutter 自己的 `medium` 断点一致。900 是「双栏详情」
+  /// 那个手感断点的旧值，用在导航上会让 720–900 的窗口既没有侧栏、又有双栏，
+  /// 布局逻辑互相打架。两个断点各管一件事：600 管「要不要侧栏」，
+  /// 720 管「详情要不要分栏」。
+  static const double railBreakpoint = 600;
+
+  /// 侧栏收起文字后的宽度（Flutter 的默认 rail 宽度，显式写出来给测试用）。
+  static const double railWidth = 80;
+
+  /// 桌面窗口的最小尺寸（flutter-lead-plan §6）。
+  static const double minWindowWidth = 900;
+  static const double minWindowHeight = 600;
+
   /// 封面比例 2:3，与来源站 `.work-cover-box { aspect-ratio: 2/3 }` 一致。
   static const double posterAspect = 2 / 3;
 
@@ -56,9 +71,13 @@ abstract final class AppLayout {
         : gridMinCardWidth;
     var columns = (availableWidth / minWidth).floor();
     if (columns < 2) columns = 2;
+    // 上限 4 列（flutter-lead-plan §6「自适应网格 2–4 列」）。
+    // 不限的话 1920 宽的窗口会算出 8 列、单卡不到 200 宽，标题全被截断。
+    if (columns > 4) columns = 4;
     final cardWidth = (availableWidth - gap * (columns - 1)) / columns;
     return (columns: columns, cardWidth: cardWidth);
   }
+
   static const double detailCoverWidth = 220;
   static const double detailCoverHeight = 300;
 }

@@ -7,6 +7,8 @@ import '../../core/router/route_paths.dart';
 import '../../core/theme/app_layout.dart';
 import '../../data/models/collection_entry.dart';
 import '../../shared/widgets/account_menu.dart';
+import '../../shared/widgets/desktop_nav_shell.dart';
+import '../../shared/widgets/desktop_shortcuts.dart';
 import '../../shared/widgets/collection_status_menu.dart';
 import '../../shared/widgets/cover_image.dart';
 import '../../shared/widgets/empty_state.dart';
@@ -31,30 +33,39 @@ class CollectionPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final auth = ref.watch(authControllerProvider);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('我的收藏'),
-        actions: [
-          if (auth.isSignedIn)
-            IconButton(
-              tooltip: '刷新',
-              onPressed: () =>
-                  ref.read(collectionControllerProvider.notifier).refresh(),
-              icon: const Icon(Icons.refresh),
+    return DesktopNavShell(
+      child: DesktopShortcuts(
+        onRefresh: auth.isSignedIn
+            ? () => ref.read(collectionControllerProvider.notifier).refresh()
+            : null,
+        child: Scaffold(
+          appBar: AppBar(
+            title: const Text('我的收藏'),
+            actions: [
+              if (auth.isSignedIn)
+                IconButton(
+                  tooltip: '刷新',
+                  onPressed: () =>
+                      ref.read(collectionControllerProvider.notifier).refresh(),
+                  icon: const Icon(Icons.refresh),
+                ),
+              // 登录/账号入口与作品库共用同一个组件，未登录时也要能看到「登录」，
+              // 否则这一页只剩一句提示，用户还得退出去找入口。
+              const AccountMenuButton(),
+            ],
+          ),
+          body: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(
+                maxWidth: AppLayout.listMaxWidth,
+              ),
+              child: switch (auth.status) {
+                AuthStatus.checking => const SkeletonList(),
+                AuthStatus.signedOut => const _SignInPrompt(),
+                AuthStatus.signedIn => const _CollectionBody(),
+              },
             ),
-          // 登录/账号入口与作品库共用同一个组件，未登录时也要能看到「登录」，
-          // 否则这一页只剩一句提示，用户还得退出去找入口。
-          const AccountMenuButton(),
-        ],
-      ),
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: AppLayout.listMaxWidth),
-          child: switch (auth.status) {
-            AuthStatus.checking => const SkeletonList(),
-            AuthStatus.signedOut => const _SignInPrompt(),
-            AuthStatus.signedIn => const _CollectionBody(),
-          },
+          ),
         ),
       ),
     );
@@ -93,9 +104,7 @@ class _CollectionBody extends ConsumerWidget {
           onSelected: (status) =>
               ref.read(collectionFilterProvider.notifier).select(status),
         ),
-        Expanded(
-          child: _buildList(context, ref, collections, filter),
-        ),
+        Expanded(child: _buildList(context, ref, collections, filter)),
       ],
     );
   }
@@ -112,7 +121,8 @@ class _CollectionBody extends ConsumerWidget {
     if (collections.hasError && items == null) {
       return ErrorState(
         error: ApiException.fromAny(collections.error),
-        onRetry: () => ref.read(collectionControllerProvider.notifier).refresh(),
+        onRetry: () =>
+            ref.read(collectionControllerProvider.notifier).refresh(),
       );
     }
 
@@ -213,9 +223,8 @@ class _CollectionTile extends ConsumerWidget {
         .changeStatus(entry.workId, status);
     if (!context.mounted || error == null) return;
     // 失败必须说出来（C7）：不静默、不把界面留在「好像成功了」。
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(error.userMessage)),
-    );
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(error.userMessage)));
   }
 
   Future<void> _remove(BuildContext context, WidgetRef ref) async {
@@ -224,9 +233,7 @@ class _CollectionTile extends ConsumerWidget {
         .remove(entry.workId);
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(error == null ? '已取消收藏' : error.userMessage),
-      ),
+      SnackBar(content: Text(error == null ? '已取消收藏' : error.userMessage)),
     );
   }
 

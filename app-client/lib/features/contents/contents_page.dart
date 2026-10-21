@@ -7,10 +7,13 @@ import 'package:go_router/go_router.dart';
 import '../../core/config/app_config.dart';
 import '../../core/network/api_exception.dart';
 import '../../core/router/route_paths.dart';
+import '../../core/platform_info.dart';
 import '../../core/theme/app_layout.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/models/work_type.dart';
 import '../../shared/widgets/account_menu.dart';
+import '../../shared/widgets/desktop_nav_shell.dart';
+import '../../shared/widgets/desktop_shortcuts.dart';
 import '../../shared/widgets/empty_state.dart';
 import '../../shared/widgets/error_state.dart';
 import '../../shared/widgets/skeleton_list.dart';
@@ -38,9 +41,10 @@ class CatalogViewController extends Notifier<CatalogView> {
 
 /// 会话内记住偏好即可：项目里还没有通用的本地偏好存储，
 /// 为了一个视图开关单独引一个插件不值当。
-final catalogViewProvider = NotifierProvider<CatalogViewController, CatalogView>(
-  CatalogViewController.new,
-);
+final catalogViewProvider =
+    NotifierProvider<CatalogViewController, CatalogView>(
+      CatalogViewController.new,
+    );
 
 /// 作品列表：搜索 + 类型筛选 + 无限滚动分页 + 网格/列表切换。
 ///
@@ -116,6 +120,15 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
     });
   }
 
+  /// 物理键盘回车 / 触摸键盘的「搜索」键：不等 300ms 防抖，立刻查。
+  ///
+  /// 桌面端用户敲完标题会顺手回车（§6「搜索」一行要求 Enter 提交），
+  /// 让他再干等 300ms 没有意义。
+  void _submitSearch(String value) {
+    _debounce?.cancel();
+    ref.read(contentsFilterProvider.notifier).search(value);
+  }
+
   void _clearQuery() {
     _debounce?.cancel();
     _searchController.clear();
@@ -143,65 +156,84 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
     final data = contents.value;
     final liveTotal = data != null && data.filter == filter ? data.total : null;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('作品库'),
-        actions: [
-          IconButton(
-            tooltip: '我的收藏',
-            onPressed: () => context.push(RoutePaths.collections),
-            icon: const Icon(Icons.bookmark_border_rounded),
-          ),
-          // 账号入口放在这里而不是收藏页：登录是全局动作，用户不该为了
-          // 登录先进「我的收藏」再点右上角。三态（检查中/未登录/已登录）
-          // 由组件自己处理，本页不关心。
-          const AccountMenuButton(),
-          const SizedBox(width: 8),
-        ],
-      ),
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: AppLayout.listMaxWidth),
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  AppLayout.pagePadding,
-                  4,
-                  AppLayout.pagePadding,
-                  0,
+    return DesktopNavShell(
+      child: DesktopShortcuts(
+        onRefresh: () =>
+            ref.read(contentsControllerProvider.notifier).refresh(),
+        child: Scaffold(
+          appBar: AppBar(
+            title: const Text('作品库'),
+            actions: [
+              // 桌面端没有下拉手势，刷新得有个按钮（§6「刷新」一行）。
+              // 手机端保持只有下拉刷新：多一个按钮只是挤占 AppBar。
+              if (PlatformInfo.isDesktop)
+                IconButton(
+                  tooltip: '刷新（Ctrl+R）',
+                  onPressed: () =>
+                      ref.read(contentsControllerProvider.notifier).refresh(),
+                  icon: const Icon(Icons.refresh_rounded),
                 ),
-                child: TextField(
-                  controller: _searchController,
-                  onChanged: _handleQueryChanged,
-                  textInputAction: TextInputAction.search,
-                  decoration: InputDecoration(
-                    hintText: '搜索作品标题',
-                    prefixIcon: const Icon(Icons.search),
-                    suffixIcon: filter.query.isEmpty
-                        ? null
-                        : IconButton(
-                            tooltip: '清除',
-                            icon: const Icon(Icons.close),
-                            onPressed: _clearQuery,
-                          ),
-                    isDense: true,
-                    border: const OutlineInputBorder(),
-                  ),
-                ),
+              IconButton(
+                tooltip: '我的收藏',
+                onPressed: () => context.push(RoutePaths.collections),
+                icon: const Icon(Icons.bookmark_border_rounded),
               ),
-              _FilterRow(
-                selected: filter.type,
-                counts: counts,
-                total: liveTotal,
-                view: view,
-                onSelected: (type) =>
-                    ref.read(contentsFilterProvider.notifier).selectType(type),
-                onViewChanged: (next) =>
-                    ref.read(catalogViewProvider.notifier).select(next),
-              ),
-              Expanded(child: _buildBody(filter, contents, view)),
+              // 账号入口放在这里而不是收藏页：登录是全局动作，用户不该为了
+              // 登录先进「我的收藏」再点右上角。三态（检查中/未登录/已登录）
+              // 由组件自己处理，本页不关心。
+              const AccountMenuButton(),
+              const SizedBox(width: 8),
             ],
+          ),
+          body: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(
+                maxWidth: AppLayout.listMaxWidth,
+              ),
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      AppLayout.pagePadding,
+                      4,
+                      AppLayout.pagePadding,
+                      0,
+                    ),
+                    child: TextField(
+                      controller: _searchController,
+                      onChanged: _handleQueryChanged,
+                      onSubmitted: _submitSearch,
+                      textInputAction: TextInputAction.search,
+                      decoration: InputDecoration(
+                        hintText: '搜索作品标题',
+                        prefixIcon: const Icon(Icons.search),
+                        suffixIcon: filter.query.isEmpty
+                            ? null
+                            : IconButton(
+                                tooltip: '清除',
+                                icon: const Icon(Icons.close),
+                                onPressed: _clearQuery,
+                              ),
+                        isDense: true,
+                        border: const OutlineInputBorder(),
+                      ),
+                    ),
+                  ),
+                  _FilterRow(
+                    selected: filter.type,
+                    counts: counts,
+                    total: liveTotal,
+                    view: view,
+                    onSelected: (type) => ref
+                        .read(contentsFilterProvider.notifier)
+                        .selectType(type),
+                    onViewChanged: (next) =>
+                        ref.read(catalogViewProvider.notifier).select(next),
+                  ),
+                  Expanded(child: _buildBody(filter, contents, view)),
+                ],
+              ),
+            ),
           ),
         ),
       ),
@@ -219,7 +251,9 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
     final isStale = data != null && data.filter != filter;
 
     if (contents.isLoading && (data == null || isStale)) {
-      return view == CatalogView.list ? const SkeletonList() : const SkeletonGrid();
+      return view == CatalogView.list
+          ? const SkeletonList()
+          : const SkeletonGrid();
     }
 
     if (contents.hasError) {
@@ -276,9 +310,7 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
     _flushScrollReset();
     return RefreshIndicator(
       onRefresh: () => ref.read(contentsControllerProvider.notifier).refresh(),
-      child: view == CatalogView.list
-          ? _buildRows(data)
-          : _buildGrid(data),
+      child: view == CatalogView.list ? _buildRows(data) : _buildGrid(data),
     );
   }
 
@@ -579,7 +611,9 @@ class _ViewSwitch extends StatelessWidget {
           width: 34,
           height: 28,
           decoration: BoxDecoration(
-            color: isSelected ? AppTheme.cardColor(context) : Colors.transparent,
+            color: isSelected
+                ? AppTheme.cardColor(context)
+                : Colors.transparent,
             borderRadius: BorderRadius.circular(8),
             boxShadow: isSelected
                 ? const [
