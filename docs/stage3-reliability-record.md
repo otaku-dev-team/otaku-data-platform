@@ -22,6 +22,7 @@
 | E6 | 越权写入被拒 | ✅ | zm 的验收（无 `X-Internal-Token` → 401），本次复核 |
 | E7 | 越权读取：不能读取或修改他人个人数据 | ✅ | **本次补完**（此前只覆盖「读不到」，没覆盖「改不动」） |
 | E8 | 新人按 README 能独立启动服务并跑通两端 | 🟡 | PR #74 clean-room 演练负责 |
+| 附 | 并发导入（两个作业同时提交同一批） | ⚠️ | **本次补测**：数据一致，但错误分类有缺陷，见 §5 |
 
 **结论：E1–E7 全部有验证，只剩 E8。**
 
@@ -106,11 +107,69 @@ B 找不到自己的记录就返回 409，**不会顺着 `work_id` 去改 A 的�
 
 ---
 
-## 5. 没覆盖到的
+## 5. 并发导入（2026-10-22 补测）——数据没丢，但错误分类是错的
+
+E1–E7 验的都是串行。这一节补并发：**两个同步作业同时跑同一份数据**会怎样。
+
+### 场景与结果
+
+| 场景 | 并发数 | 响应 | 最终入库 |
+|---|---|---|---|
+| A 同一个 `batch_id`，相同 50 条 | 2 | 请求1：`inserted=0 unchanged=25 rejected=25`<br>请求2：`inserted=50` | `a-*` **50** ✓ |
+| B 不同 `batch_id`、相同 50 条 | 2 | 请求1：`inserted=11 unchanged=19 rejected=20`<br>请求2：`inserted=39 unchanged=8 rejected=3` | `b-*` **50** ✓ |
+| C 同一个 `batch_id`，相同 100 条 | 5 | 五次分别 `rejected=51/51/49/30/42` | `c-*` **100** ✓ |
+
+**数据完整性是守住的**：唯一键 `(source, source_id)` + upsert 保证了不会产生重复作品。
+三个场景合计入库 200 条，与预期完全一致，零重复。
+
+### 但 `rejected` 里混进了不该有的东西
+
+`import_batch.errors` 里的实际内容：
+
+```json
+{"code": "INTERNAL_ERROR", "result": "rejected",
+ "message": "入库失败：DuplicateKeyException", "source_id": "c-0"}
+```
+
+**根因**是 `ImportService.apply()` 的 check-then-act：
+
+```
+查 (source, source_id) 是否存在
+  ├─ 不存在 → workRepository.insert()   ← 纯 INSERT，不是 upsert
+  └─ 存在   → updateContent() / unchanged
+```
+
+两个事务同时查、都查不到，就都去 `insert`，其中一个撞 `UNIQUE(source, source_id)` 抛
+`DuplicateKeyException`，被 `ImportService` 第 124 行的 `catch (Exception)` 兜住，
+记成 `rejected` + `INTERNAL_ERROR`。
+
+### 为什么这是个真问题
+
+不是「数据丢了」，而是**语义错了，而且会导致数据丢**：
+
+- `rejected` 在契约里的含义是「这条数据本身有问题，重试没用」（比如 `TITLE_REQUIRED`）
+- 而 `DuplicateKeyException` 是**并发竞争**，重试就能成功
+- 同步侧如果按「`rejected` 不重试」处理（这是合理策略），这些记录就**静默消失**
+
+本次没丢，是因为另一边恰好插入成功了。如果两个请求都各自部分失败，或者某个批次的
+成功方整体回滚，就会真丢。
+
+### 建议修法（未实施，留给 @pyxz0 判断）
+
+1. **最小改动**：`apply()` 内 catch `DuplicateKeyException` → 重新读一次记录，
+   当作「已存在」走 `updateContent()` / `unchanged` 分支。
+2. **或** 把 `workRepository.insert()` 换成 `INSERT ... ON DUPLICATE KEY UPDATE`（原子）。
+3. **无论选哪个，`INTERNAL_ERROR` 都不该计入 `rejected`**——它是服务端故障，
+   应当返回 5xx 或单独的 `failed` 计数，让调用方能区分「重试有用」和「重试没用」。
+
+第 3 条与前两条独立，即使不修并发也应该改：现在这个分类会让同步侧误判。
+
+## 6. 没覆盖到的
 
 - **E8 新人上手**：由 PR #74 的 clean-room 演练负责（换一台干净机器、只看 README 能否跑起来）。
   本机环境被我改过多次（MySQL 3310、模拟器、旧后端进程），不能算「新人」。
-- **并发导入**：只验了串行重提。两个同步作业同时提交同一批会怎样，没测。
+- **并发导入**：已补（见 §5）。**数据完整性通过，但发现 `DuplicateKeyException` 被错误归类为
+  `rejected`**，需要后端确认修法（§5 末尾给了三个建议）。
 - **超大批次**：单批上限 500 是契约约束，但没验「1100 批连续跑完」这种量级的中断恢复。
 - **UI 侧**：阶段 3 全是服务端行为，客户端不参与。
 
