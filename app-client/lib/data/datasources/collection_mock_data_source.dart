@@ -1,12 +1,17 @@
 import '../models/collection_entry.dart';
+import '../models/collection_state.dart';
 import '../models/work_type.dart';
 import 'collection_data_source.dart';
 
-/// 阶段 2 契约未定稿前的假收藏源。
+/// 阶段 2 契约定稿前的假收藏源。
 ///
 /// 内存实现，**实例级状态**：切换账号时数据不会自动区分用户——真实实现由
 /// 服务端按令牌隔离（路径里没有 `user_id`）。这里不做用户隔离，是为了让
 /// 「切账号后列表必须重新拉」这件事在界面上真的能被看出来。
+///
+/// 三条写语义与真实接口保持一致（upsert / 只改不建 / 幂等删除），
+/// 所以界面在 Mock 与真实接口之间切换不需要改。默认仍走它，联调时用
+/// `--dart-define=USE_MOCK=false` 切到 [RemoteCollectionDataSource]。
 class CollectionMockDataSource implements CollectionDataSource {
   CollectionMockDataSource({this.delay = const Duration(milliseconds: 300)})
     : _items = _seed();
@@ -75,14 +80,36 @@ class CollectionMockDataSource implements CollectionDataSource {
   }
 
   @override
-  Future<CollectionEntry> add(String workId, {CollectionStatus? status}) async {
+  Future<CollectionState> fetchState(String workId) async {
+    await Future<void>.delayed(delay);
+    final index = _items.indexWhere((item) => item.workId == workId);
+    if (index < 0) {
+      // 未收藏是正常结果，不是错误。
+      return CollectionState(workId: workId, collected: false);
+    }
+    final item = _items[index];
+    return CollectionState(
+      workId: workId,
+      collected: true,
+      status: item.status,
+      updatedAt: item.updatedAt,
+    );
+  }
+
+  @override
+  Future<CollectionState> add(String workId, {CollectionStatus? status}) async {
     await Future<void>.delayed(delay);
     final index = _items.indexWhere((item) => item.workId == workId);
     if (index >= 0) {
       // upsert：已存在就覆盖状态。
       final updated = _items[index].withStatus(status);
       _items[index] = updated;
-      return updated;
+      return CollectionState(
+        workId: workId,
+        collected: true,
+        status: updated.status,
+        updatedAt: updated.updatedAt,
+      );
     }
     final created = CollectionEntry(
       workId: workId,
@@ -92,11 +119,16 @@ class CollectionMockDataSource implements CollectionDataSource {
       updatedAt: DateTime.now().toUtc(),
     );
     _items.add(created);
-    return created;
+    return CollectionState(
+      workId: workId,
+      collected: true,
+      status: status,
+      updatedAt: created.updatedAt,
+    );
   }
 
   @override
-  Future<CollectionEntry> updateStatus(
+  Future<CollectionState> updateStatus(
     String workId,
     CollectionStatus? status,
   ) async {
@@ -114,7 +146,12 @@ class CollectionMockDataSource implements CollectionDataSource {
       updatedAt: DateTime.now().toUtc(),
     );
     _items[index] = updated;
-    return updated;
+    return CollectionState(
+      workId: workId,
+      collected: true,
+      status: updated.status,
+      updatedAt: updated.updatedAt,
+    );
   }
 
   @override

@@ -51,19 +51,21 @@ class CollectionController extends AsyncNotifier<List<CollectionEntry>> {
     if (current == null) return null;
 
     try {
-      final updated = await ref
+      final result = await ref
           .read(collectionRepositoryProvider)
           .updateStatus(workId, status);
       if (!ref.mounted) return null;
 
-      // 以服务端返回值为准，不在本地推断「应该是这样」（C7）。
+      // 以服务端返回的状态为准，不在本地推断「应该是这样」（C7）。
+      // 但**只取状态**：响应里没有 title / work_type / cover_url，
+      // 拿它替换整条会让列表显示成 work_id 或空标题。
       final filter = ref.read(collectionFilterProvider);
       state = AsyncData([
         for (final item in current)
           if (item.workId != workId)
             item
-          else if (filter == null || updated.status == filter)
-            updated,
+          else if (filter == null || result.status == filter)
+            result.mergeInto(item),
       ]);
       return null;
     } on ApiException catch (error) {
