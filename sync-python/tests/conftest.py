@@ -99,6 +99,14 @@ class _Handler(BaseHTTPRequestHandler):
                 self._send(200, {"items": matched})
                 return
             page = int(raw_page[0])
+            # 让测试能制造两类故障：瞬时的（重试能过）与持续的（只能跳过）
+            if self.server.state.get("get_fail_times", 0) > 0:
+                self.server.state["get_fail_times"] -= 1
+                self._send(503, {"code": "INTERNAL_ERROR", "message": "temporary"})
+                return
+            if page in (self.server.state.get("failing_pages") or set()):
+                self._send(503, {"code": "INTERNAL_ERROR", "message": "permanent"})
+                return
             page_size = int((query.get("page_size") or ["20"])[0])
             start = (page - 1) * page_size
             total_pages = max(1, (len(matched) + page_size - 1) // page_size)
@@ -192,6 +200,8 @@ class _StubServer(ThreadingHTTPServer):
             "attempts": 0,
             "received": [],
             "fail_times": 0,
+            "get_fail_times": 0,
+            "failing_pages": set(),
             "status": None,
         }
 
@@ -219,6 +229,8 @@ class Stub:
                 "attempts": 0,
                 "received": [],
                 "fail_times": 0,
+                "get_fail_times": 0,
+                "failing_pages": set(),
                 "status": None,
                 "pages_requested": [],
             }
