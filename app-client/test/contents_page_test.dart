@@ -16,6 +16,8 @@ import 'package:otaku_app/features/contents/work_card.dart';
 import 'package:otaku_app/features/contents/work_list_tile.dart';
 import 'package:otaku_app/features/detail/work_detail_page.dart';
 
+import 'support/test_overrides.dart';
+
 /// 内存数据源：不读资源、不发网络，让 widget 测试只关注界面。
 /// 资源与分页语义由下面的 [MockWorkDataSource] 测试覆盖。
 class _FakeDataSource implements WorkDataSource {
@@ -118,6 +120,8 @@ void main() {
     return ProviderScope(
       overrides: [
         workDataSourceProvider.overrideWithValue(source ?? _FakeDataSource()),
+        // 详情页与列表页都会碰认证状态（账号入口、收藏区），不让它走平台通道。
+        ...authOverrides(),
       ],
       child: child,
     );

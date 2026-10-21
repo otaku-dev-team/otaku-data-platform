@@ -10,6 +10,7 @@ import '../../core/router/route_paths.dart';
 import '../../core/theme/app_layout.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/models/work_type.dart';
+import '../../shared/widgets/account_menu.dart';
 import '../../shared/widgets/empty_state.dart';
 import '../../shared/widgets/error_state.dart';
 import '../../shared/widgets/skeleton_list.dart';
@@ -151,6 +152,11 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
             onPressed: () => context.push(RoutePaths.collections),
             icon: const Icon(Icons.bookmark_border_rounded),
           ),
+          // 账号入口放在这里而不是收藏页：登录是全局动作，用户不该为了
+          // 登录先进「我的收藏」再点右上角。三态（检查中/未登录/已登录）
+          // 由组件自己处理，本页不关心。
+          const AccountMenuButton(),
+          const SizedBox(width: 8),
         ],
       ),
       body: Center(

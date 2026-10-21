@@ -13,6 +13,8 @@ import 'package:otaku_app/data/repositories/work_repository.dart';
 import 'package:otaku_app/features/contents/contents_controller.dart';
 import 'package:otaku_app/features/contents/work_card.dart';
 
+import 'support/test_overrides.dart';
+
 /// 万级列表的渲染基线（阶段 3，见 `docs/stage3-performance-baseline.md`）。
 ///
 /// 这里量的是**渲染**，不是网络：数据源一次性返回 N 条、单页，绕开分页，
@@ -103,7 +105,11 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   Widget wrap(WorkDataSource source) => ProviderScope(
-    overrides: [workDataSourceProvider.overrideWithValue(source)],
+    overrides: [
+      workDataSourceProvider.overrideWithValue(source),
+      // 列表页的账号入口会创建 AuthController，测试里必须给内存令牌。
+      ...authOverrides(),
+    ],
     child: const OtakuApp(),
   );
 
