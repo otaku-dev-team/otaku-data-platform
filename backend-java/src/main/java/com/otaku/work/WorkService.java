@@ -76,6 +76,7 @@ public class WorkService {
                 record.workType(),
                 record.title(),
                 record.summary(),
+                record.releaseYear(),
                 coverUrl(record),
                 parseTags(record.tagsJson()),
                 toRating(record),
@@ -103,6 +104,7 @@ public class WorkService {
                 record.workId(),
                 record.workType(),
                 record.title(),
+                record.releaseYear(),
                 coverUrl(record),
                 parseTags(record.tagsJson()),
                 toRating(record));

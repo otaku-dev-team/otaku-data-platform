@@ -10,6 +10,7 @@ import java.time.LocalDateTime;
  * - tagsJson 保留 SQL NULL 与 "[]" 的区别：NULL = 来源未提供（更新时不覆盖），
  *   "[]" = 明确无标签（可清空），见契约 2.3 与 4.4.3；
  * - coverSourceUrl 是来源站地址，永不出现在响应里；对外地址由 cover_url 重新拼；
+ * - releaseYear 用包装类型 Integer：null = 来源未提供，不能退化成 0；
  * - 时间统一存 UTC 的 LocalDateTime，出参时转 Instant（带 Z 的 RFC 3339）。
  */
 public record WorkRecord(
@@ -18,6 +19,7 @@ public record WorkRecord(
         String workType,
         String title,
         String summary,
+        Integer releaseYear,
         String coverSourceUrl,
         String coverCacheKey,
         LocalDateTime coverCachedAt,

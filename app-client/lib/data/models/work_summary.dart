@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'source_rating.dart';
 import 'work_type.dart';
 
-/// 列表项。契约 2.1：**只有 6 个字段，没有 `summary`**。
+/// 列表项。契约 2.1：**只有 7 个字段，没有 `summary`**。
 /// 需要简介请按 `work_id` 拉详情，不要指望列表接口补。
 @immutable
 class WorkSummary {
@@ -11,6 +11,7 @@ class WorkSummary {
     required this.workId,
     required this.workType,
     required this.title,
+    this.releaseYear,
     this.coverUrl,
     this.tags,
     this.mainRating,
@@ -21,6 +22,9 @@ class WorkSummary {
 
   final WorkType workType;
   final String title;
+
+  /// 来源年份。`null` 表示来源未提供，**不是 0 年**——界面此时不渲染年份。
+  final int? releaseYear;
 
   /// 平台代理地址；`null` 表示无封面，界面必须走占位图。
   final String? coverUrl;
@@ -46,10 +50,19 @@ class WorkSummary {
       workId: workId,
       workType: WorkType.fromValue(json['work_type']),
       title: title,
+      releaseYear: parseYear(json['release_year']),
       coverUrl: coverUrl is String && coverUrl.isNotEmpty ? coverUrl : null,
       tags: parseTags(json['tags']),
       mainRating: SourceRating.tryParse(json['main_rating']),
     );
+  }
+
+  /// 非整数、超出 1900–2100 一律归一为 `null`。
+  /// 契约保证后端不会发越界值，这里再挡一道是为了让界面逻辑永远只有一个分支。
+  static int? parseYear(Object? raw) {
+    final year = raw is int ? raw : (raw is num ? raw.toInt() : null);
+    if (year == null || year < 1900 || year > 2100) return null;
+    return year;
   }
 
   /// 空串、空数组、非数组一律归一为 `null`，界面少一层判断。

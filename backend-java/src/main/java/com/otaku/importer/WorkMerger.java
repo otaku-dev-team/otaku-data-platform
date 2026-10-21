@@ -28,7 +28,7 @@ final class WorkMerger {
 
     static WorkRecord newRecord(NormalizedItem item, String workId, String source, LocalDateTime now) {
         return new WorkRecord(
-                null, workId, item.workType(), item.title(), item.summary(),
+                null, workId, item.workType(), item.title(), item.summary(), item.releaseYear(),
                 item.coverUrl(), null, null, item.tagsJson(),
                 item.ratingValue(), item.ratingScale(), item.ratingSource(),
                 source, item.sourceId(), item.sourceUrl(), now, now);
@@ -37,6 +37,7 @@ final class WorkMerger {
     static MergeResult merge(WorkRecord old, NormalizedItem item) {
         String title = item.title() != null ? item.title() : old.title();
         String summary = item.summary() != null ? item.summary() : old.summary();
+        Integer releaseYear = item.releaseYear() != null ? item.releaseYear() : old.releaseYear();
         String cover = item.coverUrl() != null ? item.coverUrl() : old.coverSourceUrl();
         boolean coverChanged = !Objects.equals(cover, old.coverSourceUrl());
         String cacheKey = coverChanged ? null : old.coverCacheKey();
@@ -50,6 +51,7 @@ final class WorkMerger {
         boolean changed = coverChanged
                 || !Objects.equals(title, old.title())
                 || !Objects.equals(summary, old.summary())
+                || !Objects.equals(releaseYear, old.releaseYear())
                 || !Objects.equals(tagsJson, old.tagsJson())
                 || !sameDecimal(ratingValue, old.ratingValue())
                 || !Objects.equals(ratingScale, old.ratingScale())
@@ -62,7 +64,7 @@ final class WorkMerger {
 
         LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
         return new MergeResult(new WorkRecord(
-                old.id(), old.workId(), old.workType(), title, summary,
+                old.id(), old.workId(), old.workType(), title, summary, releaseYear,
                 cover, cacheKey, cachedAt, tagsJson,
                 ratingValue, ratingScale, ratingSource,
                 old.source(), old.sourceId(), sourceUrl, old.createdAt(), now), true);

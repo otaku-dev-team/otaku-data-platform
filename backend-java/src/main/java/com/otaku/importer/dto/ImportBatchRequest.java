@@ -6,7 +6,8 @@ import java.util.List;
 
 /**
  * 接口②请求体。JSON 键名由 SNAKE_CASE 策略转换，与契约完全一致：
- * batch_id / source / fetched_at / items[source_id, work_type, title, summary, cover_url, tags, main_rating]
+ * batch_id / source / fetched_at / items[source_id, work_type, title, summary,
+ * cover_url, release_year, tags, main_rating]
  */
 public record ImportBatchRequest(
         String batchId,
@@ -21,6 +22,7 @@ public record ImportBatchRequest(
             String title,
             String summary,
             String coverUrl,
+            Integer releaseYear,
             List<String> tags,
             SourceRating mainRating,
             String sourceUrl

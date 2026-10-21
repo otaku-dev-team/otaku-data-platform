@@ -6,12 +6,13 @@ from sync.importer import ImportDeliveryError, InternalImportError, JavaImporter
 from sync.models import SourceRecord, WorkItem
 
 
-def make_item(source_id: str = "476") -> WorkItem:
+def make_item(source_id: str = "476", release_year: int | None = None) -> WorkItem:
     return WorkItem(
         source_record=SourceRecord(source_id=source_id),
         work_type="anime",
         title="街角魔族",
         summary="简介",
+        release_year=release_year,
     )
 
 
@@ -79,9 +80,23 @@ def test_payload_uses_null_for_unprovided_fields(stub):
         importer.close()
     item = stub.state["received"][0]["items"][0]
     assert item["cover_url"] is None
-    assert "release_year" not in item  # 第一阶段不提交该字段
+    assert item["release_year"] is None  # 来源无年份时必须传 null，不能传 0
     assert item["tags"] is None
     assert item["main_rating"] is None
+
+
+def test_release_year_is_submitted(stub):
+    """年份必须真的发出去——链路断在 `to_payload()`，不测这条就会再次静默丢字段。"""
+    importer = JavaImporter(stub.base_url, token="secret")
+    try:
+        importer.submit_batch(
+            "batch-7", [make_item(release_year=2021)], "2026-10-20T00:00:00+00:00"
+        )
+    finally:
+        importer.close()
+    item = stub.state["received"][0]["items"][0]
+    assert item["release_year"] == 2021
+    assert "release_year" in item
 
 
 def test_source_follows_argument_not_constant(stub):

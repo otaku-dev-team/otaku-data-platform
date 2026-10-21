@@ -19,7 +19,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ImportItemValidatorTest {
 
     private static ImportItem item(String sourceId, String type, String title, SourceRating rating) {
-        return new ImportItem(sourceId, type, title, null, null, List.of(), rating, null);
+        return new ImportItem(sourceId, type, title, null, null, null, List.of(), rating, null);
+    }
+
+    private static ImportItem itemWithYear(Integer releaseYear) {
+        return new ImportItem("476", "anime", "街角魔族", null, null, releaseYear, List.of(), null, null);
     }
 
     private static SourceRating rating(String value) {
@@ -90,5 +94,27 @@ class ImportItemValidatorTest {
     void acceptsMissingRating() {
         assertThat(ImportItemValidator.validate(item("476", "anime", "标题", rating(null)))).isEmpty();
         assertThat(ImportItemValidator.validate(item("476", "anime", "标题", null))).isEmpty();
+    }
+
+    @Test
+    @DisplayName("年份缺失合法；边界值 1900 / 2100 都收")
+    void acceptsMissingAndBoundaryYear() {
+        assertThat(ImportItemValidator.validate(itemWithYear(null))).isEmpty();
+        assertThat(ImportItemValidator.validate(itemWithYear(1900))).isEmpty();
+        assertThat(ImportItemValidator.validate(itemWithYear(2100))).isEmpty();
+        assertThat(ImportItemValidator.validate(itemWithYear(1995))).isEmpty();
+    }
+
+    @Test
+    @DisplayName("年份越界要拒收——0 和 99999 都不能当成「没有年份」混进来")
+    void rejectsYearOutOfRange() {
+        assertThat(ImportItemValidator.validate(itemWithYear(0)).orElseThrow().code())
+                .isEqualTo(ImportItemValidator.INVALID_RELEASE_YEAR);
+        assertThat(ImportItemValidator.validate(itemWithYear(1899)).orElseThrow().code())
+                .isEqualTo(ImportItemValidator.INVALID_RELEASE_YEAR);
+        assertThat(ImportItemValidator.validate(itemWithYear(2101)).orElseThrow().code())
+                .isEqualTo(ImportItemValidator.INVALID_RELEASE_YEAR);
+        assertThat(ImportItemValidator.validate(itemWithYear(99999)).orElseThrow().code())
+                .isEqualTo(ImportItemValidator.INVALID_RELEASE_YEAR);
     }
 }

@@ -22,7 +22,7 @@ import java.util.Optional;
 public class WorkRepository {
 
     private static final String COLUMNS = """
-            id, work_id, work_type, title, summary,
+            id, work_id, work_type, title, summary, release_year,
             cover_source_url, cover_cache_key, cover_cached_at,
             tags, rating_value, rating_scale, rating_source,
             source, source_id, source_url, created_at, updated_at
@@ -54,11 +54,11 @@ public class WorkRepository {
 
     public void insert(WorkRecord record) {
         String sql = """
-                INSERT INTO work (work_id, work_type, title, summary,
+                INSERT INTO work (work_id, work_type, title, summary, release_year,
                                   cover_source_url, cover_cache_key, cover_cached_at,
                                   tags, rating_value, rating_scale, rating_source,
                                   source, source_id, source_url, created_at, updated_at)
-                VALUES (:workId, :workType, :title, :summary,
+                VALUES (:workId, :workType, :title, :summary, :releaseYear,
                         :coverSourceUrl, :coverCacheKey, :coverCachedAt,
                         :tagsJson, :ratingValue, :ratingScale, :ratingSource,
                         :source, :sourceId, :sourceUrl, :createdAt, :updatedAt)
@@ -73,6 +73,7 @@ public class WorkRepository {
         String sql = """
                 UPDATE work SET title = :title,
                                 summary = :summary,
+                                release_year = :releaseYear,
                                 cover_source_url = :coverSourceUrl,
                                 cover_cache_key = :coverCacheKey,
                                 cover_cached_at = :coverCachedAt,
@@ -134,6 +135,7 @@ public class WorkRepository {
                 .addValue("workType", record.workType())
                 .addValue("title", record.title())
                 .addValue("summary", record.summary())
+                .addValue("releaseYear", record.releaseYear())
                 .addValue("coverSourceUrl", record.coverSourceUrl())
                 .addValue("coverCacheKey", record.coverCacheKey())
                 .addValue("coverCachedAt", record.coverCachedAt())
@@ -153,6 +155,8 @@ public class WorkRepository {
                 rs.getString("work_type"),
                 rs.getString("title"),
                 rs.getString("summary"),
+                // 必须用 getObject：getInt 会把 NULL 读成 0，等于凭空造出一个"公元 0 年"。
+                rs.getObject("release_year", Integer.class),
                 rs.getString("cover_source_url"),
                 rs.getString("cover_cache_key"),
                 rs.getObject("cover_cached_at", LocalDateTime.class),

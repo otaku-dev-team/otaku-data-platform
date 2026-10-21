@@ -7,10 +7,11 @@ import '../../data/models/work_summary.dart';
 import '../../shared/widgets/cover_image.dart';
 import '../../shared/widgets/poster_card.dart';
 import '../../shared/widgets/rating_badge.dart';
+import '../../shared/widgets/release_year_text.dart';
 import '../../shared/widgets/tag_chips.dart';
 import '../../shared/widgets/work_type_tag.dart';
 
-/// 列表视图的一行：左侧 2:3 小封面，右侧标题 / 类型 / 评分 / 标签。
+/// 列表视图的一行：左侧 2:3 小封面，右侧标题 / 类型 / 评分 / 年份 / 标签。
 ///
 /// 站点在列表视图里还会显示两行摘要和排名角标，这里没有——列表接口不返回
 /// `summary`，契约里也没有 rank 字段。硬凑只能逐条打详情，代价远大于收益。
@@ -61,6 +62,18 @@ class WorkListTile extends StatelessWidget {
                       const SizedBox(width: 8),
                       // 契约 6.3：没有评分就整块不渲染，不能显示 0.0。
                       RatingBadge(rating: work.mainRating, compact: true),
+                      // 列表视图比网格宽，年份靠右，与卡片视图保持同一信息顺序。
+                      Expanded(
+                        child: Align(
+                          alignment: Alignment.centerRight,
+                          child: ReleaseYearText(
+                            year: work.releaseYear,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 8),

@@ -12,6 +12,7 @@ import '../../shared/widgets/collection_status_menu.dart';
 import '../../shared/widgets/cover_image.dart';
 import '../../shared/widgets/error_state.dart';
 import '../../shared/widgets/rating_badge.dart';
+import '../../shared/widgets/release_year_text.dart';
 import '../../shared/widgets/skeleton_list.dart';
 import '../../shared/widgets/tag_chips.dart';
 import '../../shared/widgets/work_type_tag.dart';
@@ -160,6 +161,7 @@ class _Headline extends StatelessWidget {
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
             WorkTypeTag(type: work.workType),
+            ReleaseYearText(year: work.releaseYear),
             RatingBadge(rating: work.mainRating),
             if (work.mainRating != null)
               Text(
@@ -385,6 +387,8 @@ class _RecordPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final rows = <({String label, String value})>[
+      if (work.releaseYear != null)
+        (label: '年份', value: '${work.releaseYear}'),
       (label: '作品 ID', value: work.workId),
       if (work.source.isNotEmpty) (label: '来源', value: work.source),
       if (work.sourceId.isNotEmpty) (label: '来源 ID', value: work.sourceId),

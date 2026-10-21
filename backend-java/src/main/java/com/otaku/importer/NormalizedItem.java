@@ -9,6 +9,7 @@ record NormalizedItem(
         String workType,
         String title,
         String summary,
+        Integer releaseYear,
         String coverUrl,
         String tagsJson,
         java.math.BigDecimal ratingValue,

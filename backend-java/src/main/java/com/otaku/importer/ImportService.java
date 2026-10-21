@@ -233,7 +233,7 @@ public class ImportService {
         }
 
         return new NormalizedItem(item.sourceId() == null ? null : item.sourceId().trim(),
-                item.workType(), title, summary, coverUrl, tagsJson,
+                item.workType(), title, summary, item.releaseYear(), coverUrl, tagsJson,
                 ratingValue, ratingScale, ratingSource,
                 normalizeSourceUrl(item.sourceUrl()));
     }
