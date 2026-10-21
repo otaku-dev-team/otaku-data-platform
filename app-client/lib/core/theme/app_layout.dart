@@ -28,6 +28,16 @@ abstract final class AppLayout {
   /// 网格用固定 `mainAxisExtent`，这里必须给死，否则长短标题会让行高不齐。
   static const double cardBodyHeight = 112;
 
+  /// 收藏卡正文高度：比作品库卡片多一行「观看状态 + 更新时间」。
+  ///
+  /// 单独给一个值而不是把 [cardBodyHeight] 调大：作品库卡片的内容刚好装满
+  /// 112，跟着变高只会在标签行下面多出一条空白。
+  ///
+  /// 124 是量出来的，不是估的——Android（1080×2340，网格两列）上收藏卡底部
+  /// 报 `BOTTOM OVERFLOWED BY 7.0 PIXELS`，原来 112 正好差这 7px。
+  /// 详情见 `docs/stage2-acceptance.md` 的「验收发现的问题」。
+  static const double collectionCardBodyHeight = 124;
+
   static const double gridGap = 12;
 
   static const double coverWidth = 64;
