@@ -36,12 +36,33 @@ $env:SPRING_PROFILES_ACTIVE = "local"
 - MySQL 在宿主 **3307**（不占 3306，不会和本机已有 MySQL 打架）
 - `local` profile 已经把数据库账号和内部令牌都配好：**令牌就是 `dev-token`**
 
-**方式 B：用本机已装的 MySQL**
+**方式 B：用本机已装的 MySQL（没有 Docker 时走这条）**
+
+⚠️ **不要加 `SPRING_PROFILES_ACTIVE=local`。** `application-local.yml` 里写死的是 compose 那套
+（`localhost:3307` + 账号 `otaku/otaku123`），套到本机 MySQL 上会连不上。走**默认 profile + 显式环境变量**：
 
 ```bash
-mysql -u root -p < backend-java/src/main/resources/db/manual/00-create-database.sql
-cd backend-java && SPRING_PROFILES_ACTIVE=local ./mvnw spring-boot:run
+# 1) 建库（只建空库，表由 Flyway 启动时建）
+mysql -h 127.0.0.1 -P 3310 -u root -p \
+  < backend-java/src/main/resources/db/manual/00-create-database.sql
+
+# 2) 起后端
+cd backend-java
+DB_HOST=127.0.0.1 DB_PORT=3310 DB_USER=root \
+OTAKU_INTERNAL_TOKEN=dev-token \
+./mvnw spring-boot:run
 ```
+
+把 `3310` / `root` 换成你本机实例的实际端口与账号（端口用 `netstat -ano | grep 3306` 之类确认）。
+
+**这两个变量必须显式传，别依赖默认值：**
+
+| 变量 | 不传会怎样 |
+|---|---|
+| `DB_PORT` | 默认 **3306**。本机实例不在 3306 时直接连不上 |
+| `OTAKU_INTERNAL_TOKEN` | 默认是**空**。空值时 `/internal/import/**` 全部返回 `401 内部导入接口未配置令牌，已禁用`，同步会一条都进不去（看着像后端没问题，实际全失败） |
+
+导入时 Python 侧的 `OTAKU_INTERNAL_TOKEN` 必须与这里**一模一样**（都写 `dev-token` 最省事）。
 
 **确认后端活着**（返回 `{"status":"UP"...}` 再往下走）：
 
@@ -208,9 +229,10 @@ curl -s "http://localhost:8080/api/works/<work_id>"
 | `ModuleNotFoundError: No module named 'sync'` | 没在 `sync-python/` 目录，或没设 `PYTHONPATH=src` | `cd sync-python` 后再跑，保留 `PYTHONPATH=src` 前缀 |
 | `ModuleNotFoundError: No module named 'httpx'` | 没装依赖 | `pip install -r requirements.txt` |
 | 连不上 `localhost:8080`、超时 | 全局代理把本地请求也代理了 | 设 `NO_PROXY=localhost,127.0.0.1` |
-| `401` / 全部批次 delivered=false 报未授权 | 令牌不一致或后端没设 | 后端 `OTAKU_INTERNAL_TOKEN` 与 Python 侧必须**同一个值**；`local` profile 下是 `dev-token` |
+| `401` / 全部批次 delivered=false 报未授权 | 令牌不一致或后端没设 | 后端 `OTAKU_INTERNAL_TOKEN` 与 Python 侧必须**同一个值**；`local` profile 下默认是 `dev-token`，但**默认 profile 下默认是空，必须显式传** |
 | `413 BATCH_TOO_LARGE` | `--batch-size` 超过 500 | 改回 500 或更小 |
 | 拒绝连接 `127.0.0.1:3307` | Docker MySQL 还没起来 | `docker compose ps` 等到 healthy；`docker compose logs mysql` 看原因 |
+| 后端启动报 `Communications link failure` / `Access denied` | 用了 `local` profile 但跑的是本机 MySQL（profile 里是 3307 + `otaku/otaku123`） | 去掉 `SPRING_PROFILES_ACTIVE=local`，改传 `DB_PORT` / `DB_USER`（见第 1 节方式 B） |
 | 全部 `rejected`，原因 `TITLE_REQUIRED` | 档案路径给错、或给了完整档以外的文件 | 用 `--stats` 先确认能读出 556,216 条 |
 | 下载链接 404 | 没登录 / 没有仓库写权限（draft release 特性） | 登录后再点，或让人私发 |
 
