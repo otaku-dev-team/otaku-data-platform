@@ -102,18 +102,23 @@ PYTHONPATH=src OTAKU_INTERNAL_TOKEN=dev-token OTAKU_JAVA_BASE_URL=http://localho
 
 ## 阶段 2：账号与个人数据
 
-按 `docs/otaku-project-plan-v2.md` 第 2.2 / 5.2 节实现，接口提案见 [`stage2-account-collection.md`](stage2-account-collection.md)。
+实现口径以 [`docs/stage2-account-collection-contract.md`](../docs/stage2-account-collection-contract.md) 为准
+（该文档仍为 DRAFT，§11 的 3 / 4 / 8 属 Java 决定项，本实现按推荐值落地：不透明令牌、LWW、生产必须 HTTPS）。
 
 设计要点：
 
-- **认证**：`Authorization: Bearer <43 字符不透明令牌>`，30 天有效；库里只存 `SHA-256(token)`，口令用 BCrypt（`$2a$10$`）。
-- **多设备**：一次登录一行 `user_session`，退出只撤销当前这一行——一端登录或退出都不影响另一端。
-- **收藏**：`(user_id, work_id)` 唯一；取消收藏即删行，状态随之消失；改状态要求收藏仍存在，否则 `COLLECTION_REQUIRED`。
-- **写接口只收目标状态**（`POST` 收藏 / `PATCH` 改状态），不提供 toggle，避免重试反向操作。
-- **越权防护**：所有个人数据查询都强制 `user_id = 当前会话` 且不接受客户端传 `user_id`。
+- **认证**：`Authorization: Bearer <43 字符不透明令牌>`，30 天固定有效期、不滑动续期；库里只存 `SHA-256(token)`，口令用 BCrypt(cost 10)。
+- **多设备**：一次登录一行 `user_session`，退出只撤销当前这一行——一端登录或退出都不影响另一端（C1/C9）。
+- **不开放自助注册**：账号走 `POST /internal/accounts`（`X-Internal-Token`），对应契约 §11.7 与附录 A。
+- **收藏三态**：`null` = 未收藏（记录不存在）；`status=null` = 已收藏但未设状态；`[]`… 无此概念，取消收藏直接删行（C4）。
+- **PUT 与 PATCH 分工**：`PUT` 是 upsert（可创建），`PATCH` 只改不建、记录不存在返回 409 —— 这是 C11 成立的唯一方式。
+- **写接口只收目标状态**，不提供 toggle，避免重试把用户操作反转。
+- **越权防护**：所有个人数据查询都强制 `user_id = 当前会话`，路径与参数里都不出现 `user_id`（C5）。
+- **logout 幂等**：已失效或无令牌调用也返回 204，退出流程不会卡在 401 分支上（契约 §4.3）。
 
-实测覆盖（C1–C11、E7）全部通过：两端并存、跨端可见、取消后另一端同步消失、过期界面改状态返回 409、
-两个账号数据互不可见、退出一端另一端仍可用、重新登录收藏保留。
+已用脚本逐条对照契约验证 **35 项全通过**，覆盖 C1–C5、C9–C11、错误码、幂等与三态语义：
+两端并存、跨端可见、未收藏返回 200（不是 404）、`status=none` 过滤、取消后另一端消失、
+409 `COLLECTION_REQUIRED`、被退出令牌 401、重复 logout 仍 204。
 
 ## 技术选型
 
@@ -198,18 +203,20 @@ $env:DB_USER="root"; $env:DB_PASSWORD="<你的密码>"; $env:OTAKU_INTERNAL_TOKE
 | ④ 详情 | `GET /api/works/{work_id}` | 无 | 10 字段；不存在或格式非法都是 404 |
 | ⑤ 封面 | `GET /api/covers/{work_id}` | 无 | 代理 + 本地缓存，30 天缓存 + ETag；无封面/回源失败返回 404 |
 
-**阶段 2（账号与个人数据）**——契约提案与请求/响应示例见 [`stage2-account-collection.md`](stage2-account-collection.md)：
+**阶段 2（账号与个人数据）**——字段与语义以
+[`docs/stage2-account-collection-contract.md`](../docs/stage2-account-collection-contract.md) 为准：
 
 | 接口 | 方法与路径 | 鉴权 | 说明 |
 | --- | --- | --- | --- |
-| 注册 | `POST /api/auth/register` | 无 | 3–32 字符用户名、8–72 字符口令；成功即返回会话 |
+| 建号（内部） | `POST /internal/accounts` | `X-Internal-Token` | 首期不开放自助注册；带 `username` / `password` |
 | 登录 | `POST /api/auth/login` | 无 | 每次登录新建会话，**不踢掉其他设备** |
-| 当前用户 | `GET /api/auth/me` | Bearer | |
-| 退出 | `POST /api/auth/logout` | Bearer | 只结束当前设备，204 |
-| 我的收藏 | `GET /api/me/collections?page=&page_size=` | Bearer | 作品摘要 + `status`，按更新时间倒序 |
-| 加入收藏 | `POST /api/me/collections/{work_id}` | Bearer | 幂等，可带 `status` |
-| 改状态 | `PATCH /api/me/collections/{work_id}` | Bearer | 收藏已不存在 → 409 `COLLECTION_REQUIRED` |
-| 取消收藏 | `DELETE /api/me/collections/{work_id}` | Bearer | 删行即删状态，204 |
+| 当前用户 | `GET /api/auth/me` | Bearer | `user_id` / `username` / `display_name`（首期恒为 null） |
+| 退出 | `POST /api/auth/logout` | 可选 | 只撤销当前令牌；**已失效或无令牌也 204** |
+| 收藏列表 | `GET /api/me/collections?status=&page=&page_size=` | Bearer | `status` 可传 `want`/`watching`/`watched`/`none`；排序 `updated_at DESC, work_id ASC` |
+| 单条状态 | `GET /api/me/collections/{work_id}` | Bearer | **未收藏也是 200**，用 `collected=false` 表示；作品不存在才 404 |
+| 加入收藏 | `PUT /api/me/collections/{work_id}` | Bearer | upsert，幂等；`status` 可省略 |
+| 改状态 | `PATCH /api/me/collections/{work_id}` | Bearer | 只改不建；记录不存在 → 409 `COLLECTION_REQUIRED` |
+| 取消收藏 | `DELETE /api/me/collections/{work_id}` | Bearer | 删整条记录，状态随之消失；幂等 204 |
 
 ### 冒烟测试
 
@@ -254,7 +261,6 @@ backend-java/
   pom.xml                 Spring Boot 3.5.16 / JDK 17
   mvnw, mvnw.cmd          Maven Wrapper（无需安装 Maven）
   compose.yaml            本地 MySQL 8.0 容器（:3307，含可选 Adminer）
-  stage2-account-collection.md   阶段 2 接口提案（待 Flutter 确认后回填 docs/）
   samples/                可直接用于 curl 的请求体（含边界用例）
   src/main/java/com/otaku/
     common/               错误码、统一信封、分页、LIKE 转义、ID 与令牌生成
@@ -264,6 +270,7 @@ backend-java/
     cover/                ⑤ 封面代理与本地缓存
     user/                 阶段 2：账号持久化
     session/              阶段 2：多设备会话（只存令牌摘要）
+    account/              阶段 2：内部建号接口（/internal/accounts）
     auth/                 阶段 2：注册/登录/退出 + Bearer 鉴权过滤器
     collection/           阶段 2：收藏与观看状态
   src/main/resources/

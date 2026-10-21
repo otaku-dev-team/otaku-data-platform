@@ -97,19 +97,6 @@ public class WorkService {
         return publicUrlResolver.baseUrl() + "/api/covers/" + workId;
     }
 
-    /** 供其它视图复用：把库里的 tags JSON 转成响应形态；null 与 [] 语义保持不同。 */
-    public List<String> tagsOf(String tagsJson) {
-        return parseTags(tagsJson);
-    }
-
-    /** 供其它视图复用：缺失评分返回 null，绝不折算成 0 分。 */
-    public SourceRatingDto ratingOf(java.math.BigDecimal value, String scale, String source) {
-        if (value == null) {
-            return null;
-        }
-        return new SourceRatingDto(value, scale, source);
-    }
-
     private WorkSummaryDto toSummary(WorkRecord record) {
         return new WorkSummaryDto(
                 record.workId(),

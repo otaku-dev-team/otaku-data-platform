@@ -19,10 +19,13 @@ import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 
 /**
- * 客户端会话鉴权，只拦 /api/me/** 与 /api/auth/me。
+ * 客户端会话鉴权，只拦 /api/auth/me 与 /api/me/**。
+ *
+ * 有意**不拦** /api/auth/logout：契约 §4.3 要求「已失效的令牌再调一次也返回 204」，
+ * 退出流程不该卡在 401 分支上。该接口自行读 Authorization 头并按幂等处理。
  *
  * 与 InternalTokenFilter 分离：客户端用 Bearer 会话令牌，Python 用 X-Internal-Token，
- * 两套凭据互不通用（backend-java/README.md 的边界要求）。
+ * 两套凭据互不通用。
  */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE + 20)
@@ -43,15 +46,13 @@ public class AuthFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getRequestURI().substring(request.getContextPath().length());
-        return !(path.equals("/api/auth/me")
-                || path.equals("/api/auth/logout")
-                || path.startsWith("/api/me/"));
+        return !(path.equals("/api/auth/me") || path.startsWith("/api/me/"));
     }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
                                     FilterChain chain) throws ServletException, IOException {
-        String token = extractToken(request);
+        String token = bearerToken(request);
         Optional<UserRecord> user = authService.authenticate(token);
         if (user.isEmpty()) {
             reject(response);
@@ -62,7 +63,8 @@ public class AuthFilter extends OncePerRequestFilter {
         chain.doFilter(request, response);
     }
 
-    private static String extractToken(HttpServletRequest request) {
+    /** 从 Authorization 头取 Bearer 令牌；取不到返回 null。 */
+    static String bearerToken(HttpServletRequest request) {
         String header = request.getHeader("Authorization");
         if (header == null || !header.startsWith(BEARER)) {
             return null;

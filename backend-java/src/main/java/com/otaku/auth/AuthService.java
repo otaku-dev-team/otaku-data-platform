@@ -1,7 +1,6 @@
 package com.otaku.auth;
 
 import com.otaku.auth.dto.LoginRequest;
-import com.otaku.auth.dto.RegisterRequest;
 import com.otaku.auth.dto.SessionResponse;
 import com.otaku.auth.dto.UserDto;
 import com.otaku.common.ApiException;
@@ -23,13 +22,14 @@ import java.time.ZoneOffset;
 import java.util.Optional;
 
 /**
- * 注册、登录、鉴权与退出。
+ * 登录、鉴权、退出，以及内部建号。
  *
- * 几条刻意的选择：
- * - 口令用 BCrypt（强度默认 10），库里只有摘要；
- * - 登录失败一律返回 INVALID_CREDENTIALS，不区分"用户不存在"和"口令错"，避免枚举账号；
- * - 每次登录新建会话，不撤销旧会话（验收 C1：一端登录不能把另一端踢下线）；
- * - 令牌只存 SHA-256 摘要，退出登录只撤当前这一条（C9）。
+ * 与 docs/stage2-account-collection-contract.md 的对应：
+ * - §1.2 不透明令牌 + 服务端会话（可即时撤销，C9 天然成立）
+ * - §3.1 口令只存 BCrypt(cost 10)，明文不落库、不进日志
+ * - §3.2 一次登录一条会话、30 天固定有效期、不滑动续期、退出只撤当前这条
+ * - §4.1 登录失败统一 INVALID_CREDENTIALS，不区分「用户不存在」与「密码错」
+ * - §11.7 不开放自助注册，账号走内部建号接口
  */
 @Service
 public class AuthService {
@@ -40,11 +40,12 @@ public class AuthService {
     private static final int USERNAME_MAX = 32;
     private static final int PASSWORD_MIN = 8;
     private static final int PASSWORD_MAX = 72;
+    private static final int BCRYPT_COST = 10;
 
     private final UserRepository userRepository;
     private final SessionRepository sessionRepository;
     private final PublicIdGenerator idGenerator;
-    private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
+    private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder(BCRYPT_COST);
 
     public AuthService(UserRepository userRepository, SessionRepository sessionRepository,
                        PublicIdGenerator idGenerator) {
@@ -53,27 +54,24 @@ public class AuthService {
         this.idGenerator = idGenerator;
     }
 
-    public SessionResponse register(RegisterRequest request) {
-        String username = validateUsername(request.username());
-        String password = validatePassword(request.password());
+    /** 内部建号（POST /internal/accounts）：不返回会话，账号由负责人创建。 */
+    public UserDto createAccount(String usernameRaw, String passwordRaw) {
+        String username = validateUsername(usernameRaw);
+        String password = validatePassword(passwordRaw);
 
         if (userRepository.existsByUsername(username)) {
             throw new ApiException(ErrorCode.USERNAME_TAKEN, "用户名已被占用");
         }
-
-        LocalDateTime now = nowUtc();
-        UserRecord user = new UserRecord(null, idGenerator.nextUserId(), username,
-                passwordEncoder.encode(password), now, now);
+        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
         try {
-            userRepository.insert(user);
+            userRepository.insert(new UserRecord(null, idGenerator.nextUserId(), username,
+                    passwordEncoder.encode(password), now, now));
         } catch (DuplicateKeyException ex) {
-            // 并发注册同名：唯一索引兜底
             throw new ApiException(ErrorCode.USERNAME_TAKEN, "用户名已被占用");
         }
-
         UserRecord saved = userRepository.findByUsername(username)
-                .orElseThrow(() -> new ApiException(ErrorCode.INTERNAL, "注册后读取用户失败"));
-        return startSession(saved, request.deviceLabel());
+                .orElseThrow(() -> new ApiException(ErrorCode.INTERNAL, "建号后读取用户失败"));
+        return toDto(saved);
     }
 
     public SessionResponse login(LoginRequest request) {
@@ -82,7 +80,7 @@ public class AuthService {
 
         Optional<UserRecord> found = userRepository.findByUsername(username);
         if (found.isEmpty() || !passwordEncoder.matches(password, found.get().passwordHash())) {
-            throw new ApiException(ErrorCode.INVALID_CREDENTIALS, "用户名或密码错误");
+            throw new ApiException(ErrorCode.INVALID_CREDENTIALS, "账号或密码不正确");
         }
         return startSession(found.get(), request.deviceLabel());
     }
@@ -92,7 +90,7 @@ public class AuthService {
         if (!StringUtils.hasText(token)) {
             return Optional.empty();
         }
-        LocalDateTime now = nowUtc();
+        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
         Optional<SessionRecord> session = sessionRepository.findActive(SessionTokens.hash(token), now);
         if (session.isEmpty()) {
             return Optional.empty();
@@ -108,22 +106,23 @@ public class AuthService {
         return user;
     }
 
-    /** 只撤销当前令牌；返回是否真的撤销了一条。 */
+    /** 只撤销当前令牌；令牌缺失或已失效都返回 false，调用方按幂等 204 处理。 */
     public boolean logout(String token) {
         if (!StringUtils.hasText(token)) {
             return false;
         }
-        return sessionRepository.revoke(SessionTokens.hash(token), nowUtc()) > 0;
+        return sessionRepository.revoke(SessionTokens.hash(token),
+                LocalDateTime.now(ZoneOffset.UTC)) > 0;
     }
 
     public static UserDto toDto(UserRecord user) {
-        return new UserDto(user.userId(), user.username(),
+        return new UserDto(user.userId(), user.username(), null,
                 user.createdAt() == null ? null : user.createdAt().toInstant(ZoneOffset.UTC));
     }
 
     private SessionResponse startSession(UserRecord user, String deviceLabel) {
         String token = SessionTokens.newToken();
-        LocalDateTime now = nowUtc();
+        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
         LocalDateTime expiresAt = now.plus(SESSION_TTL);
         String label = StringUtils.hasText(deviceLabel) ? deviceLabel.trim() : null;
         if (label != null && label.length() > 64) {
@@ -150,9 +149,5 @@ public class AuthService {
             throw ApiException.badRequest("密码长度需在 " + PASSWORD_MIN + "-" + PASSWORD_MAX + " 个字符之间");
         }
         return password;
-    }
-
-    private static LocalDateTime nowUtc() {
-        return LocalDateTime.now(ZoneOffset.UTC);
     }
 }

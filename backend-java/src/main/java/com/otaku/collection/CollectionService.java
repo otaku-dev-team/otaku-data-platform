@@ -1,6 +1,7 @@
 package com.otaku.collection;
 
 import com.otaku.collection.dto.CollectionItemDto;
+import com.otaku.collection.dto.CollectionStateDto;
 import com.otaku.common.ApiException;
 import com.otaku.common.ErrorCode;
 import com.otaku.common.PageResponse;
@@ -15,13 +16,12 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * 个人收藏与观看状态。
+ * 个人收藏与观看状态，行为对齐 docs/stage2-account-collection-contract.md §4.4–§4.8。
  *
- * 语义（对应验收 C1–C11）：
- * - 收藏：幂等 upsert，可带状态；重复提交同一状态不产生变化；
- * - 改状态：要求收藏仍在，否则 COLLECTION_REQUIRED（C11），绝不自动重新收藏；
- * - 取消收藏：删行，状态随之消失（C4）；重复取消不报错；
- * - user_id 一律取自会话，接口不接受客户端传入（E7）。
+ * - PUT  = 加入收藏（upsert，可覆盖状态）
+ * - PATCH = 只改状态，记录不存在就 409 COLLECTION_REQUIRED（C11 唯一成立方式）
+ * - DELETE = 取消收藏，删整条记录，幂等
+ * - GET 单条 = 未收藏也是 200，用 collected=false 表示（不是 404）
  */
 @Service
 public class CollectionService {
@@ -41,8 +41,8 @@ public class CollectionService {
         this.workService = workService;
     }
 
-    /** 加入收藏（已存在则更新为给定状态）。 */
-    public CollectionItemDto addOrUpdate(UserRecord user, String workId, String statusParam) {
+    /** PUT：加入收藏。已存在则覆盖为给定状态；重复提交结果一致。 */
+    public CollectionStateDto put(UserRecord user, String workId, String statusParam) {
         String id = requireWorkId(workId);
         requireWorkExists(id);
         String status = normalizeStatus(statusParam);
@@ -54,56 +54,69 @@ public class CollectionService {
         } else if (!Objects.equals(existing.status(), status)) {
             repository.updateStatus(user.id(), id, status, now);
         }
-        return load(user, id);
+        return loadState(user, id);
     }
 
-    /** 只改状态：收藏不存在时返回 COLLECTION_REQUIRED，不自动重建。 */
-    public CollectionItemDto updateStatus(UserRecord user, String workId, String statusParam) {
+    /** PATCH：只改状态。记录不存在返回 409，绝不自动重建。 */
+    public CollectionStateDto patchStatus(UserRecord user, String workId, String statusParam) {
         String id = requireWorkId(workId);
-        CollectionRecord existing = repository.find(user.id(), id)
+        repository.find(user.id(), id)
                 .orElseThrow(() -> new ApiException(ErrorCode.COLLECTION_REQUIRED,
-                        "该作品已不在收藏中，请刷新后重试"));
+                        "该作品不在收藏中，请刷新后重试"));
         String status = normalizeStatus(statusParam);
-        if (!Objects.equals(existing.status(), status)) {
-            repository.updateStatus(user.id(), id, status, LocalDateTime.now(ZoneOffset.UTC));
-        }
-        return load(user, id);
+        repository.updateStatus(user.id(), id, status, LocalDateTime.now(ZoneOffset.UTC));
+        return loadState(user, id);
     }
 
-    /** 取消收藏：删行即删状态；不存在也返回成功，保证重试安全。 */
+    /** GET 单条：作品不存在才 404；未收藏返回 collected=false。 */
+    public CollectionStateDto state(UserRecord user, String workId) {
+        String id = requireWorkId(workId);
+        requireWorkExists(id);
+        return repository.findRow(user.id(), id)
+                .map(row -> new CollectionStateDto(id, true, row.status(),
+                        toInstant(row.createdAt()), toInstant(row.updatedAt())))
+                .orElseGet(() -> CollectionStateDto.notCollected(id));
+    }
+
+    /** DELETE：删整条记录（状态随之消失），幂等。 */
     public void remove(UserRecord user, String workId) {
         repository.delete(user.id(), requireWorkId(workId));
     }
 
-    public PageResponse<CollectionItemDto> list(UserRecord user, int page, int pageSize) {
+    public PageResponse<CollectionItemDto> list(UserRecord user, String statusParam, int page, int pageSize) {
+        String statusFilter = normalizeFilter(statusParam);
         int safePage = Math.max(page, 1);
         int safeSize = pageSize <= 0 ? DEFAULT_PAGE_SIZE : Math.min(pageSize, MAX_PAGE_SIZE);
-        long total = repository.count(user.id());
+        long total = repository.count(user.id(), statusFilter);
         List<CollectionItemDto> items = total == 0
                 ? List.of()
-                : repository.findPage(user.id(), safeSize, (safePage - 1) * safeSize)
+                : repository.findPage(user.id(), statusFilter, safeSize, (safePage - 1) * safeSize)
                         .stream()
-                        .map(this::toDto)
+                        .map(this::toItemDto)
                         .toList();
         return PageResponse.of(safePage, safeSize, total, items);
     }
 
-    private CollectionItemDto load(UserRecord user, String workId) {
+    private CollectionStateDto loadState(UserRecord user, String workId) {
         return repository.findRow(user.id(), workId)
-                .map(this::toDto)
+                .map(row -> new CollectionStateDto(row.workId(), true, row.status(),
+                        toInstant(row.createdAt()), toInstant(row.updatedAt())))
                 .orElseThrow(() -> new ApiException(ErrorCode.INTERNAL, "收藏写入后读取失败"));
     }
 
-    private CollectionItemDto toDto(CollectionWorkRow row) {
+    private CollectionItemDto toItemDto(CollectionWorkRow row) {
         return new CollectionItemDto(
                 row.workId(),
                 row.workType(),
                 row.title(),
                 workService.coverUrl(row.workId(), row.coverSourceUrl()),
-                workService.tagsOf(row.tagsJson()),
-                workService.ratingOf(row.ratingValue(), row.ratingScale(), row.ratingSource()),
                 row.status(),
-                row.updatedAt() == null ? null : row.updatedAt().toInstant(ZoneOffset.UTC));
+                toInstant(row.createdAt()),
+                toInstant(row.updatedAt()));
+    }
+
+    private static java.time.Instant toInstant(LocalDateTime value) {
+        return value == null ? null : value.toInstant(ZoneOffset.UTC);
     }
 
     private void requireWorkExists(String workId) {
@@ -119,12 +132,26 @@ public class CollectionService {
         return workId.trim();
     }
 
-    /** null/空串表示"不设状态"；非法取值直接 400，避免脏状态入库。 */
+    /** null/缺省表示"不设状态"；非法取值 400，绝不静默降级为 null。 */
     private static String normalizeStatus(String raw) {
         if (raw == null || raw.isBlank()) {
             return null;
         }
         return CollectionStatus.from(raw.trim())
+                .map(CollectionStatus::value)
+                .orElseThrow(() -> ApiException.badRequest("status 取值非法：" + raw));
+    }
+
+    /** 列表过滤：null=全部；none=未设状态；其余必须是合法枚举。 */
+    private static String normalizeFilter(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        String value = raw.trim();
+        if (CollectionRepository.STATUS_NONE.equals(value)) {
+            return CollectionRepository.STATUS_NONE;
+        }
+        return CollectionStatus.from(value)
                 .map(CollectionStatus::value)
                 .orElseThrow(() -> ApiException.badRequest("status 取值非法：" + raw));
     }

@@ -1,7 +1,8 @@
 package com.otaku.auth.dto;
 
-import java.time.Instant;
-
-/** 当前用户信息。不含口令摘要，也不含 app_user 自增 id。 */
-public record UserDto(String userId, String username, Instant createdAt) {
+/**
+ * 当前用户信息，字段与 docs/stage2-account-collection-contract.md §4.2 对齐。
+ * display_name 首期不做，固定返回 null，客户端回落到 username。
+ */
+public record UserDto(String userId, String username, String displayName, java.time.Instant createdAt) {
 }
