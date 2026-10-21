@@ -80,9 +80,12 @@ Otaku 是第一个接入对象，但继续独立运营：不合并网站、不�
 ## 5. GitHub 协作
 
 - 代码仓库：https://github.com/otaku-dev-team/otaku-data-platform
-- GitHub Projects：https://github.com/users/zhengmin486/projects/4
+- GitHub Projects（组织看板）：https://github.com/orgs/otaku-dev-team/projects/1
 
-团队使用 GitHub Issues 记录需要跟踪的任务、问题和讨论，使用 Projects 查看整体进度。当前看板状态：
+团队使用 GitHub Issues 记录需要跟踪的任务、问题和讨论，使用组织 Projects 查看整体进度。
+看板已关联本仓库，Issues 可直接纳入。**任务目标、产出与验收口径以 [`docs/ROADMAP.md`](docs/ROADMAP.md) 为准**——看板与 ROADMAP 不一致时以 ROADMAP 为准。
+
+当前看板状态：
 
 - **Todo：** 待处理。
 - **In Progress：** 正在处理。
