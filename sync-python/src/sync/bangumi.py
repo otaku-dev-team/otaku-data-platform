@@ -34,7 +34,8 @@
 ## 契约对应
 
 只输出第一阶段最小字段集（`docs/stage1-minimal-contract.md` 第 2.1 节）：
-`source_id` `work_type` `title` `summary` `cover_url` `tags` `main_rating`。
+`source_id` `work_type` `title` `summary` `cover_url` `tags` `main_rating`，
+外加 `source_url`（本档案可可靠确定：`https://bgm.tv/subject/{id}`）。
 `release_year` 档案里有（`date`），但第一阶段不出口，仅本地记录。
 `infobox` 里的别名、`subject-relations` 里的系列、`episode.jsonlines` 的话数
 都属于后续阶段，本次不解析。

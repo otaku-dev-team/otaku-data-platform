@@ -31,7 +31,7 @@ pip install -r requirements.txt
 python -m pytest -q
 ```
 
-已验证：48 项通过。测试使用本地桩服务与临时 zip，**不访问外网，不依赖 Java**，
+已验证：57 项通过。测试使用本地桩服务与临时 zip，**不访问外网，不依赖 Java**，
 覆盖验收项 D5（空标题拒绝）、D7（未授权拒绝）、D8（换行规范化）、D9（长文本不截断）、D10（重名各自成作品），
 以及 Bangumi 档案的类型映射、`score=0` 语义、标签三态、标题回落。
 
@@ -115,6 +115,19 @@ PYTHONPATH=src python -m sync --source bangumi --archive <dump.zip> \
 
 `release_year` 能从 `date` 取到（92.3% 有值），但第一阶段接口不出口，仅本地记录。
 
+### 来源站原页（`source_url`）
+
+用于客户端「在来源站查看」的**回流入口**，两个来源都能可靠确定，因此直接提交：
+
+| 来源 | 原页形态 | 依据 |
+| --- | --- | --- |
+| `otaku_site` | `{base_url}/contents/{content_id}` | 2026-10-21 实测：站点首页渲染的卡片链接即此形态，`/contents/476` 返回 200 且标题为作品名 |
+| `bangumi` | `https://bgm.tv/subject/{subject_id}` | 档案自身可推导 |
+
+注意 `otaku_site` 用的是**人读页** `/contents/{id}`，不是接口地址 `/api/contents/{id}`——
+后者返回 JSON，给客户端当回流入口等于给个无效链接。
+原页无法可靠确定时提交 `null`，不猜测生成（契约第 2.1 节）。
+
 ### 与站点来源的差异（换源的代价）
 
 | 项 | 站点 API | Bangumi 档案 |
@@ -134,6 +147,10 @@ PYTHONPATH=src python -m sync --source bangumi --archive <dump.zip> \
 
 本地已端到端跑通：**Bangumi 档案 → 清洗 → 分批 → 内部导入接口 → 入库**。
 实测：10000 条 `source=bangumi` 全部 `inserted=10000`、`rejected=0`、20 批全部送达。
+
+> **关于 `source_url`**：条目现提交 8 个字段（原 7 个 + `source_url`）。
+> 后端 `application.yml` 是 `fail-on-unknown-properties: false`，在 Java 真正接收该字段之前，
+> 多传的这个字段**会被忽略、不会 400**，本作业行为不变；Java 侧接上后无需再改 Python。
 
 前置：Java 后端先启动并暴露 `/internal/import/batches`（见 `backend-java/README.md`），
 且 `source=bangumi` 的取值已在后端放开（见 `docs/openapi.yaml` 的 `ImportBatchRequest.source`）。
