@@ -29,7 +29,7 @@ from .models import (
     WorkItem,
     utc_now,
 )
-from .source import OtakuSiteSource
+from .source import FailedPage, OtakuSiteSource
 from .cleaning import validate
 
 
@@ -83,6 +83,8 @@ class RunReport:
     dry_run: bool = False
     batches: list[dict[str, Any]] = field(default_factory=list)
     rejected_items: list[RejectedItem] = field(default_factory=list)
+    # 抓取阶段重试到底仍失败的页。非空白就意味着本次**没有拿到全量**，需要重跑。
+    failed_pages: list[FailedPage] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
@@ -103,13 +105,16 @@ def _iter_items(
     types: Sequence[str],
     started: str,
     limit: int | None,
+    failed_pages: list[FailedPage] | None = None,
 ) -> Iterator[WorkItem]:
     """按配置的来源逐条产出 WorkItem（流式，不整体载入内存）。
 
     档案来源走 `iter_many` 直接流式读本地 zip——即使全量 55.6 万条，
-    内存里也只保留当前批次（batch_size）的内容；站点来源走在线 JSON API，
-    规模可控，仍一次性取回后逐条 yield。两条路径产出一致，后续清洗、分批、
-    提交完全共用。
+    内存里也只保留当前批次（batch_size）的内容。
+
+    站点来源原先也是"先抓完再 yield"，但来源站实测 42% 的页会直接断连，
+    任何一页失败就整批报废。现在同样逐页产出：拿到一页交给下游提交一页，
+    失败的页记进 `failed_pages`，重跑补齐。
     """
     if config.source == SOURCE_BANGUMI:
         with BangumiArchiveSource(config.archive_path or "") as source:
@@ -126,10 +131,20 @@ def _iter_items(
         page_size=config.source_page_size,
         request_interval_seconds=config.request_interval_seconds,
         max_pages=config.max_pages,
+        max_attempts=config.max_attempts,
+        backoff_seconds=config.backoff_seconds,
     ) as source:
-        items = source.fetch_many(types, started)
-    for item in (items[:limit] if limit is not None else items):
-        yield item
+        emitted = 0
+        for work_type in types:
+            for item in source.iter_work_items(work_type, started):
+                yield item
+                emitted += 1
+                if limit is not None and emitted >= limit:
+                    break
+            if limit is not None and emitted >= limit:
+                break
+        if failed_pages is not None:
+            failed_pages.extend(source.failed_pages)
 
 
 def run(
@@ -222,8 +237,9 @@ def run(
     report_path = os.path.join(
         out_dir, f"run-{started.replace(':', '').replace('+', 'Z')}.json"
     )
+    failed_pages: list[FailedPage] = []
     try:
-        for item in _iter_items(config, types, started, limit):
+        for item in _iter_items(config, types, started, limit, failed_pages):
             report.fetched += 1
             problems = validate(item)
             if problems:
@@ -240,6 +256,7 @@ def run(
         flush()  # 收尾：不足一批的剩余条目也要提交
     except KeyboardInterrupt:
         # 全量推送可能跑上千批；中断时先把已完成部分落盘，再向上抛出让进程退出。
+        report.failed_pages = failed_pages
         report.finished_at = utc_now()
         _write_json(report_path, report.to_dict())
         raise
@@ -247,6 +264,7 @@ def run(
         if importer is not None:
             importer.close()
 
+    report.failed_pages = failed_pages
     report.finished_at = utc_now()
     _write_json(report_path, report.to_dict())
     return report
@@ -270,4 +288,13 @@ def summarize(report: RunReport) -> str:
             "入库 " + " ".join(f"{k}={v}" for k, v in sorted(counts.items()))
         )
     mode = "dry-run" if report.dry_run else "正式提交"
-    return f"[{mode}] " + "，".join(parts)
+    lines = [f"[{mode}] " + "，".join(parts)]
+    if report.failed_pages:
+        # 明确说"这不是全量"，否则跑完没报错会让人以为数据齐了。
+        lines.append(
+            f"注意：{len(report.failed_pages)} 页抓取失败（已跳过），本次不是全量："
+        )
+        for page in report.failed_pages:
+            lines.append(f"  {page.work_type} 第 {page.page} 页：{page.reason}")
+        lines.append("重跑同一命令即可补齐（按 (source, source_id) 幂等，不会重复）。")
+    return "\n".join(lines)

@@ -134,3 +134,56 @@ def test_blank_summary_maps_to_none(stub):
     with OtakuSiteSource(stub.base_url, request_interval_seconds=0) as source:
         item = source.fetch("comic", "2026-10-20T00:00:00+00:00")[0]
     assert item.summary is None
+
+
+def test_transient_5xx_is_retried(stub):
+    """来源站偶发 503：重试一次就该过，不应该整批报废。"""
+    stub.reset(get_fail_times=1)
+    with OtakuSiteSource(
+        stub.base_url,
+        request_interval_seconds=0,
+        page_size=2,
+        backoff_seconds=0,
+    ) as source:
+        raw = source.fetch_raw("anime")
+
+    assert len(raw) == 3
+    assert source.failed_pages == []
+
+
+def test_page_that_never_recovers_is_skipped_and_recorded(stub):
+    """重试到底仍失败的页：跳过继续，并记进 failed_pages 供重跑。
+
+    不能"整批报废"——实测来源站 55 页里 23 页断连，那样跑一次颗粒无收；
+    也不能静默丢弃——那样"跑完没报错"会让人误以为数据齐了。
+    """
+    stub.reset(failing_pages={2})
+    with OtakuSiteSource(
+        stub.base_url,
+        request_interval_seconds=0,
+        page_size=2,
+        max_attempts=2,
+        backoff_seconds=0,
+    ) as source:
+        pages = list(source.iter_raw("anime"))
+
+    # 第 1 页拿到，第 2 页跳过；第 2 页不满页不会被当作"结束"
+    assert [len(p) for p in pages] == [2]
+    assert [(f.work_type, f.page) for f in source.failed_pages] == [("anime", 2)]
+    assert "503" in source.failed_pages[0].reason
+
+
+def test_iter_work_items_keeps_going_after_a_bad_page(stub):
+    """流式产出：坏页之后的页照常入库，不是全丢。"""
+    stub.reset(failing_pages={2})
+    with OtakuSiteSource(
+        stub.base_url,
+        request_interval_seconds=0,
+        page_size=1,
+        max_attempts=2,
+        backoff_seconds=0,
+    ) as source:
+        ids = [i.source_id for i in source.iter_work_items("anime", "2026-10-20T00:00:00+00:00")]
+
+    # 三条 anime 里，第 2 页那条（979）丢了，第 3 页的（9999）还在
+    assert ids == ["476", "9999"]
