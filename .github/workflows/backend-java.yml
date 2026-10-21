@@ -1,0 +1,48 @@
+name: backend-java
+
+# 为什么要有这个：后端有 10 个测试类（LoginThrottle / ContractJsonShape /
+# LikePattern / PublicIdGenerator / SessionTokens / TagsJson / CoverServiceCache /
+# ImportItemValidator / WorkMerger / SessionCleanupJob），但此前只有
+# app-client 与 sync-python 有 CI，后端测试**只有人记得在本地跑才会跑**。
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend-java/**"
+      - ".github/workflows/backend-java.yml"
+  pull_request:
+    paths:
+      - "backend-java/**"
+      - ".github/workflows/backend-java.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-java-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend-java
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # 与本地对齐：pom.xml 里 java.version=17。
+      - uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: temurin
+          # Maven 依赖缓存，命中时这一步能把整轮从 2 分钟压到 30 秒左右
+          cache: maven
+
+      # 这 10 个测试类都是**纯单元测试**：不起 Spring 容器、不连数据库，
+      # 所以这里不需要 services: mysql。将来若加入 @SpringBootTest / 集成测试，
+      # 必须在这里补 MySQL service，否则会连不上库而失败。
+      - name: Test
+        run: ./mvnw -B test
