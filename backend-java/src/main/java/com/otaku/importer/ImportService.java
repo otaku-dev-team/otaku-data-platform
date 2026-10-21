@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.otaku.common.ApiException;
 import com.otaku.common.ErrorCode;
 import com.otaku.common.TagsJson;
-import com.otaku.common.WorkIdGenerator;
+import com.otaku.common.PublicIdGenerator;
 import com.otaku.importer.dto.Counts;
 import com.otaku.importer.dto.ImportBatchRequest;
 import com.otaku.importer.dto.ImportBatchRequest.ImportItem;
@@ -56,18 +56,18 @@ public class ImportService {
 
     private final WorkRepository workRepository;
     private final ImportBatchRepository batchRepository;
-    private final WorkIdGenerator workIdGenerator;
+    private final PublicIdGenerator idGenerator;
     private final TransactionTemplate transactionTemplate;
     private final ObjectMapper objectMapper;
 
     public ImportService(WorkRepository workRepository,
                          ImportBatchRepository batchRepository,
-                         WorkIdGenerator workIdGenerator,
+                         PublicIdGenerator idGenerator,
                          TransactionTemplate transactionTemplate,
                          ObjectMapper objectMapper) {
         this.workRepository = workRepository;
         this.batchRepository = batchRepository;
-        this.workIdGenerator = workIdGenerator;
+        this.idGenerator = idGenerator;
         this.transactionTemplate = transactionTemplate;
         this.objectMapper = objectMapper;
     }
@@ -171,7 +171,7 @@ public class ImportService {
                 return updateExisting(existing.get(), item);
             }
             try {
-                WorkRecord created = WorkMerger.newRecord(item, workIdGenerator.next(), source, nowUtc());
+                WorkRecord created = WorkMerger.newRecord(item, idGenerator.nextWorkId(), source, nowUtc());
                 workRepository.insert(created);
                 return new ItemOutcome(ImportItemResult.INSERTED, created.workId());
             } catch (DuplicateKeyException ex) {

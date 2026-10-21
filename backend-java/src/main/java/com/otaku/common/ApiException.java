@@ -4,14 +4,25 @@ package com.otaku.common;
 public class ApiException extends RuntimeException {
 
     private final ErrorCode code;
+    /** 需要附带 Retry-After 时填秒数（目前只有登录限流用），否则为 null。 */
+    private final Integer retryAfterSeconds;
 
     public ApiException(ErrorCode code, String message) {
+        this(code, message, null);
+    }
+
+    public ApiException(ErrorCode code, String message, Integer retryAfterSeconds) {
         super(message);
         this.code = code;
+        this.retryAfterSeconds = retryAfterSeconds;
     }
 
     public ErrorCode code() {
         return code;
+    }
+
+    public Integer retryAfterSeconds() {
+        return retryAfterSeconds;
     }
 
     public static ApiException badRequest(String message) {

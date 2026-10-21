@@ -15,6 +15,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -26,7 +27,10 @@ import java.util.HexFormat;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.LockSupport;
 
 /**
@@ -72,6 +76,11 @@ public class CoverService {
     private final long minIntervalNanos;
     private final HttpClient httpClient;
 
+    /** 单飞表：封面地址 → 正在进行的回源。完成后立刻移除，不占内存。 */
+    private final ConcurrentHashMap<String, CompletableFuture<Optional<CoverPayload>>> inflight =
+            new ConcurrentHashMap<>();
+    private static final long FLIGHT_TIMEOUT_SECONDS = 20;
+
     private long nextSlotNanos = System.nanoTime();
 
     public CoverService(WorkRepository workRepository, AppProperties properties) {
@@ -103,19 +112,95 @@ public class CoverService {
             return Optional.empty();
         }
 
+        // 1) 优先用这条作品自己记着的 key
         String cacheKey = work.coverCacheKey();
         if (cacheKey != null) {
-            Path cached = resolveSafely(cacheKey);
-            if (cached != null && Files.isReadable(cached)) {
-                try {
-                    return Optional.of(new CoverPayload(Files.readAllBytes(cached),
-                            contentTypeOf(cacheKey), etagOf(cacheKey)));
-                } catch (IOException ex) {
-                    log.warn("读取封面缓存失败，将回源：{}", ex.getMessage());
-                }
+            Optional<CoverPayload> hit = readCache(cacheKey);
+            if (hit.isPresent()) {
+                return hit;
             }
         }
-        return download(work);
+
+        // 2) key 为空（或文件已丢）时，按来源地址的哈希去磁盘上找同名前缀的文件。
+        //    这是 issue #39 的核心：缓存文件名只由 URL 决定，同一张图被多条作品引用时，
+        //    只要文件已在盘上就不该再回源；只认 cover_cache_key 会让回源次数放大到作品数。
+        String hash = sha256Hex(work.coverSourceUrl());
+        Optional<String> onDisk = findCachedKeyByHash(hash);
+        if (onDisk.isPresent()) {
+            String key = onDisk.get();
+            Optional<CoverPayload> hit = readCache(key);
+            if (hit.isPresent()) {
+                if (cacheKey == null) {
+                    // 顺手把 key 回填，避免下次再扫目录
+                    workRepository.updateCoverCache(work.id(), key, LocalDateTime.now(ZoneOffset.UTC));
+                    log.debug("封面缓存按哈希命中并回填 key：work={} key={}", workId, key);
+                }
+                return hit;
+            }
+        }
+        return downloadOnce(work);
+    }
+
+    /**
+     * 单飞：同一张封面在同一时刻只允许一次回源，其余请求等这一次的结果。
+     *
+     * 为什么需要：缓存未命中时，滚动列表会同时触发多个请求，若各自回源，
+     * 同一张图会被下载 N 次（issue #39 讨论里提到的并发场景）。限流能保证不打爆来源站，
+     * 但没必要把同一份字节传两遍。
+     */
+    private Optional<CoverPayload> downloadOnce(WorkRecord work) {
+        String flightKey = work.coverSourceUrl();
+        CompletableFuture<Optional<CoverPayload>> mine = new CompletableFuture<>();
+        CompletableFuture<Optional<CoverPayload>> running = inflight.putIfAbsent(flightKey, mine);
+        if (running != null) {
+            try {
+                return running.get(FLIGHT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+                return Optional.empty();
+            } catch (Exception ex) {
+                log.warn("等待同封面并发回源失败 url={}：{}", flightKey, ex.toString());
+                return Optional.empty();
+            }
+        }
+        try {
+            Optional<CoverPayload> result = download(work);
+            mine.complete(result);
+            return result;
+        } catch (RuntimeException ex) {
+            mine.complete(Optional.empty());
+            throw ex;
+        } finally {
+            inflight.remove(flightKey, mine);
+        }
+    }
+
+    private Optional<CoverPayload> readCache(String cacheKey) {
+        Path cached = resolveSafely(cacheKey);
+        if (cached == null || !Files.isReadable(cached)) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.of(new CoverPayload(Files.readAllBytes(cached),
+                    contentTypeOf(cacheKey), etagOf(cacheKey)));
+        } catch (IOException ex) {
+            log.warn("读取封面缓存失败，将回源：{}", ex.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    /** 在缓存目录里找 {@code <hash>.<ext>} 形式的文件；找到就返回完整文件名（即 cacheKey）。 */
+    private Optional<String> findCachedKeyByHash(String hash) {
+        try (DirectoryStream<Path> entries = Files.newDirectoryStream(cacheDir, hash + ".*")) {
+            for (Path entry : entries) {
+                if (Files.isReadable(entry)) {
+                    return Optional.of(entry.getFileName().toString());
+                }
+            }
+        } catch (IOException ex) {
+            log.warn("扫描封面缓存目录失败：{}", ex.getMessage());
+        }
+        return Optional.empty();
     }
 
     private Optional<CoverPayload> download(WorkRecord work) {
@@ -167,6 +252,11 @@ public class CoverService {
             byte[] bytes = readBounded(response.body(), properties.getCover().getMaxBytes());
             if (bytes == null) {
                 log.warn("封面超过大小上限 {}，不缓存：{}", properties.getCover().getMaxBytes(), uri);
+                return Optional.empty();
+            }
+            if (bytes.length == 0) {
+                // 200 但空 body：不能落盘也不能回填 key，否则会把这具"空图"永久缓存下去
+                log.warn("封面回源返回空内容，不缓存：{}", uri);
                 return Optional.empty();
             }
 

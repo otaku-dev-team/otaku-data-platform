@@ -25,14 +25,13 @@ Java 业务后端。负责人：**Java 负责人**（@pyxz0）。
 | 接口③ 作品列表 / 搜索 | ✅ 已实现 |
 | 接口④ 作品详情 | ✅ 已实现 |
 | 封面代理 + 本地缓存（契约要求，openapi 未定义） | ✅ 已实现 |
-| 单元测试 | ✅ 27 项，`mvnw.cmd test` 通过（含对外 JSON 键名形状测试） |
+| 单元测试 | ✅ 31 项，`mvnw.cmd test` 通过（含对外 JSON 键名形状测试） |
 | 启动与鉴权冒烟 | ✅ `java -jar` 5–6 秒内启动；无/错令牌 POST 均返回 `401 {"error":{"code":"UNAUTHORIZED"}}` |
 | 数据侧验收 D1–D10 | ✅ 已在真实 MySQL 8.0.46 实例上逐条跑通，见下节 |
 | 容器化本地环境 | ✅ `compose.yaml` 起 MySQL 8.0.46（:3307），`local` profile 直连验证过 D1/D2、列表、封面 |
 | 真实 Python 同步联调 | ✅ 真实站点 100 条动画经 `sync-python` 入库，重跑 `unchanged=100`，见下节 |
+| 阶段 2：账号、会话、收藏与观看状态 | ✅ 已实现，C1–C11 与 E7 全部实测通过，契约提案见 `stage2-account-collection.md` |
 | Flutter 客户端联调 | ⬜ 本机无 Flutter SDK，未运行；接口形状已用 `ContractJsonShapeTest` 对齐 |
-| 与 Python / Flutter 进程联调 | ⬜ 未验证（接口形状与载荷样本已对齐，但还没两边同时跑） |
-| 阶段 2：账号、会话、收藏与观看状态 | ⬜ 未开始 |
 
 ## 数据侧验收实测结果（D1–D10）
 
@@ -100,6 +99,37 @@ PYTHONPATH=src OTAKU_INTERNAL_TOKEN=dev-token OTAKU_JAVA_BASE_URL=http://localho
 
 > 仍待团队处理：`docs/openapi.yaml` 里 `source` 还是 `enum: [otaku_site]`，需要把枚举放开
 > （Python 侧已在提醒中提出）。代码侧不受影响，但文档不改会让联调的人以为 `bangumi` 会被拒。
+
+## 阶段 2：账号与个人数据
+
+实现口径以 [`docs/stage2-account-collection-contract.md`](../docs/stage2-account-collection-contract.md) 为准
+（该文档仍为 DRAFT，§11 的 3 / 4 / 8 属 Java 决定项，本实现按推荐值落地：不透明令牌、LWW、生产必须 HTTPS）。
+
+设计要点：
+
+- **认证**：`Authorization: Bearer <43 字符不透明令牌>`，30 天固定有效期、不滑动续期；库里只存 `SHA-256(token)`，口令用 BCrypt(cost 10)。
+- **多设备**：一次登录一行 `user_session`，退出只撤销当前这一行——一端登录或退出都不影响另一端（C1/C9）。
+- **不开放自助注册**：账号走 `POST /internal/accounts`（`X-Internal-Token`），对应契约 §11.7 与附录 A。
+- **收藏三态**：`null` = 未收藏（记录不存在）；`status=null` = 已收藏但未设状态；`[]`… 无此概念，取消收藏直接删行（C4）。
+- **PUT 与 PATCH 分工**：`PUT` 是 upsert（可创建），`PATCH` 只改不建、记录不存在返回 409 —— 这是 C11 成立的唯一方式。
+- **写接口只收目标状态**，不提供 toggle，避免重试把用户操作反转。
+- **越权防护**：所有个人数据查询都强制 `user_id = 当前会话`，路径与参数里都不出现 `user_id`（C5）。
+- **logout 幂等**：已失效或无令牌调用也返回 204，退出流程不会卡在 401 分支上（契约 §4.3）。
+- **登录限流**：同账号 5 次失败 / 15 分钟滑动窗口 → `429 RATE_LIMITED` + `Retry-After`（实测 900 秒）；
+  只限流不锁号，窗口滑过自动恢复，成功登录即清零。校验放在 BCrypt 比对之前，顺带省掉暴力试错的 CPU。
+- **会话清理**：每天 04:30 UTC 清掉「过期/撤销超过 7 天」的行；30 天有效期 + 7 天保留 ≈ 死行最多滞留 37 天。
+
+已用脚本逐条对照契约验证 **35 项全通过**，覆盖 C1–C5、C9–C11、错误码、幂等与三态语义：
+两端并存、跨端可见、未收藏返回 200（不是 404）、`status=none` 过滤、取消后另一端消失、
+409 `COLLECTION_REQUIRED`、被退出令牌 401、重复 logout 仍 204。
+
+已知未做（不隐瞒，避免文档比实现好看）：
+
+- **`trace_id`**：错误信封保持阶段 1 形状，未加 trace_id。
+- **限流的单实例前提**：`LoginThrottle` 是内存实现，多实例部署时各自计数，需要换 Redis
+  或把限流下沉到网关；同时它是"按账号"而非"按 IP"，换用户名喷洒不触发（网关职责）。
+- **缓存淘汰**：封面缓存只增不减（`cover_cached_at` 记了但没用），全量后需按大小 LRU + 可选 TTL。
+- **生产 HTTPS**：内网联调用 HTTP，上线前必须 HTTPS 并开启 HSTS（契约 §11.8）。
 
 ## 技术选型
 
@@ -184,6 +214,21 @@ $env:DB_USER="root"; $env:DB_PASSWORD="<你的密码>"; $env:OTAKU_INTERNAL_TOKE
 | ④ 详情 | `GET /api/works/{work_id}` | 无 | 10 字段；不存在或格式非法都是 404 |
 | ⑤ 封面 | `GET /api/covers/{work_id}` | 无 | 代理 + 本地缓存，30 天缓存 + ETag；无封面/回源失败返回 404 |
 
+**阶段 2（账号与个人数据）**——字段与语义以
+[`docs/stage2-account-collection-contract.md`](../docs/stage2-account-collection-contract.md) 为准：
+
+| 接口 | 方法与路径 | 鉴权 | 说明 |
+| --- | --- | --- | --- |
+| 建号（内部） | `POST /internal/accounts` | `X-Internal-Token` | 首期不开放自助注册；带 `username` / `password` |
+| 登录 | `POST /api/auth/login` | 无 | 每次登录新建会话，**不踢掉其他设备** |
+| 当前用户 | `GET /api/auth/me` | Bearer | `user_id` / `username` / `display_name`（首期恒为 null） |
+| 退出 | `POST /api/auth/logout` | 可选 | 只撤销当前令牌；**已失效或无令牌也 204** |
+| 收藏列表 | `GET /api/me/collections?status=&page=&page_size=` | Bearer | `status` 可传 `want`/`watching`/`watched`/`none`；排序 `updated_at DESC, work_id ASC` |
+| 单条状态 | `GET /api/me/collections/{work_id}` | Bearer | **未收藏也是 200**，用 `collected=false` 表示；作品不存在才 404 |
+| 加入收藏 | `PUT /api/me/collections/{work_id}` | Bearer | upsert，幂等；`status` 可省略 |
+| 改状态 | `PATCH /api/me/collections/{work_id}` | Bearer | 只改不建；记录不存在 → 409 `COLLECTION_REQUIRED` |
+| 取消收藏 | `DELETE /api/me/collections/{work_id}` | Bearer | 删整条记录，状态随之消失；幂等 204 |
+
 ### 冒烟测试
 
 ```bash
@@ -229,16 +274,21 @@ backend-java/
   compose.yaml            本地 MySQL 8.0 容器（:3307，含可选 Adminer）
   samples/                可直接用于 curl 的请求体（含边界用例）
   src/main/java/com/otaku/
-    common/               错误码、统一信封、分页、LIKE 转义、work_id 生成
+    common/               错误码、统一信封、分页、LIKE 转义、ID 与令牌生成
     config/               应用配置、内部令牌过滤器、CORS、对外地址解析
     work/                 接口③④：Repository / Service / Controller + DTO
     importer/             接口②：校验、合并规则、批次记录
     cover/                ⑤ 封面代理与本地缓存
+    user/                 阶段 2：账号持久化
+    session/              阶段 2：多设备会话（只存令牌摘要）
+    account/              阶段 2：内部建号接口（/internal/accounts）
+    auth/                 阶段 2：注册/登录/退出 + Bearer 鉴权过滤器
+    collection/           阶段 2：收藏与观看状态
   src/main/resources/
     application.yml
-    db/migration/         Flyway 迁移（V1__init.sql）
+    db/migration/         Flyway 迁移（V1 作品、V2 账号与会话）
     db/manual/            建库语句（手动执行一次，Flyway 不管）
-  src/test/java/          合并规则、条目校验、LIKE 转义、work_id 的单元测试
+  src/test/java/          合并规则、条目校验、LIKE 转义、ID/令牌、JSON 形状的单元测试
 ```
 
 ## 几条容易踩的实现约定

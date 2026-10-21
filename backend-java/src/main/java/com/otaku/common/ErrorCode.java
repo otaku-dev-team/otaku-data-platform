@@ -13,6 +13,13 @@ public enum ErrorCode {
     WORK_NOT_FOUND(HttpStatus.NOT_FOUND),
     /** 契约第 7 节的 404 只定义了 WORK_NOT_FOUND；批次查询需要区分，故补充此码。 */
     BATCH_NOT_FOUND(HttpStatus.NOT_FOUND),
+
+    /** 阶段 2：口令错误或用户不存在（不区分两者，避免枚举账号）。 */
+    INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED),
+    /** 阶段 2：用户名已被占用。 */
+    USERNAME_TAKEN(HttpStatus.CONFLICT),
+    /** 阶段 2：改状态时收藏已不存在（对应验收 C11，客户端应提示刷新而不是自动重新收藏）。 */
+    COLLECTION_REQUIRED(HttpStatus.CONFLICT),
     BATCH_TOO_LARGE(HttpStatus.PAYLOAD_TOO_LARGE),
     RATE_LIMITED(HttpStatus.TOO_MANY_REQUESTS),
     INTERNAL(HttpStatus.INTERNAL_SERVER_ERROR);
