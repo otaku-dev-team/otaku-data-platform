@@ -219,8 +219,8 @@ Python 从现有网站等约定来源读取作品数据，完成校验、清洗�
 
 参考资料：
 
-- [原项目文档](https://github.com/zhengmin486/otaku-data-platform/blob/main/docs/README.md)
-- [字段讨论 Issue #3](https://github.com/zhengmin486/otaku-data-platform/issues/3)
+- [原项目文档](https://github.com/otaku-dev-team/otaku-data-platform/blob/main/docs/README.md)
+- [字段讨论 Issue #3](https://github.com/otaku-dev-team/otaku-data-platform/issues/3)
 - [现有网站接口文档](http://154.8.194.198:8000/docs)
 - [现有详情 API 样本](http://154.8.194.198:8000/api/contents/476)
 - [Flutter 桌面支持](https://docs.flutter.dev/platform-integration/desktop)

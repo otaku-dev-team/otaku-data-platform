@@ -82,3 +82,21 @@ def test_payload_uses_null_for_unprovided_fields(stub):
     assert "release_year" not in item  # 第一阶段不提交该字段
     assert item["tags"] is None
     assert item["main_rating"] is None
+
+
+def test_source_follows_argument_not_constant(stub):
+    """批次级 source 必须跟随调用方传入的值，不能写死为 otaku_site。
+
+    否则真推 bangumi 时会被错标成 otaku_site，与 dry-run 落盘载荷不一致，
+    也会让后端把两个来源的记录按同一 source 处理。
+    """
+    importer = JavaImporter(stub.base_url, token="secret")
+    try:
+        importer.submit_batch(
+            "batch-7", [make_item()], "2026-10-20T00:00:00+00:00", source="bangumi"
+        )
+    finally:
+        importer.close()
+    body = stub.state["received"][0]
+    assert body["source"] == "bangumi"
+    assert body["items"][0]["source_id"] == "476"

@@ -10,7 +10,10 @@ import 'package:otaku_app/data/models/work.dart';
 import 'package:otaku_app/data/models/work_summary.dart';
 import 'package:otaku_app/data/models/work_type.dart';
 import 'package:otaku_app/data/repositories/work_repository.dart';
+import 'package:otaku_app/features/contents/contents_controller.dart';
+import 'package:otaku_app/features/contents/contents_page.dart';
 import 'package:otaku_app/features/contents/work_card.dart';
+import 'package:otaku_app/features/contents/work_list_tile.dart';
 import 'package:otaku_app/features/detail/work_detail_page.dart';
 
 /// 内存数据源：不读资源、不发网络，让 widget 测试只关注界面。
@@ -65,15 +68,56 @@ class _FakeDataSource implements WorkDataSource {
   }
 }
 
+/// 不筛选时正常返回，一旦按类型筛选就断网——用来复现"换条件后请求失败"。
+class _OfflineOnFilterDataSource extends _FakeDataSource {
+  @override
+  Future<PagedResult<WorkSummary>> fetchWorks({
+    WorkType? type,
+    String? query,
+    int page = 1,
+    int pageSize = 20,
+  }) async {
+    if (type != null) {
+      throw const ApiException(
+        code: ApiErrorCode.network,
+        message: '网络连接失败',
+      );
+    }
+    return super.fetchWorks(type: type, query: query, page: page);
+  }
+}
+
+/// 第一次成功、之后全部失败——用来复现"同条件刷新失败"。
+class _OfflineAfterFirstLoadDataSource extends _FakeDataSource {
+  int calls = 0;
+
+  @override
+  Future<PagedResult<WorkSummary>> fetchWorks({
+    WorkType? type,
+    String? query,
+    int page = 1,
+    int pageSize = 20,
+  }) async {
+    calls++;
+    if (calls > 1) {
+      throw const ApiException(
+        code: ApiErrorCode.network,
+        message: '网络连接失败',
+      );
+    }
+    return super.fetchWorks(type: type, query: query, page: page);
+  }
+}
+
 /// 这些测试直接读 `assets/mock/` 里的真实样本，校验资源是否已声明进 pubspec，
 /// 以及 Mock 数据源是否保留了契约要求的查询语义。
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  Widget wrap(Widget child) {
+  Widget wrap(Widget child, {WorkDataSource? source}) {
     return ProviderScope(
       overrides: [
-        workDataSourceProvider.overrideWithValue(_FakeDataSource()),
+        workDataSourceProvider.overrideWithValue(source ?? _FakeDataSource()),
       ],
       child: child,
     );
@@ -89,12 +133,14 @@ void main() {
     test('24 条数据按 20 条分页，共两页', () async {
       final source = MockWorkDataSource(latency: Duration.zero);
 
-      final first = await source.fetchWorks(page: 1);
+      // 显式给 pageSize：这条测的是分页机制，不该被 AppConfig.pageSize 的默认值牵着走
+      // （它已经从 20 提到 50，否则这里 24 条一页就完了，测不到「翻页」）。
+      final first = await source.fetchWorks(page: 1, pageSize: 20);
       expect(first.total, 24);
       expect(first.items, hasLength(20));
       expect(first.hasNext, isTrue);
 
-      final second = await source.fetchWorks(page: 2);
+      final second = await source.fetchWorks(page: 2, pageSize: 20);
       expect(second.items, hasLength(4));
       expect(second.hasNext, isFalse);
     });
@@ -180,5 +226,102 @@ void main() {
     await tester.tap(find.text('展开全文'));
     await tester.pump();
     expect(find.text('收起'), findsOneWidget);
+  });
+
+  testWidgets('换类型后请求失败：报错并可重试，不把旧类型的结果当新结果', (tester) async {
+    await tester.pumpWidget(
+      wrap(const OtakuApp(), source: _OfflineOnFilterDataSource()),
+    );
+    await settle(tester);
+    expect(find.byType(WorkCard), findsNWidgets(3));
+
+    await tester.tap(find.widgetWithText(ChoiceChip, '动画'));
+    await settle(tester);
+
+    // 旧结果必须让位给错误状态：切到"动画"却还显示全部类型的三条卡片是误导。
+    expect(find.byType(WorkCard), findsNothing);
+    expect(find.text('网络好像不太行'), findsOneWidget);
+    expect(find.text('重试'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('同一条件刷新失败：保留内容，但显示错误提示条与重试', (tester) async {
+    final source = _OfflineAfterFirstLoadDataSource();
+    await tester.pumpWidget(wrap(const OtakuApp(), source: source));
+    await settle(tester);
+    expect(find.byType(WorkCard), findsNWidgets(3));
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(ContentsPage)),
+    );
+    await container.read(contentsControllerProvider.notifier).refresh();
+    await settle(tester);
+
+    // 内容还在，但失败必须说清楚，不能静默。
+    expect(find.byType(WorkCard), findsNWidgets(3));
+    expect(find.text('网络连接失败，请检查网络后重试'), findsOneWidget);
+    expect(
+      find.widgetWithText(TextButton, '重试'),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('筛选胶囊显示作品数，数量来自列表接口的 total', (tester) async {
+    await tester.pumpWidget(wrap(const OtakuApp()));
+    await settle(tester);
+
+    // _FakeDataSource 对每个类型都返回 total = 3。
+    for (final label in ['全部', '动画', '漫画', '游戏', '小说']) {
+      expect(
+        find.descendant(
+          of: find.widgetWithText(ChoiceChip, label),
+          matching: find.text('3'),
+        ),
+        findsOneWidget,
+        reason: '「$label」胶囊上应该带作品数',
+      );
+    }
+    expect(find.text('共 3 部'), findsOneWidget);
+  });
+
+  testWidgets('切到列表视图：卡片换成行式，总数不变', (tester) async {
+    await tester.pumpWidget(wrap(const OtakuApp()));
+    await settle(tester);
+    expect(find.byType(WorkCard), findsNWidgets(3));
+
+    await tester.tap(find.byTooltip('列表视图'));
+    await settle(tester);
+
+    expect(find.byType(WorkListTile), findsNWidgets(3));
+    expect(find.byType(WorkCard), findsNothing);
+
+    // 切回网格，状态要能来回切。
+    await tester.tap(find.byTooltip('网格视图'));
+    await settle(tester);
+    expect(find.byType(WorkCard), findsNWidgets(3));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('详情页列出收录信息，缺失的行不占位', (tester) async {
+    tester.view.physicalSize = const Size(800, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      wrap(const MaterialApp(home: WorkDetailPage(workId: 'W-1'))),
+    );
+    await settle(tester);
+
+    expect(find.text('收录信息'), findsOneWidget);
+    // 作品 ID / 来源 / 来源 ID / 收录更新 四行都来自假数据源。
+    expect(find.text('W-1'), findsOneWidget);
+    expect(find.text('otaku_site'), findsOneWidget);
+    expect(find.text('662'), findsOneWidget);
+    expect(find.text('2026-10-19'), findsOneWidget);
+    // 假数据没有封面、没有评分、没有标签：不该凭空出现「0.0」或空标签区。
+    expect(find.text('0.0'), findsNothing);
+    expect(tester.takeException(), isNull);
   });
 }

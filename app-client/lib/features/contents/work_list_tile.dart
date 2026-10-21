@@ -1,0 +1,84 @@
+import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+
+import '../../core/router/route_paths.dart';
+import '../../core/theme/app_layout.dart';
+import '../../data/models/work_summary.dart';
+import '../../shared/widgets/cover_image.dart';
+import '../../shared/widgets/poster_card.dart';
+import '../../shared/widgets/rating_badge.dart';
+import '../../shared/widgets/tag_chips.dart';
+import '../../shared/widgets/work_type_tag.dart';
+
+/// 列表视图的一行：左侧 2:3 小封面，右侧标题 / 类型 / 评分 / 标签。
+///
+/// 站点在列表视图里还会显示两行摘要和排名角标，这里没有——列表接口不返回
+/// `summary`，契约里也没有 rank 字段。硬凑只能逐条打详情，代价远大于收益。
+class WorkListTile extends StatelessWidget {
+  const WorkListTile({super.key, required this.work});
+
+  final WorkSummary work;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final firstChar = work.title.characters.isEmpty
+        ? null
+        : work.title.characters.first;
+
+    return PosterCardShell(
+      onTap: () => context.push(RoutePaths.workDetail(work.workId)),
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            CoverImage(
+              url: work.coverUrl,
+              width: AppLayout.coverWidth,
+              height: AppLayout.coverHeight,
+              radius: 8,
+              placeholderLabel: firstChar,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    work.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodyLarge?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      height: 1.3,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      WorkTypeTag(type: work.workType),
+                      const SizedBox(width: 8),
+                      // 契约 6.3：没有评分就整块不渲染，不能显示 0.0。
+                      RatingBadge(rating: work.mainRating, compact: true),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  // 列表视图比网格宽，标签多给几个；仍然只占一行，超出裁掉。
+                  SizedBox(
+                    height: 22,
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      physics: const NeverScrollableScrollPhysics(),
+                      child: TagChips(tags: work.tags, maxVisible: 5),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

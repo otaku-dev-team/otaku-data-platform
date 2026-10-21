@@ -5,11 +5,13 @@ info:
   version: 1.0.0-draft
   description: |
     本文件是《第一阶段最小契约》（docs/stage1-minimal-contract.md）的机器可读版本，
-    只覆盖第一阶段四个接口中的 HTTP 部分：
+    只覆盖第一阶段四个接口中的 HTTP 部分，以及 ③④ 共用的封面出口：
 
     - **② 数据写入接口** `POST /internal/import/batches`（Python → Java）
     - **③ 作品列表接口** `GET /api/works`（Flutter → Java）
     - **④ 作品详情接口** `GET /api/works/{work_id}`（Flutter → Java）
+    - **⑤ 封面代理接口** `GET /api/covers/{work_id}`（Flutter → Java）——
+      `cover_url` 指向这里，不是来源站地址
 
     **接口①「网站接入」不在本文件。** 那是平台**只读拉取**来源站，来源站的接口不由我们定义，
     接入规范（拿什么、不拿什么、网站需具备什么能力）见契约第 4 节。
@@ -23,7 +25,7 @@ info:
     3. 空值一律 `null`，不用 `""`、`0`、"暂无" 之类的伪值填充。
   contact:
     name: 契约讨论
-    url: https://github.com/zhengmin486/otaku-data-platform/issues/3
+    url: https://github.com/otaku-dev-team/otaku-data-platform/issues/3
 
 servers:
   - url: http://localhost:8080
@@ -106,6 +108,45 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Work" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /api/covers/{work_id}:
+    get:
+      tags: [作品查询]
+      summary: 作品封面代理（③④ 的配套出口）
+      operationId: getWorkCover
+      description: |
+        取封面图片本体。列表与详情返回的 `cover_url` 指向这里，客户端只消费
+        `cover_url`，**不直连来源站**（契约第 2.1 节）。
+
+        边界约定：
+        - `cover_url` 为 `null` 时客户端**不应**发起本请求，直接显示占位图（契约 6.3）。
+        - 本地缓存未命中才回源一次，并按来源站限流缓存；命中后由平台直接服务，
+          不再受来源站约 43 分钟缓存期影响。
+        - 回源失败视为服务端错误，客户端按 `INTERNAL` 处理，不要退化成直连来源站。
+        - `work_id` 与接口④ 同一条不透明字符串规则；不存在返回 `404`。
+      parameters:
+        - $ref: "#/components/parameters/WorkId"
+      responses:
+        "200":
+          description: 封面图片字节（不套 JSON 信封）
+          headers:
+            ETag:
+              description: 内容指纹，客户端可用 `If-None-Match` 做协商缓存
+              schema: { type: string }
+            Cache-Control:
+              description: 平台侧缓存策略；来源站自身缓存期仅约 43 分钟，此处由平台决定
+              schema: { type: string }
+          content:
+            image/webp:
+              schema: { type: string, format: binary }
+            image/jpeg:
+              schema: { type: string, format: binary }
+            image/png:
+              schema: { type: string, format: binary }
+        "304":
+          description: If-None-Match 命中，客户端复用本地缓存（无响应体）
         "404": { $ref: "#/components/responses/NotFound" }
         "500": { $ref: "#/components/responses/InternalError" }
 
@@ -311,7 +352,7 @@ components:
         main_rating: { $ref: "#/components/schemas/SourceRating" }
         source:
           type: string
-          description: 接入方唯一标识。第一阶段只有 otaku_site
+          description: 接入方唯一标识。已知取值 otaku_site（站点 API）、bangumi（Bangumi 档案）
           example: otaku_site
         source_id:
           type: string
@@ -337,7 +378,11 @@ components:
           example: otaku_site-anime-20261020-3a9f1c
         source:
           type: string
-          enum: [otaku_site]
+          description: |
+            接入方唯一标识（见契约第 4.6 节）。已知取值：otaku_site（现有站点 API）、
+            bangumi（Bangumi 官方数据集档案，见 sync-python 适配器）。后端按字符串存储、
+            不做白名单校验，新增来源按约定加适配器和 source 取值即可。
+          enum: [otaku_site, bangumi]
         fetched_at:
           type: string
           format: date-time

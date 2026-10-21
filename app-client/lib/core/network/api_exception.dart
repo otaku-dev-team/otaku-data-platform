@@ -4,6 +4,13 @@ import 'package:dio/dio.dart';
 /// `{"error": {"code": "...", "message": "..."}}`
 enum ApiErrorCode {
   unauthorized('UNAUTHORIZED'),
+
+  /// 登录时账号密码不对。与 [unauthorized] 同为 401，但**不能清已有会话**。
+  invalidCredentials('INVALID_CREDENTIALS'),
+
+  /// 改状态时该作品已不在收藏里（C11）。提示刷新，**不得静默重新收藏**。
+  collectionRequired('COLLECTION_REQUIRED'),
+
   badRequest('BAD_REQUEST'),
   workNotFound('WORK_NOT_FOUND'),
   batchTooLarge('BATCH_TOO_LARGE'),
@@ -54,7 +61,9 @@ class ApiException implements Exception {
     ApiErrorCode.rateLimited => '请求太频繁了，请稍后再试',
     ApiErrorCode.internal => '服务端出错了，请稍后重试',
     ApiErrorCode.workNotFound => '作品不存在',
-    ApiErrorCode.unauthorized => '没有访问权限',
+    ApiErrorCode.unauthorized => '登录已过期，请重新登录',
+    ApiErrorCode.invalidCredentials => '账号或密码不正确',
+    ApiErrorCode.collectionRequired => '该作品已不在收藏中，请刷新后重试',
     ApiErrorCode.cancelled => '请求已取消',
     _ => message.isNotEmpty ? message : '出了点问题，请重试',
   };

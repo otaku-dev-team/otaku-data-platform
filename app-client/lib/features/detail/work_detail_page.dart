@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/network/api_exception.dart';
 import '../../core/router/route_paths.dart';
 import '../../core/theme/app_layout.dart';
+import '../../core/theme/app_theme.dart';
 import '../../data/models/work.dart';
 import '../../shared/widgets/cover_image.dart';
 import '../../shared/widgets/error_state.dart';
@@ -18,6 +19,10 @@ import 'work_detail_controller.dart';
 /// - 404 → 提示 + 返回列表，**不自动重试**；
 /// - `summary` 为 null → "暂无简介"，超长时折叠；
 /// - `main_rating`、`tags` 为空 → 对应区块不渲染。
+///
+/// 版面按站点的详情页顺序摆：封面 + 标题 + 分类评分 → 简介 → 收录信息。
+/// 站点还有原名、别名、年份、话数、制作、导演、声优、系列、相关推荐，
+/// 这些字段平台契约里都还没有，**这里不摆空位**——空占位比少显示更误导。
 class WorkDetailPage extends ConsumerWidget {
   const WorkDetailPage({super.key, required this.workId});
 
@@ -80,16 +85,68 @@ class _DetailBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(AppLayout.pagePadding),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final cover = CoverImage(
+                url: work.coverUrl,
+                width: AppLayout.detailCoverWidth,
+                height: AppLayout.detailCoverHeight,
+                radius: 14,
+              );
+
+              if (constraints.maxWidth < AppLayout.twoColumnBreakpoint) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(child: cover),
+                    const SizedBox(height: 20),
+                    _Headline(work: work),
+                  ],
+                );
+              }
+
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  cover,
+                  const SizedBox(width: 28),
+                  Expanded(child: _Headline(work: work)),
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 24),
+          _RecordPanel(work: work),
+        ],
+      ),
+    );
+  }
+}
+
+/// 标题区：标题 / 类型 / 评分 / 标签 / 简介。
+class _Headline extends StatelessWidget {
+  const _Headline({required this.work});
+
+  final Work work;
+
+  @override
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final tags = work.tags;
 
-    final info = Column(
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           work.title,
           style: theme.textTheme.headlineSmall?.copyWith(
             fontWeight: FontWeight.w700,
+            height: 1.25,
           ),
         ),
         const SizedBox(height: 12),
@@ -100,57 +157,114 @@ class _DetailBody extends StatelessWidget {
           children: [
             WorkTypeTag(type: work.workType),
             RatingBadge(rating: work.mainRating),
+            if (work.mainRating != null)
+              Text(
+                // 契约里的尺度是 `0-10`，站点写的是「满分 10 分」——取上界即可。
+                '满分 ${work.mainRating!.scale.split('-').last} 分',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
           ],
         ),
         if (tags != null) ...[
           const SizedBox(height: 12),
-          TagChips(tags: tags, maxVisible: 8),
+          TagChips(tags: tags, maxVisible: 10),
         ],
-        const SizedBox(height: 24),
+        const SizedBox(height: 20),
+        const Divider(height: 1),
+        const SizedBox(height: 16),
+        Text(
+          '简介',
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 8),
         _SummaryBlock(text: work.summary),
-        const SizedBox(height: 28),
-        _SourceLine(work: work),
       ],
     );
+  }
+}
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(AppLayout.pagePadding),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          if (constraints.maxWidth < AppLayout.twoColumnBreakpoint) {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: CoverImage(
-                    url: work.coverUrl,
-                    width: 160,
-                    height: 218,
-                    radius: 12,
+/// 收录信息。站点这一块放的是原名 / 话数 / 制作 / 放送 / 声优，
+/// 平台目前只有溯源类字段，所以只摆**确实有值**的行，缺失的整行不出现。
+class _RecordPanel extends StatelessWidget {
+  const _RecordPanel({required this.work});
+
+  final Work work;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final rows = <({String label, String value})>[
+      (label: '作品 ID', value: work.workId),
+      if (work.source.isNotEmpty) (label: '来源', value: work.source),
+      if (work.sourceId.isNotEmpty) (label: '来源 ID', value: work.sourceId),
+      if (work.updatedAt != null)
+        (label: '收录更新', value: _formatDate(work.updatedAt!)),
+    ];
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+      decoration: BoxDecoration(
+        color: AppTheme.cardColor(context),
+        borderRadius: BorderRadius.circular(AppLayout.cardRadius),
+        border: Border.all(color: AppTheme.borderColor(context)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '收录信息',
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 6),
+          // 站点资料区是「左标签右值」的两列排布，这里沿用同一套读法。
+          for (final row in rows)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    width: 88,
+                    child: Text(
+                      row.label,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 20),
-                info,
-              ],
-            );
-          }
-
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              CoverImage(
-                url: work.coverUrl,
-                width: AppLayout.detailCoverWidth,
-                height: AppLayout.detailCoverHeight,
-                radius: 12,
+                  Expanded(
+                    child: SelectableText(
+                      row.value,
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(width: 28),
-              Expanded(child: info),
-            ],
-          );
-        },
+            ),
+          const SizedBox(height: 10),
+          Text(
+            '资料整理自 ${work.source.isEmpty ? '来源站点' : work.source}，仅作展示与学习用途。',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
       ),
     );
+  }
+
+  static String _formatDate(DateTime value) {
+    final local = value.toLocal();
+    final month = local.month.toString().padLeft(2, '0');
+    final day = local.day.toString().padLeft(2, '0');
+    return '${local.year}-$month-$day';
   }
 }
 
@@ -222,37 +336,5 @@ class _SummaryBlockState extends State<_SummaryBlock> {
         );
       },
     );
-  }
-}
-
-/// 溯源信息。契约 3.1：`source_id` 可以展示，但不得用于业务判断。
-class _SourceLine extends StatelessWidget {
-  const _SourceLine({required this.work});
-
-  final Work work;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final parts = <String>[
-      if (work.source.isNotEmpty) '来源 ${work.source}',
-      if (work.sourceId.isNotEmpty) '来源 ID ${work.sourceId}',
-      if (work.updatedAt != null) '更新于 ${_formatDate(work.updatedAt!)}',
-    ];
-    if (parts.isEmpty) return const SizedBox.shrink();
-
-    return Text(
-      parts.join(' · '),
-      style: theme.textTheme.bodySmall?.copyWith(
-        color: theme.colorScheme.onSurfaceVariant,
-      ),
-    );
-  }
-
-  static String _formatDate(DateTime value) {
-    final local = value.toLocal();
-    final month = local.month.toString().padLeft(2, '0');
-    final day = local.day.toString().padLeft(2, '0');
-    return '${local.year}-$month-$day';
   }
 }

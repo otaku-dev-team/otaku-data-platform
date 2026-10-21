@@ -1,0 +1,45 @@
+name: app-client
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app-client/**"
+      - ".github/workflows/app-client.yml"
+  pull_request:
+    paths:
+      - "app-client/**"
+      - ".github/workflows/app-client.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: app-client-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze-and-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app-client
+    steps:
+      - uses: actions/checkout@v7
+
+      # 版本与本地开发环境对齐（Flutter 3.47.7 / Dart 3.13）。升级 Flutter 时
+      # 同步改这里，否则 `flutter analyze` 的严格程度会和本地不一致。
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.47.7"
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test

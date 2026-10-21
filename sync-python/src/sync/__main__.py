@@ -1,6 +1,9 @@
 """命令行入口。
 
     python -m sync --type anime --limit 100 --dry-run
+    python -m sync --source bangumi --archive <dump.zip> --stats
+    python -m sync --source bangumi --archive <dump.zip> --type anime --limit 100 --dry-run
+    python -m sync --source bangumi --archive <dump.zip> --limit 10000 --sample uniform --dry-run
 
 Java 后端就绪后再去掉 --dry-run 并配置 OTAKU_INTERNAL_TOKEN。
 """
@@ -10,14 +13,15 @@ from __future__ import annotations
 import argparse
 import sys
 
-from .config import SyncConfig
+from .bangumi import BangumiArchiveSource, WORK_TYPE_LABELS
+from .config import VALID_SOURCES, SyncConfig
 from .pipeline import run, summarize
 from .models import VALID_WORK_TYPES
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="sync", description="从现有 Otaku 网站同步作品数据到 Java 后端"
+        prog="sync", description="把来源作品数据整理后提交给 Java 后端"
     )
     parser.add_argument(
         "--type",
@@ -37,6 +41,27 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--batch-size", type=int, default=None, help="每批条数，上限 500")
     parser.add_argument("--out", default=None, help="输出目录，默认 runs")
     parser.add_argument(
+        "--source",
+        choices=VALID_SOURCES,
+        default=None,
+        help="来源：otaku_site（在线站点）或 bangumi（本地档案），默认读环境变量",
+    )
+    parser.add_argument(
+        "--archive", default=None, help="Bangumi 档案路径（dump.zip），仅 --source bangumi 用"
+    )
+    parser.add_argument(
+        "--sample",
+        choices=["head", "uniform"],
+        default=None,
+        help="抽样方式：head=按档案顺序取前 N 条（默认）；uniform=蓄水池随机抽样，"
+        "消除按 id 顺序的偏差，使样本分布接近全量真实比例。不传时读 OTAKU_SAMPLE_METHOD",
+    )
+    parser.add_argument(
+        "--stats",
+        action="store_true",
+        help="只统计档案里各类型条数，不生成载荷",
+    )
+    parser.add_argument(
         "--source-base-url", default=None, help="覆盖来源站点地址"
     )
     parser.add_argument("--java-base-url", default=None, help="覆盖 Java 后端地址")
@@ -51,9 +76,52 @@ def main(argv: list[str] | None = None) -> int:
 
     config = SyncConfig.from_env(
         batch_size=args.batch_size,
+        source=args.source,
+        archive_path=args.archive,
+        sample_method=args.sample,
         source_base_url=args.source_base_url,
         java_base_url=args.java_base_url,
     )
+
+    # 环境变量也能改来源/抽样方式，这里统一兜底校验，避免拼错时静默退化。
+    if config.source not in VALID_SOURCES:
+        print(
+            f"错误：未知来源 {config.source!r}，可选 {', '.join(VALID_SOURCES)}",
+            file=sys.stderr,
+        )
+        return 2
+    if config.sample_method not in ("head", "uniform"):
+        print(
+            f"错误：未知抽样方式 {config.sample_method!r}，可选 head、uniform",
+            file=sys.stderr,
+        )
+        return 2
+    if config.source == "bangumi" and not config.archive_path:
+        print(
+            "错误：--source bangumi 需要 --archive <dump.zip> 或 OTAKU_ARCHIVE_PATH",
+            file=sys.stderr,
+        )
+        return 2
+
+    if args.stats:
+        if config.source != "bangumi":
+            print("错误：--stats 只支持 --source bangumi", file=sys.stderr)
+            return 2
+        counts = BangumiArchiveSource(config.archive_path or "").count_by_work_type()
+        print("档案类型分布：")
+        for name, label in WORK_TYPE_LABELS.items():
+            print(f"  {name:6s} {label}  {counts[name]}")
+        print(f"  排除（音乐/三次元/其他书籍）  {counts['excluded']}")
+        return 0
+
+    # 蓄水池抽样必须知道样本量；缺 --limit 时若静默按 head 顺序取，等于没抽样且样本有偏。
+    if config.sample_method == "uniform" and args.limit is None:
+        print(
+            "错误：--sample uniform 必须配合 --limit N（蓄水池抽样需要明确的样本量）",
+            file=sys.stderr,
+        )
+        return 2
+
     report = run(
         config,
         work_types=args.work_types,
