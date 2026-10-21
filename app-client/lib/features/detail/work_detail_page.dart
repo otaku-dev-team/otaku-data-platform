@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/network/api_exception.dart';
@@ -40,7 +41,24 @@ class WorkDetailPage extends ConsumerWidget {
 
     return DesktopShortcuts(
       child: Scaffold(
-        appBar: AppBar(title: const Text('作品详情')),
+        appBar: AppBar(
+          title: const Text('作品详情'),
+          actions: [
+            // source_url 为 null 时**什么都不渲染**：不放置灰按钮。
+            // 一个点不动的图标比没有图标更让人困惑（Issue #68 验收第 2 条）。
+            //
+            // 渲染前再过一次 parseSourceUrl，而不是直接用 `work.sourceUrl`：
+            // 前者只保证「从 JSON 解析出来的值」安全，而 Work 也可能被测试或
+            // 本地 mock 直接构造。这道闸放在出口，覆盖所有来源。
+            if (Work.parseSourceUrl(work.value?.sourceUrl) case final url?)
+              IconButton(
+                tooltip: '在来源站查看',
+                onPressed: () => _openSource(context, url),
+                icon: const Icon(Icons.open_in_new_rounded),
+              ),
+            const SizedBox(width: 4),
+          ],
+        ),
         body: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(
@@ -51,6 +69,31 @@ class WorkDetailPage extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  /// 用系统浏览器打开来源站人读页。
+  ///
+  /// 不在应用内嵌 WebView：来源站是独立站点，嵌进来既没有会话也没有它的导航，
+  /// 而且会把「应用返回」和「网页返回」两套手势混在一起。
+  ///
+  /// 打不开时**必须说出来**：桌面端没有配置浏览器关联时 `launchUrl` 返回 false，
+  /// 静默失败会让用户以为按钮坏了。
+  static Future<void> _openSource(BuildContext context, String url) async {
+    final messenger = ScaffoldMessenger.of(context);
+    var opened = false;
+    try {
+      opened = await launchUrl(
+        Uri.parse(url),
+        mode: LaunchMode.externalApplication,
+      );
+    } catch (_) {
+      opened = false;
+    }
+    if (!opened) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('打不开来源页，请检查系统默认浏览器')),
+      );
+    }
   }
 
   Widget _buildBody(
@@ -396,8 +439,7 @@ class _RecordPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final rows = <({String label, String value})>[
-      if (work.releaseYear != null)
-        (label: '年份', value: '${work.releaseYear}'),
+      if (work.releaseYear != null) (label: '年份', value: '${work.releaseYear}'),
       (label: '作品 ID', value: work.workId),
       if (work.source.isNotEmpty) (label: '来源', value: work.source),
       if (work.sourceId.isNotEmpty) (label: '来源 ID', value: work.sourceId),
