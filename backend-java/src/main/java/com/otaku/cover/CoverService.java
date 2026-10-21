@@ -15,6 +15,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -103,19 +104,61 @@ public class CoverService {
             return Optional.empty();
         }
 
+        // 1) 优先用这条作品自己记着的 key
         String cacheKey = work.coverCacheKey();
         if (cacheKey != null) {
-            Path cached = resolveSafely(cacheKey);
-            if (cached != null && Files.isReadable(cached)) {
-                try {
-                    return Optional.of(new CoverPayload(Files.readAllBytes(cached),
-                            contentTypeOf(cacheKey), etagOf(cacheKey)));
-                } catch (IOException ex) {
-                    log.warn("读取封面缓存失败，将回源：{}", ex.getMessage());
+            Optional<CoverPayload> hit = readCache(cacheKey);
+            if (hit.isPresent()) {
+                return hit;
+            }
+        }
+
+        // 2) key 为空（或文件已丢）时，按来源地址的哈希去磁盘上找同名前缀的文件。
+        //    这是 issue #39 的核心：缓存文件名只由 URL 决定，同一张图被多条作品引用时，
+        //    只要文件已在盘上就不该再回源；只认 cover_cache_key 会让回源次数放大到作品数。
+        String hash = sha256Hex(work.coverSourceUrl());
+        Optional<String> onDisk = findCachedKeyByHash(hash);
+        if (onDisk.isPresent()) {
+            String key = onDisk.get();
+            Optional<CoverPayload> hit = readCache(key);
+            if (hit.isPresent()) {
+                if (cacheKey == null) {
+                    // 顺手把 key 回填，避免下次再扫目录
+                    workRepository.updateCoverCache(work.id(), key, LocalDateTime.now(ZoneOffset.UTC));
+                    log.debug("封面缓存按哈希命中并回填 key：work={} key={}", workId, key);
                 }
+                return hit;
             }
         }
         return download(work);
+    }
+
+    private Optional<CoverPayload> readCache(String cacheKey) {
+        Path cached = resolveSafely(cacheKey);
+        if (cached == null || !Files.isReadable(cached)) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.of(new CoverPayload(Files.readAllBytes(cached),
+                    contentTypeOf(cacheKey), etagOf(cacheKey)));
+        } catch (IOException ex) {
+            log.warn("读取封面缓存失败，将回源：{}", ex.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    /** 在缓存目录里找 {@code <hash>.<ext>} 形式的文件；找到就返回完整文件名（即 cacheKey）。 */
+    private Optional<String> findCachedKeyByHash(String hash) {
+        try (DirectoryStream<Path> entries = Files.newDirectoryStream(cacheDir, hash + ".*")) {
+            for (Path entry : entries) {
+                if (Files.isReadable(entry)) {
+                    return Optional.of(entry.getFileName().toString());
+                }
+            }
+        } catch (IOException ex) {
+            log.warn("扫描封面缓存目录失败：{}", ex.getMessage());
+        }
+        return Optional.empty();
     }
 
     private Optional<CoverPayload> download(WorkRecord work) {
