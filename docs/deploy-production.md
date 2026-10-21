@@ -24,8 +24,9 @@
                                      └── 封面缓存（持久卷）
 ```
 
-数据量参考：现有 15,445 条占 **285 MB**；全量 55.6 万约 **600–700 MB**，加上封面缓存，
-一台 40 GB 系统盘的轻量服务器完全够用。
+数据量参考：现有 15,445 条的**业务数据只有 15.5 MB**（`work` 表，含索引约 20 MB）。
+数据目录整体 285 MB，但其中大部分是 binlog、undo 与系统文件，不是业务数据。
+全量 55.6 万条按同比例推算约 **560–700 MB**。一台 40 GB 系统盘的轻量服务器绰绰有余。
 
 ---
 
@@ -128,15 +129,33 @@ docker compose -f compose.prod.yaml logs -f backend
 
 **只迁一次**，之后线上的库就是权威数据。
 
-**① 在开发机导出**（`--single-transaction` 不锁表，可边跑边导）：
+**① 在开发机导出并验证**
+
+用脚本，别手拼参数（漏一个参数不会当场报错，要到恢复时才炸）：
 
 ```bash
-# Windows 本机，MySQL 在 3310
+# 本机 MySQL 在 3310，客户端在 /d/mysql/bin
+MYSQL=/d/mysql/bin/mysql.exe MYSQLDUMP=/d/mysql/bin/mysqldump.exe \
+  DB_PORT=3310 DB_USER=root DB_PASSWORD= \
+  ./scripts/dump-db.sh --out /d/otaku-migration/otaku-full.sql --verify
+```
+
+`--verify` 会建一个临时库（`otaku_migrate_check`）把 dump 导进去，逐表比对
+**行数 + 逐行内容指纹**（`SUM(CRC32(...))`），比对完删掉临时库。
+
+**校验没通过就不要往下走**——脚本失败时退出码是 1，可以直接拿去做前置检查。
+
+> 为什么要比指纹而不只比行数：行数对得上、内容却被截断或编码坏掉的情况是存在的，
+> 而行数看不出来。我之前在脚本里写错过一个列名，两边都返回空值，于是「空 == 空」
+> 被判成通过——这种假阳性只有把「取不到值」也当成失败才能堵住。
+
+等价的单条命令（手工跑时）：
+
+```bash
 /d/mysql/bin/mysqldump.exe -h127.0.0.1 -P3310 -uroot \
-  --single-transaction \
-  --set-gtid-purged=OFF \
+  --single-transaction --set-gtid-purged=OFF \
   --default-character-set=utf8mb4 \
-  otaku > otaku-$(date +%Y%m%d).sql
+  --result-file=D:/otaku-migration/otaku-full.sql otaku
 ```
 
 两个参数别省：
@@ -144,7 +163,23 @@ docker compose -f compose.prod.yaml logs -f backend
 - `--set-gtid-purged=OFF`：MySQL 8 默认会写 `SET @@GLOBAL.gtid_purged=...`，导到非 GTID 环境会直接报错
 - `--default-character-set=utf8mb4`：中文标题、简介不带这个会变问号
 
-导出体积约 **300–400 MB**（库 285 MB，SQL 文本会更大）。
+用 `--result-file=` 而不是 shell 的 `>`：Git Bash 下重定向会参与换行/编码转换。
+
+**导出体积约 16 MB**，不是几百 MB——285 MB 那个数字是 MySQL **数据目录**（含 binlog、
+undo 与系统文件），业务数据只有 `work` 表的 15.5 MB。服务器磁盘按全量 55.6 万条留 700 MB 就够。
+
+**2026-10-22 实测记录**（这份 dump 已经过验证，可直接用）：
+
+| 项 | 值 |
+|---|---|
+| 文件大小 | 15,645,897 字节（15.6 MB） |
+| 表数量 | 7 |
+| 导入耗时 | 1.4 秒 |
+| `work` | 15,445 行，内容指纹 `32930461272111`，原库与恢复库一致 |
+| `collection` / `app_user` / `import_batch` / `import_batch_run` | 均一致 |
+| `flyway_schema_history` | V1–V5，5 行 |
+| 中文 | 正常；144 条标题本身带问号（如「凭你也想讨伐魔王？」），两侧数量一致 |
+| 有 `release_year` / 有 `source_url` | 13,656 / 13,918，两侧一致 |
 
 **② 传上去**：
 
