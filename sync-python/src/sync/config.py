@@ -6,7 +6,10 @@ import os
 from dataclasses import dataclass, field
 
 DEFAULT_SOURCE_BASE_URL = "http://154.8.194.198:8000"
-DEFAULT_WORKS = ("anime",)
+# 来源站四类合计约 1.8 万条（动画 10917 / 漫画 2428 / 游戏 2464 / 轻小说 2109）。
+# 默认全量同步四类：只同步 anime 是第一阶段联调用的临时设定，
+# 留在默认值里会让"客户端内容只有几百条"看起来像是数据不够，实际是没同步。
+DEFAULT_WORKS = ("anime", "comic", "game", "novel")
 RATING_SCALE = "0-10"
 
 # 来源标识。契约第 4.6 节：新增一个网站 = 加一份适配器配置 + 一个 source 取值。
