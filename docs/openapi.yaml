@@ -1,11 +1,13 @@
 openapi: 3.0.3
 
 info:
-  title: Otaku Data Platform · 第一阶段接口契约
-  version: 1.0.0-draft
+  title: Otaku Data Platform · 接口契约（阶段 1–2）
+  version: 1.1.0-draft
   description: |
-    本文件是《第一阶段最小契约》（docs/stage1-minimal-contract.md）的机器可读版本，
-    只覆盖第一阶段四个接口中的 HTTP 部分，以及 ③④ 共用的封面出口：
+    本文件是《第一阶段最小契约》（docs/stage1-minimal-contract.md）与
+    《第二阶段契约草案》（docs/stage2-account-collection-contract.md）的机器可读版本。
+
+    阶段 1（四个接口中的 HTTP 部分，以及 ③④ 共用的封面出口）：
 
     - **② 数据写入接口** `POST /internal/import/batches`（Python → Java）
     - **③ 作品列表接口** `GET /api/works`（Flutter → Java）
@@ -13,10 +15,16 @@ info:
     - **⑤ 封面代理接口** `GET /api/covers/{work_id}`（Flutter → Java）——
       `cover_url` 指向这里，不是来源站地址
 
+    阶段 2（账号与个人数据，覆盖验收 C1–C11）：
+
+    - `POST /api/auth/login`、`GET /api/auth/me`、`POST /api/auth/logout`
+    - `GET|PUT|PATCH|DELETE /api/me/collections/{work_id}`、`GET /api/me/collections`
+    - `POST /internal/accounts`（内部建号，**不是客户端契约**）
+
     **接口①「网站接入」不在本文件。** 那是平台**只读拉取**来源站，来源站的接口不由我们定义，
     接入规范（拿什么、不拿什么、网站需具备什么能力）见契约第 4 节。
 
-    **第一阶段不包含账号、收藏、观看状态接口**，相关路径在第二阶段另行定义。
+    阶段 2 不提供自助注册、找回密码、refresh token、与来源站账号互通。
     本文件只描述请求与响应的**形状**；字段语义、可空规则、创建与更新规则以契约正文为准。
 
     三条边界：
@@ -36,6 +44,12 @@ tags:
     description: 仅供 Python 同步作业调用，客户端不得持有内部令牌
   - name: 作品查询
     description: Flutter 手机端与桌面端共用的公开读接口
+  - name: 账号
+    description: 阶段 2：登录、当前用户、退出。不开放自助注册
+  - name: 个人收藏
+    description: 阶段 2：本人收藏与观看状态，路径里永不出现 user_id
+  - name: 内部账号
+    description: 阶段 2：仅内网可用的建号接口，客户端不得持有内部令牌
 
 security: []
 
@@ -211,6 +225,226 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "500": { $ref: "#/components/responses/InternalError" }
 
+  # ---------------------------------------------------------------------------
+  # 阶段 2：账号与个人数据
+  # 语义与错误处理以 docs/stage2-account-collection-contract.md 为准
+  # ---------------------------------------------------------------------------
+
+  /api/auth/login:
+    post:
+      tags: [账号]
+      summary: 用户名密码换令牌（每次调用产生一条新会话）
+      operationId: login
+      description: |
+        每次调用产生一条新会话，**不踢掉任何已有会话**（C1）。
+
+        失败一律 `401 INVALID_CREDENTIALS`，不区分「用户不存在」与「密码错」，避免账号枚举。
+
+        > 契约 §4.1 建议的「同账号 5 次 / 15 分钟」失败限流（`429 RATE_LIMITED`）
+        > **当前尚未实现**，因此这里不声明 429；如需上线前补齐，单独提 issue 跟踪。
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LoginRequest" }
+      responses:
+        "200":
+          description: 登录成功。`token` 只在此处返回一次，客户端自行安全保存
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401":
+          description: 账号或密码不正确（INVALID_CREDENTIALS）。不区分「用户不存在」与「密码错」
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /api/auth/me:
+    get:
+      tags: [账号]
+      summary: 校验令牌并返回当前用户
+      operationId: getCurrentUser
+      description: 客户端冷启动时用它判断是否已登录；失败只清会话，不弹错误页
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "401": { $ref: "#/components/responses/UnauthorizedSession" }
+
+  /api/auth/logout:
+    post:
+      tags: [账号]
+      summary: 撤销当前令牌（只影响本设备）
+      operationId: logout
+      description: |
+        只撤销当前令牌，其他设备的会话不受影响（C9）。
+
+        **已失效或不带令牌调用也返回 `204`**，因此本接口不要求鉴权——
+        客户端退出流程不应因为令牌已过期而卡在 401 分支上。无请求体。
+      security: []
+      responses:
+        "204":
+          description: 已撤销；或本来就没有有效会话（幂等）
+
+  /api/me/collections:
+    get:
+      tags: [个人收藏]
+      summary: 本人收藏分页列表
+      operationId: listCollections
+      description: |
+        - 排序：`updated_at DESC, work_id ASC`（第二个键保证同秒写入时分页不跳条）。
+        - **不返回 `summary`**，与作品列表一致；也不返回 `tags` 与评分。
+        - 空收藏返回 `200` + `items: []` + `total: 0`。
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          required: false
+          description: |
+            按观看状态过滤。省略表示全部；`none` 表示「已收藏但未设状态」。
+          schema:
+            type: string
+            enum: [want, watching, watched, none]
+        - name: page
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: page_size
+          in: query
+          required: false
+          description: 超过 50 时按 50 截断，不报错
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CollectionPage" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/UnauthorizedSession" }
+
+  /api/me/collections/{work_id}:
+    get:
+      tags: [个人收藏]
+      summary: 单条收藏状态（未收藏也是 200）
+      operationId: getCollectionState
+      description: |
+        「未收藏」是正常结果，不是错误：返回 `200` + `collected: false`。
+        只有**作品本身不存在**时才返回 `404 WORK_NOT_FOUND`。
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/WorkId"
+      responses:
+        "200":
+          description: 成功（`collected` 区分是否已收藏）
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CollectionState" }
+        "401": { $ref: "#/components/responses/UnauthorizedSession" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+    put:
+      tags: [个人收藏]
+      summary: 加入收藏（幂等 upsert）
+      operationId: putCollection
+      description: |
+        记录不存在则创建，已存在则覆盖为给定 `status`；重复提交结果一致。
+        `status` 可省略，表示收藏但不设状态。一律返回 `200`，不用 `201`。
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/WorkId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CollectionUpdateRequest" }
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CollectionState" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/UnauthorizedSession" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+    patch:
+      tags: [个人收藏]
+      summary: 只改状态、不创建（C11 的前提）
+      operationId: patchCollection
+      description: |
+        **只改不建**：记录不存在时返回 `409 COLLECTION_REQUIRED`，绝不自动重新收藏。
+        这是验收 C11（过期界面改状态）成立的唯一方式；用 `PUT` 会静默重建收藏、C11 直接失败。
+
+        `status` 传 `null` 表示清除状态但保留收藏。
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/WorkId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CollectionUpdateRequest" }
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CollectionState" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/UnauthorizedSession" }
+        "409": { $ref: "#/components/responses/ConflictCollection" }
+
+    delete:
+      tags: [个人收藏]
+      summary: 取消收藏（幂等）
+      operationId: deleteCollection
+      description: 删除整条记录，`status` 随之消失（C4）；记录不存在也返回 `204`
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/WorkId"
+      responses:
+        "204":
+          description: 已取消（或本来就没收藏）
+        "401": { $ref: "#/components/responses/UnauthorizedSession" }
+
+  /internal/accounts:
+    post:
+      tags: [内部账号]
+      summary: 内部建号（首期不开放自助注册）
+      operationId: createAccount
+      description: |
+        联调账号 A / B 由此创建。客户端**不得**持有内部令牌，因此该接口不对外暴露。
+        不返回会话：建号后仍需走 `POST /api/auth/login`。
+      security:
+        - internalToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateAccountRequest" }
+      responses:
+        "201":
+          description: 创建成功
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/ConflictUsername" }
+
 components:
 
   securitySchemes:
@@ -219,6 +453,15 @@ components:
       in: header
       name: X-Internal-Token
       description: 内部服务令牌。仅同步作业持有，客户端与前端**不得**持有该密钥。
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
+      description: |
+        客户端会话令牌：43 字符 Base64URL 不透明串，**不得解析其内容**。
+        只放 `Authorization` 头（`Bearer <token>`），不放在 URL 查询串里——
+        查询串会进访问日志与浏览器历史。服务端只存其 SHA-256，30 天固定有效期。
+        收到 401 时客户端应清本地会话并回到登录页，不要重试。
 
   parameters:
     WorkId:
@@ -236,6 +479,25 @@ components:
           schema: { $ref: "#/components/schemas/ErrorResponse" }
     Unauthorized:
       description: 内部令牌缺失或无效（不重试）
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    UnauthorizedSession:
+      description: |
+        会话令牌缺失、无效、已退出或已过期（`UNAUTHORIZED`）。
+        客户端应静默清除本地会话并回到登录页，**不要**提示服务端错误、不要重试。
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    ConflictCollection:
+      description: |
+        该作品当前不在收藏中（`COLLECTION_REQUIRED`），通常是另一端已经取消收藏。
+        客户端应提示「收藏已失效，请刷新」，重新拉单条状态后重绘；**不得**自动重新提交。
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    ConflictUsername:
+      description: 用户名已被占用（`USERNAME_TAKEN`）。大小写不敏感，`Alice` 与 `alice` 视为同名
       content:
         application/json:
           schema: { $ref: "#/components/schemas/ErrorResponse" }
@@ -491,8 +753,11 @@ components:
               type: string
               enum:
                 - UNAUTHORIZED
+                - INVALID_CREDENTIALS
                 - BAD_REQUEST
                 - WORK_NOT_FOUND
+                - USERNAME_TAKEN
+                - COLLECTION_REQUIRED
                 - BATCH_TOO_LARGE
                 - RATE_LIMITED
                 - INTERNAL
@@ -501,3 +766,149 @@ components:
               description: 面向开发者的说明，不直接展示给终端用户
       example:
         error: { code: WORK_NOT_FOUND, message: 作品不存在 }
+
+    # --- 阶段 2 ---------------------------------------------------------------
+
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 32
+          example: alice
+        password:
+          type: string
+          minLength: 8
+          maxLength: 72
+          format: password
+        device_label:
+          type: string
+          maxLength: 64
+          nullable: true
+          description: 客户端自报的设备标识，仅用于展示与排查，不参与鉴权
+          example: android
+
+    CreateAccountRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 32
+        password:
+          type: string
+          minLength: 8
+          maxLength: 72
+          format: password
+
+    User:
+      type: object
+      required: [user_id, username]
+      properties:
+        user_id:
+          type: string
+          description: 平台生成的不透明标识，客户端**不得解析**
+          example: U-9k2m0p7qz58f3a1
+        username:
+          type: string
+          example: alice
+        display_name:
+          type: string
+          nullable: true
+          description: 首期不提供，恒为 `null`；客户端回落到 `username`
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    SessionResponse:
+      type: object
+      required: [token, expires_at, user]
+      properties:
+        token:
+          type: string
+          description: 会话令牌，只在此处返回一次；服务端只保存其哈希
+          example: 9Zk3m0p7qz58f3a1k2m0p7qz58f3a1k2m0p7qz58f
+        expires_at:
+          type: string
+          format: date-time
+          description: 固定 30 天，不滑动续期；到期需重新登录
+        user:
+          $ref: "#/components/schemas/User"
+
+    CollectionUpdateRequest:
+      type: object
+      description: 只接受「目标状态」，不提供 toggle——切换语义在网络重试时会反向操作
+      properties:
+        status:
+          type: string
+          nullable: true
+          enum: [want, watching, watched]
+          description: |
+            `null` / 省略 = 已收藏但不设状态。取值非法返回 `400`，**不会**静默降级为 `null`。
+
+    CollectionState:
+      type: object
+      required: [work_id, collected]
+      description: |
+        单条收藏状态。`collected: false` 表示未收藏（此时 `status` 与 `updated_at` 为 `null`），
+        这是正常结果而不是错误——只有作品本身不存在才返回 404。
+      properties:
+        work_id:
+          type: string
+        collected:
+          type: boolean
+        status:
+          type: string
+          nullable: true
+          enum: [want, watching, watched]
+          description: "`null` 有两种含义：未收藏，或已收藏但未设状态——由 `collected` 区分"
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: 首次收藏时间；未收藏为 `null`
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: 最后一次状态变更时间，用于对账与排查；未收藏为 `null`
+
+    CollectionItem:
+      type: object
+      description: 收藏列表项。作品字段与作品列表同源，但**不含 `summary`、`tags` 与评分**
+      required: [work_id, work_type, title, status, created_at, updated_at]
+      properties:
+        work_id:
+          type: string
+        work_type:
+          type: string
+          enum: [anime, comic, game, novel]
+        title:
+          type: string
+        cover_url:
+          type: string
+          nullable: true
+          description: 平台封面代理地址；`null` 时客户端不发请求，直接显示占位图
+        status:
+          type: string
+          nullable: true
+          enum: [want, watching, watched]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CollectionPage:
+      allOf:
+        - $ref: "#/components/schemas/Paging"
+        - type: object
+          properties:
+            items:
+              type: array
+              items: { $ref: "#/components/schemas/CollectionItem" }
