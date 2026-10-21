@@ -45,13 +45,15 @@ public class AuthService {
     private final UserRepository userRepository;
     private final SessionRepository sessionRepository;
     private final PublicIdGenerator idGenerator;
+    private final LoginThrottle loginThrottle;
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder(BCRYPT_COST);
 
     public AuthService(UserRepository userRepository, SessionRepository sessionRepository,
-                       PublicIdGenerator idGenerator) {
+                       PublicIdGenerator idGenerator, LoginThrottle loginThrottle) {
         this.userRepository = userRepository;
         this.sessionRepository = sessionRepository;
         this.idGenerator = idGenerator;
+        this.loginThrottle = loginThrottle;
     }
 
     /** 内部建号（POST /internal/accounts）：不返回会话，账号由负责人创建。 */
@@ -78,10 +80,15 @@ public class AuthService {
         String username = request.username() == null ? "" : request.username().trim();
         String password = request.password() == null ? "" : request.password();
 
+        // 先看限流：超限时连口令比对都不做，既省 BCrypt 的 CPU，也不给暴力试错留时间窗
+        loginThrottle.checkAllowed(username);
+
         Optional<UserRecord> found = userRepository.findByUsername(username);
         if (found.isEmpty() || !passwordEncoder.matches(password, found.get().passwordHash())) {
+            loginThrottle.recordFailure(username);
             throw new ApiException(ErrorCode.INVALID_CREDENTIALS, "账号或密码不正确");
         }
+        loginThrottle.clear(username);
         return startSession(found.get(), request.deviceLabel());
     }
 

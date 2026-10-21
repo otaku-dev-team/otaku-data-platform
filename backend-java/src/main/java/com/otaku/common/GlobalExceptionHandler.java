@@ -3,6 +3,7 @@ package com.otaku.common;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -24,8 +25,11 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(ApiException.class)
     public ResponseEntity<ErrorResponse> handleApi(ApiException ex) {
-        return ResponseEntity.status(ex.code().status())
-                .body(ErrorResponse.of(ex.code(), ex.getMessage()));
+        ResponseEntity.BodyBuilder builder = ResponseEntity.status(ex.code().status());
+        if (ex.retryAfterSeconds() != null) {
+            builder.header(HttpHeaders.RETRY_AFTER, String.valueOf(ex.retryAfterSeconds()));
+        }
+        return builder.body(ErrorResponse.of(ex.code(), ex.getMessage()));
     }
 
     @ExceptionHandler({

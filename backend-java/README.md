@@ -115,6 +115,9 @@ PYTHONPATH=src OTAKU_INTERNAL_TOKEN=dev-token OTAKU_JAVA_BASE_URL=http://localho
 - **写接口只收目标状态**，不提供 toggle，避免重试把用户操作反转。
 - **越权防护**：所有个人数据查询都强制 `user_id = 当前会话`，路径与参数里都不出现 `user_id`（C5）。
 - **logout 幂等**：已失效或无令牌调用也返回 204，退出流程不会卡在 401 分支上（契约 §4.3）。
+- **登录限流**：同账号 5 次失败 / 15 分钟滑动窗口 → `429 RATE_LIMITED` + `Retry-After`（实测 900 秒）；
+  只限流不锁号，窗口滑过自动恢复，成功登录即清零。校验放在 BCrypt 比对之前，顺带省掉暴力试错的 CPU。
+- **会话清理**：每天 04:30 UTC 清掉「过期/撤销超过 7 天」的行；30 天有效期 + 7 天保留 ≈ 死行最多滞留 37 天。
 
 已用脚本逐条对照契约验证 **35 项全通过**，覆盖 C1–C5、C9–C11、错误码、幂等与三态语义：
 两端并存、跨端可见、未收藏返回 200（不是 404）、`status=none` 过滤、取消后另一端消失、
@@ -122,10 +125,11 @@ PYTHONPATH=src OTAKU_INTERNAL_TOKEN=dev-token OTAKU_JAVA_BASE_URL=http://localho
 
 已知未做（不隐瞒，避免文档比实现好看）：
 
-- **登录失败限流**：契约 §4.1 建议「同账号 5 次 / 15 分钟 → 429 `RATE_LIMITED`」，当前未实现，
-  因此 `openapi.yaml` 里也没有声明 429。
-- **过期会话清理**：只按 `expires_at` 过滤，没有定时清理任务，`user_session` 会缓慢增长。
 - **`trace_id`**：错误信封保持阶段 1 形状，未加 trace_id。
+- **限流的单实例前提**：`LoginThrottle` 是内存实现，多实例部署时各自计数，需要换 Redis
+  或把限流下沉到网关；同时它是"按账号"而非"按 IP"，换用户名喷洒不触发（网关职责）。
+- **缓存淘汰**：封面缓存只增不减（`cover_cached_at` 记了但没用），全量后需按大小 LRU + 可选 TTL。
+- **生产 HTTPS**：内网联调用 HTTP，上线前必须 HTTPS 并开启 HSTS（契约 §11.8）。
 
 ## 技术选型
 

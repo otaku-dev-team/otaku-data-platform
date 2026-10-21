@@ -77,6 +77,19 @@ public class SessionRepository {
                         .addValue("tokenHash", tokenHash));
     }
 
+    /**
+     * 清理已过期或已撤销超过保留期的会话行。
+     * 判定用"过期/撤销时间 < 截止点"，避免把刚过期但还在排查中的记录立刻删掉。
+     */
+    public int purgeStale(LocalDateTime cutoff) {
+        return jdbc.update("""
+                        DELETE FROM user_session
+                         WHERE (expires_at < :cutoff)
+                            OR (revoked_at IS NOT NULL AND revoked_at < :cutoff)
+                        """,
+                new MapSqlParameterSource("cutoff", cutoff));
+    }
+
     public int countActive(long userPk, LocalDateTime now) {
         Integer count = jdbc.queryForObject("""
                         SELECT COUNT(*) FROM user_session
