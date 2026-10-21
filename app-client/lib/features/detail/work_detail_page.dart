@@ -10,6 +10,7 @@ import '../../data/models/collection_entry.dart';
 import '../../data/models/work.dart';
 import '../../shared/widgets/collection_status_menu.dart';
 import '../../shared/widgets/cover_image.dart';
+import '../../shared/widgets/desktop_shortcuts.dart';
 import '../../shared/widgets/error_state.dart';
 import '../../shared/widgets/rating_badge.dart';
 import '../../shared/widgets/skeleton_list.dart';
@@ -36,18 +37,26 @@ class WorkDetailPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final work = ref.watch(workDetailProvider(workId));
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('作品详情')),
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: AppLayout.detailMaxWidth),
-          child: _buildBody(context, ref, work),
+    return DesktopShortcuts(
+      child: Scaffold(
+        appBar: AppBar(title: const Text('作品详情')),
+        body: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(
+              maxWidth: AppLayout.detailMaxWidth,
+            ),
+            child: _buildBody(context, ref, work),
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildBody(BuildContext context, WidgetRef ref, AsyncValue<Work> work) {
+  Widget _buildBody(
+    BuildContext context,
+    WidgetRef ref,
+    AsyncValue<Work> work,
+  ) {
     if (work.isLoading && !work.hasValue) {
       return const SkeletonDetail();
     }
@@ -504,7 +513,9 @@ class _SummaryBlockState extends State<_SummaryBlock> {
               text,
               style: style,
               maxLines: _expanded ? null : _collapsedLines,
-              overflow: _expanded ? TextOverflow.visible : TextOverflow.ellipsis,
+              overflow: _expanded
+                  ? TextOverflow.visible
+                  : TextOverflow.ellipsis,
             ),
             if (canExpand)
               TextButton.icon(
