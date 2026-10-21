@@ -200,7 +200,7 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "413": { $ref: "#/components/responses/BatchTooLarge" }
-        "429": { $ref: "#/components/responses/RateLimited" }
+        "429": { $ref: "#/components/responses/RateLimitedWithRetry" }
         "500": { $ref: "#/components/responses/InternalError" }
 
   /internal/import/batches/{batch_id}:
@@ -240,8 +240,9 @@ paths:
 
         失败一律 `401 INVALID_CREDENTIALS`，不区分「用户不存在」与「密码错」，避免账号枚举。
 
-        > 契约 §4.1 建议的「同账号 5 次 / 15 分钟」失败限流（`429 RATE_LIMITED`）
-        > **当前尚未实现**，因此这里不声明 429；如需上线前补齐，单独提 issue 跟踪。
+        同一账号 5 次失败后进入限流：15 分钟滑动窗口，期间返回 `429 RATE_LIMITED`，
+        `Retry-After` 给出还需等待的秒数。**只限流、不锁号**，窗口滑过自动恢复；
+        成功登录会清空该账号的失败计数，正常用户不会被误伤。
       security: []
       requestBody:
         required: true
@@ -260,6 +261,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "429": { $ref: "#/components/responses/RateLimited" }
         "500": { $ref: "#/components/responses/InternalError" }
 
   /api/auth/me:
@@ -513,6 +515,17 @@ components:
           schema: { $ref: "#/components/schemas/ErrorResponse" }
     RateLimited:
       description: 限流（重试，带退避）
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    RateLimitedWithRetry:
+      description: |
+        登录失败次数超限（`RATE_LIMITED`）。`Retry-After` 为还需等待的秒数（≤ 900），
+        客户端应按该值退避后再试，**不要**立刻重试、也不要展示成"账号被锁"。
+      headers:
+        Retry-After:
+          description: 建议等待的秒数
+          schema: { type: integer, example: 900 }
       content:
         application/json:
           schema: { $ref: "#/components/schemas/ErrorResponse" }
