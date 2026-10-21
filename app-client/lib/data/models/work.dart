@@ -18,6 +18,7 @@ class Work {
     this.mainRating,
     this.source = '',
     this.sourceId = '',
+    this.sourceUrl,
     this.updatedAt,
   });
 
@@ -39,6 +40,12 @@ class Work {
   /// **不得拿它做业务判断**（跨站点可能重复）。
   final String source;
   final String sourceId;
+
+  /// 来源站**人读页**地址（契约 §2.1）。`null` 表示来源未提供或格式不可信，
+  /// 此时详情页不显示「在来源站查看」入口。
+  ///
+  /// 只用于导航：不据此拉取任何数据，也不自行拼接。
+  final String? sourceUrl;
 
   final DateTime? updatedAt;
 
@@ -62,17 +69,33 @@ class Work {
       workId: workId,
       workType: WorkType.fromValue(json['work_type']),
       title: title,
-      summary: summary is String && summary.trim().isNotEmpty
-          ? summary
-          : null,
+      summary: summary is String && summary.trim().isNotEmpty ? summary : null,
       releaseYear: WorkSummary.parseYear(json['release_year']),
       coverUrl: coverUrl is String && coverUrl.isNotEmpty ? coverUrl : null,
       tags: WorkSummary.parseTags(json['tags']),
       mainRating: SourceRating.tryParse(json['main_rating']),
       source: source is String ? source : '',
       sourceId: sourceId is String ? sourceId : '',
+      sourceUrl: parseSourceUrl(json['source_url']),
       updatedAt: updatedAt is String ? DateTime.tryParse(updatedAt) : null,
     );
+  }
+
+  /// 只接受 `http` / `https` 且 host 非空的地址。
+  ///
+  /// 服务端已经过滤过协议（契约 §2.1），客户端再做一层不是不信任上游，而是
+  /// 这个值最终会交给**系统浏览器**打开：`javascript:`、`file:`、`intent:`
+  /// 这类协议一旦漏过来，风险不在我们的进程里，而在系统层面。多校验一次的成本
+  /// 只是一个 Uri.tryParse。
+  static String? parseSourceUrl(Object? raw) {
+    if (raw is! String) return null;
+    final text = raw.trim();
+    if (text.isEmpty) return null;
+    final uri = Uri.tryParse(text);
+    if (uri == null) return null;
+    if (uri.scheme != 'http' && uri.scheme != 'https') return null;
+    if (uri.host.isEmpty) return null;
+    return uri.toString();
   }
 
   @override

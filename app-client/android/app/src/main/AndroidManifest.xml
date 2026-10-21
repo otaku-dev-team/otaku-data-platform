@@ -44,5 +44,20 @@
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
+
+        <!-- 详情页「在来源站查看」用系统浏览器打开 source_url（Issue #68）。
+             Android 11+ 的包可见性限制：不在这里登记，App 就「看不见」浏览器，
+             launchUrl 直接返回 false —— 单元测试和 flutter analyze 都发现不了，
+             只有在真机 / 模拟器上点一下才会暴露。
+             只放行 http / https：`source_url` 在模型层已经过滤过 scheme，
+             这里再收窄一层，避免以后有人拿别的 scheme 复用这个 manifest。 -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="http"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="https"/>
+        </intent>
     </queries>
 </manifest>
