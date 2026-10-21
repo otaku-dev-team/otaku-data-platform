@@ -18,8 +18,13 @@ class WorkMergerTest {
     private static final LocalDateTime T = LocalDateTime.of(2026, 10, 20, 6, 0);
 
     private static WorkRecord work(String summary, String tagsJson, String ratingValue) {
+        return work(summary, tagsJson, ratingValue, null);
+    }
+
+    private static WorkRecord work(String summary, String tagsJson, String ratingValue,
+                                   Integer releaseYear) {
         BigDecimal rating = ratingValue == null ? null : new BigDecimal(ratingValue);
-        return new WorkRecord(1L, "W-test", "anime", "原标题", summary,
+        return new WorkRecord(1L, "W-test", "anime", "原标题", summary, releaseYear,
                 "http://154.8.194.198:8000/media/full/cover_1.jpg", "cache-key", T,
                 tagsJson, rating,
                 rating == null ? null : "0-10",
@@ -29,15 +34,21 @@ class WorkMergerTest {
 
     private static NormalizedItem item(String title, String summary, String tagsJson,
                                        String ratingValue, String coverUrl) {
+        return item(title, summary, tagsJson, ratingValue, coverUrl, null);
+    }
+
+    private static NormalizedItem item(String title, String summary, String tagsJson,
+                                       String ratingValue, String coverUrl, Integer releaseYear) {
         BigDecimal rating = ratingValue == null ? null : new BigDecimal(ratingValue);
-        return new NormalizedItem("476", "anime", title, summary, coverUrl, tagsJson, rating,
+        return new NormalizedItem("476", "anime", title, summary, releaseYear, coverUrl,
+                tagsJson, rating,
                 rating == null ? null : "0-10",
                 rating == null ? null : "otaku_site", null);
     }
 
     /** 只带 source_url 的旧记录，其余可空字段都为 null，便于隔离验证。 */
     private static WorkRecord workWithSourceUrl(String sourceUrl) {
-        return new WorkRecord(1L, "W-test", "anime", "原标题", null,
+        return new WorkRecord(1L, "W-test", "anime", "原标题", null, null,
                 "http://154.8.194.198:8000/media/full/cover_1.jpg", "cache-key", T,
                 null, null, null, null, "otaku_site", "476", sourceUrl, T, T);
     }
@@ -45,7 +56,7 @@ class WorkMergerTest {
     /** 带 source_url 的条目，其余字段与 {@link #item} 一致。 */
     private static NormalizedItem itemWithSourceUrl(String sourceUrl) {
         return new NormalizedItem("476", "anime", "原标题", null, null, null, null,
-                null, null, sourceUrl);
+                null, null, null, sourceUrl);
     }
 
     @Test
@@ -159,5 +170,47 @@ class WorkMergerTest {
         assertThat(result.changed()).isFalse();
         assertThat(result.work().sourceUrl()).isEqualTo("https://old.example/1");
         assertThat(result.work().updatedAt()).isEqualTo(T);
+    }
+
+    @Test
+    @DisplayName("新建时年份直接落库")
+    void newRecordCarriesReleaseYear() {
+        WorkRecord created = WorkMerger.newRecord(
+                item("标题", null, null, null, null, 1995), "W-new", "otaku_site", T);
+
+        assertThat(created.releaseYear()).isEqualTo(1995);
+    }
+
+    @Test
+    @DisplayName("年份为 null 不覆盖已有值——来源这条没给年份，别把历史值抹掉")
+    void nullYearDoesNotOverwrite() {
+        WorkRecord old = work("旧简介", null, null, 1995);
+
+        WorkMerger.MergeResult result = WorkMerger.merge(old, item("原标题", null, null, null, null));
+
+        assertThat(result.changed()).isFalse();
+        assertThat(result.work().releaseYear()).isEqualTo(1995);
+    }
+
+    @Test
+    @DisplayName("年份变了要算变化，并推进 updated_at")
+    void releaseYearChangeCounts() {
+        WorkRecord old = work("旧简介", null, null, 1995);
+
+        WorkMerger.MergeResult result = WorkMerger.merge(old, item("原标题", null, null, null, null, 1996));
+
+        assertThat(result.changed()).isTrue();
+        assertThat(result.work().releaseYear()).isEqualTo(1996);
+        assertThat(result.work().updatedAt()).isAfter(T);
+    }
+
+    @Test
+    @DisplayName("年份相同不算变化——否则每次全量同步都会把 unchanged 变成 updated")
+    void sameYearIsNotAChange() {
+        WorkRecord old = work("旧简介", null, null, 1995);
+
+        WorkMerger.MergeResult result = WorkMerger.merge(old, item("原标题", null, null, null, null, 1995));
+
+        assertThat(result.changed()).isFalse();
     }
 }

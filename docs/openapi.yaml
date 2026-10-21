@@ -110,7 +110,7 @@ paths:
       summary: 作品详情（接口④）
       operationId: getWork
       description: |
-        按 `work_id` 取全部 10 个字段。
+        按 `work_id` 取全部 11 个字段。
 
         `work_id` 一律当作**不透明字符串**：不解析其结构，不做数值比较。
         不存在与格式非法**都返回 404**，不用错误码区分"是否存在"。
@@ -586,7 +586,7 @@ components:
     WorkSummary:
       type: object
       description: |
-        列表项。**6 个字段，不含 `summary`**——简介最长 7225 字，列表带上会把响应撑爆，
+        列表项。**7 个字段，不含 `summary`**——简介最长 7225 字，列表带上会把响应撑爆，
         客户端需要简介时按 `work_id` 拉详情。
       required: [work_id, work_type, title]
       properties:
@@ -595,6 +595,15 @@ components:
           type: string
           enum: [anime, comic, game, novel]
         title: { type: string, example: 街角魔族 2丁目 }
+        release_year:
+          type: integer
+          nullable: true
+          minimum: 1900
+          maximum: 2100
+          description: |
+            来源站年份原值。**`null` = 来源未提供，不是 0 年**；客户端为 `null` 时不渲染年份。
+            来源站实测非空率约 95.9%（2026-10-22 抽样），个别作品仍会缺。
+          example: 2022
         cover_url:
           type: string
           nullable: true
@@ -615,8 +624,9 @@ components:
     Work:
       type: object
       description: |
-        详情。**全部 11 个字段**（含本阶段新增的可空 `source_url`）。
-        列表项仍是 6 字段，不含 `summary` / `source` / `source_id` / `source_url` / `updated_at`。
+        详情。**全部 12 个字段**（含本阶段新增的可空 `source_url` 与 `release_year`）。
+        列表项是 7 字段（含 `release_year`），不含
+        `summary` / `source` / `source_id` / `source_url` / `updated_at`。
       required: [work_id, work_type, title, source, source_id, updated_at]
       properties:
         work_id:
@@ -633,6 +643,15 @@ components:
           description: |
             换行已统一为 `\n`，**不截断**（最长 7225 字），折叠由客户端处理。
             `null` 表示来源没有简介，客户端显示"暂无简介"。
+        release_year:
+          type: integer
+          nullable: true
+          minimum: 1900
+          maximum: 2100
+          description: |
+            来源站年份原值。`null` = 来源未提供，不是 0 年。
+            与 `main_rating` 一样，可空字段**以 `null` 出现而不是被省略**。
+          example: 1995
         cover_url: { type: string, nullable: true, description: 平台后端代理+缓存地址（同列表项）；null 表示无封面 }
         tags:
           type: array
@@ -696,10 +715,10 @@ components:
     ImportItem:
       type: object
       description: |
-        提交项。`work_id` 由 Java 生成、`updated_at` 由 Java 维护、`source` 在批次级，
+        提交项 9 个字段。`work_id` 由 Java 生成、`updated_at` 由 Java 维护、`source` 在批次级，
         因此都不出现在条目里。
 
-        `source_url` 是**可选**的第 8 个字段（契约 §2.1）：适配器能可靠确定人读原页时提供，
+        `source_url` 与 `release_year` 都是**可选**字段：适配器能可靠确定时提供，
         确定不了就传 `null`（或不传），**不要猜**。平台原样入库，详情接口返回。
       required: [source_id, work_type, title]
       properties:
@@ -724,6 +743,16 @@ components:
           type: string
           nullable: true
           description: 已拼成绝对地址；空串在 Python 侧已转为 null
+        release_year:
+          type: integer
+          nullable: true
+          minimum: 1900
+          maximum: 2100
+          description: |
+            年份原值，**可省略或传 `null`**（= 来源未提供）。省略时保留库中原值，不会清空。
+            越界（如 0、1899、2101）整条拒收，错误码 `INVALID_RELEASE_YEAR`。
+            允许省略是为了让旧版同步器不改也能继续工作。
+          example: 2022
         tags:
           type: array
           nullable: true

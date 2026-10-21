@@ -177,6 +177,7 @@ def test_dry_run_end_to_end_from_archive(tmp_path):
         "title": "Code Geass 反叛的鲁路修R2",
         "summary": "第一行\n第二行",
         "cover_url": None,
+        "release_year": 2008,
         "tags": ["机战", "原创"],
         "main_rating": {"value": 8.7, "scale": "0-10", "source": "bangumi"},
         "source_url": "https://bgm.tv/subject/8",

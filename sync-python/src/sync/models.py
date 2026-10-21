@@ -70,13 +70,17 @@ class WorkItem:
     def to_payload(self) -> dict[str, Any]:
         """转成导入接口（接口②）的 JSON 体。
 
-        输出契约约定的 8 个字段，字段名与契约、openapi.yaml 完全一致。
-        `release_year`（第一阶段不纳入）、`source_updated_at` 仅作本地记录，不提交。
+        输出契约约定的 9 个字段，字段名与契约、openapi.yaml 完全一致。
         空值一律传 null，不传空字符串。
+
+        `release_year` 自 2026-10-22 起纳入（此前「第一阶段不纳入」）。
+        来源站实测非空率 95.9%，数据可用，见 docs/站点能力差距清单.md。
 
         `source_url` 用于客户端「在来源站查看原页」的回流入口：
         Otaku 为 `/contents/{id}` 人读页，Bangumi 为 `https://bgm.tv/subject/{id}`。
         无法可靠确定原页时传 null，不猜测生成（契约第 2.1 节）。
+
+        `source_updated_at` 仅作本地记录，不提交。
         """
         return {
             "source_id": self.source_record.source_id,
@@ -84,6 +88,7 @@ class WorkItem:
             "title": self.title,
             "summary": self.summary,
             "cover_url": self.cover_url,
+            "release_year": self.release_year,
             "tags": self.tags,
             "main_rating": self.main_rating.to_payload() if self.main_rating else None,
             "source_url": self.source_record.source_url,

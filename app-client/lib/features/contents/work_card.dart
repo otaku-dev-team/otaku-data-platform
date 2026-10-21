@@ -7,14 +7,16 @@ import '../../data/models/work_summary.dart';
 import '../../shared/widgets/cover_image.dart';
 import '../../shared/widgets/poster_card.dart';
 import '../../shared/widgets/rating_badge.dart';
+import '../../shared/widgets/release_year_text.dart';
 import '../../shared/widgets/tag_chips.dart';
 import '../../shared/widgets/work_type_tag.dart';
 
 /// 列表卡片，形状对齐来源站的 `.work-card`：2:3 竖版海报在上、文字在下。
 ///
-/// 只用列表接口给的 6 个字段，**不显示简介**——列表根本不返回 `summary`。
+/// 只用列表接口给的 7 个字段，**不显示简介**——列表根本不返回 `summary`。
 /// 站点卡片里有两行摘要和排名角标，这里都没有：接口没这两个字段，
 /// 硬要做只能靠逐条请求详情，代价远大于收益。
+/// 年份在 2026-10-22 补上（此前链路断在同步层），位置与站点一致：类型行末尾。
 class WorkCard extends StatelessWidget {
   const WorkCard({super.key, required this.work});
 
@@ -70,6 +72,14 @@ class WorkCard extends StatelessWidget {
                       const SizedBox(width: 6),
                       // 契约 6.3：没有评分就整块不渲染，不能显示 0.0。
                       RatingBadge(rating: work.mainRating, compact: true),
+                      // 年份靠右，占掉剩余宽度：既不挤压标签与评分，也不会因
+                      // 文字变长把卡片撑破（溢出时省略）。
+                      Expanded(
+                        child: Align(
+                          alignment: Alignment.centerRight,
+                          child: ReleaseYearText(year: work.releaseYear),
+                        ),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 6),

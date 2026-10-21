@@ -4,7 +4,7 @@ import 'source_rating.dart';
 import 'work_summary.dart';
 import 'work_type.dart';
 
-/// 详情。契约 2.1：全部 10 个字段。
+/// 详情。契约 2.1：全部 11 个字段。
 @immutable
 class Work {
   const Work({
@@ -12,6 +12,7 @@ class Work {
     required this.workType,
     required this.title,
     this.summary,
+    this.releaseYear,
     this.coverUrl,
     this.tags,
     this.mainRating,
@@ -26,6 +27,9 @@ class Work {
 
   /// 最长 7225 字，`\n` 为段落分隔；`null` 表示来源没有简介。
   final String? summary;
+
+  /// 来源年份。`null` 表示来源未提供，不是 0 年。
+  final int? releaseYear;
 
   final String? coverUrl;
   final List<String>? tags;
@@ -61,6 +65,7 @@ class Work {
       summary: summary is String && summary.trim().isNotEmpty
           ? summary
           : null,
+      releaseYear: WorkSummary.parseYear(json['release_year']),
       coverUrl: coverUrl is String && coverUrl.isNotEmpty ? coverUrl : null,
       tags: WorkSummary.parseTags(json['tags']),
       mainRating: SourceRating.tryParse(json['main_rating']),

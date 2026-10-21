@@ -35,10 +35,11 @@ class ContractJsonShapeTest {
     private ObjectMapper objectMapper;
 
     @Test
-    @DisplayName("列表项是 6 个 snake_case 字段，且不含 summary")
+    @DisplayName("列表项是 7 个 snake_case 字段，且不含 summary")
     void summaryShape() {
         WorkSummaryDto dto = new WorkSummaryDto(
-                "W-abc123", "anime", "街角魔族 2丁目", "http://localhost:8080/api/covers/W-abc123",
+                "W-abc123", "anime", "街角魔族 2丁目", 2022,
+                "http://localhost:8080/api/covers/W-abc123",
                 List.of("日常", "搞笑"),
                 new SourceRatingDto(new BigDecimal("7.80"), "0-10", "otaku_site"));
 
@@ -46,41 +47,45 @@ class ContractJsonShapeTest {
 
         assertThat(json.has("work_id")).isTrue();
         assertThat(json.has("work_type")).isTrue();
+        assertThat(json.has("release_year")).isTrue();
         assertThat(json.has("cover_url")).isTrue();
         assertThat(json.has("main_rating")).isTrue();
         assertThat(json.has("summary")).as("列表不得返回 summary").isFalse();
-        assertThat(json.size()).isEqualTo(6);
+        assertThat(json.size()).isEqualTo(7);
+        assertThat(json.get("release_year").asInt()).isEqualTo(2022);
         assertThat(json.get("main_rating").get("value").decimalValue()).isEqualByComparingTo("7.8");
     }
 
     @Test
-    @DisplayName("详情是 11 个字段（含可空 source_url），空值以 null 出现而不是被省略")
+    @DisplayName("详情是 12 个字段（含可空 source_url 与 release_year），空值以 null 出现而不是被省略")
     void detailShape() {
-        WorkDto dto = new WorkDto("W-abc123", "anime", "标题", null, null, null, null,
+        WorkDto dto = new WorkDto("W-abc123", "anime", "标题", null, null, null, null, null,
                 "otaku_site", "476", null, UPDATED_AT);
 
         JsonNode json = objectMapper.valueToTree(dto);
 
-        assertThat(json.size()).isEqualTo(11);
+        assertThat(json.size()).isEqualTo(12);
         assertThat(json.has("source_url")).isTrue();
         assertThat(json.get("source_url").isNull()).isTrue();
         assertThat(json.get("summary").isNull()).isTrue();
+        assertThat(json.get("release_year").isNull()).as("没有年份必须是 null，不是 0").isTrue();
         assertThat(json.get("cover_url").isNull()).isTrue();
         assertThat(json.get("updated_at").asText()).isEqualTo("2026-10-20T06:00:00Z");
     }
 
     @Test
-    @DisplayName("source_url 有值时原样输出，列表结构不受影响（仍 6 字段）")
+    @DisplayName("source_url 有值时原样输出，列表结构不受影响（7 字段）")
     void sourceUrlIsPassedThrough() {
-        WorkDto dto = new WorkDto("W-abc123", "anime", "标题", null, null, null, null,
+        WorkDto dto = new WorkDto("W-abc123", "anime", "标题", null, 2022, null, null, null,
                 "otaku_site", "476", "http://154.8.194.198:8000/contents/476", UPDATED_AT);
 
         JsonNode json = objectMapper.valueToTree(dto);
 
         assertThat(json.get("source_url").asText())
                 .isEqualTo("http://154.8.194.198:8000/contents/476");
-        WorkSummaryDto summary = new WorkSummaryDto("W-abc123", "anime", "标题", null, null, null);
-        assertThat(objectMapper.valueToTree(summary).size()).isEqualTo(6);
+        assertThat(json.get("release_year").asInt()).isEqualTo(2022);
+        WorkSummaryDto summary = new WorkSummaryDto("W-abc123", "anime", "标题", 2022, null, null, null);
+        assertThat(objectMapper.valueToTree(summary).size()).isEqualTo(7);
     }
 
     @Test
@@ -124,6 +129,7 @@ class ContractJsonShapeTest {
                     "title": "街角魔族 2丁目",
                     "summary": null,
                     "cover_url": null,
+                    "release_year": 2022,
                     "tags": ["日常"],
                     "main_rating": {"value": 7.8, "scale": "0-10", "source": "otaku_site"}
                   }]
@@ -136,6 +142,7 @@ class ContractJsonShapeTest {
         assertThat(request.source()).isEqualTo("otaku_site");
         assertThat(request.items()).hasSize(1);
         assertThat(request.items().get(0).sourceId()).isEqualTo("476");
+        assertThat(request.items().get(0).releaseYear()).isEqualTo(2022);
         assertThat(request.items().get(0).mainRating().value()).isEqualByComparingTo("7.8");
         assertThat(request.items().get(0).tags()).containsExactly("日常");
     }
@@ -177,5 +184,21 @@ class ContractJsonShapeTest {
         assertThat(json.get("runs").get(0).get("run_seq").asInt()).isEqualTo(1);
         assertThat(json.get("runs").get(0).get("counts").get("inserted").asInt()).isEqualTo(3);
         assertThat(json.get("runs").get(1).get("counts").get("updated").asInt()).isEqualTo(3);
+    }
+
+    @Test
+    @DisplayName("导入请求体缺 release_year 时为 null，不报错（向后兼容旧版同步器）")
+    void importRequestWithoutReleaseYear() throws Exception {
+        String body = """
+                {
+                  "batch_id": "otaku_site-anime-20261020-old",
+                  "source": "otaku_site",
+                  "items": [{"source_id": "1", "work_type": "anime", "title": "旧版载荷"}]
+                }
+                """;
+
+        ImportBatchRequest request = objectMapper.readValue(body, ImportBatchRequest.class);
+
+        assertThat(request.items().get(0).releaseYear()).isNull();
     }
 }

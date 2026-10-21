@@ -20,11 +20,16 @@ final class ImportItemValidator {
     static final String TITLE_REQUIRED = "TITLE_REQUIRED";
     static final String TITLE_TOO_LONG = "TITLE_TOO_LONG";
     static final String INVALID_TYPE = "INVALID_TYPE";
+    static final String INVALID_RELEASE_YEAR = "INVALID_RELEASE_YEAR";
     static final String RATING_OUT_OF_SCALE = "RATING_OUT_OF_SCALE";
 
     static final int MAX_SOURCE_ID_LENGTH = 128;
     static final int MAX_TITLE_LENGTH = 500;
     private static final String SCALE_ZERO_TO_TEN = "0-10";
+
+    /** 与 Python 侧 `clean_year` 同一区间；越界说明数据没走清洗层，宁可拒收也不入库。 */
+    static final int MIN_RELEASE_YEAR = 1900;
+    static final int MAX_RELEASE_YEAR = 2100;
 
     private ImportItemValidator() {
     }
@@ -54,6 +59,15 @@ final class ImportItemValidator {
 
         if (!WorkType.isValid(item.workType())) {
             return Optional.of(new Problem(INVALID_TYPE, "work_type 非法：" + item.workType()));
+        }
+
+        Integer releaseYear = item.releaseYear();
+        if (releaseYear != null
+                && (releaseYear < MIN_RELEASE_YEAR || releaseYear > MAX_RELEASE_YEAR)) {
+            // null 是合法值（来源未提供）；只有"给了但不像年份"才拒。
+            return Optional.of(new Problem(INVALID_RELEASE_YEAR,
+                    "release_year 应为 " + MIN_RELEASE_YEAR + "–" + MAX_RELEASE_YEAR
+                            + "，实际 " + releaseYear));
         }
 
         SourceRating rating = item.mainRating();

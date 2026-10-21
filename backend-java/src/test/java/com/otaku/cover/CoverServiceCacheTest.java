@@ -138,7 +138,7 @@ class CoverServiceCacheTest {
 
     private WorkRecord work() {
         LocalDateTime now = LocalDateTime.now();
-        return new WorkRecord(1L, "W-1", "anime", "标题", null,
+        return new WorkRecord(1L, "W-1", "anime", "标题", null, null,
                 "http://127.0.0.1:" + server.getAddress().getPort() + "/cover.jpg",
                 null, null, null, null, null, null,
                 "otaku_site", "1", null, now, now);
