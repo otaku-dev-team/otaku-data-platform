@@ -4,7 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../config/app_config.dart';
 import '../diagnostics/frame_stats.dart';
+import '../storage/token_store.dart';
 import 'api_exception.dart';
+import 'auth_token_interceptor.dart';
 import 'error_interceptor.dart';
 import 'session_expiry.dart';
 
@@ -49,6 +51,13 @@ Dio createDio({String? baseUrl}) {
 
 final dioProvider = Provider<Dio>((ref) {
   final dio = createDio();
+
+  // 令牌注入。排在链路最前：请求一进来就该带好鉴权头，
+  // 后面的拦截器（日志、错误解析）看到的都是最终要发出去的样子。
+  dio.interceptors.insert(
+    0,
+    AuthTokenInterceptor(() => ref.read(tokenStoreProvider).read()),
+  );
 
   // 令牌失效的统一出口：任何请求收到 401 UNAUTHORIZED 都通知认证层清会话。
   //

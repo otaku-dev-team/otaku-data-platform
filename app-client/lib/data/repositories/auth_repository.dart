@@ -1,9 +1,12 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/config/app_config.dart';
 import '../../core/network/api_exception.dart';
+import '../../core/network/dio_client.dart';
 import '../../core/storage/token_store.dart';
 import '../datasources/auth_data_source.dart';
 import '../datasources/auth_mock_data_source.dart';
+import '../datasources/auth_remote_data_source.dart';
 import '../models/account_user.dart';
 
 /// 认证的门面。各层只管要「当前用户」，令牌存哪里、什么时候清由这里决定。
@@ -68,10 +71,10 @@ class AuthRepository {
   }
 }
 
-/// 阶段 2 契约定稿（Issue #32）前只有 Mock。
-/// 定稿后在这里按 `AppConfig.useMock` 切到 `RemoteAuthDataSource`，其余各层不动。
+/// 默认走 Mock；联调时加 `--dart-define=USE_MOCK=false` 切真实接口。
 final authDataSourceProvider = Provider<AuthDataSource>((ref) {
-  return AuthMockDataSource();
+  if (AppConfig.useMock) return AuthMockDataSource();
+  return RemoteAuthDataSource(ref.watch(dioProvider));
 });
 
 final authRepositoryProvider = Provider<AuthRepository>((ref) {

@@ -6,6 +6,8 @@ import '../../core/network/api_exception.dart';
 import '../../core/router/route_paths.dart';
 import '../../core/theme/app_layout.dart';
 import '../../data/models/collection_entry.dart';
+import '../../shared/widgets/account_menu.dart';
+import '../../shared/widgets/collection_status_menu.dart';
 import '../../shared/widgets/cover_image.dart';
 import '../../shared/widgets/empty_state.dart';
 import '../../shared/widgets/error_state.dart';
@@ -33,30 +35,16 @@ class CollectionPage extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('我的收藏'),
         actions: [
-          if (auth.isSignedIn) ...[
+          if (auth.isSignedIn)
             IconButton(
               tooltip: '刷新',
               onPressed: () =>
                   ref.read(collectionControllerProvider.notifier).refresh(),
               icon: const Icon(Icons.refresh),
             ),
-            _AccountMenu(userLabel: auth.user!.label),
-          ] else if (auth.status == AuthStatus.checking)
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16),
-              child: Center(
-                child: SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-              ),
-            )
-          else
-            TextButton(
-              onPressed: () => context.push(RoutePaths.login),
-              child: const Text('登录'),
-            ),
+          // 登录/账号入口与作品库共用同一个组件，未登录时也要能看到「登录」，
+          // 否则这一页只剩一句提示，用户还得退出去找入口。
+          const AccountMenuButton(),
         ],
       ),
       body: Center(
@@ -69,40 +57,6 @@ class CollectionPage extends ConsumerWidget {
           },
         ),
       ),
-    );
-  }
-}
-
-class _AccountMenu extends ConsumerWidget {
-  const _AccountMenu({required this.userLabel});
-
-  final String userLabel;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
-    return PopupMenuButton<String>(
-      tooltip: '账号',
-      icon: const Icon(Icons.account_circle_outlined),
-      onSelected: (value) {
-        if (value == 'logout') {
-          // 只结束当前会话：桌面端不受影响（C9）。
-          ref.read(authControllerProvider.notifier).logout();
-        }
-      },
-      itemBuilder: (context) => [
-        PopupMenuItem<String>(
-          enabled: false,
-          child: Text(
-            userLabel,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-        const PopupMenuDivider(),
-        const PopupMenuItem<String>(value: 'logout', child: Text('退出登录')),
-      ],
     );
   }
 }
@@ -323,7 +277,7 @@ class _CollectionTile extends ConsumerWidget {
                       WorkTypeTag(type: entry.workType),
                       const SizedBox(width: 6),
                       Flexible(
-                        child: _StatusMenu(
+                        child: CollectionStatusMenu(
                           status: status,
                           onSelected: (value) =>
                               _changeStatus(context, ref, value),
@@ -373,53 +327,6 @@ class _RemoveButton extends StatelessWidget {
               color: Colors.white,
             ),
           ),
-        ),
-      ),
-    );
-  }
-}
-
-/// 状态选择器。`null`（清除状态）与三个枚举值并列，因为「收藏但不设状态」
-/// 是合法状态，不能只能通过删除收藏来表达。
-class _StatusMenu extends StatelessWidget {
-  const _StatusMenu({required this.status, required this.onSelected});
-
-  static const String _clearStatusValue = '__none__';
-
-  final CollectionStatus? status;
-  final ValueChanged<CollectionStatus?> onSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final label = status?.label ?? '未设状态';
-
-    return PopupMenuButton<String>(
-      tooltip: '修改观看状态',
-      // 不能用 `value: null` 表示「清除状态」：PopupMenuButton 把 null
-      // 当成「用户点了外面取消」，onSelected 根本不会触发。用哨兵字符串。
-      onSelected: (value) => onSelected(
-        value == _clearStatusValue ? null : CollectionStatus.parse(value),
-      ),
-      itemBuilder: (context) => [
-        for (final option in CollectionStatus.values)
-          PopupMenuItem<String>(
-            value: option.value,
-            child: Text(option.label),
-          ),
-        const PopupMenuDivider(),
-        const PopupMenuItem<String>(
-          value: _clearStatusValue,
-          child: Text('清除状态'),
-        ),
-      ],
-      child: Chip(
-        visualDensity: VisualDensity.compact,
-        label: Text(label),
-        avatar: Icon(
-          status == null ? Icons.help_outline : Icons.playlist_add_check,
-          size: 16,
-          color: theme.colorScheme.primary,
         ),
       ),
     );
