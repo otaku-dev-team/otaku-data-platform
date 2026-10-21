@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/config/app_config.dart';
 import '../../core/router/route_paths.dart';
 import 'auth_controller.dart';
 
@@ -132,7 +133,11 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                 if (kDebugMode) ...[
                   const SizedBox(height: 24),
                   Text(
-                    '当前为 Mock 认证：任意非空账号密码可登录，密码填 wrong 可验证失败提示。',
+                    // 这句话必须跟着数据源走：接上真接口之后还写着「任意密码都能登录」，
+                    // 排查问题时会被自己误导。
+                    AppConfig.useMock
+                        ? '当前为 Mock 认证：任意非空账号密码可登录，密码填 wrong 可验证失败提示。'
+                        : '当前连接真实接口：${AppConfig.baseUrl}',
                     textAlign: TextAlign.center,
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.outline,
