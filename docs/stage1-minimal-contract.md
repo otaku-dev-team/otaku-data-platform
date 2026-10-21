@@ -62,6 +62,7 @@
 | `title` | string | 是 | Python 提交 | 来源标题原文，不做跨类型转换，不做清洗截断 |
 | `summary` | string | **可空** | Python 提交 | `\r\n` 已统一为 `\n`；**不截断**（最长 7225 字），折叠由客户端处理 |
 | `cover_url` | string | **可空** | **Java（代理 + 缓存）** | Python 提交来源地址；**由 Java 代理并本地缓存**，缓存未命中才按限流回源一次，之后由平台直接服务；客户端**绝不直连来源站**（小站，避免加压）。无封面时为 `null` |
+| `release_year` | int | **可空** | Python 提交 | 来源站年份原值，实测非空率约 **95.9%**（2026-10-22 抽样复核，旧记录「98.5% 为空」已作废）。**缺失不是 0 年**，不得为缺失记录填 0；客户端遇 `null` 不渲染年份 |
 | `tags` | string[] | **可空** | Python 提交 | 来源实测每条 0–4 个（源码 `[:5]` 截断存在但未触发）。站点空值是 `[]` 且无法区分"无标签/未录入"，适配器统一转 `null`，见 4.4.3 |
 | `main_rating` | object | **可空** | Python 提交 | `{value, scale}`，当前来源尺度 `0-10`。**缺失不是 0 分** |
 | `source` | string | 是 | Python 提交 | 当前唯一取值 `otaku_site` |
@@ -71,7 +72,7 @@
 
 **`source_url` 补充规则**
 
-- 详情接口返回 `source_url`，列表接口继续保持现有的 6 字段精简结构。
+- 详情接口返回 `source_url`，列表接口保持精简结构（现为 7 字段，见第 6 节；2026-10-22 起含 `release_year`）。
 - 优先采用来源站提供的真实原页地址；如果来源站未直接提供，只有在适配器能可靠确定详情页路径时才允许推导。
 - 无法可靠确定时返回 `null`，不能通过猜测生成地址。
 - 由客户端展示来源站入口并执行导航；客户端不自行拼接地址，也不通过这个字段抓取数据。
@@ -90,21 +91,22 @@
 
 | 接口 | 返回字段 |
 | --- | --- |
-| ③ 列表 | `work_id`、`work_type`、`title`、`cover_url`、`tags`、`main_rating`（**6 个，不含 `summary`**） |
-| ④ 详情 | 全部 11 个（含 `summary`、`source`、`source_id`、`updated_at`、`source_url`） |
+| ③ 列表 | `work_id`、`work_type`、`title`、`release_year`、`cover_url`、`tags`、`main_rating`（**7 个，不含 `summary`**） |
+| ④ 详情 | 全部 12 个（含 `summary`、`source`、`source_id`、`updated_at`、`source_url`、`release_year`） |
 
 ### 2.2 第一阶段明确不纳入
 
 | 字段 / 能力 | 不纳入的原因 |
 | --- | --- |
-| `release_year` | 来源约 **98.5% 为空**，站主承认是数据缺口。客户端展示不出东西，还容易误导。**不得为缺失记录填 0** |
 | 系列 `series_id`、别名 `aliases`、原名 `title_original` | 来源库里有，但 **JSON API 未出口**。已向站主争取，争取到再纳入 |
 | 话数 `episodes`、媒介 `media`、原作载体 `source_material` | 同上，且填充率未确认 |
 | 多来源评分合并 | 第一阶段只有一个来源 |
 | ~~封面下载到自有存储~~ | **已改为主张**：封面由 Java 代理 + 本地缓存（第 2.1 节），客户端不直连来源站 |
 | 账号、收藏、观看状态 | 第二阶段范围，不在本契约 |
 
-`release_year` 若 Java 侧想预留数据库列，可以留，但**第一阶段接口不出口、界面不展示、不参与筛选**。
+> **`release_year` 已移出本清单（2026-10-22）**：此前依据「约 98.5% 为空」判定不纳入，该统计**经复核是错的**——
+> 实测 anime 均匀抽样 800 条非空 **95.9%**（另有独立抽查：page 1 非空 99.5%、page 30 非空 100%）。
+> 现已在接口②与③④全链路纳入，见第 2.1 节与第 6 节。**仍然不得为缺失记录填 0**，`null` 就是 `null`。
 
 ### 2.3 可空规则（三条硬规则）
 
@@ -244,7 +246,7 @@
 | `rating` | `main_rating` | **裸 float**（如 `8.7`），**站点不附带尺度** | 补平台常量尺度 `0-10` 与 `source`；`null` 不折算为 `0` |
 | `cover_url` | `cover_url` | 相对路径 `/media/full/cover_{bangumi_id}.jpg` | 用配置的 `base_url` 拼绝对地址；空串视同 `null` |
 | `tags` | `tags` | 数组，0–4 项；**空值是 `[]` 不是 `null`** | ⚠️ **`[]` 一律转为 `null`（未提供）**，理由见 4.4.3 |
-| `year` | —— | int 或 `null`，约 98.5% 为空 | **第一阶段不取**（第 2.2 节） |
+| `year` | `release_year` | int 或 `null`，实测非空率约 95.9% | 原样透传；`null` 不填 0（2026-10-22 起纳入，见第 2.1 节） |
 | `bangumi_id` | —— | int | 不入库。仅用于理解封面文件名，`cover_url` 已拼好，无需映射 |
 
 **注意 `cover_url` 在三段上的含义不同**（同一个字段名，别混用）：
@@ -390,9 +392,9 @@ Java 侧 DTO 类名可自定，但 JSON 键名以本文为准。
 > URL 路径、DTO 命名、鉴权实现**由 Java 负责人决定**，本节只定语义、字段与响应形态。
 > [`openapi.yaml`](openapi.yaml) 是本节请求与响应形状的机器可读版本；两者冲突时以本节为准。
 
-**列表返回字段（固定）**：`work_id`、`work_type`、`title`、`cover_url`、`tags`、`main_rating`，另加分页字段 `total`、`page`、`page_size`、`total_pages`。**不返回** `summary`、`source`、`source_id`、`updated_at`——需要简介请按 `work_id` 拉详情。
+**列表返回字段（固定）**：`work_id`、`work_type`、`title`、`release_year`、`cover_url`、`tags`、`main_rating`（共 7 个），另加分页字段 `total`、`page`、`page_size`、`total_pages`。**不返回** `summary`、`source`、`source_id`、`updated_at`、`source_url`——需要简介或回流入口请按 `work_id` 拉详情。
 
-**详情返回字段（固定）**：第 2.1 节全部字段（含 `summary`、`source`、`source_id`、`updated_at`、`source_url`）。
+**详情返回字段（固定）**：第 2.1 节全部字段（含 `summary`、`source`、`source_id`、`updated_at`、`source_url`、`release_year`）。
 
 ### 6.1 作品列表
 
@@ -531,7 +533,7 @@ Java 侧 DTO 类名可自定，但 JSON 键名以本文为准。
 | # | 事项 | 需谁确认 |
 | --- | --- | --- |
 | 1 | 第 2.1 节字段集是否够跑通第一阶段；有无遗漏 | 三人 |
-| 2 | `release_year` 确认不纳入第一阶段（98.5% 为空） | 三人 |
+| 2 | ~~`release_year` 确认不纳入第一阶段（98.5% 为空）~~ → **已定：纳入**（2026-10-22）。原「98.5% 为空」的统计作废，实测非空约 95.9%；详见第 2.1 / 2.2 节 | 已确认 |
 | 3 | 评分尺度 `0-10` 是否直接入库 | 三人 + 站主 |
 | 4 | 第一阶段是否只接 `anime` 单一类型 | 三人 |
 | 5 | 单批上限 500 条是否合适 | Java |

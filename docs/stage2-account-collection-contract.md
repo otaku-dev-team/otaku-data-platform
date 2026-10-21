@@ -338,7 +338,7 @@
 | --- | --- |
 | 1. 认证方式、令牌有效期、401 响应体 | §1.2 / §3.2 / §5。不透明令牌、30 天、`401 UNAUTHORIZED` |
 | 2. 列表分页要 `has_next` | 沿用阶段 1 的 `{page, page_size, total, total_pages, items}`，用 `total`/`total_pages` 判断末页，**不额外加 `has_next`**（两个字段表达同一件事会不一致） |
-| 3. 详情要 `cover_url`/`genres`/`year` | 阶段 1 已给 `cover_url`；`genres` 即 `tags`；`year` 在 `data-contract.md` 里 98.5% 为空，**本阶段不返回** |
+| 3. 详情要 `cover_url`/`genres`/`year` | 阶段 1 已给 `cover_url` 与 `release_year`（2026-10-22 起纳入，列表/详情都返回）；`genres` 即 `tags` |
 | 4. 幂等写接口、不要 toggle、status 枚举 | §4.6–§4.8，全部满足 |
 | 5. 统一错误 `{code,message,trace_id}` | §5，`trace_id` 可选 |
 | 6. 不删改字段 | 本文所有新增字段都是**加**，不改阶段 1 已有字段 |
