@@ -32,6 +32,13 @@ from .models import (
 from .source import FailedPage, OtakuSiteSource
 from .cleaning import validate
 
+# 服务端故障类拒绝码：条目本身没问题，是入库时撞上了服务端状况
+# （如并发导入时 DuplicateKeyException 被误归类，见 Issue #81）。
+# 与 TITLE_REQUIRED / INVALID_RELEASE_YEAR 这类**数据问题**必须分开：
+# 后者重试无意义，前者用同一 batch_id 重跑就能补齐。
+# 同步侧若不区分，运维按「rejected = 数据有问题、不重试」处理就会静默丢数据。
+SERVER_FAULT_CODES = frozenset({"INTERNAL_ERROR"})
+
 
 def fingerprint(items: Sequence[WorkItem]) -> str:
     """按来源 id 集合计算指纹，用于生成确定性 batch_id。"""
@@ -83,12 +90,16 @@ class RunReport:
     dry_run: bool = False
     batches: list[dict[str, Any]] = field(default_factory=list)
     rejected_items: list[RejectedItem] = field(default_factory=list)
+    # 服务端故障类拒绝（reason_code=INTERNAL_ERROR）。数据没问题，重跑可补齐，
+    # 与 rejected_items（数据问题，重试无益）分开记，避免运维按统一口径漏重跑。
+    server_error_items: list[RejectedItem] = field(default_factory=list)
     # 抓取阶段重试到底仍失败的页。非空白就意味着本次**没有拿到全量**，需要重跑。
     failed_pages: list[FailedPage] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
         data["rejected_items"] = [asdict(r) for r in self.rejected_items]
+        data["server_error_items"] = [asdict(r) for r in self.server_error_items]
         return data
 
 
@@ -207,14 +218,31 @@ def run(
                 result = importer.submit_batch(
                     batch_id, batch_items, started, config.source
                 )
+                # 批次已送达（HTTP 200），逐条结果里把「数据问题」与「服务端故障」
+                # 分开：后者重跑能好，混在一起会被当成不可重试的数据拒绝（Issue #81）。
+                data_rejects = [
+                    e
+                    for e in result.errors
+                    if e.result == RESULT_REJECTED
+                    and e.reason_code not in SERVER_FAULT_CODES
+                ]
+                server_faults = [
+                    e
+                    for e in result.errors
+                    if e.result == RESULT_REJECTED
+                    and e.reason_code in SERVER_FAULT_CODES
+                ]
                 entry.update(
                     delivered=True,
                     counts=result.counts,
-                    errors=[
-                        asdict(e)
-                        for e in result.errors
-                        if e.result == RESULT_REJECTED
-                    ],
+                    errors=[asdict(e) for e in data_rejects],
+                    server_errors=[asdict(e) for e in server_faults],
+                )
+                report.server_error_items.extend(
+                    RejectedItem(
+                        e.source_id, e.reason_code or "INTERNAL_ERROR", e.message or ""
+                    )
+                    for e in server_faults
                 )
             except (ImportDeliveryError, RuntimeError) as exc:
                 entry.update(
@@ -297,4 +325,16 @@ def summarize(report: RunReport) -> str:
         for page in report.failed_pages:
             lines.append(f"  {page.work_type} 第 {page.page} 页：{page.reason}")
         lines.append("重跑同一命令即可补齐（按 (source, source_id) 幂等，不会重复）。")
+    if report.server_error_items:
+        # 这批不是数据有问题，是服务端故障（Issue #81：并发导入时
+        # DuplicateKeyException 被归类成 rejected）。必须说清楚"要重跑"，
+        # 否则运维按「rejected = 数据问题、重试无益」的契约口径把它们放过。
+        lines.append(
+            f"注意：{len(report.server_error_items)} 条被服务端故障拒绝"
+            f"（{'、'.join(sorted({i.reason_code for i in report.server_error_items}))}），"
+            "数据本身没问题："
+        )
+        for item in report.server_error_items[:20]:
+            lines.append(f"  {item.source_id}: {item.reason_code} - {item.message}")
+        lines.append("用同一 batch_id 重跑同一批即可补齐（幂等，不会重复入库）。")
     return "\n".join(lines)
