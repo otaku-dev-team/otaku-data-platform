@@ -8,6 +8,7 @@ import com.otaku.common.PublicIdGenerator;
 import com.otaku.importer.dto.Counts;
 import com.otaku.importer.dto.ImportBatchRequest;
 import com.otaku.importer.dto.ImportBatchRequest.ImportItem;
+import com.otaku.importer.dto.ImportBatchDetail;
 import com.otaku.importer.dto.ImportBatchResult;
 import com.otaku.importer.dto.ImportItemResult;
 import com.otaku.work.WorkRecord;
@@ -152,19 +153,39 @@ public class ImportService {
             log.warn("batch_id 相同但内容不同（同一天数据变更）：batch_id={} 旧hash={} 新hash={}",
                     batchId, previousHash, requestHash);
         }
-        batchRepository.save(result, source, requestHash);
+        int runSeq = batchRepository.saveAndRecordRun(result, source, requestHash);
 
-        log.info("批次完成 batch_id={} inserted={} updated={} unchanged={} rejected={}",
-                batchId, inserted, updated, unchanged, rejected);
+        log.info("批次完成 batch_id={} 第 {} 次运行 inserted={} updated={} unchanged={} rejected={}",
+                batchId, runSeq, inserted, updated, unchanged, rejected);
         return result;
     }
 
     public ImportBatchResult getBatch(String batchId) {
+        return batchRepository.find(requireBatchId(batchId))
+                .orElseThrow(() -> new ApiException(ErrorCode.BATCH_NOT_FOUND, "批次不存在"));
+    }
+
+    /**
+     * 带逐次运行明细的查询（issue #43）。
+     *
+     * 汇总口径与 {@link #getBatch} 一致（都是最近一次运行的快照），额外给出
+     * `run_count` / `last_run_at` 与每一轮的计数——回答"这批推了几轮、哪轮失败"。
+     */
+    public ImportBatchDetail getBatchWithRuns(String batchId) {
+        String id = requireBatchId(batchId);
+        ImportBatchResult batch = batchRepository.find(id)
+                .orElseThrow(() -> new ApiException(ErrorCode.BATCH_NOT_FOUND, "批次不存在"));
+        ImportBatchRepository.RunMeta meta = batchRepository.findRunMeta(id)
+                .orElse(new ImportBatchRepository.RunMeta(0, null));
+        return ImportBatchDetail.of(batch, meta.runCount(), meta.lastRunAt(),
+                batchRepository.findRuns(id));
+    }
+
+    private static String requireBatchId(String batchId) {
         if (batchId == null || batchId.isBlank() || batchId.length() > MAX_BATCH_ID_LENGTH) {
             throw new ApiException(ErrorCode.BATCH_NOT_FOUND, "批次不存在");
         }
-        return batchRepository.find(batchId.trim())
-                .orElseThrow(() -> new ApiException(ErrorCode.BATCH_NOT_FOUND, "批次不存在"));
+        return batchId.trim();
     }
 
     private ItemOutcome apply(String source, NormalizedItem item) {
