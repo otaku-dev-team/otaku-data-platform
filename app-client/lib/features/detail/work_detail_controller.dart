@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../data/models/related_works.dart';
 import '../../data/models/work.dart';
 import '../../data/repositories/work_repository.dart';
 
@@ -10,6 +11,18 @@ import '../../data/repositories/work_repository.dart';
 final workDetailProvider = FutureProvider.family<Work, String>(
   (ref, workId) {
     return ref.watch(workRepositoryProvider).fetchDetail(workId);
+  },
+  retry: (retryCount, error) => null,
+);
+
+/// 同标签推荐，按 `work_id` 单独缓存。
+///
+/// 与详情**分开**是一个刻意的选择：推荐拿不到时详情页照常显示，
+/// 两者的加载与失败互不影响（区块见 [RelatedWorksSection]）。
+/// 同样关掉自动重试：拿不到就不显示这一块，没必要在后台一直重试。
+final relatedWorksProvider = FutureProvider.family<RelatedWorks, String>(
+  (ref, workId) {
+    return ref.watch(workRepositoryProvider).fetchRelated(workId);
   },
   retry: (retryCount, error) => null,
 );
