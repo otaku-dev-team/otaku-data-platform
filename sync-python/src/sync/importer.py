@@ -20,9 +20,14 @@ from tenacity import (
 )
 
 from .config import SOURCE_NAME
-from .models import BatchResult, WorkItem
+from .models import BatchResult, ScheduleItem, WorkItem
 
 RETRYABLE_STATUS = {429, 500, 502, 503, 504}
+
+# 档期导入端点。与作品批次（/internal/import/batches）平行：
+# 同样的 X-Internal-Token、同样的 batch_id 幂等键、同样的重试口径，
+# 只是路径不同——后端把两种条目分成两个控制器，见 ScheduleImportController。
+SCHEDULE_IMPORT_PATH = "/internal/import/schedules"
 
 
 class ImportDeliveryError(RuntimeError):
@@ -66,6 +71,10 @@ class JavaImporter:
     @property
     def import_url(self) -> str:
         return f"{self.base_url}/internal/import/batches"
+
+    @property
+    def schedule_import_url(self) -> str:
+        return f"{self.base_url}{SCHEDULE_IMPORT_PATH}"
 
     def _headers(self) -> dict[str, str]:
         headers = {"Content-Type": "application/json"}
@@ -129,6 +138,61 @@ class JavaImporter:
                 f"导入接口返回 {resp.status_code}：{resp.text[:200]}"
             )
         return BatchResult.from_payload(resp.json())
+
+    def submit_schedule_batch(
+        self,
+        batch_id: str,
+        items: Sequence[ScheduleItem],
+        fetched_at: str,
+        source: str = SOURCE_NAME,
+    ) -> BatchResult:
+        """提交一个档期批次到 /internal/import/schedules。
+
+        与 `submit_batch` 共用重试与错误分类，只是路径和载荷不同。
+        `source` 同样必须显式传入并跟随配置：批次级 source 错标会让后端
+        把不同来源的记录混在一起（与作品批次同一个坑）。
+        """
+        if not self.token:
+            raise InternalImportError(
+                "缺少内部导入令牌，请设置环境变量 OTAKU_INTERNAL_TOKEN"
+            )
+        payload = {
+            "batch_id": batch_id,
+            "source": source,
+            "fetched_at": fetched_at,
+            "items": [item.to_payload() for item in items],
+        }
+        retryer = Retrying(
+            stop=stop_after_attempt(self.max_attempts),
+            wait=wait_fixed(self.backoff_seconds),
+            retry=retry_if_exception_type(_Retryable),
+            reraise=True,
+        )
+        try:
+            resp = retryer(self._post_to, self.schedule_import_url, payload)
+        except _Retryable as exc:
+            raise ImportDeliveryError(
+                f"批次 {batch_id} 重试 {self.max_attempts} 次仍未送达：{exc}"
+            ) from exc
+
+        if resp.status_code in (401, 403):
+            raise InternalImportError(
+                f"导入接口拒绝认证（{resp.status_code}），请检查内部令牌"
+            )
+        if resp.status_code >= 400:
+            raise InternalImportError(
+                f"导入接口返回 {resp.status_code}：{resp.text[:200]}"
+            )
+        return BatchResult.from_payload(resp.json())
+
+    def _post_to(self, url: str, payload: dict[str, Any]) -> httpx.Response:
+        try:
+            resp = self._client.post(url, json=payload, headers=self._headers())
+        except (httpx.TimeoutException, httpx.TransportError) as exc:
+            raise _Retryable(f"网络错误：{exc!r}") from exc
+        if resp.status_code in RETRYABLE_STATUS:
+            raise _Retryable(f"服务端返回 {resp.status_code}")
+        return resp
 
     def get_batch(self, batch_id: str) -> BatchResult:
         """查询已提交的批次结果，用于重跑核对。"""

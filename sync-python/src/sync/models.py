@@ -18,6 +18,7 @@ VALID_RESULTS = (RESULT_INSERTED, RESULT_UPDATED, RESULT_UNCHANGED, RESULT_REJEC
 
 REASON_INVALID_TYPE = "INVALID_TYPE"
 REASON_TITLE_REQUIRED = "TITLE_REQUIRED"
+REASON_INVALID_WEEKDAY = "INVALID_WEEKDAY"
 REASON_RATING_OUT_OF_SCALE = "RATING_OUT_OF_SCALE"
 REASON_INTERNAL_ERROR = "INTERNAL_ERROR"
 
@@ -92,6 +93,61 @@ class WorkItem:
             "tags": self.tags,
             "main_rating": self.main_rating.to_payload() if self.main_rating else None,
             "source_url": self.source_record.source_url,
+        }
+
+
+@dataclass
+class ScheduleItem:
+    """待导入的一条新番档期（来源站 /api/schedule）。
+
+    与 WorkItem 平行：同一套 SourceRecord / fetched_at 口径，字段按站点档期
+    结构来。work_tags 在同步侧就把斜杠字符串拆成数组——后端契约收数组，
+    让两边都不猜对方的格式。
+    """
+
+    source_record: SourceRecord
+    season_code: str | None = None
+    title_main: str | None = None
+    title_cn: str | None = None
+    title_jp: str | None = None
+    weekday: int | None = None
+    broadcast_time: str | None = None
+    broadcast_note: str | None = None
+    work_type: str | None = None
+    work_tags: list[str] | None = None
+    image_url: str | None = None
+    platforms: list[dict] | None = None
+    source_url: str | None = None
+    content_id: str | None = None
+    source_updated_at: str | None = None
+
+    @property
+    def source_id(self) -> str:
+        return self.source_record.source_id
+
+    def to_payload(self) -> dict[str, Any]:
+        """转成内部导入接口（档期）的 JSON 体。
+
+        字段名与后端 ScheduleImportRequest 一致。空值一律传 null。
+        `source_updated_at` 取自站点 last_synced_at，同步侧转成 ISO-8601
+        （站点给的是 "2026-10-20 06:01:50" 空格分隔、无时区，按 UTC 处理）。
+        """
+        return {
+            "source_id": self.source_record.source_id,
+            "season_code": self.season_code,
+            "title_main": self.title_main,
+            "title_cn": self.title_cn,
+            "title_jp": self.title_jp,
+            "weekday": self.weekday,
+            "broadcast_time": self.broadcast_time,
+            "broadcast_note": self.broadcast_note,
+            "work_type": self.work_type,
+            "work_tags": self.work_tags,
+            "image_url": self.image_url,
+            "platforms": self.platforms,
+            "source_url": self.source_url,
+            "content_id": self.content_id,
+            "source_updated_at": self.source_updated_at,
         }
 
 

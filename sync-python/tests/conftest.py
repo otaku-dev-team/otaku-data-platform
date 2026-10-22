@@ -68,6 +68,61 @@ SAMPLE_TAGS: list[dict[str, Any]] = [
     {"name": "搞笑", "count": 964},
 ]
 
+# /api/schedule 的样本条目。字段按 2026-10-22 实测结构给出，覆盖：
+#   469  完整字段（含平台、content_id、斜杠标签串、weekday=1）
+#   1470 content_id 为 null、image_url 缺失——关联不到本地作品也照样入库
+#   1471 weekday=0（坏数据，同步侧与后端都应拒收）
+#   1511 title_main 缺失——同步侧兜底链取不到值时应被拒
+SAMPLE_SCHEDULE: list[dict[str, Any]] = [
+    {
+        "id": 469,
+        "season_code": "202504",
+        "source_key": "#compass2.0",
+        "title_main": "#COMPASS 2.0 战斗天赋解析系统",
+        "title_cn": "#COMPASS 2.0 战斗天赋解析系统",
+        "title_jp": "#コンパス2.0 戦闘摂理解析システム",
+        "weekday": 1,
+        "broadcast_time": None,
+        "broadcast_note": "4/7周一深夜；(全12话)",
+        "work_type": "游戏 改编动画",
+        "work_tags": "战斗/群像/英雄剧",
+        "image_url": "https://i0.hdslb.com/bfs/x.jpg",
+        "platforms": [
+            {"name": "www.bilibili.com", "url": "https://www.bilibili.com/1"}
+        ],
+        "source_url": "https://yuc.wiki/202504/",
+        "last_synced_at": "2026-10-20 06:01:50",
+        "content_id": 7267,
+    },
+    {
+        "id": 1470,
+        "season_code": "202001",
+        "title_main": "ARP Backstage Pass",
+        "weekday": 1,
+        "broadcast_note": "1/13周一深夜",
+        "work_type": "漫画改编动画",
+        "work_tags": "",
+        "platforms": [],
+        "source_url": None,
+        "last_synced_at": None,
+        "content_id": None,
+    },
+    {
+        "id": 1471,
+        "season_code": "202504",
+        "title_main": "星期非法的条目",
+        "weekday": 0,
+        "work_tags": "战斗",
+    },
+    {
+        "id": 1511,
+        "season_code": "202001",
+        "title_main": None,
+        "title_cn": None,
+        "weekday": None,
+    },
+]
+
 
 class _Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
@@ -136,11 +191,40 @@ class _Handler(BaseHTTPRequestHandler):
                 },
             )
             return
+        if parsed.path == "/api/schedule":
+            # 档期分页。站点默认 page_size=20，桩服务同样支持分页与坏页注入。
+            entries = self.server.state.get("schedule") or []
+            raw_page = query.get("page")
+            if raw_page is None:
+                self._send(200, {"items": entries})
+                return
+            page = int(raw_page[0])
+            if page in (self.server.state.get("failing_pages") or set()):
+                status = self.server.state.get("failing_pages_status", 503)
+                self._send(status, {"detail": f"stub failure {status}"})
+                return
+            page_size = int((query.get("page_size") or ["20"])[0])
+            start = (page - 1) * page_size
+            total_pages = max(1, (len(entries) + page_size - 1) // page_size)
+            self._send(
+                200,
+                {
+                    "total": len(entries),
+                    "page": page,
+                    "page_size": page_size,
+                    "total_pages": total_pages,
+                    "items": entries[start : start + page_size],
+                },
+            )
+            return
         self._send(404, {"code": "NOT_FOUND", "message": self.path})
 
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
-        if parsed.path != "/internal/import/batches":
+        if parsed.path not in (
+            "/internal/import/batches",
+            "/internal/import/schedules",
+        ):
             self._send(404, {"code": "NOT_FOUND", "message": self.path})
             return
 
@@ -212,6 +296,7 @@ class _StubServer(ThreadingHTTPServer):
         self.state: dict[str, Any] = {
             "items": list(SAMPLE_ITEMS),
             "tags": list(SAMPLE_TAGS),
+            "schedule": list(SAMPLE_SCHEDULE),
             "pages_requested": [],
             "attempts": 0,
             "received": [],

@@ -7,6 +7,10 @@
 
 长任务可观测：每提交 N 批向 stderr 打一行进度；被 Ctrl-C 中断时也会先落盘
 已完成的运行报告，避免全量推送跑了一半却没有任何记录。
+
+两条数据链路共用本模块的编排（`run` 作品 / `run_schedule` 档期）：
+档期只有 1500 条（8 页 × 200），不需要 limit / 抽样，但抓取失败记账、
+批次报告、幂等口径与作品链路完全一致。
 """
 
 from __future__ import annotations
@@ -30,7 +34,7 @@ from .models import (
     utc_now,
 )
 from .source import FailedPage, OtakuSiteSource
-from .cleaning import validate
+from .cleaning import validate, validate_schedule
 
 # 服务端故障类拒绝码：条目本身没问题，是入库时撞上了服务端状况
 # （如并发导入时 DuplicateKeyException 被误归类，见 Issue #81）。
@@ -40,8 +44,11 @@ from .cleaning import validate
 SERVER_FAULT_CODES = frozenset({"INTERNAL_ERROR"})
 
 
-def fingerprint(items: Sequence[WorkItem]) -> str:
-    """按来源 id 集合计算指纹，用于生成确定性 batch_id。"""
+def fingerprint(items: Sequence) -> str:
+    """按来源 id 集合计算指纹，用于生成确定性 batch_id。
+
+    对 WorkItem 与 ScheduleItem 都适用：两者都有 source_id 属性。
+    """
     digest = hashlib.sha256()
     for source_id in sorted(item.source_id for item in items):
         digest.update(source_id.encode("utf-8"))
@@ -67,6 +74,16 @@ def build_batch_id(
 
 def chunked(items: Sequence[WorkItem], size: int) -> list[list[WorkItem]]:
     return [list(items[i : i + size]) for i in range(0, len(items), size)]
+
+
+def schedule_batch_id(items: Sequence, run_at: str, source: str = SOURCE_NAME) -> str:
+    """档期批次标识。与 `build_batch_id` 同规则：来源 id 集合 + 日期确定性生成。
+
+    固定带 `schedule` 段而不是作品类型列表：档期没有类型维度，
+    但两个链路的 batch_id 不能撞（同一个 import_batch 表）。
+    """
+    day = run_at[:10].replace("-", "")
+    return f"{source}-schedule-{day}-{fingerprint(items)}"
 
 
 @dataclass
@@ -284,6 +301,148 @@ def run(
         flush()  # 收尾：不足一批的剩余条目也要提交
     except KeyboardInterrupt:
         # 全量推送可能跑上千批；中断时先把已完成部分落盘，再向上抛出让进程退出。
+        report.failed_pages = failed_pages
+        report.finished_at = utc_now()
+        _write_json(report_path, report.to_dict())
+        raise
+    finally:
+        if importer is not None:
+            importer.close()
+
+    report.failed_pages = failed_pages
+    report.finished_at = utc_now()
+    _write_json(report_path, report.to_dict())
+    return report
+
+
+def run_schedule(
+    config: SyncConfig,
+    dry_run: bool = False,
+    output_dir: str | None = None,
+) -> RunReport:
+    """执行一次档期同步（来源站 /api/schedule，约 1500 条）。
+
+    与 `run`（作品）平行的编排，差别只有三处：
+    - 数据源是 `iter_schedule_items`（分页 + 逐页跳过记账）；
+    - 校验用 `validate_schedule`（主标题必须有、weekday 1..7 或 null）；
+    - 提交走 `submit_schedule_batch`（/internal/import/schedules）。
+
+    其余口径完全一致：确定性 batch_id、逐条事务、服务端故障与数据问题
+    分开记、失败页记账、中断时先落盘报告。
+    """
+    started = utc_now()
+    out_dir = output_dir or config.output_dir
+
+    report = RunReport(
+        started_at=started,
+        source=config.source,
+        work_types=["schedule"],
+        dry_run=dry_run,
+    )
+
+    importer: JavaImporter | None = None
+    if not dry_run:
+        importer = JavaImporter(
+            config.java_base_url,
+            token=config.internal_token,
+            timeout=config.timeout_seconds,
+            max_attempts=config.max_attempts,
+            backoff_seconds=config.backoff_seconds,
+        )
+
+    batch_size = max(1, config.batch_size)
+    buffer: list = []
+
+    def flush() -> None:
+        if not buffer:
+            return
+        batch_items = buffer
+        batch_id = schedule_batch_id(batch_items, started, config.source)
+        payload = {
+            "batch_id": batch_id,
+            "source": config.source,
+            "fetched_at": started,
+            "items": [item.to_payload() for item in batch_items],
+        }
+        entry: dict[str, Any] = {"batch_id": batch_id, "size": len(batch_items)}
+
+        if dry_run:
+            entry["payload_path"] = _write_json(
+                os.path.join(out_dir, f"batch-{batch_id}.json"), payload
+            )
+            entry["delivered"] = False
+        else:
+            assert importer is not None
+            try:
+                result = importer.submit_schedule_batch(
+                    batch_id, batch_items, started, config.source
+                )
+                data_rejects = [
+                    e
+                    for e in result.errors
+                    if e.result == RESULT_REJECTED
+                    and e.reason_code not in SERVER_FAULT_CODES
+                ]
+                server_faults = [
+                    e
+                    for e in result.errors
+                    if e.result == RESULT_REJECTED
+                    and e.reason_code in SERVER_FAULT_CODES
+                ]
+                entry.update(
+                    delivered=True,
+                    counts=result.counts,
+                    errors=[asdict(e) for e in data_rejects],
+                    server_errors=[asdict(e) for e in server_faults],
+                )
+                report.server_error_items.extend(
+                    RejectedItem(
+                        e.source_id, e.reason_code or "INTERNAL_ERROR", e.message or ""
+                    )
+                    for e in server_faults
+                )
+            except (ImportDeliveryError, RuntimeError) as exc:
+                entry.update(
+                    delivered=False,
+                    error=str(exc),
+                    reason_code=REASON_INTERNAL_ERROR,
+                    failed_source_ids=[i.source_id for i in batch_items],
+                )
+        report.batches.append(entry)
+        buffer.clear()
+
+    report_path = os.path.join(
+        out_dir, f"run-schedule-{started.replace(':', '').replace('+', 'Z')}.json"
+    )
+    failed_pages: list[FailedPage] = []
+    try:
+        with OtakuSiteSource(
+            config.source_base_url,
+            timeout=config.timeout_seconds,
+            user_agent=config.user_agent,
+            page_size=config.source_page_size,
+            request_interval_seconds=config.request_interval_seconds,
+            max_pages=config.max_pages,
+            max_attempts=config.max_attempts,
+            backoff_seconds=config.backoff_seconds,
+        ) as source:
+            for item in source.iter_schedule_items(started):
+                report.fetched += 1
+                problems = validate_schedule(item)
+                if problems:
+                    report.rejected += 1
+                    for code, message in problems:
+                        report.rejected_items.append(
+                            RejectedItem(item.source_id, code, message)
+                        )
+                else:
+                    report.accepted += 1
+                    buffer.append(item)
+                    if len(buffer) >= batch_size:
+                        flush()
+            failed_pages.extend(source.failed_pages)
+        flush()  # 收尾：不足一批的剩余条目也要提交
+    except KeyboardInterrupt:
         report.failed_pages = failed_pages
         report.finished_at = utc_now()
         _write_json(report_path, report.to_dict())
