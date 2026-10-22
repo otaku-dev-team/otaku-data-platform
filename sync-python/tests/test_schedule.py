@@ -110,11 +110,13 @@ def test_to_schedule_item_maps_site_fields(stub):
 
 def test_iter_schedule_paginates_and_skips_bad_page(stub):
     """分页拉取 + 坏页跳过记账：坏页不能让整批白跑。"""
-    # 3 条样本、page_size 2 → 2 页；第 1 页注入 503（可恢复，跳过）
+    # 3 条样本、档期 page_size 2 → 2 页；第 1 页注入 503（可恢复，跳过）
+    # 页码要用 schedule_page_size：档期的分页与作品的 page_size 是两套，
+    # 传错了桩会按 100 切片，第 1 页就把 3 条全返回，第 2 页反而是空的。
     entries = list(stub.state["schedule"])[:3]
     stub.reset(schedule=entries, failing_pages={1})
     with OtakuSiteSource(
-        stub.base_url, request_interval_seconds=0, page_size=2
+        stub.base_url, request_interval_seconds=0, schedule_page_size=2
     ) as source:
         pages = list(source.iter_schedule_raw())
 

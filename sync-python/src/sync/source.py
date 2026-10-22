@@ -106,6 +106,7 @@ class OtakuSiteSource:
         timeout: float = 30.0,
         user_agent: str = "otaku-data-platform-sync/0.1.0",
         page_size: int = DEFAULT_PAGE_SIZE,
+        schedule_page_size: int = SCHEDULE_PAGE_SIZE,
         request_interval_seconds: float = DEFAULT_REQUEST_INTERVAL_SECONDS,
         max_pages: int = DEFAULT_MAX_PAGES,
         max_attempts: int = 4,
@@ -113,6 +114,10 @@ class OtakuSiteSource:
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.page_size = max(1, page_size)
+        # 档期有自己的 page_size（站点上限 100），与作品的分开存。
+        # 请求与终止条件必须读同一个值：终止条件写死常量的话，
+        # 测试里注不进小页码，分页逻辑就没法用少量样本验证。
+        self.schedule_page_size = max(1, schedule_page_size)
         self.request_interval_seconds = max(0.0, request_interval_seconds)
         self.max_pages = max(1, max_pages)
         self.max_attempts = max(1, max_attempts)
@@ -343,8 +348,8 @@ class OtakuSiteSource:
                 # 站点档期接口的 page_size 上限与 contents 不同：contents 是 500，
                 # 档期实测 100 通过、200 返回 422（2026-10-22 逐个探测）。
                 # 传 200 会被当致命错误抛出——请求本身不对，重试无意义。
-                # 这里单独给 100，不跟作品的 page_size 配置混用。
-                "page_size": page_size or SCHEDULE_PAGE_SIZE,
+                # 这里不跟作品的 page_size 配置混用。
+                "page_size": page_size or self.schedule_page_size,
             },
         )
         payload = resp.json()
@@ -354,9 +359,10 @@ class OtakuSiteSource:
         """逐页产出档期条目，单页彻底失败时跳过并记账。
 
         终止条件与 `iter_raw` 相同：本页为空、已到 total_pages、本页不满。
-        「本页不满」用的是**档期自己的 page_size**（SCHEDULE_PAGE_SIZE）而不是
-        self.page_size——后者是作品接口的 200，拿它判断会把第一页 100 条
-        误判成"不满"从而提前终止（实测踩过：1500 条只抓到 100 条）。
+        「本页不满」用的是**档期自己的 page_size**（`self.schedule_page_size`，
+        默认 100）而不是 self.page_size——后者是作品接口的配置，拿它判断会把
+        第一页 100 条误判成"不满"从而提前终止（实测踩过：1500 条只抓到 100 条）。
+        请求与判断读同一个属性，改一处不会只改一半。
         """
         for page in range(1, self.max_pages + 1):
             try:
@@ -382,7 +388,7 @@ class OtakuSiteSource:
             total_pages = payload.get("total_pages")
             if isinstance(total_pages, int) and page >= total_pages:
                 break
-            if len(items) < SCHEDULE_PAGE_SIZE:
+            if len(items) < self.schedule_page_size:
                 break
 
     def iter_schedule_items(self, fetched_at: str) -> Iterator[ScheduleItem]:
