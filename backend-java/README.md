@@ -25,7 +25,7 @@ Java 业务后端。负责人：**Java 负责人**（@pyxz0）。
 | 接口③ 作品列表 / 搜索 | ✅ 已实现 |
 | 接口④ 作品详情 | ✅ 已实现 |
 | 封面代理 + 本地缓存（契约要求，openapi 未定义） | ✅ 已实现 |
-| 单元测试 | ✅ 54 项，`mvnw.cmd test` 通过（含对外 JSON 键名形状测试） |
+| 单元测试 | ✅ 67 项，`mvnw.cmd test` 通过（含对外 JSON 键名形状测试） |
 | 集成测试 | ✅ 3 项（并发导入，需真实 MySQL，见「集成测试」一节）；未设 `IT_DB_PORT` 时整类跳过 |
 | 启动与鉴权冒烟 | ✅ `java -jar` 5–6 秒内启动；无/错令牌 POST 均返回 `401 {"error":{"code":"UNAUTHORIZED"}}` |
 | 数据侧验收 D1–D10 | ✅ 已在真实 MySQL 8.0.46 实例上逐条跑通，见下节 |
@@ -228,8 +228,9 @@ $env:DB_USER="root"; $env:DB_PASSWORD="<你的密码>"; $env:OTAKU_INTERNAL_TOKE
 | --- | --- | --- | --- |
 | ② 提交批次 | `POST /internal/import/batches` | `X-Internal-Token` | 单批 ≤500 条，逐条返回四类计数与失败明细 |
 | ②b 查批次 | `GET /internal/import/batches/{batch_id}` | `X-Internal-Token` | 重跑前核对用 |
-| ③ 列表 | `GET /api/works?type=&q=&page=&page_size=` | 无 | 7 字段（含 `release_year`），**不含 summary**；`page_size` 上限 50 自动截断 |
+| ③ 列表 | `GET /api/works?type=&q=&sort=&page=&page_size=` | 无 | 7 字段（含 `release_year`），**不含 summary**；`page_size` 上限 50 自动截断；`sort` 可选 `id`（默认）`/ rating / year`，非法值 400 |
 | ④ 详情 | `GET /api/works/{work_id}` | 无 | 12 字段（含 `release_year`、`source_url`）；不存在或格式非法都是 404 |
+| ④b 相关推荐 | `GET /api/works/{work_id}/related?limit=` | 无 | 按共享标签取相关作品，评分高→低，不含自身；无标签返回空 items（不是 404）；`limit` 默认 6、上限 20 |
 | ⑤ 封面 | `GET /api/covers/{work_id}` | 无 | 代理 + 本地缓存，30 天缓存 + ETag；无封面/回源失败返回 404 |
 
 **阶段 2（账号与个人数据）**——字段与语义以
@@ -277,11 +278,41 @@ curl -s "http://localhost:8080/api/works?page=1&page_size=100"
 curl -s "http://localhost:8080/api/works?q=%E9%AD%94%E6%B3%95&type=anime"
 curl -s "http://localhost:8080/api/works?type=movie"          # 400 BAD_REQUEST
 curl -s -i "http://localhost:8080/api/works/no-such-id"       # 404 WORK_NOT_FOUND
+
+# 排序（默认 id 升序）与相关推荐
+curl -s "http://localhost:8080/api/works?sort=rating&page_size=10"
+curl -s "http://localhost:8080/api/works?sort=hot"            # 400 BAD_REQUEST
+curl -s "http://localhost:8080/api/works/W-abc123/related?limit=6"
 ```
 
 > Windows 控制台注意：URL 里的中文必须百分号编码，直接写 `q=魔法` 会让 Tomcat 返回 400
 > （Flutter 的 Dio 会自动编码，所以只有手工 curl 才会踩到）。
 > 上面 `q=%E9%AD%94%E6%B3%95` 就是"魔法"的 UTF-8 百分号编码。
+
+### 列表排序与分页性能
+
+`sort` 只接受 `id`（默认）/ `rating` / `year`，其余一律 400。三种排序都以 `id` 作次级键，
+分页不会重复或漏；无评分 / 无年份的作品排在末尾（MySQL 升序把 NULL 排在最前，DESC 后自然沉底）。
+
+`V6__list_sort_index.sql` 给 `(rating_value, id)` 与 `(release_year, id)` 建了索引，
+**次级键必须与主键同向 DESC**，否则命中不了「反向索引扫描」，索引等于白建。
+
+`findPage` 用的是**两段式查询**（先在内层覆盖索引上定位这一页的 id，再回表取 50 行），
+因为 `LIMIT n OFFSET m` 在深页会把前 m 行逐行回表再丢掉。
+
+55.6 万条合成数据实测（本机 MySQL 8.0.46，HTTP 含 COUNT）：
+
+| 场景 | 改前 | 改后 |
+| --- | --- | --- |
+| 首页（默认 / rating / year） | — | 79 / 81 / 79 ms |
+| rating 第 5000 页（OFFSET 249,950） | 1275 ms | **135 ms** |
+| year 第 5000 页 | 1374 ms | **128 ms** |
+| 默认排序第 11000 页 | 414 ms | 490 ms（顺序跳页本身的开销，两段式无收益） |
+| 详情页相关推荐（`limit=6`） | 1020 ms（`JSON_OVERLAPS` 直接排序） | **6.5 ms** |
+
+> 深页仍是 O(OFFSET)：真正根治要改成键集分页（记住上一页末位 id），那需要动契约，尚未做。
+> 相关推荐能快，是因为它 `LIMIT 6` 且按评分倒序，靠 `idx_work_rating` 扫十几行就够；
+> **不要**改成「按共享标签数排序」——那需要全表算分 + filesort。
 
 ### 集成测试（并发导入，需要真实 MySQL）
 
