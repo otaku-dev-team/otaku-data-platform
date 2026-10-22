@@ -84,12 +84,19 @@ public class ScheduleRepository {
     /**
      * 按星期取条目。{@code weekday} 为 {@code null} 时取"待定"组。
      *
-     * <p>用 {@code IS NOT DISTINCT FROM} 而不是 {@code =}：后者遇到 NULL 参数
+     * <p>用 MySQL 的 NULL 安全相等 {@code <=>} 而不是 {@code =}：后者遇到 NULL 参数
      * 永远不匹配，会把"待定"组查成空列表，而空列表在这里是合法数据，
      * 错了也看不出来。
+     *
+     * <p>注意这里**必须**用 {@code <=>}（或 {@code IS NULL} 动态拼）而不是动态省略
+     * WHERE：参数为 null 在本方法里是有含义的——它就是"查待定组"。
+     * 若照资讯那边的做法直接省掉条件，null 会变成"查全部"，星期分组全乱。
+     *
+     * <p>另：别写成 {@code IS NOT DISTINCT FROM}，那是 PostgreSQL 语法，
+     * MySQL 直接报 1064（本机实测踩过）。
      */
     public List<ScheduleRecord> findByWeekday(Integer weekday) {
-        String sql = "SELECT " + COLUMNS + " FROM schedule WHERE weekday IS NOT DISTINCT FROM :weekday"
+        String sql = "SELECT " + COLUMNS + " FROM schedule WHERE weekday <=> :weekday"
                 + " ORDER BY id ASC";
         return jdbc.query(sql, new MapSqlParameterSource("weekday", weekday), MAPPER);
     }
