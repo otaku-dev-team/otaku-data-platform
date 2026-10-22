@@ -19,6 +19,7 @@ import '../../shared/widgets/skeleton_list.dart';
 import '../../shared/widgets/tag_chips.dart';
 import '../../shared/widgets/work_type_tag.dart';
 import '../auth/auth_controller.dart';
+import 'related_works_section.dart';
 import 'work_collection_controller.dart';
 import 'work_detail_controller.dart';
 
@@ -179,6 +180,9 @@ class _DetailBody extends StatelessWidget {
           ),
           const SizedBox(height: 24),
           _RecordPanel(work: work),
+          // 相关推荐排在最后：正文与收录信息才是这页的主角，推荐是延伸阅读。
+          // 拿不到或没标签时组件自己渲染成 SizedBox.shrink()，这里不用判空。
+          RelatedWorksSection(workId: work.workId),
         ],
       ),
     );

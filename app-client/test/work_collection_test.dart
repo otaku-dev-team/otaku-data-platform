@@ -9,7 +9,9 @@ import 'package:otaku_app/data/datasources/work_data_source.dart';
 import 'package:otaku_app/data/models/collection_entry.dart';
 import 'package:otaku_app/data/models/collection_state.dart';
 import 'package:otaku_app/data/models/paged_result.dart';
+import 'package:otaku_app/data/models/related_works.dart';
 import 'package:otaku_app/data/models/work.dart';
+import 'package:otaku_app/data/models/work_sort.dart';
 import 'package:otaku_app/data/models/work_summary.dart';
 import 'package:otaku_app/data/models/work_type.dart';
 import 'package:otaku_app/data/repositories/collection_repository.dart';
@@ -31,6 +33,7 @@ class _FakeWorkSource implements WorkDataSource {
   Future<PagedResult<WorkSummary>> fetchWorks({
     WorkType? type,
     String? query,
+    WorkSort sort = WorkSort.id,
     int page = 1,
     int pageSize = 20,
   }) async {
@@ -47,6 +50,10 @@ class _FakeWorkSource implements WorkDataSource {
 
   @override
   Future<Work> fetchDetail(String workId) async => _work(workId);
+
+  @override
+  Future<RelatedWorks> fetchRelated(String workId, {int limit = 6}) async =>
+      const RelatedWorks(basisTags: <String>[], items: <WorkSummary>[]);
 }
 
 /// 在 Mock 收藏源上加计数器：既保留契约语义（upsert / 只改不建 / 幂等删除），

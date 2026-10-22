@@ -54,7 +54,15 @@ class CollectionStatusMenu extends StatelessWidget {
       ],
       child: Chip(
         visualDensity: VisualDensity.compact,
-        label: Text(label),
+        // 收藏卡是窄容器：大字号下（真机 font_scale 2.0 实测）M3 默认的
+        // labelPadding 会把 label 挤到一行一个字、再被固定高度裁掉。
+        // 收紧内边距 + 单行省略，最坏情况显示「未设…」而不是残字。
+        labelPadding: const EdgeInsets.symmetric(horizontal: 6),
+        label: Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
         avatar: Icon(
           status == null ? Icons.help_outline : Icons.playlist_add_check,
           size: 16,

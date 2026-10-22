@@ -245,6 +245,10 @@ class _CollectionTile extends ConsumerWidget {
         ? null
         : entry.title.characters.first;
     final updatedAt = entry.updatedAt;
+    // 网格的 mainAxisExtent 已按字号缩放（见上方 _buildGrid 一侧），正文容器
+    // 必须用同一个缩放值，否则外壳够高、内部固定 124 依旧会裁掉标题和状态。
+    // 真机 font_scale 2.0 实测：标题下半被裁、状态 chip 只剩一个字。
+    final textScale = MediaQuery.textScalerOf(context).scale(1);
 
     return PosterCardShell(
       onTap: () => context.push(RoutePaths.workDetail(entry.workId)),
@@ -263,7 +267,7 @@ class _CollectionTile extends ConsumerWidget {
             ),
           ),
           SizedBox(
-            height: AppLayout.collectionCardBodyHeight,
+            height: AppLayout.collectionCardBodyHeight * textScale,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
               child: Column(

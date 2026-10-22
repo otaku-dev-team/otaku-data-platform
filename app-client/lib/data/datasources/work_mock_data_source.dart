@@ -6,7 +6,9 @@ import 'package:flutter/services.dart';
 import '../../core/config/app_config.dart';
 import '../../core/network/api_exception.dart';
 import '../models/paged_result.dart';
+import '../models/related_works.dart';
 import '../models/work.dart';
+import '../models/work_sort.dart';
 import '../models/work_summary.dart';
 import '../models/work_type.dart';
 import 'work_data_source.dart';
@@ -63,6 +65,7 @@ class MockWorkDataSource implements WorkDataSource {
   Future<PagedResult<WorkSummary>> fetchWorks({
     WorkType? type,
     String? query,
+    WorkSort sort = WorkSort.id,
     int page = 1,
     int pageSize = AppConfig.pageSize,
   }) async {
@@ -81,13 +84,17 @@ class MockWorkDataSource implements WorkDataSource {
       return true;
     }).toList(growable: false);
 
+    // 排序必须在过滤之后、分页之前：分页切的是排序后的序列，
+    // 否则「第二页」会把排序前的旧顺序混进来。
+    final ordered = _applySort(filtered, sort);
+
     final size = pageSize.clamp(1, AppConfig.maxPageSize);
-    final total = filtered.length;
+    final total = ordered.length;
     final totalPages = total == 0 ? 0 : (total + size - 1) ~/ size;
     final start = (page - 1) * size;
     final items = start >= total
         ? const <WorkSummary>[]
-        : filtered.sublist(start, math.min(start + size, total));
+        : ordered.sublist(start, math.min(start + size, total));
 
     return PagedResult<WorkSummary>(
       items: items,
@@ -96,6 +103,34 @@ class MockWorkDataSource implements WorkDataSource {
       pageSize: size,
       totalPages: totalPages,
     );
+  }
+
+  /// 与服务端同一套顺序：降序在前、`null` 沉底、`work_id` 作次级键。
+  ///
+  /// 次级键不是可选项：Dart 的 `sort` 不保证稳定，同一条数据两次排序可能
+  /// 换位置，翻页时就会看到重复或漏条——服务端也是用 `id` 兜底的。
+  List<WorkSummary> _applySort(List<WorkSummary> source, WorkSort sort) {
+    if (sort == WorkSort.id) return source; // Mock 的 catalog 顺序即入库顺序
+
+    final items = List<WorkSummary>.of(source);
+    int compare(WorkSummary a, WorkSummary b) {
+      final av = sort == WorkSort.rating
+          ? a.mainRating?.value
+          : a.releaseYear?.toDouble();
+      final bv = sort == WorkSort.rating
+          ? b.mainRating?.value
+          : b.releaseYear?.toDouble();
+      // 一方无值：有值的在前（null 沉底）。
+      if (av == null || bv == null) {
+        if (av == null && bv == null) return a.workId.compareTo(b.workId);
+        return av == null ? 1 : -1;
+      }
+      final byValue = bv.compareTo(av); // 降序
+      return byValue != 0 ? byValue : a.workId.compareTo(b.workId);
+    }
+
+    items.sort(compare);
+    return items;
   }
 
   @override
@@ -113,5 +148,48 @@ class MockWorkDataSource implements WorkDataSource {
       );
     }
     return Work.fromJson(Map<String, dynamic>.from(item));
+  }
+
+  @override
+  Future<RelatedWorks> fetchRelated(String workId, {int limit = 6}) async {
+    if (latency > Duration.zero) await Future<void>.delayed(latency);
+
+    final catalog = await _loadCatalog();
+    WorkSummary? target;
+    for (final work in catalog) {
+      if (work.workId == workId) {
+        target = work;
+        break;
+      }
+    }
+    // 契约：作品不存在 = 404；这里与 fetchDetail 保持一致。
+    if (target == null) {
+      throw const ApiException(
+        code: ApiErrorCode.workNotFound,
+        message: '作品不存在',
+        statusCode: 404,
+      );
+    }
+
+    final tags = target.tags;
+    // 契约：作品没有标签 → 空结果，不是错误。
+    if (tags == null || tags.isEmpty) return const RelatedWorks(basisTags: [], items: []);
+
+    final basisTags = tags.take(5).toList(growable: false);
+    final candidates = <WorkSummary>[];
+    for (final work in catalog) {
+      if (work.workId == workId) continue; // 不返回自己
+      final own = work.tags;
+      if (own == null) continue;
+      if (!own.any(tags.contains)) continue;
+      candidates.add(work);
+    }
+
+    // 与服务端一致：评分高 → 低，无评分排最后。
+    final ordered = _applySort(candidates, WorkSort.rating);
+    return RelatedWorks(
+      basisTags: basisTags,
+      items: ordered.take(limit.clamp(1, 20)).toList(growable: false),
+    );
   }
 }
