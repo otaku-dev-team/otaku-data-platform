@@ -30,6 +30,29 @@ jobs:
       run:
         working-directory: backend-java
 
+    # 集成测试需要真实 MySQL：issue #81 的并发缺陷只在 REPEATABLE READ 快照语义下出现，
+    # H2 / Mock 都复现不出来，所以这里必须起真库。
+    # 库名与 backend-java/src/test/resources/application-it.yml 对齐（默认 otaku_it）。
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: otaku_it
+          MYSQL_USER: otaku
+          MYSQL_PASSWORD: otaku123
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
+
+    env:
+      # 集成测试的开关兼连接端口：不设它，ImportConcurrencyIntegrationTest 会整类跳过。
+      IT_DB_PORT: 3306
+
     steps:
       - uses: actions/checkout@v7
 
@@ -41,8 +64,7 @@ jobs:
           # Maven 依赖缓存，命中时这一步能把整轮从 2 分钟压到 30 秒左右
           cache: maven
 
-      # 这 10 个测试类都是**纯单元测试**：不起 Spring 容器、不连数据库，
-      # 所以这里不需要 services: mysql。将来若加入 @SpringBootTest / 集成测试，
-      # 必须在这里补 MySQL service，否则会连不上库而失败。
+      # 其余测试类都是纯单元测试（不起容器、不连库），只有 ImportConcurrencyIntegrationTest
+      # 走上面那个 MySQL service。它跑之前会由 Flyway 自动建表，不需要预置数据。
       - name: Test
         run: ./mvnw -B test
