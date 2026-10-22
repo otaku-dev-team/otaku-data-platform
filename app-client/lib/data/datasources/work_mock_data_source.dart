@@ -68,11 +68,14 @@ class MockWorkDataSource implements WorkDataSource {
     WorkSort sort = WorkSort.id,
     int page = 1,
     int pageSize = AppConfig.pageSize,
+    String? tag,
   }) async {
     if (latency > Duration.zero) await Future<void>.delayed(latency);
 
     final catalog = await _loadCatalog();
     final keyword = query?.trim().toLowerCase() ?? '';
+    // 标签归一：不 trim 不比大小写之外的东西，契约就是「精确匹配整个标签」。
+    final wantedTag = tag?.trim() ?? '';
     final filtered = catalog.where((work) {
       if (type != null && type != WorkType.unknown && work.workType != type) {
         return false;
@@ -80,6 +83,12 @@ class MockWorkDataSource implements WorkDataSource {
       // 契约 6.1：`q` 只匹配标题子串、忽略大小写。
       if (keyword.isNotEmpty && !work.title.toLowerCase().contains(keyword)) {
         return false;
+      }
+      // 契约：`tag` 精确匹配**整个**标签——`科幻` 不命中 `科幻机甲`。
+      // 未知标签返回空数组而不是报错，与服务端同语义。
+      if (wantedTag.isNotEmpty) {
+        final tags = work.tags;
+        if (tags == null || !tags.contains(wantedTag)) return false;
       }
       return true;
     }).toList(growable: false);

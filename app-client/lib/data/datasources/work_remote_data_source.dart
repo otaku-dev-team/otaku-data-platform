@@ -30,6 +30,7 @@ class RemoteWorkDataSource implements WorkDataSource {
     WorkSort sort = WorkSort.id,
     int page = 1,
     int pageSize = AppConfig.pageSize,
+    String? tag,
   }) async {
     final keyword = query?.trim() ?? '';
     final response = await _dio.get<Map<String, dynamic>>(
@@ -37,6 +38,8 @@ class RemoteWorkDataSource implements WorkDataSource {
       queryParameters: <String, dynamic>{
         if (type != null && type != WorkType.unknown) 'type': type.value,
         if (keyword.isNotEmpty) 'q': keyword,
+        // 标签精确匹配整个标签。空值不带这个参数——服务端把省略与空串都当不过滤。
+        if (tag != null && tag.trim().isNotEmpty) 'tag': tag.trim(),
         // 契约：省略等价于 id，非法取值服务端返回 400。
         // 默认项也显式带上，好处是抓包时能一眼看出这一页用的是哪种顺序。
         'sort': sort.value,
