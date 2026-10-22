@@ -175,6 +175,11 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
                   icon: const Icon(Icons.refresh_rounded),
                 ),
               IconButton(
+                tooltip: '最新资讯',
+                onPressed: () => context.push(RoutePaths.articles),
+                icon: const Icon(Icons.newspaper_outlined),
+              ),
+              IconButton(
                 tooltip: '我的收藏',
                 onPressed: () => context.push(RoutePaths.collections),
                 icon: const Icon(Icons.bookmark_border_rounded),

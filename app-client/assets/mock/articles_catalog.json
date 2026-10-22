@@ -1,0 +1,65 @@
+{
+  "items": [
+    {
+      "article_id": "A-mock0001",
+      "title": "『サンプル』のコミカライズ連載が開始",
+      "summary": "MF文庫J刊、コミカライズ連載が開始した。",
+      "category": "漫画",
+      "published_at": "2026-10-22T05:00:00Z",
+      "source_name": "ラノベニュースオンライン",
+      "source_url": "https://ln-news.com/articles/127000",
+      "cover_url": "http://154.8.194.198:8000/article-images/mock_1.jpg",
+      "tags": [
+        "MF文庫J",
+        "世界"
+      ]
+    },
+    {
+      "article_id": "A-mock0002",
+      "title": "pixiv 等相继紧急维护 因所用软件公布漏洞",
+      "summary": "各公司均表示目前未发现造成损害。",
+      "category": "游戏",
+      "published_at": "2026-10-21T18:04:00Z",
+      "source_name": "ACGCH",
+      "source_url": "https://acgch.com/zh-hans/news/sample",
+      "cover_url": null,
+      "tags": []
+    },
+    {
+      "article_id": "A-mock0003",
+      "title": "没有原文链接的动画资讯",
+      "summary": "摘要。",
+      "category": "动画",
+      "published_at": "2026-10-20T08:00:00Z",
+      "source_name": null,
+      "source_url": null,
+      "cover_url": null,
+      "tags": null
+    },
+    {
+      "article_id": "A-mock0004",
+      "title": "只有标题的资讯",
+      "summary": null,
+      "category": null,
+      "published_at": null,
+      "source_name": null,
+      "source_url": null,
+      "cover_url": null,
+      "tags": null
+    },
+    {
+      "article_id": "A-mock0005",
+      "title": "轻小说资讯（有原文链接）",
+      "summary": "摘要五。",
+      "category": "轻小说",
+      "published_at": "2026-10-19T12:30:00Z",
+      "source_name": "電撃大王",
+      "source_url": "https://dengekiblog.jp/news/sample",
+      "cover_url": "http://154.8.194.198:8000/article-images/mock_5.jpg",
+      "tags": [
+        "文庫",
+        "Fantasy"
+      ]
+    }
+  ]
+}

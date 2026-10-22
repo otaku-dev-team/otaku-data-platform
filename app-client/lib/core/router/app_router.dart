@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../features/article/article_detail_page.dart';
+import '../../features/article/article_list_page.dart';
 import '../../features/auth/login_page.dart';
 import '../../features/collection/collection_page.dart';
 import '../../features/contents/contents_page.dart';
@@ -14,6 +16,8 @@ import 'route_paths.dart';
 ///
 /// 第二阶段加了登录与收藏两条平级路由：它们不是列表的子页面，
 /// 从任何地方都能直接进。
+///
+/// 资讯同样平级：列表 `/articles`，详情是它的子路由（与作品详情同构）。
 final appRouterProvider = Provider<GoRouter>((ref) {
   return GoRouter(
     initialLocation: RoutePaths.contents,
@@ -30,6 +34,18 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: RoutePaths.workDetailSegment,
             builder: (context, state) => WorkDetailPage(
               workId: state.pathParameters['workId'] ?? '',
+            ),
+          ),
+        ],
+      ),
+      GoRoute(
+        path: RoutePaths.articles,
+        builder: (context, state) => const ArticleListPage(),
+        routes: [
+          GoRoute(
+            path: RoutePaths.articleDetailSegment,
+            builder: (context, state) => ArticleDetailPage(
+              articleId: state.pathParameters['articleId'] ?? '',
             ),
           ),
         ],

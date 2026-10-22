@@ -4,6 +4,16 @@ abstract final class RoutePaths {
 
   static const String contents = '/works';
 
+  /// 最新资讯列表。与 `contents` 平级，不是它的子路由——
+  /// 资讯和作品的筛选、分页各管一套，套在一起只会互相干扰。
+  static const String articles = '/articles';
+
+  /// 相对 `articles` 的子路由，与 `workDetailSegment` 同构。
+  static const String articleDetailSegment = ':articleId';
+
+  static String articleDetail(String articleId) =>
+      '$articles/${Uri.encodeComponent(articleId)}';
+
   /// 登录页。从收藏页跳来时用 push，登录成功后 pop 回去。
   static const String login = '/login';
 

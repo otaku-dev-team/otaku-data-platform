@@ -13,6 +13,11 @@ enum ApiErrorCode {
 
   badRequest('BAD_REQUEST'),
   workNotFound('WORK_NOT_FOUND'),
+
+  /// 资讯不存在。同样是 404，但「作品不存在」与「资讯不存在」提示不同，
+  /// 混用一个码会让资讯详情页说出「作品不存在」。
+  articleNotFound('ARTICLE_NOT_FOUND'),
+
   batchTooLarge('BATCH_TOO_LARGE'),
   rateLimited('RATE_LIMITED'),
   internal('INTERNAL'),
@@ -52,7 +57,9 @@ class ApiException implements Exception {
   final int? statusCode;
 
   /// 契约 6.2：详情 404 只提示并返回列表，**不自动重试**。
-  bool get isNotFound => code == ApiErrorCode.workNotFound;
+  bool get isNotFound =>
+      code == ApiErrorCode.workNotFound ||
+      code == ApiErrorCode.articleNotFound;
 
   /// 适合直接展示给用户的一句话。
   String get userMessage => switch (code) {
@@ -61,6 +68,7 @@ class ApiException implements Exception {
     ApiErrorCode.rateLimited => '请求太频繁了，请稍后再试',
     ApiErrorCode.internal => '服务端出错了，请稍后重试',
     ApiErrorCode.workNotFound => '作品不存在',
+    ApiErrorCode.articleNotFound => '资讯不存在',
     ApiErrorCode.unauthorized => '登录已过期，请重新登录',
     ApiErrorCode.invalidCredentials => '账号或密码不正确',
     ApiErrorCode.collectionRequired => '该作品已不在收藏中，请刷新后重试',
