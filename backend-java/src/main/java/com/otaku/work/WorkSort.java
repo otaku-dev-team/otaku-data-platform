@@ -59,6 +59,26 @@ public enum WorkSort {
     }
 
     /**
+     * 在 {@code work_tag} 上的排序子句。
+     *
+     * <p>不能复用 {@link #orderBy(String)}：那张表的主键列叫 {@code work_ref} 而不是 {@code id}，
+     * 直接套用会拼出 {@code t.id} 这种不存在的列。三种排序都能命中它自己的索引：
+     * {@code id} 走主键 (tag, work_ref)，{@code rating} / {@code year} 走对应的二级索引。
+     *
+     * <p>列名**必须带别名**：{@code work} 与 {@code work_tag} 都有
+     * {@code rating_value} / {@code release_year}，不限定表名时 MySQL 直接报
+     * 「Column 'rating_value' in order clause is ambiguous」。
+     */
+    public String orderByOnTagTable(String alias) {
+        String prefix = (alias == null || alias.isEmpty()) ? "" : alias + ".";
+        return switch (this) {
+            case ID -> prefix + "work_ref ASC";
+            case RATING -> prefix + "rating_value DESC, " + prefix + "work_ref DESC";
+            case YEAR -> prefix + "release_year DESC, " + prefix + "work_ref DESC";
+        };
+    }
+
+    /**
      * 解析外部参数。省略 / 空串走默认，非法值按契约 6.1 报 400（与「查不到结果」区分开）。
      */
     public static WorkSort parse(String raw) {

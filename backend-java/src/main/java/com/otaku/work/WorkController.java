@@ -25,10 +25,11 @@ public class WorkController {
     public PageResponse<WorkSummaryDto> list(
             @RequestParam(name = "type", required = false) String type,
             @RequestParam(name = "q", required = false) String q,
+            @RequestParam(name = "tag", required = false) String tag,
             @RequestParam(name = "sort", required = false) String sort,
             @RequestParam(name = "page", defaultValue = "1") int page,
             @RequestParam(name = "page_size", defaultValue = "20") int pageSize) {
-        return service.list(type, q, sort, page, pageSize);
+        return service.list(type, q, tag, sort, page, pageSize);
     }
 
     /** 命中直接返回作品对象，不再套 data（契约 6.2）。 */
