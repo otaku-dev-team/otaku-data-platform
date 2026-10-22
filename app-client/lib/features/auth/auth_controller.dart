@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/network/api_exception.dart';
 import '../../core/network/session_expiry.dart';
+import '../../core/storage/collection_cache_provider.dart';
 import '../../data/models/account_user.dart';
 import '../../data/repositories/auth_repository.dart';
 
@@ -73,8 +74,25 @@ class AuthController extends Notifier<AuthState> {
   /// 令牌已被服务端判定无效：清本地令牌、回未登录。
   ///
   /// 不调 `logout`——那会再拿一个 401，还会把「本机主动退出」和「被动失效」混在一起。
+  /// 退出登录 / 会话失效时清掉这个人的收藏缓存。
+  ///
+  /// 缓存按 `user_id` 分键，下一个人其实**读不到**——清它不是为了防串号，
+  /// 而是不该把私人数据留在磁盘上等人来捡。
+  ///
+  /// 清不掉也不能挡住登出：缓存是附属品，登出是主流程。
+  Future<void> _clearCollectionCache() async {
+    final userId = state.user?.userId;
+    if (userId == null) return;
+    try {
+      await ref.read(collectionCacheProvider).clearUser(userId);
+    } catch (_) {
+      // 忽略，理由见上。
+    }
+  }
+
   Future<void> _handleSessionExpired() async {
     if (state.status == AuthStatus.signedOut) return;
+    await _clearCollectionCache();
     await ref.read(authRepositoryProvider).clearSession();
     if (!ref.mounted) return;
     state = const AuthState(status: AuthStatus.signedOut);
@@ -125,6 +143,7 @@ class AuthController extends Notifier<AuthState> {
   /// 用户一变就会重新查询，天然满足「切账号不残留」（C6）。
   Future<void> logout() async {
     state = state.copyWith(submitting: true, clearError: true);
+    await _clearCollectionCache();
     await ref.read(authRepositoryProvider).logout();
     if (!ref.mounted) return;
     state = const AuthState(status: AuthStatus.signedOut);
