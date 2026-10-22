@@ -57,25 +57,75 @@ class WorkServiceSortAndRelatedTest {
     @Test
     @DisplayName("sort 透传到仓储，page_size 超限按 50 截断")
     void listPassesSortAndCapsPageSize() {
-        when(repository.count(null, null)).thenReturn(1L);
-        when(repository.findPage(any(), any(), eq(WorkSort.RATING), eq(50), eq(0)))
+        when(repository.count(null, null, null)).thenReturn(1L);
+        when(repository.findPage(any(), any(), any(), eq(WorkSort.RATING), eq(50), eq(0)))
                 .thenReturn(List.of(record(1L, "W-1", "[\"科幻\"]")));
 
-        var page = service.list(null, null, "rating", 1, 999);
+        var page = service.list(null, null, null, "rating", 1, 999);
 
         assertThat(page.items()).hasSize(1);
         assertThat(page.pageSize()).isEqualTo(50);
-        verify(repository).findPage(null, null, WorkSort.RATING, 50, 0);
+        verify(repository).findPage(null, null, null, WorkSort.RATING, 50, 0);
     }
 
     @Test
     @DisplayName("非法 sort 直接 400，且不碰数据库")
     void invalidSortFailsFast() {
-        assertThatThrownBy(() -> service.list(null, null, "popular", 1, 20))
+        assertThatThrownBy(() -> service.list(null, null, null, "popular", 1, 20))
                 .isInstanceOf(ApiException.class)
                 .satisfies(ex -> assertThat(((ApiException) ex).code()).isEqualTo(ErrorCode.BAD_REQUEST));
 
         verifyNoInteractions(repository);
+    }
+
+    @Test
+    @DisplayName("tag 去掉首尾空白后透传，计数与取页用同一个条件")
+    void tagIsTrimmedAndPassedThrough() {
+        when(repository.count(null, null, "科幻")).thenReturn(1L);
+        when(repository.findPage(null, null, "科幻", WorkSort.ID, 20, 0))
+                .thenReturn(List.of(record(1L, "W-1", "[\"科幻\"]")));
+
+        var page = service.list(null, null, "  科幻  ", null, 1, 20);
+
+        assertThat(page.items()).hasSize(1);
+        verify(repository).count(null, null, "科幻");
+        verify(repository).findPage(null, null, "科幻", WorkSort.ID, 20, 0);
+    }
+
+    @Test
+    @DisplayName("空 tag 视为不过滤，不把空串塞进查询")
+    void blankTagMeansNoFilter() {
+        when(repository.count(null, null, null)).thenReturn(0L);
+
+        service.list(null, null, "   ", null, 1, 20);
+
+        verify(repository).count(null, null, null);
+        verify(repository, never()).findPage(any(), any(), any(), any(), anyInt(), anyInt());
+    }
+
+    @Test
+    @DisplayName("超长 tag 截到 64 字符，与列的宽度和回填脚本一致")
+    void tagIsTruncatedToColumnWidth() {
+        String longTag = "长".repeat(80);
+        when(repository.count(any(), any(), any())).thenReturn(0L);
+
+        service.list(null, null, longTag, null, 1, 20);
+
+        ArgumentCaptor<String> captured = ArgumentCaptor.forClass(String.class);
+        verify(repository).count(any(), any(), captured.capture());
+        assertThat(captured.getValue()).hasSize(64);
+    }
+
+    @Test
+    @DisplayName("tag 与 type / q / sort 可组合，四个条件一起透传")
+    void tagCombinesWithOtherFilters() {
+        when(repository.count("anime", "%魔法%", "科幻")).thenReturn(1L);
+        when(repository.findPage("anime", "%魔法%", "科幻", WorkSort.YEAR, 10, 0))
+                .thenReturn(List.of(record(1L, "W-1", "[\"科幻\"]")));
+
+        service.list("anime", "魔法", "科幻", "year", 1, 10);
+
+        verify(repository).findPage("anime", "%魔法%", "科幻", WorkSort.YEAR, 10, 0);
     }
 
     @Test

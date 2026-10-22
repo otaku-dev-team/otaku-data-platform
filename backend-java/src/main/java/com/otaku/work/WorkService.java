@@ -32,6 +32,8 @@ public class WorkService {
     static final int MAX_PAGE_SIZE = 50;
     private static final int MAX_QUERY_LENGTH = 100;
     private static final int MAX_WORK_ID_LENGTH = 64;
+    /** 与 work_tag.tag 列宽一致；超长参数截断而不是报错，见 normalizeTag。 */
+    private static final int MAX_TAG_LENGTH = 64;
 
     /** 详情页推荐默认返回 6 条、最多 20 条——与来源站详情页的 6 条对齐，避免一次拉太多。 */
     static final int DEFAULT_RELATED_LIMIT = 6;
@@ -53,20 +55,21 @@ public class WorkService {
         this.objectMapper = objectMapper;
     }
 
-    public PageResponse<WorkSummaryDto> list(String typeParam, String qParam, String sortParam,
-                                             int page, int pageSize) {
+    public PageResponse<WorkSummaryDto> list(String typeParam, String qParam, String tagParam,
+                                             String sortParam, int page, int pageSize) {
         String workType = normalizeType(typeParam);
         String keyword = normalizeKeyword(qParam);
+        String tag = normalizeTag(tagParam);
         WorkSort sort = WorkSort.parse(sortParam);
 
         int safePage = Math.max(page, 1);
         int safeSize = pageSize <= 0 ? DEFAULT_PAGE_SIZE : Math.min(pageSize, MAX_PAGE_SIZE);
         String pattern = keyword == null ? null : LikePattern.contains(keyword);
 
-        long total = repository.count(workType, pattern);
+        long total = repository.count(workType, pattern, tag);
         List<WorkSummaryDto> items = total == 0
                 ? List.of()
-                : repository.findPage(workType, pattern, sort, safeSize, (safePage - 1) * safeSize)
+                : repository.findPage(workType, pattern, tag, sort, safeSize, (safePage - 1) * safeSize)
                         .stream()
                         .map(this::toSummary)
                         .toList();
@@ -213,5 +216,25 @@ public class WorkService {
             return null;
         }
         return keyword.length() > MAX_QUERY_LENGTH ? keyword.substring(0, MAX_QUERY_LENGTH) : keyword;
+    }
+
+    /**
+     * 标签是精确匹配，不做模糊、不做分词。
+     *
+     * <p>未知标签**不报错**，返回 200 + 空数组——标签是数据里的值，不是接口枚举，
+     * 用户从旧链接进来时标签可能已被来源站改名，这属于「没有结果」而不是「请求非法」。
+     *
+     * <p>长度按库里的 {@code work_tag.tag} 上限（64）截断，与回填脚本的 {@code LEFT(...,64)}
+     * 保持一致；否则超长参数永远查不到东西，还看不出原因。
+     */
+    private static String normalizeTag(String tagParam) {
+        if (tagParam == null) {
+            return null;
+        }
+        String tag = tagParam.trim();
+        if (tag.isEmpty()) {
+            return null;
+        }
+        return tag.length() > MAX_TAG_LENGTH ? tag.substring(0, MAX_TAG_LENGTH) : tag;
     }
 }
