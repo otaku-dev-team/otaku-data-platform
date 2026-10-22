@@ -37,7 +37,7 @@ class RelatedWorksSection extends ConsumerWidget {
       return const SizedBox(height: 250, child: _RelatedSkeleton());
     }
 
-    final data = related.value;
+    final data = related.value?.value;
     // 失败或无内容：整块不渲染（理由见类注释）。错误不静默——详情页另有
     // 错误出口，这里的取舍是"少一个区块"而不是"显示一个坏区块"。
     if (related.hasError || data == null || data.isEmpty) {
