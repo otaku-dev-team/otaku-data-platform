@@ -1,0 +1,45 @@
+name: contract
+
+# 为什么要有这个：docs/openapi.yaml 是三端唯一共享的机器可读契约，
+# 但此前没有任何 workflow 读它。2026-10-22 的 #92 把它改成了非法 YAML
+# （description 多缩进 2 格），三个模块 CI 全绿、无人发现。
+# 这个 job 只做一件事：契约文件必须合法、$ref 可解析、关键 schema 不缺。
+# 不逐字比对三端字段（那会假阳性），后端已有 ContractJsonShapeTest 钉 JSON 键名。
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/openapi.yaml"
+      - "docs/*.md"
+      - "scripts/check-contract.py"
+      - ".github/workflows/contract.yml"
+  pull_request:
+    paths:
+      - "docs/openapi.yaml"
+      - "docs/*.md"
+      - "scripts/check-contract.py"
+      - ".github/workflows/contract.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: contract-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Install PyYAML
+        run: pip install pyyaml
+
+      - name: Check contract
+        run: python scripts/check-contract.py docs/openapi.yaml
