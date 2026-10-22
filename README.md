@@ -1,6 +1,8 @@
 # Otaku Data Platform（跨平台适配与客户端解决方案）
 
 > 本文档为项目介绍，描述当前规划方向；相关能力为预期目标，不代表已经实现。
+>
+> **项目总目标、工作流范围与授权规则见 [`docs/project-charter.md`](docs/project-charter.md)**（2026-10-22 起生效）。
 
 ## 1. 项目定位
 
