@@ -19,7 +19,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  analyze-and-test:
+  analyze-test-build:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -43,3 +43,11 @@ jobs:
 
       - name: Test
         run: flutter test
+
+      # 真的打包一次。2026-10-22 的教训（PR #80 引入、PR #88 修复）：
+      # 资源文件注释里写了 `--dart-define`，其中连续两个连字符违反 XML 规范，
+      # aapt 解析 debug 变体资源时直接失败。analyze 与 test 全绿，
+      # 但 `flutter build apk` 在 main 上完全跑不起来——只有构建能发现它。
+      # debug 不需要签名，runner 自带 Android SDK，成本约 2-3 分钟。
+      - name: Build debug APK
+        run: flutter build apk --debug
