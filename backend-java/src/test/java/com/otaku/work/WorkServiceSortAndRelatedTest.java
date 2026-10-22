@@ -1,0 +1,173 @@
+package com.otaku.work;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.otaku.common.ApiException;
+import com.otaku.common.ErrorCode;
+import com.otaku.config.PublicUrlResolver;
+import com.otaku.work.dto.RelatedWorksDto;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.List;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+
+/**
+ * 列表排序参数与详情页推荐的**服务层行为**。
+ *
+ * <p>不连数据库：SQL 正确性由 `V6` 索引与真实库上的手工实测兜底，这里只钉住
+ * 「参数怎么解释、边界怎么处理、有没有意外多查一次」这类容易回归的逻辑。
+ */
+@ExtendWith(MockitoExtension.class)
+class WorkServiceSortAndRelatedTest {
+
+    private static final LocalDateTime NOW = LocalDateTime.parse("2026-10-22T04:00:00");
+
+    @Mock
+    private WorkRepository repository;
+
+    @Mock
+    private PublicUrlResolver publicUrlResolver;
+
+    private WorkService service;
+
+    @BeforeEach
+    void setUp() {
+        service = new WorkService(repository, publicUrlResolver, new ObjectMapper());
+    }
+
+    @Test
+    @DisplayName("sort 透传到仓储，page_size 超限按 50 截断")
+    void listPassesSortAndCapsPageSize() {
+        when(repository.count(null, null)).thenReturn(1L);
+        when(repository.findPage(any(), any(), eq(WorkSort.RATING), eq(50), eq(0)))
+                .thenReturn(List.of(record(1L, "W-1", "[\"科幻\"]")));
+
+        var page = service.list(null, null, "rating", 1, 999);
+
+        assertThat(page.items()).hasSize(1);
+        assertThat(page.pageSize()).isEqualTo(50);
+        verify(repository).findPage(null, null, WorkSort.RATING, 50, 0);
+    }
+
+    @Test
+    @DisplayName("非法 sort 直接 400，且不碰数据库")
+    void invalidSortFailsFast() {
+        assertThatThrownBy(() -> service.list(null, null, "popular", 1, 20))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> assertThat(((ApiException) ex).code()).isEqualTo(ErrorCode.BAD_REQUEST));
+
+        verifyNoInteractions(repository);
+    }
+
+    @Test
+    @DisplayName("有标签：回传 basis_tags，并把标签序列化后交给仓储求交集")
+    void relatedReturnsBasisTags() {
+        when(repository.findByWorkId("W-1")).thenReturn(java.util.Optional.of(
+                record(1L, "W-1", "[\"科幻\",\"机战\"]")));
+        when(publicUrlResolver.baseUrl()).thenReturn("http://localhost:8080");
+        when(repository.findRelated(eq(1L), anyString(), eq(6)))
+                .thenReturn(List.of(record(9L, "W-9", "[\"科幻\"]")));
+
+        RelatedWorksDto dto = service.related("W-1", null);
+
+        assertThat(dto.basisTags()).containsExactly("科幻", "机战");
+        assertThat(dto.items()).hasSize(1);
+        assertThat(dto.items().get(0).workId()).isEqualTo("W-9");
+        // 封面地址永远指向本服务，不暴露来源站
+        assertThat(dto.items().get(0).coverUrl()).isEqualTo("http://localhost:8080/api/covers/W-9");
+
+        ArgumentCaptor<String> tagsJson = ArgumentCaptor.forClass(String.class);
+        verify(repository).findRelated(eq(1L), tagsJson.capture(), eq(6));
+        assertThat(tagsJson.getValue()).contains("科幻", "机战");
+    }
+
+    @Test
+    @DisplayName("limit 省略取 6、超 20 截断、非正数回落到默认")
+    void relatedNormalizesLimit() {
+        when(repository.findByWorkId(anyString())).thenReturn(java.util.Optional.of(
+                record(1L, "W-1", "[\"科幻\"]")));
+        when(repository.findRelated(anyLong(), anyString(), anyInt())).thenReturn(List.of());
+
+        service.related("W-1", null);
+        service.related("W-1", 999);
+        service.related("W-1", 0);
+
+        // 省略与 0 都落到默认 6，所以是 2 次
+        verify(repository, org.mockito.Mockito.times(2)).findRelated(1L, "[\"科幻\"]", 6);
+        verify(repository).findRelated(1L, "[\"科幻\"]", 20);
+    }
+
+    @Test
+    @DisplayName("标签超过 5 个只取前 5 个做匹配，避免命中退化成全站")
+    void relatedCapsBasisTags() {
+        when(repository.findByWorkId("W-1")).thenReturn(java.util.Optional.of(
+                record(1L, "W-1", "[\"a\",\"b\",\"c\",\"d\",\"e\",\"f\",\"g\"]")));
+        when(repository.findRelated(anyLong(), anyString(), anyInt())).thenReturn(List.of());
+
+        RelatedWorksDto dto = service.related("W-1", 3);
+
+        assertThat(dto.basisTags()).containsExactly("a", "b", "c", "d", "e");
+        verify(repository).findRelated(1L, "[\"a\",\"b\",\"c\",\"d\",\"e\"]", 3);
+    }
+
+    @Test
+    @DisplayName("作品没有标签：200 + 空结果，不去查库")
+    void relatedWithoutTagsReturnsEmpty() {
+        when(repository.findByWorkId("W-1")).thenReturn(java.util.Optional.of(
+                record(1L, "W-1", null)));
+
+        RelatedWorksDto dto = service.related("W-1", null);
+
+        assertThat(dto.basisTags()).isEmpty();
+        assertThat(dto.items()).isEmpty();
+        verify(repository, never()).findRelated(anyLong(), anyString(), anyInt());
+    }
+
+    @Test
+    @DisplayName("作品不存在：404，与详情一致")
+    void relatedOnMissingWorkIs404() {
+        when(repository.findByWorkId("W-404")).thenReturn(java.util.Optional.empty());
+
+        assertThatThrownBy(() -> service.related("W-404", null))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> assertThat(((ApiException) ex).code()).isEqualTo(ErrorCode.WORK_NOT_FOUND));
+    }
+
+    @Test
+    @DisplayName("work_id 格式非法同样 404，不查库")
+    void relatedWithInvalidIdIs404() {
+        assertThatThrownBy(() -> service.related("x".repeat(65), null))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> assertThat(((ApiException) ex).code()).isEqualTo(ErrorCode.WORK_NOT_FOUND));
+
+        verify(repository, never()).findByWorkId(anyString());
+    }
+
+    private static WorkRecord record(long id, String workId, String tagsJson) {
+        return new WorkRecord(
+                id, workId, "anime", "标题 " + workId, null, 2022,
+                "https://example.invalid/cover.jpg", null, null,
+                tagsJson,
+                new BigDecimal("7.80"), "0-10", "otaku_site",
+                "otaku_site", "src-" + id, null,
+                NOW, NOW);
+    }
+}

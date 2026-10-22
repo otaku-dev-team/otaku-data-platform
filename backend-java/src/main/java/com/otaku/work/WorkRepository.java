@@ -15,8 +15,9 @@ import java.util.Optional;
 /**
  * work 表的读写。
  *
- * 排序固定 ORDER BY id ASC：契约只要求"稳定"，而分页要稳定就必须有个唯一键排序，
+ * 排序默认 ORDER BY id ASC：契约只要求"稳定"，而分页要稳定就必须有个唯一键排序，
  * 用 updated_at 单独排会在同毫秒内抖动，导致翻页重复或漏记录。
+ * 可选排序见 {@link WorkSort}，同样以 id 作次级键。
  */
 @Repository
 public class WorkRepository {
@@ -27,6 +28,13 @@ public class WorkRepository {
             tags, rating_value, rating_scale, rating_source,
             source, source_id, source_url, created_at, updated_at
             """;
+
+    /** 同一份列表加表别名，供两段式查询的外层用；从 COLUMNS 生成，不会与它走样。 */
+    private static final String ALIASED_COLUMNS = java.util.Arrays.stream(COLUMNS.split(","))
+            .map(String::trim)
+            .filter(column -> !column.isEmpty())
+            .map(column -> "w." + column)
+            .collect(java.util.stream.Collectors.joining(", "));
 
     private static final RowMapper<WorkRecord> MAPPER = WorkRepository::map;
 
@@ -98,14 +106,53 @@ public class WorkRepository {
                         .addValue("id", id));
     }
 
-    public List<WorkRecord> findPage(String workType, String titlePattern, int limit, int offset) {
+    /**
+     * 取一页。**两段式查询**：先在覆盖索引上数出这一页的 id，再回表取这 50 行。
+     *
+     * <p>为什么不直接 {@code SELECT 全列 ... LIMIT n OFFSET m}：OFFSET 越大，MySQL 要把
+     * 前面 m 行**逐行回表**读出来再丢掉。55.6 万条实测，第 5000 页（OFFSET 249,950）：
+     * 直接写 1218ms → 两段式 92ms。
+     * 默认排序（主键顺序）无收益也不倒退，成本在顺序跳页本身（约 250ms）。
+     *
+     * <p>外层再排一次序是为了抵消 JOIN 可能打乱的顺序；只有 50 行，代价可忽略。
+     * 真正的根治是键集分页（记住上一页末位 id），那需要改契约，另议。
+     */
+    public List<WorkRecord> findPage(String workType, String titlePattern, WorkSort sort,
+                                     int limit, int offset) {
         MapSqlParameterSource params = new MapSqlParameterSource()
                 .addValue("limit", limit)
                 .addValue("offset", offset);
-        StringBuilder sql = new StringBuilder("SELECT " + COLUMNS + " FROM work");
-        appendWhere(sql, params, workType, titlePattern);
-        sql.append(" ORDER BY id ASC LIMIT :limit OFFSET :offset");
-        return jdbc.query(sql.toString(), params, MAPPER);
+        String orderBy = (sort == null ? WorkSort.ID : sort).orderBy();
+
+        StringBuilder inner = new StringBuilder("SELECT id FROM work");
+        appendWhere(inner, params, workType, titlePattern);
+        inner.append(" ORDER BY ").append(orderBy).append(" LIMIT :limit OFFSET :offset");
+
+        String sql = "SELECT " + ALIASED_COLUMNS + " FROM work w"
+                + " JOIN (" + inner + ") t ON t.id = w.id"
+                + " ORDER BY " + (sort == null ? WorkSort.ID : sort).orderBy("w");
+        return jdbc.query(sql, params, MAPPER);
+    }
+
+    /**
+     * 同标签作品（详情页「相关内容推荐」）。
+     *
+     * <p>用 {@code JSON_OVERLAPS} 求交集，配合 {@code idx_work_rating} 反向扫描：
+     * 只要前 N 条，命中密集时扫几十行就够，55.6 万条实测 3ms。
+     * 若改成「按共享标签数排序」则需要全表算分 + filesort（实测 1.0s），
+     * 所以这里只按评分排——推荐理由由调用方用 basis_tags 呈现。
+     */
+    public List<WorkRecord> findRelated(long excludeId, String tagsJson, int limit) {
+        String sql = "SELECT " + COLUMNS + " FROM work"
+                + " WHERE id <> :excludeId"
+                + " AND tags IS NOT NULL"
+                + " AND JSON_OVERLAPS(tags, CAST(:tagsJson AS JSON))"
+                + " ORDER BY rating_value DESC, id DESC"
+                + " LIMIT :limit";
+        return jdbc.query(sql, new MapSqlParameterSource()
+                .addValue("excludeId", excludeId)
+                .addValue("tagsJson", tagsJson)
+                .addValue("limit", limit), MAPPER);
     }
 
     public long count(String workType, String titlePattern) {
