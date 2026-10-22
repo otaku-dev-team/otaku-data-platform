@@ -4,7 +4,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:otaku_app/app.dart';
 import 'package:otaku_app/core/network/api_exception.dart';
 import 'package:otaku_app/core/storage/memory_work_cache.dart';
-import 'package:otaku_app/core/storage/work_cache_provider.dart';
 import 'package:otaku_app/data/datasources/work_data_source.dart';
 import 'package:otaku_app/data/datasources/collection_data_source.dart';
 import 'package:otaku_app/data/models/collection_entry.dart';

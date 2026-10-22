@@ -1,6 +1,5 @@
 import '../../data/models/related_works.dart';
 import '../../data/models/work.dart';
-import '../../data/models/work_summary.dart';
 import 'work_cache.dart';
 
 /// 内存缓存。单测与 widget 测试用。

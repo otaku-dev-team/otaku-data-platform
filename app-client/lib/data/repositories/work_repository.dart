@@ -19,7 +19,7 @@ import '../models/work_type.dart';
 /// 页面唯一的数据入口。它负责把底层异常收敛成 [ApiException]，
 /// 页面不需要认识 dio，也不需要区分 Mock 与真接口。
 class WorkRepository {
-  WorkRepository(this._dataSource, {WorkCache? cache}) : _cache = cache;
+  WorkRepository(this._dataSource, {this._cache});
 
   final WorkDataSource _dataSource;
 
