@@ -188,22 +188,38 @@ public class ImportService {
         return batchId.trim();
     }
 
+    /**
+     * 单条写入。并发撞唯一键时**换一个新事务重做一次**，而不是在本事务里再查一次。
+     *
+     * <p>为什么不能在本事务里再查（issue #81）：MySQL 默认隔离级别是 REPEATABLE READ，
+     * 事务的第一次一致性读就把快照钉死了。这里撞唯一键意味着对方已经提交，
+     * 但本事务的快照还停在对方提交之前——再查一次依旧查不到那条记录，
+     * 于是"查不到、又插不进"，只能抛出去被归类成 {@code INTERNAL_ERROR / rejected}。
+     * 换事务后新快照能看到对方提交的行，走正常的更新分支。
+     *
+     * <p>只重试一次：重试时对方已提交，必然命中更新分支；若仍失败，说明是别的问题
+     * （例如 work_id 撞车后依然冲突），继续重试没有意义，交回上层按坏记录处理。
+     */
     private ItemOutcome apply(String source, NormalizedItem item) {
+        try {
+            return applyOnce(source, item);
+        } catch (DuplicateKeyException conflict) {
+            log.info("并发撞唯一键（对方已提交），换新事务重试一次：source={} source_id={}",
+                    source, item.sourceId());
+            return applyOnce(source, item);
+        }
+    }
+
+    /** 一个条目一个事务：唯一约束兜住并发重复，事务边界保证一条失败不拖累同批其它记录。 */
+    private ItemOutcome applyOnce(String source, NormalizedItem item) {
         return transactionTemplate.execute(status -> {
             Optional<WorkRecord> existing = workRepository.findBySourceKey(source, item.sourceId());
             if (existing.isPresent()) {
                 return updateExisting(existing.get(), item);
             }
-            try {
-                WorkRecord created = WorkMerger.newRecord(item, idGenerator.nextWorkId(), source, nowUtc());
-                workRepository.insert(created);
-                return new ItemOutcome(ImportItemResult.INSERTED, created.workId());
-            } catch (DuplicateKeyException ex) {
-                // 同一 (source, source_id) 被并发写入：退化为更新，唯一约束已经兜住了重复。
-                WorkRecord current = workRepository.findBySourceKey(source, item.sourceId())
-                        .orElseThrow(() -> ex);
-                return updateExisting(current, item);
-            }
+            WorkRecord created = WorkMerger.newRecord(item, idGenerator.nextWorkId(), source, nowUtc());
+            workRepository.insert(created);
+            return new ItemOutcome(ImportItemResult.INSERTED, created.workId());
         });
     }
 

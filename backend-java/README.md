@@ -25,7 +25,8 @@ Java 业务后端。负责人：**Java 负责人**（@pyxz0）。
 | 接口③ 作品列表 / 搜索 | ✅ 已实现 |
 | 接口④ 作品详情 | ✅ 已实现 |
 | 封面代理 + 本地缓存（契约要求，openapi 未定义） | ✅ 已实现 |
-| 单元测试 | ✅ 56 项，`mvnw.cmd test` 通过（含对外 JSON 键名形状测试） |
+| 单元测试 | ✅ 54 项，`mvnw.cmd test` 通过（含对外 JSON 键名形状测试） |
+| 集成测试 | ✅ 3 项（并发导入，需真实 MySQL，见「集成测试」一节）；未设 `IT_DB_PORT` 时整类跳过 |
 | 启动与鉴权冒烟 | ✅ `java -jar` 5–6 秒内启动；无/错令牌 POST 均返回 `401 {"error":{"code":"UNAUTHORIZED"}}` |
 | 数据侧验收 D1–D10 | ✅ 已在真实 MySQL 8.0.46 实例上逐条跑通，见下节 |
 | 容器化本地环境 | ✅ `compose.yaml` 起 MySQL 8.0.46（:3307），`local` profile 直连验证过 D1/D2、列表、封面 |
@@ -282,6 +283,26 @@ curl -s -i "http://localhost:8080/api/works/no-such-id"       # 404 WORK_NOT_FOU
 > （Flutter 的 Dio 会自动编码，所以只有手工 curl 才会踩到）。
 > 上面 `q=%E9%AD%94%E6%B3%95` 就是"魔法"的 UTF-8 百分号编码。
 
+### 集成测试（并发导入，需要真实 MySQL）
+
+`ImportConcurrencyIntegrationTest` 验证**两个作业同时写同一批数据**时不会互相把记录判成
+`rejected`（issue #81）。这类缺陷只在 MySQL 的 REPEATABLE READ 快照语义下出现，
+Mock 或 H2 都复现不出来，所以它必须连真库。
+
+```bash
+# 复用 compose 里的容器库，只是换库名（容器里先建好 otaku_it，见下）
+docker exec otaku-mysql mysql -uroot -proot-local-only -e \
+  "CREATE DATABASE IF NOT EXISTS otaku_it DEFAULT CHARACTER SET utf8mb4; \
+   GRANT ALL PRIVILEGES ON otaku_it.* TO 'otaku'@'%'; FLUSH PRIVILEGES;"
+
+IT_DB_PORT=3307 ./mvnw test          # Git Bash
+# PowerShell: $env:IT_DB_PORT=3307; .\mvnw.cmd test
+```
+
+- 未设 `IT_DB_PORT` 时该类整类**跳过**，普通 `mvnw test` 不需要数据库；
+- 表由 Flyway 自动建，测试数据用 `it-conc-` 前缀，跑完自删，不碰开发库 `otaku`；
+- CI 里由 `.github/workflows/backend-java.yml` 起 MySQL service 并注入 `IT_DB_PORT=3306`，每个 PR 都会真跑。
+
 ## 目录结构
 
 ```text
@@ -306,6 +327,8 @@ backend-java/
     db/migration/         Flyway 迁移（V1 作品、V2 账号与会话）
     db/manual/            建库语句（手动执行一次，Flyway 不管）
   src/test/java/          合并规则、条目校验、LIKE 转义、ID/令牌、JSON 形状的单元测试
+                          + 并发导入集成测试（ImportConcurrencyIntegrationTest）
+  src/test/resources/     application-it.yml：集成测试连的库（otaku_it）
 ```
 
 ## 几条容易踩的实现约定
