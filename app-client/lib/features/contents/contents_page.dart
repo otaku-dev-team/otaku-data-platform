@@ -320,9 +320,12 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
       builder: (context, constraints) {
         final usable = constraints.maxWidth - AppLayout.pagePadding * 2;
         final metrics = AppLayout.gridMetrics(usable);
+        // 正文高度跟着系统字体缩放（与收藏页网格同一套做法）：大字体下固定
+        // 高度会撑爆卡片，真机 font_scale 2.0 实测底部溢出 20px。
+        final textScale = MediaQuery.textScalerOf(context).scale(1);
         final extent =
             metrics.cardWidth / AppLayout.posterAspect +
-            AppLayout.cardBodyHeight;
+            AppLayout.cardBodyHeight * textScale;
 
         return CustomScrollView(
           controller: _scrollController,

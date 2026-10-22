@@ -70,9 +70,12 @@ class _SkeletonGridState extends State<SkeletonGrid>
         final usable =
             constraints.maxWidth - AppLayout.pagePadding * 2;
         final metrics = AppLayout.gridMetrics(usable);
+        // 与真实卡片（contents_page / work_card）同一套字号缩放，否则大字体下
+        // 骨架行高和加载完的卡片行高对不上，首屏会出现一次明显的跳动。
+        final textScale = MediaQuery.textScalerOf(context).scale(1);
         final extent =
             metrics.cardWidth / AppLayout.posterAspect +
-            AppLayout.cardBodyHeight;
+            AppLayout.cardBodyHeight * textScale;
 
         return GridView.builder(
           physics: const NeverScrollableScrollPhysics(),
