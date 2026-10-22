@@ -16,9 +16,16 @@ import '../../shared/widgets/work_type_tag.dart';
 /// 站点在列表视图里还会显示两行摘要和排名角标，这里没有——列表接口不返回
 /// `summary`，契约里也没有 rank 字段。硬凑只能逐条打详情，代价远大于收益。
 class WorkListTile extends StatelessWidget {
-  const WorkListTile({super.key, required this.work});
+  const WorkListTile({
+    super.key,
+    required this.work,
+    this.showMissingRating = false,
+  });
 
   final WorkSummary work;
+
+  /// 无评分时是否标出「暂无评分」（W1.5 D2，同 [WorkCard]）。
+  final bool showMissingRating;
 
   @override
   Widget build(BuildContext context) {
@@ -60,8 +67,12 @@ class WorkListTile extends StatelessWidget {
                     children: [
                       WorkTypeTag(type: work.workType),
                       const SizedBox(width: 8),
-                      // 契约 6.3：没有评分就整块不渲染，不能显示 0.0。
-                      RatingBadge(rating: work.mainRating, compact: true),
+                      // 契约 6.3：没有评分不能显示 0.0。按评分排序时标出「暂无评分」。
+                      RatingBadge(
+                        rating: work.mainRating,
+                        compact: true,
+                        showMissingLabel: showMissingRating,
+                      ),
                       // 列表视图比网格宽，年份靠右，与卡片视图保持同一信息顺序。
                       Expanded(
                         child: Align(

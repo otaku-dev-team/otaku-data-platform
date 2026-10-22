@@ -157,6 +157,16 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
     final data = contents.value;
     final liveTotal = data != null && data.filter == filter ? data.total : null;
 
+    // 按评分排序时，无评分条目由服务端沉到末尾（rating_value DESC）。
+    // 这个顺序必须解释一句：否则末尾那一片「没有徽标」的卡片会被读成
+    // 加载失败，而不是「这些作品本来就没分」（W1.5 D2）。
+    final ratingSort = filter.sort == WorkSort.rating;
+    final showMissingRating = ratingSort;
+    final showRatingNotice =
+        ratingSort &&
+        liveTotal != null &&
+        data!.items.any((item) => item.mainRating == null);
+
     return DesktopNavShell(
       child: DesktopShortcuts(
         onRefresh: () =>
@@ -239,7 +249,10 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
                     onViewChanged: (next) =>
                         ref.read(catalogViewProvider.notifier).select(next),
                   ),
-                  Expanded(child: _buildBody(filter, contents, view)),
+                  if (showRatingNotice) const _RatingSortNotice(),
+                  Expanded(
+                    child: _buildBody(filter, contents, view, showMissingRating),
+                  ),
                 ],
               ),
             ),
@@ -253,6 +266,7 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
     ContentsFilter filter,
     AsyncValue<ContentsData> contents,
     CatalogView view,
+    bool showMissingRating,
   ) {
     final data = contents.value;
     // 换条件后 Riverpod 会把上一组数据保留在 AsyncLoading/AsyncError 里，
@@ -281,14 +295,14 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
             error: error,
             onRetry: () => ref.invalidate(contentsControllerProvider),
           ),
-          Expanded(child: _buildList(data, view)),
+          Expanded(child: _buildList(data, view, showMissingRating)),
         ],
       );
     }
 
     final resolved = contents.requireValue;
     if (resolved.items.isEmpty) return _buildEmpty(filter);
-    return _buildList(resolved, view);
+    return _buildList(resolved, view, showMissingRating);
   }
 
   Widget _buildEmpty(ContentsFilter filter) {
@@ -315,15 +329,21 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
     );
   }
 
-  Widget _buildList(ContentsData data, CatalogView view) {
+  Widget _buildList(
+    ContentsData data,
+    CatalogView view,
+    bool showMissingRating,
+  ) {
     _flushScrollReset();
     return RefreshIndicator(
       onRefresh: () => ref.read(contentsControllerProvider.notifier).refresh(),
-      child: view == CatalogView.list ? _buildRows(data) : _buildGrid(data),
+      child: view == CatalogView.list
+          ? _buildRows(data, showMissingRating)
+          : _buildGrid(data, showMissingRating),
     );
   }
 
-  Widget _buildGrid(ContentsData data) {
+  Widget _buildGrid(ContentsData data, bool showMissingRating) {
     // 海报网格：列数按可用宽度算，卡片高度写死，保证长短标题不会让行高参差。
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -355,7 +375,10 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
                   mainAxisSpacing: AppLayout.gridGap,
                 ),
                 delegate: SliverChildBuilderDelegate(
-                  (context, index) => WorkCard(work: data.items[index]),
+                  (context, index) => WorkCard(
+                        work: data.items[index],
+                        showMissingRating: showMissingRating,
+                      ),
                   childCount: data.items.length,
                 ),
               ),
@@ -367,7 +390,7 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
     );
   }
 
-  Widget _buildRows(ContentsData data) {
+  Widget _buildRows(ContentsData data, bool showMissingRating) {
     return CustomScrollView(
       controller: _scrollController,
       physics: const AlwaysScrollableScrollPhysics(),
@@ -383,7 +406,10 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
             delegate: SliverChildBuilderDelegate(
               (context, index) => Padding(
                 padding: const EdgeInsets.only(bottom: AppLayout.gridGap),
-                child: WorkListTile(work: data.items[index]),
+                child: WorkListTile(
+                  work: data.items[index],
+                  showMissingRating: showMissingRating,
+                ),
               ),
               childCount: data.items.length,
             ),
@@ -719,6 +745,48 @@ class _RefreshErrorBar extends StatelessWidget {
             ),
           ),
           TextButton(onPressed: onRetry, child: const Text('重试')),
+        ],
+      ),
+    );
+  }
+}
+
+/// 按评分排序时的说明条（W1.5 D2）。
+///
+/// 只在「结果里确实有无评分条目」时出现：全都有分的话这一行是废话，
+/// 反而占掉列表的一屏高度。文案说的是排序规则，不是「数据缺失」——
+/// 没有评分是来源站本来就有的情况（bangumi 只有 34.4% 有分），不是故障。
+class _RatingSortNotice extends StatelessWidget {
+  const _RatingSortNotice();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppLayout.pagePadding + 4,
+        0,
+        AppLayout.pagePadding,
+        0,
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.info_outline_rounded,
+            size: 14,
+            color: scheme.onSurfaceVariant,
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              '没有评分的作品排在最后',
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
+          ),
         ],
       ),
     );
