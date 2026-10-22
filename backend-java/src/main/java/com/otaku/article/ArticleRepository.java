@@ -77,29 +77,37 @@ public class ArticleRepository {
     }
 
     /**
-     * 列表分页。{@code category} 为 {@code null} 时不过滤。
+     * 列表分页。{@code category} 为 {@code null} 时**不加分类条件**（不过滤）。
      *
-     * <p>用 {@code IS NOT DISTINCT FROM} 而不是 {@code =}：后者遇到 NULL 参数永远不匹配，
-     * 会把「全部」查成空列表，而空列表在这里是合法数据，错了也看不出来。
+     * <p>这里必须动态拼而不是写 {@code category <=> :category}：
+     * MySQL 的 NULL 安全相等在右值为 NULL 时等价于 {@code IS NULL}，
+     * 于是「不过滤」会变成「只查没有分类的那批」——列表一打开就少了大半，
+     * 而返回 200 + 少量条目看不出是错的。
+     *
+     * <p>另一条同样要注意：别写 {@code IS NOT DISTINCT FROM}，那是 PostgreSQL 语法，
+     * MySQL 直接报 1064（本机实测踩过）。
      */
     public List<ArticleRecord> findPage(String category, int limit, int offset) {
-        String sql = "SELECT " + COLUMNS + " FROM article"
-                + " WHERE category IS NOT DISTINCT FROM :category"
-                + " ORDER BY published_at DESC, id DESC"
-                + " LIMIT :limit OFFSET :offset";
-        return jdbc.query(sql,
-                new MapSqlParameterSource()
-                        .addValue("category", category)
-                        .addValue("limit", limit)
-                        .addValue("offset", offset),
-                MAPPER);
+        StringBuilder sql = new StringBuilder("SELECT ").append(COLUMNS).append(" FROM article");
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("limit", limit)
+                .addValue("offset", offset);
+        if (category != null) {
+            sql.append(" WHERE category = :category");
+            params.addValue("category", category);
+        }
+        sql.append(" ORDER BY published_at DESC, id DESC LIMIT :limit OFFSET :offset");
+        return jdbc.query(sql.toString(), params, MAPPER);
     }
 
     public long count(String category) {
-        Long total = jdbc.queryForObject(
-                "SELECT COUNT(*) FROM article WHERE category IS NOT DISTINCT FROM :category",
-                new MapSqlParameterSource("category", category),
-                Long.class);
+        StringBuilder sql = new StringBuilder("SELECT COUNT(*) FROM article");
+        MapSqlParameterSource params = new MapSqlParameterSource();
+        if (category != null) {
+            sql.append(" WHERE category = :category");
+            params.addValue("category", category);
+        }
+        Long total = jdbc.queryForObject(sql.toString(), params, Long.class);
         return total == null ? 0L : total;
     }
 
