@@ -81,6 +81,10 @@ public class WorkService {
      *
      * <p>{@code basis_tags} 回传实际用于匹配的标签，让客户端能显示
      * 「同题材：科幻、机战」这类理由，而不是给一堆无解释的卡片。
+     *
+     * <p>按标题去重：多来源并存意味着同一作品可能有 2 条以上（实测 13,261 组
+     * 跨源同名），不去重推荐位会连着出现同一个名字。去重后不足 limit 就少返回
+     * 几条——宁可少，不要把同一作品拆成两张卡片。
      */
     public RelatedWorksDto related(String workId, Integer limitParam) {
         WorkRecord current = requireWork(workId);
@@ -92,10 +96,16 @@ public class WorkService {
             return new RelatedWorksDto(List.of(), List.of());
         }
         List<String> basis = tags.size() > MAX_BASIS_TAGS ? tags.subList(0, MAX_BASIS_TAGS) : tags;
+        // 多取几倍再按标题去重：同名组实测最多两三个来源，取 3 倍通常够。
+        // 去重后不足 limit 时按实际数量返回，不补位、不凑数。
         List<WorkSummaryDto> items = repository
-                .findRelated(current.id(), toTagsJson(basis), limit)
+                .findRelated(current.id(), toTagsJson(basis), limit * 3)
                 .stream()
                 .map(this::toSummary)
+                .collect(RelatedWorksDto.dedupeByTitle())
+                .values()
+                .stream()
+                .limit(limit)
                 .toList();
         return new RelatedWorksDto(basis, items);
     }

@@ -5,6 +5,7 @@ import com.otaku.common.ApiException;
 import com.otaku.common.ErrorCode;
 import com.otaku.config.PublicUrlResolver;
 import com.otaku.work.dto.RelatedWorksDto;
+import com.otaku.work.dto.WorkSummaryDto;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -83,7 +84,7 @@ class WorkServiceSortAndRelatedTest {
         when(repository.findByWorkId("W-1")).thenReturn(java.util.Optional.of(
                 record(1L, "W-1", "[\"科幻\",\"机战\"]")));
         when(publicUrlResolver.baseUrl()).thenReturn("http://localhost:8080");
-        when(repository.findRelated(eq(1L), anyString(), eq(6)))
+        when(repository.findRelated(eq(1L), anyString(), eq(18)))
                 .thenReturn(List.of(record(9L, "W-9", "[\"科幻\"]")));
 
         RelatedWorksDto dto = service.related("W-1", null);
@@ -95,7 +96,8 @@ class WorkServiceSortAndRelatedTest {
         assertThat(dto.items().get(0).coverUrl()).isEqualTo("http://localhost:8080/api/covers/W-9");
 
         ArgumentCaptor<String> tagsJson = ArgumentCaptor.forClass(String.class);
-        verify(repository).findRelated(eq(1L), tagsJson.capture(), eq(6));
+        // 多取 3 倍给去重用：limit 6 × 3
+        verify(repository).findRelated(eq(1L), tagsJson.capture(), eq(18));
         assertThat(tagsJson.getValue()).contains("科幻", "机战");
     }
 
@@ -110,9 +112,61 @@ class WorkServiceSortAndRelatedTest {
         service.related("W-1", 999);
         service.related("W-1", 0);
 
-        // 省略与 0 都落到默认 6，所以是 2 次
-        verify(repository, org.mockito.Mockito.times(2)).findRelated(1L, "[\"科幻\"]", 6);
-        verify(repository).findRelated(1L, "[\"科幻\"]", 20);
+        // 省略与 0 都落到默认 6（查询时 ×3 取 18），所以是 2 次
+        verify(repository, org.mockito.Mockito.times(2)).findRelated(1L, "[\"科幻\"]", 18);
+        // 999 先按上限 20 截断，再 ×3
+        verify(repository).findRelated(1L, "[\"科幻\"]", 60);
+    }
+
+    @Test
+    @DisplayName("跨源同名只返回一条，保留排在前面的那条（评分更优）")
+    void relatedDedupesSameTitle() {
+        when(repository.findByWorkId("W-1")).thenReturn(java.util.Optional.of(
+                record(1L, "W-1", "[\"科幻\"]")));
+        when(publicUrlResolver.baseUrl()).thenReturn("http://localhost:8080");
+        // 同一作品两个来源各一条 + 一条别的。查询按评分降序给，第一条即最优。
+        when(repository.findRelated(eq(1L), anyString(), anyInt())).thenReturn(List.of(
+                titled(9L, "W-9", "同一作品", "[\"科幻\"]", new BigDecimal("9.0")),
+                titled(8L, "W-8", "同一作品", "[\"科幻\"]", new BigDecimal("8.0")),
+                titled(7L, "W-7", "别的作品", "[\"科幻\"]", new BigDecimal("7.0"))));
+
+        RelatedWorksDto dto = service.related("W-1", 6);
+
+        assertThat(dto.items()).extracting(WorkSummaryDto::workId)
+                .containsExactly("W-9", "W-7");
+    }
+
+    @Test
+    @DisplayName("去重键做 trim + 小写归一：大小写与空白差异也算同名")
+    void relatedDedupeKeyIsNormalized() {
+        when(repository.findByWorkId("W-1")).thenReturn(java.util.Optional.of(
+                record(1L, "W-1", "[\"科幻\"]")));
+        when(publicUrlResolver.baseUrl()).thenReturn("http://localhost:8080");
+        when(repository.findRelated(eq(1L), anyString(), anyInt())).thenReturn(List.of(
+                titled(9L, "W-9", "Yamato", "[\"科幻\"]", new BigDecimal("9.0")),
+                titled(8L, "W-8", " yamato ", "[\"科幻\"]", new BigDecimal("8.0"))));
+
+        RelatedWorksDto dto = service.related("W-1", 6);
+
+        assertThat(dto.items()).extracting(WorkSummaryDto::workId)
+                .containsExactly("W-9");
+    }
+
+    @Test
+    @DisplayName("去重后不足 limit 就少返回几条，不凑数")
+    void relatedMayReturnFewerAfterDedupe() {
+        when(repository.findByWorkId("W-1")).thenReturn(java.util.Optional.of(
+                record(1L, "W-1", "[\"科幻\"]")));
+        when(publicUrlResolver.baseUrl()).thenReturn("http://localhost:8080");
+        // 三条全是同一个标题：去重后只剩 1 条，limit 要 6 也只返回 1
+        when(repository.findRelated(eq(1L), anyString(), anyInt())).thenReturn(List.of(
+                titled(9L, "W-9", "同一作品", "[\"科幻\"]", new BigDecimal("9.0")),
+                titled(8L, "W-8", "同一作品", "[\"科幻\"]", new BigDecimal("8.0")),
+                titled(7L, "W-7", "同一作品", "[\"科幻\"]", new BigDecimal("7.0"))));
+
+        RelatedWorksDto dto = service.related("W-1", 6);
+
+        assertThat(dto.items()).hasSize(1);
     }
 
     @Test
@@ -125,7 +179,7 @@ class WorkServiceSortAndRelatedTest {
         RelatedWorksDto dto = service.related("W-1", 3);
 
         assertThat(dto.basisTags()).containsExactly("a", "b", "c", "d", "e");
-        verify(repository).findRelated(1L, "[\"a\",\"b\",\"c\",\"d\",\"e\"]", 3);
+        verify(repository).findRelated(1L, "[\"a\",\"b\",\"c\",\"d\",\"e\"]", 9);
     }
 
     @Test
@@ -162,11 +216,17 @@ class WorkServiceSortAndRelatedTest {
     }
 
     private static WorkRecord record(long id, String workId, String tagsJson) {
+        return titled(id, workId, "标题 " + workId, tagsJson, new BigDecimal("7.80"));
+    }
+
+    /** 指定标题与评分的记录，去重测试要用同名不同 workId 的样本。 */
+    private static WorkRecord titled(
+            long id, String workId, String title, String tagsJson, BigDecimal rating) {
         return new WorkRecord(
-                id, workId, "anime", "标题 " + workId, null, 2022,
+                id, workId, "anime", title, null, 2022,
                 "https://example.invalid/cover.jpg", null, null,
                 tagsJson,
-                new BigDecimal("7.80"), "0-10", "otaku_site",
+                rating, "0-10", "otaku_site",
                 "otaku_site", "src-" + id, null,
                 NOW, NOW);
     }
