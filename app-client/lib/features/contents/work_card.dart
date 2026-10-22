@@ -25,6 +25,10 @@ class WorkCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    // 正文各固定高度按系统字号缩放。不缩的话，大字体下文字行高一起变大，
+    // 会撑破下面写死的容器——真机（Redmi / Android 15）font_scale 2.0 实测
+    // 卡片底部画黄黑条纹：BOTTOM OVERFLOWED BY 20 PIXELS。
+    final textScale = MediaQuery.textScalerOf(context).scale(1);
     // 无封面时用标题首字当占位图；`characters` 取整字，emoji 不会被截半个。
     final firstChar = work.title.characters.isEmpty
         ? null
@@ -46,15 +50,16 @@ class WorkCard extends StatelessWidget {
             ),
           ),
           SizedBox(
-            height: AppLayout.cardBodyHeight,
+            height: AppLayout.cardBodyHeight * textScale,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // 固定两行高度：一行标题的卡片不会比两行的矮一截。
+                  // 高度跟着字号走，理由同上。
                   SizedBox(
-                    height: 40,
+                    height: 40 * textScale,
                     child: Text(
                       work.title,
                       maxLines: 2,
