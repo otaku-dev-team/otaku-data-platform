@@ -37,10 +37,10 @@ final catalogCountsProvider = FutureProvider<CatalogCounts>((ref) async {
   ]);
 
   return CatalogCounts(
-    total: results.first.total,
+    total: results.first.value.total,
     byType: {
       for (var i = 0; i < WorkType.selectable.length; i++)
-        WorkType.selectable[i]: results[i + 1].total,
+        WorkType.selectable[i]: results[i + 1].value.total,
     },
   );
 });

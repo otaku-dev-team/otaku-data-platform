@@ -71,6 +71,8 @@ class ContentsData {
     required this.totalPages,
     this.isLoadingMore = false,
     this.loadMoreError,
+    this.fromCache = false,
+    this.cachedAt,
   });
 
   /// 这份数据是用哪组条件查出来的。
@@ -86,6 +88,14 @@ class ContentsData {
   final bool isLoadingMore;
   final ApiException? loadMoreError;
 
+  /// 当前展示的内容是不是来自离线缓存。
+  ///
+  /// 为 true 时界面**必须**提示「上次同步」，否则用户会把缓存当成最新数据。
+  final bool fromCache;
+
+  /// 缓存写入时刻。只有 [fromCache] 为 true 时才有值。
+  final DateTime? cachedAt;
+
   bool get hasMore => page < totalPages;
 
   ContentsData copyWith({
@@ -96,6 +106,8 @@ class ContentsData {
     bool? isLoadingMore,
     ApiException? loadMoreError,
     bool clearLoadMoreError = false,
+    bool? fromCache,
+    DateTime? cachedAt,
   }) {
     return ContentsData(
       filter: filter,
@@ -107,6 +119,8 @@ class ContentsData {
       loadMoreError: clearLoadMoreError
           ? null
           : (loadMoreError ?? this.loadMoreError),
+      fromCache: fromCache ?? this.fromCache,
+      cachedAt: cachedAt ?? this.cachedAt,
     );
   }
 }
@@ -116,12 +130,13 @@ class ContentsController extends AsyncNotifier<ContentsData> {
   Future<ContentsData> build() async {
     // 条件变化时 build 会重跑，等于自动重新查询第一页。
     final filter = ref.watch(contentsFilterProvider);
-    final result = await ref.watch(workRepositoryProvider).fetchWorks(
+    final fetched = await ref.watch(workRepositoryProvider).fetchWorks(
       type: filter.type,
       query: filter.query,
       sort: filter.sort,
       page: 1,
     );
+    final result = fetched.value;
 
     return ContentsData(
       filter: filter,
@@ -129,6 +144,8 @@ class ContentsController extends AsyncNotifier<ContentsData> {
       page: result.page,
       total: result.total,
       totalPages: result.totalPages,
+      fromCache: fetched.fromCache,
+      cachedAt: fetched.cachedAt,
     );
   }
 
@@ -142,7 +159,7 @@ class ContentsController extends AsyncNotifier<ContentsData> {
 
     final filter = ref.read(contentsFilterProvider);
     try {
-      final next = await ref.read(workRepositoryProvider).fetchWorks(
+      final fetched = await ref.read(workRepositoryProvider).fetchWorks(
         type: filter.type,
         query: filter.query,
         // 翻页必须带同一 sort：不带就退回默认顺序，第 2 页会和
@@ -150,6 +167,7 @@ class ContentsController extends AsyncNotifier<ContentsData> {
         sort: filter.sort,
         page: current.page + 1,
       );
+      final next = fetched.value;
 
       // 请求返回时条件可能已经变了，过期结果直接丢弃。
       if (!ref.mounted || ref.read(contentsFilterProvider) != filter) return;
@@ -162,6 +180,10 @@ class ContentsController extends AsyncNotifier<ContentsData> {
           totalPages: next.totalPages,
           isLoadingMore: false,
           clearLoadMoreError: true,
+          // 这一页来自缓存，整份列表就都是缓存内容了——标注跟着更新，
+          // 别让用户以为新追加的几条是最新的。
+          fromCache: current.fromCache || fetched.fromCache,
+          cachedAt: fetched.cachedAt ?? current.cachedAt,
         ),
       );
     } on ApiException catch (error) {

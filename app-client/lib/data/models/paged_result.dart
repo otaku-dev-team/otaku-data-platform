@@ -62,6 +62,22 @@ class PagedResult<T> {
     );
   }
 
+  /// 序列化。离线缓存用（见 `HiveWorkCache`）。
+  ///
+  /// 与 [fromJson] 对称：分页元信息（`total` / `total_pages`）必须一起存，
+  /// 少存了 `total_pages` 的话，翻页条会以为还有下一页，一直滚到底。
+  Map<String, dynamic> toJson(
+    Map<String, dynamic> Function(T) itemToJson,
+  ) {
+    return {
+      'total': total,
+      'page': page,
+      'page_size': pageSize,
+      'total_pages': totalPages,
+      'items': [for (final item in items) itemToJson(item)],
+    };
+  }
+
   static int _asInt(Object? raw, int fallback) => switch (raw) {
     final num n => n.toInt(),
     final String s => int.tryParse(s) ?? fallback,

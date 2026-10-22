@@ -41,4 +41,13 @@ class RelatedWorks {
           : const <WorkSummary>[],
     );
   }
+
+  /// 序列化。离线缓存用（见 `HiveWorkCache`）。
+  Map<String, dynamic> toJson() => {
+    'basis_tags': basisTags,
+    'items': [for (final item in items) item.toJson()],
+  };
+
+  @override
+  String toString() => 'RelatedWorks(basis: $basisTags, items: ${items.length})';
 }
