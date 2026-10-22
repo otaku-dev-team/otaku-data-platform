@@ -33,8 +33,10 @@ from .models import (
     WorkItem,
     utc_now,
 )
+import httpx
+
 from .source import FailedPage, OtakuSiteSource
-from .cleaning import validate, validate_schedule
+from .cleaning import validate, validate_article, validate_schedule
 
 # 服务端故障类拒绝码：条目本身没问题，是入库时撞上了服务端状况
 # （如并发导入时 DuplicateKeyException 被误归类，见 Issue #81）。
@@ -70,6 +72,16 @@ def build_batch_id(
     day = run_at[:10].replace("-", "")
     types = "-".join(work_types) or "all"
     return f"{source}-{types}-{day}-{fingerprint(items)}"
+
+
+def article_batch_id(items: Sequence, run_at: str, source: str = SOURCE_NAME) -> str:
+    """资讯批次 id。形态与档期一致，只是段名不同。
+
+    固定带 `article` 段：资讯没有"类型"维度，用作品类型列表当段名会让
+    两批不同实体的 id 长得一样，运维核对批次时分不出是哪条链路。
+    """
+    day = run_at[:10]
+    return f"{source}-article-{day}-{fingerprint(items)}"
 
 
 def chunked(items: Sequence[WorkItem], size: int) -> list[list[WorkItem]]:
@@ -112,11 +124,17 @@ class RunReport:
     server_error_items: list[RejectedItem] = field(default_factory=list)
     # 抓取阶段重试到底仍失败的页。非空白就意味着本次**没有拿到全量**，需要重跑。
     failed_pages: list[FailedPage] = field(default_factory=list)
+    # 资讯详情页抓取失败的条目（资讯链路专有）。这类条目**仍然入库**——
+    # 标题、摘要、时间、封面都齐了，缺的只是正文与原文链接。
+    # 所以它既不是 rejected（数据没问题）也不是 failed_pages（不是整页失败），
+    # 单独记一份，重跑时只需补抓这几条详情。
+    detail_failures: list[RejectedItem] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
         data["rejected_items"] = [asdict(r) for r in self.rejected_items]
         data["server_error_items"] = [asdict(r) for r in self.server_error_items]
+        data["detail_failures"] = [asdict(r) for r in self.detail_failures]
         return data
 
 
@@ -429,6 +447,176 @@ def run_schedule(
             for item in source.iter_schedule_items(started):
                 report.fetched += 1
                 problems = validate_schedule(item)
+                if problems:
+                    report.rejected += 1
+                    for code, message in problems:
+                        report.rejected_items.append(
+                            RejectedItem(item.source_id, code, message)
+                        )
+                else:
+                    report.accepted += 1
+                    buffer.append(item)
+                    if len(buffer) >= batch_size:
+                        flush()
+            failed_pages.extend(source.failed_pages)
+        flush()  # 收尾：不足一批的剩余条目也要提交
+    except KeyboardInterrupt:
+        report.failed_pages = failed_pages
+        report.finished_at = utc_now()
+        _write_json(report_path, report.to_dict())
+        raise
+    finally:
+        if importer is not None:
+            importer.close()
+
+    report.failed_pages = failed_pages
+    report.finished_at = utc_now()
+    _write_json(report_path, report.to_dict())
+    return report
+
+
+def run_articles(
+    config: SyncConfig,
+    dry_run: bool = False,
+    output_dir: str | None = None,
+    limit: int | None = None,
+    with_detail: bool = True,
+) -> RunReport:
+    """执行一次资讯同步（来源站 /articles 与 /articles/{id}）。
+
+    与 `run_schedule` 平行的编排，差别有三处：
+    - 数据源是 `iter_articles_raw` + 逐条 `fetch_article_detail`；
+    - 提交走 `submit_article_batch`（/internal/import/articles）；
+    - **详情抓取失败不丢条目**：标题/摘要/时间/封面已够列表页用，
+      缺的只是正文与原文链接。失败记进 `report.detail_failures`，
+      重跑时只补这几条详情即可。
+
+    `limit` 限的是**本次最多处理多少条**（列表页 + 详情都算）。
+    站点资讯没有总数接口（全量抓要逐页试到空），一次全量几百条会跑很久，
+    默认先取够一批验证链路。
+
+    `with_detail=False` 时只抓列表页：快很多，但入库的资讯没有正文与
+    原文链接（客户端不给"去原文看"的入口）。用于先验证列表链路。
+    """
+    started = utc_now()
+    out_dir = output_dir or config.output_dir
+
+    report = RunReport(
+        started_at=started,
+        source=config.source,
+        work_types=["article"],
+        dry_run=dry_run,
+    )
+
+    importer: JavaImporter | None = None
+    if not dry_run:
+        importer = JavaImporter(
+            config.java_base_url,
+            token=config.internal_token,
+            timeout=config.timeout_seconds,
+            max_attempts=config.max_attempts,
+            backoff_seconds=config.backoff_seconds,
+        )
+
+    batch_size = max(1, config.batch_size)
+    buffer: list = []
+
+    def flush() -> None:
+        if not buffer:
+            return
+        batch_items = buffer
+        batch_id = article_batch_id(batch_items, started, config.source)
+        payload = {
+            "batch_id": batch_id,
+            "source": config.source,
+            "fetched_at": started,
+            "items": [item.to_payload() for item in batch_items],
+        }
+        entry: dict[str, Any] = {"batch_id": batch_id, "size": len(batch_items)}
+
+        if dry_run:
+            entry["payload_path"] = _write_json(
+                os.path.join(out_dir, f"batch-{batch_id}.json"), payload
+            )
+            entry["delivered"] = False
+        else:
+            assert importer is not None
+            try:
+                result = importer.submit_article_batch(
+                    batch_id, batch_items, started, config.source
+                )
+                data_rejects = [
+                    e
+                    for e in result.errors
+                    if e.result == RESULT_REJECTED
+                    and e.reason_code not in SERVER_FAULT_CODES
+                ]
+                server_faults = [
+                    e
+                    for e in result.errors
+                    if e.result == RESULT_REJECTED
+                    and e.reason_code in SERVER_FAULT_CODES
+                ]
+                entry.update(
+                    delivered=True,
+                    counts=result.counts,
+                    errors=[asdict(e) for e in data_rejects],
+                    server_errors=[asdict(e) for e in server_faults],
+                )
+                report.server_error_items.extend(
+                    RejectedItem(
+                        e.source_id, e.reason_code or "INTERNAL_ERROR", e.message or ""
+                    )
+                    for e in server_faults
+                )
+            except (ImportDeliveryError, RuntimeError) as exc:
+                entry.update(
+                    delivered=False,
+                    error=str(exc),
+                    reason_code=REASON_INTERNAL_ERROR,
+                    failed_source_ids=[i.source_id for i in batch_items],
+                )
+        report.batches.append(entry)
+        buffer.clear()
+
+    report_path = os.path.join(
+        out_dir, f"run-article-{started.replace(':', '').replace('+', 'Z')}.json"
+    )
+    failed_pages: list[FailedPage] = []
+    try:
+        with OtakuSiteSource(
+            config.source_base_url,
+            timeout=config.timeout_seconds,
+            user_agent=config.user_agent,
+            page_size=config.source_page_size,
+            request_interval_seconds=config.request_interval_seconds,
+            max_pages=config.max_pages,
+            max_attempts=config.max_attempts,
+            backoff_seconds=config.backoff_seconds,
+        ) as source:
+            for raw in source.iter_articles_raw(limit=limit):
+                report.fetched += 1
+                source_id = str(raw.get("source_id") or "")
+
+                detail: dict[str, Any] | None = None
+                if with_detail and source_id:
+                    try:
+                        detail = source.fetch_article_detail(source_id)
+                    except (httpx.HTTPError, ValueError) as exc:
+                        # 条目照样入库：列表页给的元数据够用，
+                        # 缺正文只是详情页读起来单薄，不该整条丢掉。
+                        report.detail_failures.append(
+                            RejectedItem(
+                                source_id,
+                                REASON_INTERNAL_ERROR,
+                                f"详情抓取失败：{type(exc).__name__}",
+                            )
+                        )
+                    except KeyboardInterrupt:
+                        raise
+
+                item = source.to_article_item(raw, started, detail)
+                problems = validate_article(item)
                 if problems:
                     report.rejected += 1
                     for code, message in problems:

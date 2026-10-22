@@ -152,6 +152,59 @@ class ScheduleItem:
 
 
 @dataclass
+class ArticleItem:
+    """待导入的一条资讯（来源站 /articles 与 /articles/{id}）。
+
+    与 WorkItem / ScheduleItem 平行：同一套 SourceRecord / fetched_at 口径。
+
+    **两个 source_url 别混**：
+    - `source_record.source_url` 是站点上的**资讯页**（/articles/339），
+      用于排障时人工核对；
+    - `source_url` 是**原文链接**（如 ln-news.com），只有详情页给得出，
+      客户端用它跳回来源站（项目章程 G3「用户不被困在平台内」）。
+
+    正文与原文链接来自详情页，列表页没有：抓详情失败时这条资讯照样入库，
+    只是 body / source_url / source_name 为 None——标题、摘要、时间、
+    封面仍然够列表页用，不该因为一个详情页抓不到就整条丢掉。
+    """
+
+    source_record: SourceRecord
+    title: str | None = None
+    summary: str | None = None
+    body: str | None = None
+    category: str | None = None
+    published_at: str | None = None
+    source_name: str | None = None
+    source_url: str | None = None
+    cover_url: str | None = None
+    tags: list[str] | None = None
+    related_work_ids: list[str] | None = None
+
+    @property
+    def source_id(self) -> str:
+        return self.source_record.source_id
+
+    def to_payload(self) -> dict[str, Any]:
+        """转成内部导入接口（资讯）的 JSON 体。
+
+        字段名与后端 ArticleImportRequest 一致，空值一律传 null。
+        """
+        return {
+            "source_id": self.source_record.source_id,
+            "title": self.title,
+            "summary": self.summary,
+            "body": self.body,
+            "category": self.category,
+            "published_at": self.published_at,
+            "source_name": self.source_name,
+            "source_url": self.source_url,
+            "cover_url": self.cover_url,
+            "tags": self.tags,
+            "related_work_ids": self.related_work_ids,
+        }
+
+
+@dataclass
 class ItemResult:
     """单条导入结果。"""
 

@@ -269,3 +269,17 @@ def validate_schedule(item) -> list[tuple[str, str]]:
             (REASON_INVALID_WEEKDAY, f"weekday 非法：{item.weekday!r}，应为 1..7 或 null")
         )
     return problems
+
+
+def validate_article(item) -> list[tuple[str, str]]:
+    """资讯条目校验。与作品/档期同一套理由码口径。
+
+    只拒收标题：它是后端 NOT NULL 列且是界面主标题。
+    其余缺失（正文、原文链接、封面、标签、发布时间）一律放过——
+    详情页抓不到时 body/source_url 就是 None，那条资讯仍然值得进列表，
+    不该因为少一段正文就整条丢掉（章程 G3 是"不给跳转"不是"不展示"）。
+    """
+    problems: list[tuple[str, str]] = []
+    if not item.title:
+        problems.append((REASON_TITLE_REQUIRED, "title 为空"))
+    return problems
