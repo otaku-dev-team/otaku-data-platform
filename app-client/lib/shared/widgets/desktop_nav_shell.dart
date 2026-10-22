@@ -45,13 +45,16 @@ class DesktopNavShell extends StatelessWidget {
   Widget _buildRail(BuildContext context) {
     final location = _locationOf(context);
     final onCollections = location.startsWith(RoutePaths.collections);
+    final onSchedule = location.startsWith(RoutePaths.schedule);
     final onContents = location.startsWith(RoutePaths.contents);
 
     return NavigationRail(
-      // 路由不认识时（比如测试里单独 pump 某页）两项都不选中，
+      // 路由不认识时（比如测试里单独 pump 某页）三项都不选中，
       // 而不是默认高亮第一项——高亮错了比不亮更误导。
       selectedIndex: onCollections
           ? 1
+          : onSchedule
+          ? 2
           : onContents
           ? 0
           : null,
@@ -60,7 +63,11 @@ class DesktopNavShell extends StatelessWidget {
       onDestinationSelected: (index) {
         final router = GoRouter.maybeOf(context);
         if (router == null) return;
-        router.go(index == 0 ? RoutePaths.contents : RoutePaths.collections);
+        router.go(switch (index) {
+          0 => RoutePaths.contents,
+          1 => RoutePaths.collections,
+          _ => RoutePaths.schedule,
+        });
       },
       destinations: const [
         NavigationRailDestination(
@@ -81,6 +88,17 @@ class DesktopNavShell extends StatelessWidget {
             child: Icon(Icons.bookmark_rounded),
           ),
           label: Text('收藏'),
+        ),
+        NavigationRailDestination(
+          icon: Tooltip(
+            message: '每日新番',
+            child: Icon(Icons.calendar_today_outlined),
+          ),
+          selectedIcon: Tooltip(
+            message: '每日新番',
+            child: Icon(Icons.calendar_today_rounded),
+          ),
+          label: Text('新番'),
         ),
       ],
     );
