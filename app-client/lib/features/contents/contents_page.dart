@@ -10,6 +10,7 @@ import '../../core/router/route_paths.dart';
 import '../../core/platform_info.dart';
 import '../../core/theme/app_layout.dart';
 import '../../core/theme/app_theme.dart';
+import '../../data/models/work_sort.dart';
 import '../../data/models/work_type.dart';
 import '../../shared/widgets/account_menu.dart';
 import '../../shared/widgets/desktop_nav_shell.dart';
@@ -177,6 +178,14 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
                 tooltip: '我的收藏',
                 onPressed: () => context.push(RoutePaths.collections),
                 icon: const Icon(Icons.bookmark_border_rounded),
+              ),
+              // 排序放在 AppBar 而不是筛选栏：筛选栏已经塞了类型 chips 和
+              // 视图切换，再放一个控件会在手机上把 chips 挤到只剩一两个。
+              _SortMenu(
+                current: filter.sort,
+                onChanged: (sort) => ref
+                    .read(contentsFilterProvider.notifier)
+                    .selectSort(sort),
               ),
               // 账号入口放在这里而不是收藏页：登录是全局动作，用户不该为了
               // 登录先进「我的收藏」再点右上角。三态（检查中/未登录/已登录）
@@ -454,6 +463,36 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
     }
 
     return const SizedBox(height: 8);
+  }
+}
+
+/// 排序菜单。契约只认 `id` / `rating` / `year` 三种取值，非法值服务端返回 400，
+/// 所以这里不给自由输入，只能三选一，当前项打勾。
+///
+/// 改排序要重新请求第一页（服务端手里才有全量数据，本地重排只排得动已加载的
+/// 那一页），这一点由 [ContentsFilter.sort] 变化触发 controller 重跑来实现。
+class _SortMenu extends StatelessWidget {
+  const _SortMenu({required this.current, required this.onChanged});
+
+  final WorkSort current;
+  final ValueChanged<WorkSort> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return PopupMenuButton<WorkSort>(
+      tooltip: '排序（当前：${current.label}）',
+      icon: const Icon(Icons.sort_rounded),
+      initialValue: current,
+      onSelected: onChanged,
+      itemBuilder: (context) => [
+        for (final sort in WorkSort.values)
+          CheckedPopupMenuItem<WorkSort>(
+            value: sort,
+            checked: sort == current,
+            child: Text(sort.label),
+          ),
+      ],
+    );
   }
 }
 

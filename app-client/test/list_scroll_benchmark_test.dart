@@ -5,7 +5,9 @@ import 'package:otaku_app/app.dart';
 import 'package:otaku_app/core/config/app_config.dart';
 import 'package:otaku_app/data/datasources/work_data_source.dart';
 import 'package:otaku_app/data/models/paged_result.dart';
+import 'package:otaku_app/data/models/related_works.dart';
 import 'package:otaku_app/data/models/work.dart';
+import 'package:otaku_app/data/models/work_sort.dart';
 import 'package:otaku_app/data/models/work_summary.dart';
 import 'package:otaku_app/data/models/source_rating.dart';
 import 'package:otaku_app/data/models/work_type.dart';
@@ -32,6 +34,7 @@ class _BulkDataSource implements WorkDataSource {
   Future<PagedResult<WorkSummary>> fetchWorks({
     WorkType? type,
     String? query,
+    WorkSort sort = WorkSort.id,
     int page = 1,
     int pageSize = 20,
   }) async {
@@ -61,6 +64,10 @@ class _BulkDataSource implements WorkDataSource {
 
   @override
   Future<Work> fetchDetail(String workId) async => throw UnimplementedError();
+
+  @override
+  Future<RelatedWorks> fetchRelated(String workId, {int limit = 6}) async =>
+      const RelatedWorks(basisTags: <String>[], items: <WorkSummary>[]);
 }
 
 /// 真分页：每次只返回一页，用来统计「翻到底」到底要多少次请求。
@@ -74,6 +81,7 @@ class _PagedCountingDataSource implements WorkDataSource {
   Future<PagedResult<WorkSummary>> fetchWorks({
     WorkType? type,
     String? query,
+    WorkSort sort = WorkSort.id,
     int page = 1,
     int pageSize = 20,
   }) async {
@@ -96,6 +104,10 @@ class _PagedCountingDataSource implements WorkDataSource {
       totalPages: (total / pageSize).ceil(),
     );
   }
+
+  @override
+  Future<RelatedWorks> fetchRelated(String workId, {int limit = 6}) async =>
+      const RelatedWorks(basisTags: <String>[], items: <WorkSummary>[]);
 
   @override
   Future<Work> fetchDetail(String workId) async => throw UnimplementedError();

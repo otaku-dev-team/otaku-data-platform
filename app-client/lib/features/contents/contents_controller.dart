@@ -2,24 +2,32 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/network/api_exception.dart';
+import '../../data/models/work_sort.dart';
 import '../../data/models/work_summary.dart';
 import '../../data/models/work_type.dart';
 import '../../data/repositories/work_repository.dart';
 
-/// 列表的查询条件。类型与关键词都放在这里，控制器通过 watch 它来重新加载。
+/// 列表的查询条件。类型、关键词、排序都放在这里，控制器通过 watch 它来重新加载。
 @immutable
 class ContentsFilter {
-  const ContentsFilter({this.type, this.query = ''});
+  const ContentsFilter({this.type, this.query = '', this.sort = WorkSort.id});
 
   final WorkType? type;
   final String query;
 
-  @override
-  bool operator ==(Object other) =>
-      other is ContentsFilter && other.type == type && other.query == query;
+  /// 排序。它和类型/关键词是同一层的条件：变了就得重新查第一页，
+  /// 只改本地顺序是不行的——服务端手里才有全量数据。
+  final WorkSort sort;
 
   @override
-  int get hashCode => Object.hash(type, query);
+  bool operator ==(Object other) =>
+      other is ContentsFilter &&
+      other.type == type &&
+      other.query == query &&
+      other.sort == sort;
+
+  @override
+  int get hashCode => Object.hash(type, query, sort);
 }
 
 class ContentsFilterController extends Notifier<ContentsFilter> {
@@ -29,13 +37,18 @@ class ContentsFilterController extends Notifier<ContentsFilter> {
   /// 传 `null` 表示"全部类型"。
   void selectType(WorkType? type) {
     if (state.type == type) return;
-    state = ContentsFilter(type: type, query: state.query);
+    state = ContentsFilter(type: type, query: state.query, sort: state.sort);
   }
 
   void search(String query) {
     final normalized = query.trim();
     if (normalized == state.query) return;
-    state = ContentsFilter(type: state.type, query: normalized);
+    state = ContentsFilter(type: state.type, query: normalized, sort: state.sort);
+  }
+
+  void selectSort(WorkSort sort) {
+    if (state.sort == sort) return;
+    state = ContentsFilter(type: state.type, query: state.query, sort: sort);
   }
 }
 
@@ -103,9 +116,12 @@ class ContentsController extends AsyncNotifier<ContentsData> {
   Future<ContentsData> build() async {
     // 条件变化时 build 会重跑，等于自动重新查询第一页。
     final filter = ref.watch(contentsFilterProvider);
-    final result = await ref
-        .watch(workRepositoryProvider)
-        .fetchWorks(type: filter.type, query: filter.query, page: 1);
+    final result = await ref.watch(workRepositoryProvider).fetchWorks(
+      type: filter.type,
+      query: filter.query,
+      sort: filter.sort,
+      page: 1,
+    );
 
     return ContentsData(
       filter: filter,
@@ -126,9 +142,14 @@ class ContentsController extends AsyncNotifier<ContentsData> {
 
     final filter = ref.read(contentsFilterProvider);
     try {
-      final next = await ref
-          .read(workRepositoryProvider)
-          .fetchWorks(type: filter.type, query: filter.query, page: current.page + 1);
+      final next = await ref.read(workRepositoryProvider).fetchWorks(
+        type: filter.type,
+        query: filter.query,
+        // 翻页必须带同一 sort：不带就退回默认顺序，第 2 页会和
+        // 第 1 页接不上（重复或漏条）。
+        sort: filter.sort,
+        page: current.page + 1,
+      );
 
       // 请求返回时条件可能已经变了，过期结果直接丢弃。
       if (!ref.mounted || ref.read(contentsFilterProvider) != filter) return;
