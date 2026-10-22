@@ -129,6 +129,35 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
 
+    if args.articles:
+        if args.work_types:
+            print("错误：--articles 与 --type 互斥（资讯没有类型维度）", file=sys.stderr)
+            return 2
+        if config.source != "otaku_site":
+            print(
+                "错误：--articles 只支持来源站 otaku_site（资讯是站点自己的内容）",
+                file=sys.stderr,
+            )
+            return 2
+        report = run_articles(
+            config,
+            dry_run=args.dry_run,
+            output_dir=args.out,
+            limit=args.article_limit,
+            with_detail=args.with_detail,
+        )
+        print(summarize(report))
+        for item in report.rejected_items[:20]:
+            print(f"  拒绝 {item.source_id}: {item.reason_code} - {item.message}")
+        # 详情缺失不是拒绝：条目已入库，只是读起来单薄。单独提示，
+        # 运维才知道要补抓详情而不是重跑整批。
+        for item in report.detail_failures[:20]:
+            print(f"  详情缺失 {item.source_id}: {item.message}")
+        for batch in report.batches:
+            if not batch.get("delivered") and not report.dry_run:
+                print(f"  批次 {batch['batch_id']} 未送达：{batch.get('error')}")
+        return 0
+
     if args.schedule:
         if args.work_types:
             print("错误：--schedule 与 --type 互斥（档期没有类型维度）", file=sys.stderr)
