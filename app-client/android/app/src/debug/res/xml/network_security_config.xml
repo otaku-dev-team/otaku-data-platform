@@ -1,31 +1,35 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- 仅 debug 变体生效，覆盖 main 里的同名资源。
 
+     ⚠️ 本注释里不能出现连续两个连字符：XML 规范禁止注释内容含它，aapt 会直接报
+     「注释中不允许出现字符串」（后面跟的就是那两个字符）并让整个 debug 变体
+     构建失败。2026-10-22 踩过一次，是把构建参数示例写进注释触发的，修的时候
+     又踩了第二次——在注释里引用这个字符本身也不行。
+     所以命令行示例不放在这里，见 docs/stage2-acceptance.md 的「复现命令」。
+
      main 那份只放行来源站 154.8.194.198，连本地后端会被 Android 9+ 的明文
-     策略拦掉。联调要连的是宿主机，两种方式：
+     策略拦掉。本文件放行的名单：
 
-     1) 模拟器：连 10.0.2.2（AppConfig 已按平台切到它），下面已放行。
-     2) 真机：**本文件没有放行任何局域网 IP**，因为每台开发机的网段都不同，
-        把某个人的 192.168.x.x 写进仓库对别人没用。
+     1) 10.0.2.2 / localhost：Android 模拟器映射到宿主机的地址，
+        AppConfig 在 Android 上会自动切到 10.0.2.2。
+     2) 127.0.0.1：真机走 USB 反向转发时用到，手机访问本机端口会经 USB
+        转到宿主机，不需要改代码，也不需要局域网 IP。
+     3) 154.8.194.198：来源站，与 main 保持一致。
 
-        真机联调推荐走 USB 反向转发，不需要改这里：
-            adb reverse tcp:8080 tcp:8080
-            flutter run -d <设备> --dart-define=API_BASE_URL=http://127.0.0.1:8080
-        手机侧访问 127.0.0.1:8080 会经 USB 转到宿主机，下面已放行 127.0.0.1。
+     不放行任何局域网 IP：每台开发机的网段都不同，把某个人的
+     192.168.x.x 写进仓库对别人没用。真机确实要走局域网时，自己临时加一行，
+     否则会被明文策略拦掉，报错看起来像「后端挂了」。
 
-        如果一定要走局域网 IP，需要自己把这台机器的 IP 加进下面的名单，
-        否则会被明文策略拦掉，报错看起来像「后端挂了」。
-
-     不开 `base-config cleartextTrafficPermitted="true"`：那等于对所有主机放行，
+     不开 base-config cleartextTrafficPermitted="true"：那等于对所有主机放行，
      debug 包虽然不发版，但一旦有人拿 debug 包做安全扫描，结论会很难解释。
      列名单的代价只是多写几行。
 -->
 <network-security-config>
     <domain-config cleartextTrafficPermitted="true">
-        <!-- Android 模拟器映射到宿主机的 127.0.0.1 -->
+        <!-- Android 模拟器映射到宿主机的地址 -->
         <domain includeSubdomains="false">10.0.2.2</domain>
         <domain includeSubdomains="false">localhost</domain>
-        <!-- 真机的 adb reverse 走这里 -->
+        <!-- 真机 USB 反向转发（adb reverse）走这里 -->
         <domain includeSubdomains="false">127.0.0.1</domain>
         <!-- 来源站，与 main 保持一致 -->
         <domain includeSubdomains="false">154.8.194.198</domain>

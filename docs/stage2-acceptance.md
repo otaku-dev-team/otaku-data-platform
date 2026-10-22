@@ -134,6 +134,27 @@
 > **连接**：USB + `adb reverse tcp:8080 tcp:8080`
 > （为什么不走局域网 IP，见「验收发现的问题」第 3 条）
 
+**复现命令**（真机 / 模拟器各一套，含全部构建期参数，可直接复制）：
+
+```bash
+# 真机（USB）：手机侧访问 127.0.0.1 会经 USB 转到宿主机
+adb reverse tcp:8080 tcp:8080
+flutter run -d 5c97b949 \
+  --dart-define=USE_MOCK=false \
+  --dart-define=API_BASE_URL=http://127.0.0.1:8080
+
+# 模拟器：10.0.2.2 是模拟器对宿主机的映射，AppConfig 在 Android 上已自动切过去，
+# 这里的显式地址只为和真机保持一致
+flutter run -d emulator-5554 \
+  --dart-define=USE_MOCK=false \
+  --dart-define=API_BASE_URL=http://10.0.2.2:8080
+```
+
+> 这两个命令曾经写在 `android/app/src/debug/res/xml/network_security_config.xml`
+> 的注释里，因为注释中出现 `--dart-define` 触发 XML 规范禁忌（注释不得含
+> 连续两个连字符），导致 debug 变体资源解析失败、构建中断。命令已挪到本文档，
+> 那份配置文件的注释里只留一句指向这里的引用。
+
 ### 阶段 1 口径（真机）
 
 | 检查项 | 结果 |
