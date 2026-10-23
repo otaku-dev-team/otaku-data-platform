@@ -20,9 +20,13 @@ import 'contents_controller.dart';
 /// 硬要做只能靠逐条请求详情，代价远大于收益。
 /// 年份在 2026-10-22 补上（此前链路断在同步层），位置与站点一致：类型行末尾。
 class WorkCard extends ConsumerWidget {
-  const WorkCard({super.key, required this.work});
+  const WorkCard({super.key, required this.work, this.showMissingRating = false});
 
   final WorkSummary work;
+
+  /// 无评分时是否标出「暂无评分」（W1.5 D2）。只在按评分排序时由列表页打开：
+  /// 那时无评分条目沉在末尾，不标出来会被当成加载失败。
+  final bool showMissingRating;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -77,8 +81,13 @@ class WorkCard extends ConsumerWidget {
                     children: [
                       WorkTypeTag(type: work.workType),
                       const SizedBox(width: 6),
-                      // 契约 6.3：没有评分就整块不渲染，不能显示 0.0。
-                      RatingBadge(rating: work.mainRating, compact: true),
+                      // 契约 6.3：没有评分不能显示 0.0。默认整块不渲染，
+                      // 按评分排序时改成标出「暂无评分」。
+                      RatingBadge(
+                        rating: work.mainRating,
+                        compact: true,
+                        showMissingLabel: showMissingRating,
+                      ),
                       // 年份靠右，占掉剩余宽度：既不挤压标签与评分，也不会因
                       // 文字变长把卡片撑破（溢出时省略）。
                       Expanded(
