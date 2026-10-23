@@ -97,6 +97,7 @@ class _FakeWorkSource implements WorkDataSource {
   Future<PagedResult<WorkSummary>> fetchWorks({
     WorkType? type,
     String? query,
+    String? tag,
     WorkSort sort = WorkSort.id,
     int page = 1,
     int pageSize = 20,
