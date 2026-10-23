@@ -16,9 +16,15 @@
 | 7 | #106 | `feat/schedule-client` | 客户端 |
 | 8 | #112 | `feat/article-client` | 客户端 |
 | 9 | #114 | `feat/rating-sort-clarity` | 客户端 |
+| 10 | #116 | `feat/client-collection-offline` | 客户端（**基于 #107**） |
 
 `feat/article-sync` 与 `feat/client-tag-filter` 本身是叠加分支，所以先合它们的底座，
-这两步就是无冲突的。**#116（收藏离线）不在这条链里**——它基于 #107，且当时仍在另一会话里写。
+这两步就是无冲突的。
+
+#116 起初不在链里（当时还在另一会话里写），10-23 18:2x 补合验证：**零冲突**。
+它在 `feat/client-collection-offline` 上相对 main 的 diff 有 46 个文件，那是因为这个分支
+**本身就含 #103 + #107**；合完 #107 之后，它真正的增量只有 12 个文件（收藏缓存层 +
+收藏页 + `main.dart` 注入），与 #114 改的三个列表文件不重叠。放在第 10 步（#107 之后任意位置）即可。
 
 ## 2. 三处冲突与解法
 
@@ -55,16 +61,18 @@
 | 项 | 命令 | 结果 |
 | --- | --- | --- |
 | 客户端静态分析 | `flutter analyze` | No issues found |
-| 客户端测试 | `flutter test` | **173 passed** |
+| 客户端测试 | `flutter test` | **193 passed**（含 #116 后；不含时 173） |
 | 后端测试 | `./mvnw test` | **111 tests, 0 failures**（8 skipped） |
 | sync 测试 | `pytest -q` | **110 passed** |
 | 迁移链 | 空库启动后端 | `V1…V9` 全部 `success`，`work/article/schedule/work_tag` 等 10 张表就位 |
 | 接口 | 空库 `curl` | `/api/schedule`、`/api/articles`、`/api/articles/categories` 均 200 |
 
 迁移用临时库 `otaku_mergetrain_check`（验证后已删除），所以 `V8`、`V9` 是**真的按顺序应用**
-而不是「表已经存在所以跳过」。
+而不是「表已经存在所以跳过」。#116 补合后重跑了 `flutter analyze` 与全量测试（后端/sync
+不受影响，未重跑）。
 
 ## 5. 结论
 
-按第 1 节的顺序合，冲突只有三处、每处都是「两边都留」，加上第 3 节那条测试桩修复即可全绿。
-反过来（例如先合 #112 再合 #106）冲突规模不变，但 #116 那条链要重新排。
+按第 1 节的顺序合（#116 排在 #107 之后、其余位置随意），冲突只有三处、每处都是
+「两边都留」，加上第 3 节那条测试桩修复即可全绿。反过来（例如先合 #112 再合 #106）
+冲突规模不变，但 #116 那条链要重新排。
