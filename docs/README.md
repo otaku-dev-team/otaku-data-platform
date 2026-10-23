@@ -22,6 +22,7 @@
 
 - [`docs/data-contract.md`](data-contract.md)：完整数据契约草案（含后续阶段字段），含来源站实测数据事实。
 - [`docs/stage2-account-collection-contract.md`](stage2-account-collection-contract.md)：**第二阶段（账号与收藏）契约**，对应验收 C1–C11。含 8 个接口、新增错误码与 C1–C11 的逐条映射。**已实现并双端验收**（2026-10-21，见 [`stage2-acceptance.md`](stage2-acceptance.md)），接口已落 `openapi.yaml`。
+- [`docs/w1.3-notification-proposal.md`](w1.3-notification-proposal.md)：**W1.3 通知触达方案草案**。建议拆成「本地提醒（纯客户端，可立即做）」与「服务端推送（需新增设备令牌端点，属红线）」两半；含端点、字段、表结构与事件载荷的提议。**尚未生效**，需三人确认。
 - [`docs/acceptance.md`](acceptance.md)：双端浏览、跨端个人管理与同步可靠性的逐条验收步骤；第 6 节是**阶段 1 实测记录**（2026-10-21，B1–B11 全部通过）。
 - [`docs/stage2-acceptance.md`](stage2-acceptance.md)：阶段 2 双端实测记录（2026-10-21，Windows 桌面 + Android），含 §8 用例与 C1–C11 的覆盖对照。
 - [`docs/stage3-performance-baseline.md`](stage3-performance-baseline.md)：**万级列表的滚动基线**（2026-10-21 实测）。含帧耗时、内存曲线、分页请求数与两个真实瓶颈（封面重复回源、封面按原图解码），以及复现脚本的用法。
