@@ -42,6 +42,7 @@ class _FakeDataSource implements WorkDataSource {
     WorkSort sort = WorkSort.id,
     int page = 1,
     int pageSize = 20,
+    String? tag,
   }) async {
     return const PagedResult<WorkSummary>(
       items: [summaryItem, summaryItem, summaryItem],
@@ -86,6 +87,7 @@ class _OfflineOnFilterDataSource extends _FakeDataSource {
     WorkSort sort = WorkSort.id,
     int page = 1,
     int pageSize = 20,
+    String? tag,
   }) async {
     if (type != null) {
       throw const ApiException(
@@ -108,6 +110,7 @@ class _OfflineAfterFirstLoadDataSource extends _FakeDataSource {
     WorkSort sort = WorkSort.id,
     int page = 1,
     int pageSize = 20,
+    String? tag,
   }) async {
     calls++;
     if (calls > 1) {

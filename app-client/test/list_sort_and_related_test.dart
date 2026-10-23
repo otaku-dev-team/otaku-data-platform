@@ -41,6 +41,7 @@ class _RecordingWorkSource implements WorkDataSource {
     WorkSort sort = WorkSort.id,
     int page = 1,
     int pageSize = 20,
+    String? tag,
   }) async {
     sorts.add(sort);
     pages.add(page);

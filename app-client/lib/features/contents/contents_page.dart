@@ -245,6 +245,21 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
                     onViewChanged: (next) =>
                         ref.read(catalogViewProvider.notifier).select(next),
                   ),
+                  // 当前标签筛选状态 + 清除入口。
+                  //
+                  // 筛选条件**必须显式可见**：卡片上的标签被标了色，但
+                  // 一屏 50 张卡里只看一张时，用户很容易不知道自己筛过标签，
+                  // 也不知道为什么结果变少了。空结果时尤其重要——
+                  // 「按『科幻』筛出 0 部」和「库里没有科幻」是两回事。
+                  if (filter.tag != null)
+                    _TagFilterBar(
+                      tag: filter.tag!,
+                      // `tag` 与 `q` 同用约 720ms（后端实测：LIKE '%kw%' 与
+                      // 标签求交集，两边都定位不了索引）。这不是客户端能绕过的，
+                      // 所以先选标签时把搜索框禁用并说明原因，
+                      // 而不是让用户组合出一个 0.7 秒的查询还不知情。
+                      searchBlocked: filter.query.isNotEmpty,
+                    ),
                   // 离线提示。放在筛选栏下面、列表上面：用户先看到内容，
                   // 紧接着看到「这是缓存」的说明，而不是被一条横幅挡在内容之外。
                   if (cacheNotice != null)
@@ -308,6 +323,30 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
   Widget _buildEmpty(ContentsFilter filter) {
     final searching = filter.query.isNotEmpty;
     final hasType = filter.type != null;
+    final tag = filter.tag;
+
+    // 按标签筛出 0 条与「库里没有东西」是两回事，文案必须分开：
+    // 契约里未知标签返 `200 + 空数组`（不是 404），所以这一屏是**筛太窄**，
+    // 不是**没数据**。说成「这里还没有作品」会让用户以为同步没跑完。
+    final filtering = searching || hasType || tag != null;
+    final (title, message) = switch (null) {
+      _ when tag != null && searching => (
+        '这个标签下没有匹配的作品',
+        '「$tag」与关键词「${filter.query}」同时筛选超出了当前检索能力，'
+            '去掉一个条件试试',
+      ),
+      _ when tag != null => (
+        '没有这个标签的作品',
+        '「$tag」是精确匹配——「科幻」不会包含「科幻机甲」。'
+            '换个标签或清除筛选看看',
+      ),
+      _ when searching => (
+        '没有匹配的作品',
+        '换个更短的关键词试试，搜索只匹配标题，不支持拼音与别名',
+      ),
+      _ when hasType => ('这个分类下暂时没有内容', '换个分类看看'),
+      _ => ('这里还没有作品', '等同步任务跑完就有了'),
+    };
 
     return RefreshIndicator(
       onRefresh: () => ref.read(contentsControllerProvider.notifier).refresh(),
@@ -316,13 +355,11 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
         children: [
           const SizedBox(height: 72),
           EmptyState(
-            icon: searching
+            icon: filtering
                 ? Icons.search_off_rounded
                 : Icons.movie_filter_outlined,
-            title: searching ? '没有匹配的作品' : '这里还没有作品',
-            message: searching
-                ? '换个更短的关键词试试，搜索只匹配标题，不支持拼音与别名'
-                : (hasType ? '这个分类下暂时没有内容，换个分类看看' : '等同步任务跑完就有了'),
+            title: title,
+            message: message,
           ),
         ],
       ),
@@ -477,6 +514,61 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
     }
 
     return const SizedBox(height: 8);
+  }
+}
+
+/// 当前标签筛选条：说清「正在按哪个标签筛」并给一个清除出口。
+///
+/// 单独一条而不是把提示混进空结果页：筛出 0 条时列表会显示空状态，
+/// 那时用户最容易困惑「是我筛错了，还是库里真没有」——这一条正好回答它。
+class _TagFilterBar extends ConsumerWidget {
+  const _TagFilterBar({required this.tag, required this.searchBlocked});
+
+  final String tag;
+
+  /// 搜索框里已经有词了。`tag` + `q` 同用是一次约 720ms 的查询
+  /// （后端实测），所以这个组合要明确提示，而不是让它悄悄变慢。
+  final bool searchBlocked;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final controller = ref.read(contentsFilterProvider.notifier);
+
+    return Padding(
+      padding: const EdgeInsets.only(
+        left: AppLayout.pagePadding,
+        right: AppLayout.pagePadding,
+        top: 2,
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.sell_outlined,
+            size: 14,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+          const SizedBox(width: 6),
+          Text(
+            '标签：$tag',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const Spacer(),
+          // 清除出口用文字按钮而不是图标按钮：图标（×）在这里含义不够明确，
+          // 而「清除筛选」四个字不会误解。
+          TextButton(
+            onPressed: () => controller.selectTag(null),
+            style: TextButton.styleFrom(
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+            ),
+            child: const Text('清除'),
+          ),
+        ],
+      ),
+    );
   }
 }
 

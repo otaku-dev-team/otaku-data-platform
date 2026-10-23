@@ -10,10 +10,21 @@ import '../../data/repositories/work_repository.dart';
 /// 列表的查询条件。类型、关键词、排序都放在这里，控制器通过 watch 它来重新加载。
 @immutable
 class ContentsFilter {
-  const ContentsFilter({this.type, this.query = '', this.sort = WorkSort.id});
+  const ContentsFilter({
+    this.type,
+    this.query = '',
+    this.sort = WorkSort.id,
+    this.tag,
+  });
 
   final WorkType? type;
   final String query;
+
+  /// 标签筛选（契约 `tag=`）。`null` 表示不过滤。
+  ///
+  /// 与 [type] / [query] / [sort] 是同一层的条件：变了就得重新查第一页，
+  /// 只筛本地列表是错的——服务端手里才有全量数据。
+  final String? tag;
 
   /// 排序。它和类型/关键词是同一层的条件：变了就得重新查第一页，
   /// 只改本地顺序是不行的——服务端手里才有全量数据。
@@ -24,10 +35,11 @@ class ContentsFilter {
       other is ContentsFilter &&
       other.type == type &&
       other.query == query &&
-      other.sort == sort;
+      other.sort == sort &&
+      other.tag == tag;
 
   @override
-  int get hashCode => Object.hash(type, query, sort);
+  int get hashCode => Object.hash(type, query, sort, tag);
 }
 
 class ContentsFilterController extends Notifier<ContentsFilter> {
@@ -37,18 +49,50 @@ class ContentsFilterController extends Notifier<ContentsFilter> {
   /// 传 `null` 表示"全部类型"。
   void selectType(WorkType? type) {
     if (state.type == type) return;
-    state = ContentsFilter(type: type, query: state.query, sort: state.sort);
+    // 同 search：其余条件要一起带走，别把已选的标签丢掉。
+    state = ContentsFilter(
+      type: type,
+      query: state.query,
+      sort: state.sort,
+      tag: state.tag,
+    );
   }
 
   void search(String query) {
     final normalized = query.trim();
     if (normalized == state.query) return;
-    state = ContentsFilter(type: state.type, query: normalized, sort: state.sort);
+    // 标签必须一起带走：换筛选条件的语义是「保持其余条件、只改这一个」，
+    // 漏掉 tag 的话，用户先选标签再搜索会把标签静默清掉——
+    // 而界面上的筛选条会跟着消失，用户只会觉得「标签筛没了」。
+    state = ContentsFilter(
+      type: state.type,
+      query: normalized,
+      sort: state.sort,
+      tag: state.tag,
+    );
   }
 
   void selectSort(WorkSort sort) {
     if (state.sort == sort) return;
-    state = ContentsFilter(type: state.type, query: state.query, sort: sort);
+    state = ContentsFilter(
+      type: state.type,
+      query: state.query,
+      sort: sort,
+      tag: state.tag,
+    );
+  }
+
+  /// 按标签筛选。传 `null` 或空串表示取消筛选（点已选中的标签、或点清除）。
+  void selectTag(String? tag) {
+    final trimmed = tag?.trim();
+    final next = (trimmed == null || trimmed.isEmpty) ? null : trimmed;
+    if (next == state.tag) return;
+    state = ContentsFilter(
+      type: state.type,
+      query: state.query,
+      sort: state.sort,
+      tag: next,
+    );
   }
 }
 
@@ -135,6 +179,7 @@ class ContentsController extends AsyncNotifier<ContentsData> {
       query: filter.query,
       sort: filter.sort,
       page: 1,
+      tag: filter.tag,
     );
     final result = fetched.value;
 
@@ -166,6 +211,7 @@ class ContentsController extends AsyncNotifier<ContentsData> {
         // 第 1 页接不上（重复或漏条）。
         sort: filter.sort,
         page: current.page + 1,
+        tag: filter.tag,
       );
       final next = fetched.value;
 

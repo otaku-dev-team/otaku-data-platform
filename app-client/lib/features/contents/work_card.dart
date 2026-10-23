@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/router/route_paths.dart';
@@ -10,6 +11,7 @@ import '../../shared/widgets/rating_badge.dart';
 import '../../shared/widgets/release_year_text.dart';
 import '../../shared/widgets/tag_chips.dart';
 import '../../shared/widgets/work_type_tag.dart';
+import 'contents_controller.dart';
 
 /// 列表卡片，形状对齐来源站的 `.work-card`：2:3 竖版海报在上、文字在下。
 ///
@@ -17,13 +19,13 @@ import '../../shared/widgets/work_type_tag.dart';
 /// 站点卡片里有两行摘要和排名角标，这里都没有：接口没这两个字段，
 /// 硬要做只能靠逐条请求详情，代价远大于收益。
 /// 年份在 2026-10-22 补上（此前链路断在同步层），位置与站点一致：类型行末尾。
-class WorkCard extends StatelessWidget {
+class WorkCard extends ConsumerWidget {
   const WorkCard({super.key, required this.work});
 
   final WorkSummary work;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     // 正文各固定高度按系统字号缩放。不缩的话，大字体下文字行高一起变大，
     // 会撑破下面写死的容器——真机（Redmi / Android 15）font_scale 2.0 实测
@@ -93,7 +95,18 @@ class WorkCard extends StatelessWidget {
                     child: SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
                       physics: const NeverScrollableScrollPhysics(),
-                      child: TagChips(tags: work.tags, maxVisible: 3),
+                      child: TagChips(
+                        tags: work.tags,
+                        maxVisible: 3,
+                        // 点标签即按该标签筛选：卡片上已经写着这个标签了，
+                        // 用户想「看同题材的」时，入口就在他眼睛盯着的地方。
+                        onTag: (tag) => ref
+                            .read(contentsFilterProvider.notifier)
+                            .selectTag(tag),
+                        selectedTag: ref.watch(
+                          contentsFilterProvider.select((f) => f.tag),
+                        ),
+                      ),
                     ),
                   ),
                 ],

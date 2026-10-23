@@ -42,6 +42,7 @@ class ListCacheKey {
     required this.sort,
     required this.page,
     this.pageSize = 50,
+    this.tag,
   });
 
   final WorkType? type;
@@ -54,6 +55,16 @@ class ListCacheKey {
 
   /// 每页条数。参与键的计算，理由见类注释。
   final int pageSize;
+
+  /// 标签筛选（契约 `GET /api/works?tag=`，精确匹配整个标签）。
+  ///
+  /// **必须参与键的计算**：少了它，「按科幻筛的第一页」与「不筛标签的第一页」
+  /// 共用一个键，离线时按标签打开列表会拿到根本没筛过的内容，
+  /// 而界面上看不出任何异常——这是最坏的一类缓存 bug。
+  final String? tag;
+
+  /// 归一后的标签：空串与 null 是同一个意思（都表示不过滤）。
+  String get normalizedTag => tag?.trim() ?? '';
 
   /// 归一后的关键词：null 与空串是同一个意思。
   String get normalizedQuery => query.trim();
@@ -68,6 +79,7 @@ class ListCacheKey {
       sort.value,
       '$page',
       '$pageSize',
+      normalizedTag,
     ];
     return 'list:${parts.join('\u0000')}';
   }
@@ -79,10 +91,12 @@ class ListCacheKey {
       other.normalizedQuery == normalizedQuery &&
       other.sort == sort &&
       other.page == page &&
-      other.pageSize == pageSize;
+      other.pageSize == pageSize &&
+      other.normalizedTag == normalizedTag;
 
   @override
-  int get hashCode => Object.hash(type, normalizedQuery, sort, page, pageSize);
+  int get hashCode =>
+      Object.hash(type, normalizedQuery, sort, page, pageSize, normalizedTag);
 
   @override
   String toString() => 'ListCacheKey($storageKey)';
