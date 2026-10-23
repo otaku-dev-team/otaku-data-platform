@@ -21,6 +21,7 @@ import '../../shared/widgets/offline_notice.dart';
 import '../../shared/widgets/skeleton_list.dart';
 import 'catalog_counts.dart';
 import 'contents_controller.dart';
+import 'search_history_controller.dart';
 import 'work_card.dart';
 import 'work_list_tile.dart';
 
@@ -65,7 +66,12 @@ class ContentsPage extends ConsumerStatefulWidget {
 class _ContentsPageState extends ConsumerState<ContentsPage> {
   final TextEditingController _searchController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  final FocusNode _searchFocus = FocusNode();
   Timer? _debounce;
+
+  /// 搜索框是否聚焦。历史 chips 只在聚焦且输入框为空时出现——
+  /// 平时挂在筛选栏上方会白占一行高度，用户没在搜索时那是没用的信息。
+  bool _searchFocused = false;
 
   /// 换筛选条件后要把列表拉回顶部：`ScrollController` 默认会恢复上一份数据的
   /// 偏移，从长列表（10000 条）切到短列表时会停在中间，看起来像"跳页"。
@@ -93,6 +99,7 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
   void initState() {
     super.initState();
     _scrollController.addListener(_handleScroll);
+    _searchFocus.addListener(_handleSearchFocus);
     // 从详情返回时，搜索框要保留已经生效的关键词。
     _searchController.text = ref.read(contentsFilterProvider).query;
   }
@@ -100,9 +107,17 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
   @override
   void dispose() {
     _debounce?.cancel();
+    _searchFocus.removeListener(_handleSearchFocus);
+    _searchFocus.dispose();
     _searchController.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  void _handleSearchFocus() {
+    if (!mounted) return;
+    if (_searchFocused == _searchFocus.hasFocus) return;
+    setState(() => _searchFocused = _searchFocus.hasFocus);
   }
 
   void _handleScroll() {
@@ -126,9 +141,30 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
   ///
   /// 桌面端用户敲完标题会顺手回车（§6「搜索」一行要求 Enter 提交），
   /// 让他再干等 300ms 没有意义。
+  ///
+  /// **只有这里和点历史 chip 会写历史**：边打字边搜的那条防抖链路不写，
+  /// 否则一次输入会在历史里留下「进」「进击」「进击的」三行（见
+  /// `SearchHistoryController` 的注释）。
   void _submitSearch(String value) {
     _debounce?.cancel();
+    ref.read(searchHistoryProvider.notifier).record(value);
     ref.read(contentsFilterProvider.notifier).search(value);
+  }
+
+  /// 点一条历史 chip：填回输入框并立刻搜。
+  ///
+  /// 走 [_submitSearch] 的同一套动作，但不经过输入框的 `onChanged`——
+  /// 程序化改 `text` 不会触发它，所以这里要手动填一次再把光标放到末尾。
+  void _applyHistory(String query) {
+    _debounce?.cancel();
+    _searchController.value = TextEditingValue(
+      text: query,
+      selection: TextSelection.collapsed(offset: query.length),
+    );
+    ref.read(searchHistoryProvider.notifier).record(query);
+    ref.read(contentsFilterProvider.notifier).search(query);
+    // 收键盘：用户已经选完了，键盘继续占着半屏只会挡住结果。
+    _searchFocus.unfocus();
   }
 
   void _clearQuery() {
@@ -143,6 +179,14 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
     final contents = ref.watch(contentsControllerProvider);
     final view = ref.watch(catalogViewProvider);
     final counts = ref.watch(catalogCountsProvider).value;
+    final searchHistory = ref.watch(searchHistoryProvider);
+    // 聚焦 + 输入框为空 + 有历史，三个条件同时成立才显示。
+    // 输入框里已经有词时不显示：那一栏会变成「历史 vs 当前查询」两个焦点，
+    // 用户还得先分辨哪个才是自己在搜的。
+    final showSearchHistory =
+        _searchFocused &&
+        filter.query.trim().isEmpty &&
+        searchHistory.isNotEmpty;
 
     ref.listen<ContentsFilter>(contentsFilterProvider, (previous, next) {
       if (previous == null || previous == next) return;
@@ -238,6 +282,7 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
                     ),
                     child: TextField(
                       controller: _searchController,
+                      focusNode: _searchFocus,
                       onChanged: _handleQueryChanged,
                       onSubmitted: _submitSearch,
                       textInputAction: TextInputAction.search,
@@ -256,6 +301,11 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
                       ),
                     ),
                   ),
+                  if (showSearchHistory)
+                    _SearchHistoryBar(
+                      queries: searchHistory,
+                      onSelect: _applyHistory,
+                    ),
                   _FilterRow(
                     selected: filter.type,
                     counts: counts,
@@ -908,6 +958,68 @@ class _RatingSortNotice extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// 搜索框下面的「最近搜索」。
+///
+/// 只在输入框聚焦且为空时出现（判定在父级），所以这里不关心显示时机。
+/// 每条能点（填回搜索框）也能删（×），末尾一个「清空」。
+///
+/// **整栏包在 `Focus(descendantsAreFocusable: false)` 里**：chip 一旦能拿焦点，
+/// 点它的 × 会让搜索框失焦，而这一栏的显示条件正是「搜索框聚焦」——用户点
+/// 一下删除，整栏就在手指底下消失，剩下几条也没法接着删。代价是键盘 Tab
+/// 到不了这些 chip，但它们本来只是鼠标/触摸的快捷方式，输入框还在最上面。
+class _SearchHistoryBar extends ConsumerWidget {
+  const _SearchHistoryBar({required this.queries, required this.onSelect});
+
+  final List<String> queries;
+  final ValueChanged<String> onSelect;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final hint = theme.textTheme.labelMedium?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+
+    return Focus(
+      descendantsAreFocusable: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          AppLayout.pagePadding,
+          8,
+          AppLayout.pagePadding,
+          0,
+        ),
+        child: Wrap(
+          spacing: 8,
+          runSpacing: 4,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            Text('最近搜索', style: hint),
+            for (final query in queries)
+              InputChip(
+                label: ConstrainedBox(
+                  // 有人会把整句话粘进搜索框。截断而不是换行：
+                  // chip 换行会把这一栏撑成好几行，把筛选栏推下去。
+                  constraints: const BoxConstraints(maxWidth: 180),
+                  child: Text(query, overflow: TextOverflow.ellipsis),
+                ),
+                visualDensity: VisualDensity.compact,
+                onPressed: () => onSelect(query),
+                deleteButtonTooltipMessage: '删除「$query」',
+                onDeleted: () =>
+                    ref.read(searchHistoryProvider.notifier).remove(query),
+              ),
+            TextButton(
+              onPressed: () => ref.read(searchHistoryProvider.notifier).clear(),
+              child: const Text('清空'),
+            ),
+          ],
+        ),
       ),
     );
   }
