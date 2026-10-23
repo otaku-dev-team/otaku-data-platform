@@ -11,6 +11,9 @@ abstract final class RoutePaths {
   /// 冷启动直接落到收藏页时，用户需要知道「为什么看不到东西」。
   static const String collections = '/collections';
 
+  /// 每日新番档期。与列表/收藏平级：从任何地方都能直接进。
+  static const String schedule = '/schedule';
+
   /// 相对 `contents` 的子路由。
   static const String workDetailSegment = ':workId';
 

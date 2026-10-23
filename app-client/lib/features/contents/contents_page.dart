@@ -185,6 +185,13 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
                 onPressed: () => context.push(RoutePaths.collections),
                 icon: const Icon(Icons.bookmark_border_rounded),
               ),
+              // 每日新番入口。与收藏并列而不是塞进筛选栏：筛选栏已经
+              // 被类型 chips 和排序占满，再放一个入口会把 chips 挤没。
+              IconButton(
+                tooltip: '每日新番',
+                onPressed: () => context.push(RoutePaths.schedule),
+                icon: const Icon(Icons.calendar_today_outlined),
+              ),
               // 排序放在 AppBar 而不是筛选栏：筛选栏已经塞了类型 chips 和
               // 视图切换，再放一个控件会在手机上把 chips 挤到只剩一两个。
               _SortMenu(
