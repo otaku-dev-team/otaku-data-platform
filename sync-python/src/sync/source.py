@@ -35,6 +35,7 @@ from typing import Any, Iterable, Iterator
 
 import httpx
 
+from .article_html import parse_article_detail, parse_articles_page
 from .cleaning import (
     clean_cover_url,
     clean_rating,
@@ -54,7 +55,7 @@ from .config import (
     DEFAULT_PAGE_SIZE,
     DEFAULT_REQUEST_INTERVAL_SECONDS,
 )
-from .models import ScheduleItem, SourceRecord, WorkItem
+from .models import ArticleItem, ScheduleItem, SourceRecord, WorkItem
 
 # 站点人读作品详情页。2026-10-21 实测：首页 HTML 里站点自己生成的卡片链接即此形态，
 # /contents/476 返回 200 且标题为作品名。见模块 docstring。
@@ -68,6 +69,15 @@ SCHEDULE_PAGE_PATH = "/api/schedule"
 # 档期接口自己的 page_size 上限：contents 是 500，这里实测 100 通过、200 返 422。
 # 不与作品的 DEFAULT_PAGE_SIZE 混用——那个值传给档期会直接被站点拒。
 SCHEDULE_PAGE_SIZE = 100
+
+# 最新资讯。**只有 HTML**（/api/articles 返 404），2026-10-22 实测：
+# /articles?page=N 每页 20 条，class 规整（article-card-* / article-title /
+# article-byline / article-body / article-source-link），是服务端模板渲染。
+# 列表页给元数据，正文与原文链接要再抓 /articles/{id}。
+ARTICLES_PAGE_PATH = "/articles"
+ARTICLE_DETAIL_PATH = "/articles/{article_id}"
+# 列表页每页实测 20 条。站点不给 total，只能靠"本页解析不出条目"来停。
+ARTICLES_PER_PAGE = 20
 
 
 def unwrap(payload: Any) -> list[dict[str, Any]]:
@@ -437,4 +447,95 @@ class OtakuSiteSource:
                 str(raw["content_id"]) if raw.get("content_id") is not None else None
             ),
             source_updated_at=to_iso_utc(raw.get("last_synced_at")),
+        )
+
+    # ------------------------------------------------------------------
+    # 最新资讯（/articles 与 /articles/{id}，只有 HTML）
+    #
+    # 与前两条链路的关键差异：**没有 total**，所以终止条件只能是
+    # 「本页解析不出条目」。解析规则集中在 article_html.py，
+    # 这里只管抓取、重试与逐页跳过记账。
+    # ------------------------------------------------------------------
+
+    def fetch_articles_page(self, page: int) -> str:
+        """拉一页资讯列表的 HTML。失败由 _get 的重试与调用方的记账处理。"""
+        resp = self._get(ARTICLES_PAGE_PATH, {"page": page})
+        return resp.text
+
+    def fetch_article_detail_html(self, article_id: str) -> str:
+        """拉一篇资讯详情页的 HTML。"""
+        resp = self._get(ARTICLE_DETAIL_PATH.format(article_id=article_id))
+        return resp.text
+
+    def iter_articles_raw(
+        self, limit: int | None = None
+    ) -> Iterator[dict[str, Any]]:
+        """逐页产出资讯元数据，单页彻底失败时跳过并记账。
+
+        `limit` 给的是**总条数上限**（不是页数）：详情页要逐条抓，
+        一次全量几百条会让同步作业跑很久，首批先取够用于验证。
+
+        终止条件只有「本页解析不出条目」——站点 HTML 里没有 total 字段，
+        猜页数上限会把最后几页漏掉。
+        """
+        produced = 0
+        for page in range(1, self.max_pages + 1):
+            try:
+                html_text = self.fetch_articles_page(page)
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code not in RETRYABLE_STATUS:
+                    raise
+                self.failed_pages.append(
+                    FailedPage("articles", page, f"HTTP {exc.response.status_code}")
+                )
+                continue
+            except httpx.TransportError as exc:
+                self.failed_pages.append(
+                    FailedPage("articles", page, f"{type(exc).__name__}: {exc}")
+                )
+                continue
+
+            entries = parse_articles_page(html_text)
+            if not entries:
+                # 空页 = 到头了。站点返回 200 + 空列表而不是 404，
+                # 所以这里只能靠"没东西"判断结束。
+                break
+            for entry in entries:
+                yield entry
+                produced += 1
+                if limit is not None and produced >= limit:
+                    return
+
+    def fetch_article_detail(self, article_id: str) -> dict[str, Any]:
+        """抓并解析一篇资讯的详情。
+
+        失败抛异常由调用方记账：详情拿不到时那条资讯仍然入库
+        （标题、摘要、时间、封面都齐了），只是没有正文和原文链接。
+        """
+        return parse_article_detail(self.fetch_article_detail_html(article_id))
+
+    def to_article_item(
+        self, raw: dict[str, Any], fetched_at: str, detail: dict[str, Any] | None = None
+    ) -> ArticleItem:
+        """把列表页元数据（可叠加详情）转成待导入条目。"""
+        extra = detail or {}
+        return ArticleItem(
+            source_record=SourceRecord(
+                source_id=str(raw.get("source_id") or ""),
+                source_url=normalize_url(raw.get("source_url")),
+                fetched_at=fetched_at,
+                source_updated_at=None,
+            ),
+            title=clean_title(raw.get("title")),
+            summary=clean_text(raw.get("summary")),
+            body=clean_text(extra.get("body")),
+            category=clean_text(raw.get("category")),
+            published_at=to_iso_utc(raw.get("published_at")),
+            source_name=clean_text(extra.get("source_name")),
+            # 原文链接（章程 G3）：列表页的 source_url 是我们自己的资讯页，
+            # 详情页的 source_url 才是来源站的原文，两者不能混。
+            source_url=normalize_url(extra.get("source_url")),
+            cover_url=normalize_url(raw.get("cover_url")),
+            tags=clean_tags(raw.get("tags")),
+            related_work_ids=clean_tags(extra.get("related_work_ids")),
         )

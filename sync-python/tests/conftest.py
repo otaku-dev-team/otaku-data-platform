@@ -10,7 +10,7 @@ import json
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, quote, urlparse
 
 import pytest
 
@@ -138,6 +138,16 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _send_text(self, status: int, body: str) -> None:
+        """发 HTML。资讯页只有 HTML，桩必须按真实 Content-Type 回，
+        否则解析侧拿到的字节可能被当成 JSON 错解。"""
+        raw = body.encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(raw)))
+        self.end_headers()
+        self.wfile.write(raw)
+
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
         query = parse_qs(parsed.query)
@@ -217,6 +227,35 @@ class _Handler(BaseHTTPRequestHandler):
                 },
             )
             return
+        if parsed.path == "/articles":
+            # 资讯列表页（只有 HTML）。class 命名照抄 2026-10-22 实测结构，
+            # 免得测试里的样本与真实站点长得不一样，解析器在测试里过、
+            # 上线才发现对不上。
+            entries = self.server.state.get("articles") or []
+            page = int((query.get("page") or ["1"])[0])
+            # 坏页注入：资讯链路要求「一页彻底失败不能让整批报废」，
+            # 桩不给这个能力就测不出 failed_pages 记账。
+            if page in (self.server.state.get("failing_pages") or set()):
+                status = self.server.state.get("failing_pages_status", 503)
+                self._send(status, {"detail": f"stub failure {status}"})
+                return
+            per_page = 20
+            start = (page - 1) * per_page
+            chunk = entries[start : start + per_page]
+            blocks = "\n".join(_article_card(e) for e in chunk)
+            self._send_text(200, _ARTICLE_PAGE_SHELL.replace("{{CARDS}}", blocks))
+            return
+        if parsed.path.startswith("/articles/"):
+            aid = parsed.path.rsplit("/", 1)[-1]
+            entry = next(
+                (e for e in (self.server.state.get("articles") or []) if e["source_id"] == aid),
+                None,
+            )
+            if entry is None:
+                self._send(404, {"code": "NOT_FOUND", "message": self.path})
+                return
+            self._send_text(200, _article_detail_page(entry))
+            return
         self._send(404, {"code": "NOT_FOUND", "message": self.path})
 
     def do_POST(self) -> None:
@@ -224,6 +263,7 @@ class _Handler(BaseHTTPRequestHandler):
         if parsed.path not in (
             "/internal/import/batches",
             "/internal/import/schedules",
+            "/internal/import/articles",
         ):
             self._send(404, {"code": "NOT_FOUND", "message": self.path})
             return
@@ -297,6 +337,7 @@ class _StubServer(ThreadingHTTPServer):
             "items": list(SAMPLE_ITEMS),
             "tags": list(SAMPLE_TAGS),
             "schedule": list(SAMPLE_SCHEDULE),
+            "articles": list(SAMPLE_ARTICLES),
             "pages_requested": [],
             "attempts": 0,
             "received": [],
@@ -356,3 +397,162 @@ def stub() -> Any:
         yield server
     finally:
         server.stop()
+
+
+# --------------------------------------------------------------------------
+# 资讯页的 HTML 模板（2026-10-22 实测结构，class 命名照抄）
+#
+# 刻意保持与真实站点一致：解析器是按 class 抓的，测试里的 HTML 若与站点
+# 长得不一样，就会出现"单测全过、上线对不上"的假绿。
+# --------------------------------------------------------------------------
+
+_ARTICLE_PAGE_SHELL = """<!doctype html>
+<html><body>
+<div class="container">
+  <div class="article-grid">
+{{CARDS}}
+  </div>
+</div>
+</body></html>"""
+
+
+def _article_card(entry: dict[str, Any]) -> str:
+    """渲染一张列表页卡片。字段缺失就少渲染那一块，模拟站点的可选字段。"""
+    tags = "".join(
+        f'\n<a class="tag-chip" href="/contents?tag={quote(t)}">{t}</a>'
+        for t in (entry.get("tags") or [])
+    )
+    meta_bits = []
+    if entry.get("category"):
+        meta_bits.append(
+            f'<span class="badge detail-type-badge-sm">{entry["category"]}</span>'
+        )
+    if entry.get("published_at"):
+        meta_bits.append(f'<span>{entry["published_at"]}</span>')
+    cover = ""
+    if entry.get("cover_url"):
+        cover = (
+            f'\n<a class="article-card-thumb" href="/articles/{entry["source_id"]}">'
+            f'<img src="{entry["cover_url"]}" alt=""></a>'
+        )
+    return f"""
+<article class="article-card">
+  {cover}
+  <div class="article-card-main">
+    <div class="article-meta">{' '.join(meta_bits)}</div>
+    <h3 class="article-card-title">
+      <a href="/articles/{entry["source_id"]}">{entry["title"]}</a>
+    </h3>
+    <p class="article-card-summary">{entry.get("summary") or ""}</p>
+    <div>{tags}
+    </div>
+  </div>
+</article>"""
+
+
+def _article_detail_page(entry: dict[str, Any]) -> str:
+    """渲染一篇详情页。正文、原文链接、关联作品都是可选的。"""
+    body_paragraphs = "".join(
+        f"\n<p>{line}</p>" for line in (entry.get("body") or "").split("\n") if line
+    )
+    tags = "".join(
+        f'\n<a class="tag-chip" href="/contents?tag={quote(t)}">{t}</a>'
+        for t in (entry.get("tags") or [])
+    )
+    related = "".join(
+        f'\n<a class="detail-related-item" href="/contents/{wid}">相关</a>'
+        for wid in (entry.get("related_work_ids") or [])
+    )
+    source_link = (
+        f'<a class="article-source-link" href="{entry["source_url"]}" '
+        f'target="_blank" rel="noopener noreferrer">阅读原文 &nearr;</a>'
+        if entry.get("source_url")
+        else ""
+    )
+    origin = (
+        f'<span class="article-source-origin">来源：{entry["source_name"]}</span>'
+        if entry.get("source_name")
+        else ""
+    )
+    byline_bits = []
+    if entry.get("source_name"):
+        byline_bits.append(f'<span>来源：{entry["source_name"]}</span>')
+    if entry.get("published_at"):
+        byline_bits.append(f'<span>发布时间：{entry["published_at"]}</span>')
+
+    return f"""<!doctype html>
+<html><body>
+<div class="article-page">
+  <article class="article-read">
+    <header class="article-header">
+      <div class="article-kicker">
+        <span class="article-cat">{entry.get("category") or ""}</span>
+      </div>
+      <h1 class="article-title">{entry["title"]}</h1>
+      <div class="article-byline">{' '.join(byline_bits)}</div>
+      <div class="article-taxonomy">
+        <div class="article-tax-row">
+          <span class="article-tax-label">识别标签</span>
+          <div class="article-tax-items">{tags}
+          </div>
+        </div>
+      </div>
+    </header>
+    <div class="article-body">{body_paragraphs}
+    </div>
+    <footer class="article-source">{source_link}{origin}</footer>
+  </article>
+  <section class="article-related">
+    <h2 class="article-section-title">关联作品</h2>
+    <div class="article-related-grid">{related}
+    </div>
+  </section>
+</div>
+</body></html>"""
+
+
+# /articles 的样本条目。覆盖三种情况：
+#   339  完整字段（有原文链接、正文、关联作品）
+#   241  没有原文链接与来源名 —— 客户端不给「去原文看」，但条目照常入库
+#   253  什么都是 null（分类/时间/标签/封面）——只靠标题立住
+SAMPLE_ARTICLES: list[dict[str, Any]] = [
+    {
+        "source_id": "339",
+        "title": "『お姉さん派の俺がなぜちっちゃい君を好きになったのか？』のコミカライズ連載が開始",
+        "summary": "MF文庫J刊、コミカライズ連載が開始。",
+        "body": "第一段。\n第二段。\n第三段。",
+        "category": "漫画",
+        "published_at": "2026-10-22 05:00",
+        "source_name": "ラノベニュースオンライン",
+        "source_url": "https://ln-news.com/articles/127000",
+        "cover_url": "/article-images/article_f99dfc6792959441_1.jpg",
+        "tags": ["MF文庫J", "世界"],
+        "related_work_ids": ["7556", "7613"],
+    },
+    {
+        "source_id": "241",
+        "title": "动画资讯（没有原文链接）",
+        "summary": "摘要",
+        "body": "正文一段。",
+        "category": "动画",
+        "published_at": "2026-10-21 05:00",
+        "source_name": None,
+        "source_url": None,
+        "cover_url": None,
+        "tags": [],
+        "related_work_ids": [],
+    },
+    {
+        "source_id": "253",
+        "title": "没有分类没有时间的资讯",
+        "summary": None,
+        "body": None,
+        "category": None,
+        "published_at": None,
+        "source_name": None,
+        "source_url": None,
+        "cover_url": None,
+        "tags": None,
+        "related_work_ids": None,
+    },
+]
