@@ -98,6 +98,25 @@ class Work {
     return uri.toString();
   }
 
+  /// 序列化。离线缓存用（见 `HiveWorkCache`）。
+  ///
+  /// 与 [fromJson] 对称。[sourceUrl] 走 [parseSourceUrl] 归一：
+  /// 缓存里存一个不合规的地址没有意义，解析侧也会把它挡掉。
+  Map<String, dynamic> toJson() => {
+    'work_id': workId,
+    'work_type': workType.value,
+    'title': title,
+    'summary': summary,
+    'release_year': releaseYear,
+    'cover_url': coverUrl,
+    'tags': (tags == null || tags!.isEmpty) ? null : tags,
+    'main_rating': mainRating?.toJson(),
+    'source': source,
+    'source_id': sourceId,
+    'source_url': sourceUrl,
+    'updated_at': updatedAt?.toUtc().toIso8601String(),
+  };
+
   @override
   String toString() => 'Work($workId, $title)';
 }

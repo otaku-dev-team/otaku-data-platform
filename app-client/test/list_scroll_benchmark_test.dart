@@ -37,6 +37,7 @@ class _BulkDataSource implements WorkDataSource {
     WorkSort sort = WorkSort.id,
     int page = 1,
     int pageSize = 20,
+    String? tag,
   }) async {
     final items = List<WorkSummary>.generate(
       count,
@@ -84,6 +85,7 @@ class _PagedCountingDataSource implements WorkDataSource {
     WorkSort sort = WorkSort.id,
     int page = 1,
     int pageSize = 20,
+    String? tag,
   }) async {
     calls++;
     final start = (page - 1) * pageSize;

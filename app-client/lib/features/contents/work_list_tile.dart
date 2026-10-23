@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/router/route_paths.dart';
@@ -10,18 +11,19 @@ import '../../shared/widgets/rating_badge.dart';
 import '../../shared/widgets/release_year_text.dart';
 import '../../shared/widgets/tag_chips.dart';
 import '../../shared/widgets/work_type_tag.dart';
+import 'contents_controller.dart';
 
 /// 列表视图的一行：左侧 2:3 小封面，右侧标题 / 类型 / 评分 / 年份 / 标签。
 ///
 /// 站点在列表视图里还会显示两行摘要和排名角标，这里没有——列表接口不返回
 /// `summary`，契约里也没有 rank 字段。硬凑只能逐条打详情，代价远大于收益。
-class WorkListTile extends StatelessWidget {
+class WorkListTile extends ConsumerWidget {
   const WorkListTile({super.key, required this.work});
 
   final WorkSummary work;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final firstChar = work.title.characters.isEmpty
         ? null
@@ -83,7 +85,16 @@ class WorkListTile extends StatelessWidget {
                     child: SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
                       physics: const NeverScrollableScrollPhysics(),
-                      child: TagChips(tags: work.tags, maxVisible: 5),
+                      child: TagChips(
+                        tags: work.tags,
+                        maxVisible: 5,
+                        onTag: (tag) => ref
+                            .read(contentsFilterProvider.notifier)
+                            .selectTag(tag),
+                        selectedTag: ref.watch(
+                          contentsFilterProvider.select((f) => f.tag),
+                        ),
+                      ),
                     ),
                   ),
                 ],
