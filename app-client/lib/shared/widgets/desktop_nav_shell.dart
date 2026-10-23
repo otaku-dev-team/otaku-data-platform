@@ -17,6 +17,8 @@ import '../../core/theme/app_layout.dart';
 ///    侧栏再写一遍会让同一屏出现两个同名文本，`find.text('作品库')` 会一次命中两个。
 /// 3. **详情页不在这个外壳里**。它是列表的子路由，桌面端详情本身已经是左右双栏，
 ///    再挤一条侧栏会把正文压到 720 以下，双栏直接退回堆叠。
+/// 4. **设置不放主列表，挂在底部**。它不属于内容导航（用户不是「去设置」看内容），
+///    和首页/作品库/资讯/收藏/新番并列会让「内容」和「应用配置」混成一层。
 class DesktopNavShell extends StatelessWidget {
   const DesktopNavShell({super.key, required this.child});
 
@@ -44,24 +46,29 @@ class DesktopNavShell extends StatelessWidget {
 
   Widget _buildRail(BuildContext context) {
     final location = _locationOf(context);
+    // 首页必须**精确相等**判定：它的路径是 `/`，用 startsWith 会把
+    // 所有路由都算成首页（`/works`.startsWith('/') 为真）。
+    final onHome = location == RoutePaths.home;
     final onCollections = location.startsWith(RoutePaths.collections);
     final onSchedule = location.startsWith(RoutePaths.schedule);
     final onArticles = location.startsWith(RoutePaths.articles);
     final onContents = location.startsWith(RoutePaths.contents);
+    final onSettings = location.startsWith(RoutePaths.settings);
 
     return NavigationRail(
-      // 路由不认识时（比如测试里单独 pump 某页）四项都不选中，
+      // 路由不认识时（比如测试里单独 pump 某页）五项都不选中，
       // 而不是默认高亮第一项——高亮错了比不亮更误导。
-        // 序号必须与下面 destinations 的顺序一一对应：
-      // 0 作品库 / 1 资讯 / 2 收藏 / 3 新番。
-      selectedIndex: onContents
+      // 顺序与下面的 destinations 一致：首页 / 作品库 / 资讯 / 收藏 / 新番。
+      selectedIndex: onHome
           ? 0
-          : onArticles
+          : onContents
           ? 1
-          : onCollections
+          : onArticles
           ? 2
-          : onSchedule
+          : onCollections
           ? 3
+          : onSchedule
+          ? 4
           : null,
       labelType: NavigationRailLabelType.none,
       groupAlignment: -0.85,
@@ -69,13 +76,19 @@ class DesktopNavShell extends StatelessWidget {
         final router = GoRouter.maybeOf(context);
         if (router == null) return;
         router.go(switch (index) {
-          0 => RoutePaths.contents,
-          1 => RoutePaths.articles,
-          2 => RoutePaths.collections,
+          0 => RoutePaths.home,
+          1 => RoutePaths.contents,
+          2 => RoutePaths.articles,
+          3 => RoutePaths.collections,
           _ => RoutePaths.schedule,
         });
       },
       destinations: const [
+        NavigationRailDestination(
+          icon: Tooltip(message: '首页', child: Icon(Icons.home_outlined)),
+          selectedIcon: Tooltip(message: '首页', child: Icon(Icons.home_rounded)),
+          label: Text('首页'),
+        ),
         NavigationRailDestination(
           icon: Tooltip(message: '作品库', child: Icon(Icons.grid_view_outlined)),
           selectedIcon: Tooltip(
@@ -118,6 +131,15 @@ class DesktopNavShell extends StatelessWidget {
           label: Text('新番'),
         ),
       ],
+      // 设置挂在底部而不是第 6 项：它不参与「在内容之间跳」这件事。
+      // `isSelected` 让它在设置页上仍然是个选中态，不至于「当前在哪」一片空白。
+      trailing: IconButton(
+        tooltip: '设置',
+        isSelected: onSettings,
+        icon: const Icon(Icons.settings_outlined),
+        selectedIcon: const Icon(Icons.settings_rounded),
+        onPressed: () => GoRouter.maybeOf(context)?.go(RoutePaths.settings),
+      ),
     );
   }
 

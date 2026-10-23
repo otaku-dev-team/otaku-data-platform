@@ -82,6 +82,32 @@ class ContentsFilterController extends Notifier<ContentsFilter> {
     );
   }
 
+  /// 从首页「分类浏览」进来：**只保留类型**，清掉搜索 / 标签 / 排序。
+  ///
+  /// 不能直接调 [selectType]：它的语义是「保持其余条件、只改类型」。
+  /// 从首页进来时用户看到的是一条干净的分栏入口，如果残留着上次的标签
+  /// 或搜索词，结果会莫名其妙只剩几条，而首页上没有任何线索能解释为什么。
+  void showType(WorkType? type) {
+    if (state.type == type &&
+        state.query.isEmpty &&
+        state.tag == null &&
+        state.sort == WorkSort.id) {
+      return;
+    }
+    state = ContentsFilter(type: type);
+  }
+
+  /// 从首页「高分作品 · 查看全部」进来：按评分排序，其余条件清零。
+  void showTopRated() {
+    if (state.sort == WorkSort.rating &&
+        state.type == null &&
+        state.query.isEmpty &&
+        state.tag == null) {
+      return;
+    }
+    state = const ContentsFilter(sort: WorkSort.rating);
+  }
+
   /// 按标签筛选。传 `null` 或空串表示取消筛选（点已选中的标签、或点清除）。
   void selectTag(String? tag) {
     final trimmed = tag?.trim();

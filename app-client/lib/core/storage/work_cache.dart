@@ -168,6 +168,29 @@ class RelatedCacheKey {
   String toString() => 'RelatedCacheKey($workId)';
 }
 
+/// 缓存的占用情况。设置页拿它显示「离线缓存」有多大。
+///
+/// **只统计作品缓存这一个盒子**：收藏缓存、浏览历史、本机偏好各有自己的
+/// 清理时机，把它们加进来会让「清除缓存」的后果和标签说的不一致。
+@immutable
+class CacheUsage {
+  const CacheUsage({required this.entries, required this.bytes});
+
+  static const CacheUsage empty = CacheUsage(entries: 0, bytes: 0);
+
+  /// 缓存条目数（一页列表、一部作品的详情、一组推荐各算一条）。
+  final int entries;
+
+  /// 估算的字节数：键与值的 UTF-8 长度之和。
+  ///
+  /// 是**估算**而不是磁盘占用：Hive 还有文件头、索引、以及追加写留下的
+  /// 空洞。设置页因此写「约」——给用户一个量级，不假装精确到字节。
+  final int bytes;
+
+  @override
+  String toString() => 'CacheUsage(entries: $entries, bytes: $bytes)';
+}
+
 /// 作品数据的本地缓存。
 ///
 /// **只缓存「平台（Java）已返回」的响应**——铁律 1。
@@ -202,4 +225,10 @@ abstract interface class WorkCache {
 
   /// 清空全部缓存。退出登录时调用——缓存里是上一个账号看过的内容。
   Future<void> clear();
+
+  /// 统计占用。设置页显示「已缓存 N 条 · 约 X MB」。
+  ///
+  /// 失败时返回 [CacheUsage.empty]：统计不出来只是设置页少一行字，
+  /// 不该让整页报错。
+  Future<CacheUsage> usage();
 }
