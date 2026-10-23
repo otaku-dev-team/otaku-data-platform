@@ -44,23 +44,28 @@ class DesktopNavShell extends StatelessWidget {
 
   Widget _buildRail(BuildContext context) {
     final location = _locationOf(context);
+    // 首页必须**精确相等**判定：它的路径是 `/`，用 startsWith 会把
+    // 所有路由都算成首页（`/works`.startsWith('/') 为真）。
+    final onHome = location == RoutePaths.home;
     final onCollections = location.startsWith(RoutePaths.collections);
     final onSchedule = location.startsWith(RoutePaths.schedule);
     final onArticles = location.startsWith(RoutePaths.articles);
     final onContents = location.startsWith(RoutePaths.contents);
 
     return NavigationRail(
-      // 路由不认识时（比如测试里单独 pump 某页）四项都不选中，
+      // 路由不认识时（比如测试里单独 pump 某页）五项都不选中，
       // 而不是默认高亮第一项——高亮错了比不亮更误导。
-      // 顺序与下面的 destinations 一致：作品库 / 资讯 / 收藏 / 新番。
-      selectedIndex: onContents
+      // 顺序与下面的 destinations 一致：首页 / 作品库 / 资讯 / 收藏 / 新番。
+      selectedIndex: onHome
           ? 0
-          : onArticles
+          : onContents
           ? 1
-          : onCollections
+          : onArticles
           ? 2
-          : onSchedule
+          : onCollections
           ? 3
+          : onSchedule
+          ? 4
           : null,
       labelType: NavigationRailLabelType.none,
       groupAlignment: -0.85,
@@ -68,13 +73,19 @@ class DesktopNavShell extends StatelessWidget {
         final router = GoRouter.maybeOf(context);
         if (router == null) return;
         router.go(switch (index) {
-          0 => RoutePaths.contents,
-          1 => RoutePaths.articles,
-          2 => RoutePaths.collections,
+          0 => RoutePaths.home,
+          1 => RoutePaths.contents,
+          2 => RoutePaths.articles,
+          3 => RoutePaths.collections,
           _ => RoutePaths.schedule,
         });
       },
       destinations: const [
+        NavigationRailDestination(
+          icon: Tooltip(message: '首页', child: Icon(Icons.home_outlined)),
+          selectedIcon: Tooltip(message: '首页', child: Icon(Icons.home_rounded)),
+          label: Text('首页'),
+        ),
         NavigationRailDestination(
           icon: Tooltip(message: '作品库', child: Icon(Icons.grid_view_outlined)),
           selectedIcon: Tooltip(

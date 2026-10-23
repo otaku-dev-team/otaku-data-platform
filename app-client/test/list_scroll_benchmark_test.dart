@@ -14,6 +14,8 @@ import 'package:otaku_app/data/models/work_type.dart';
 import 'package:otaku_app/data/repositories/work_repository.dart';
 import 'package:otaku_app/features/contents/contents_controller.dart';
 import 'package:otaku_app/features/contents/work_card.dart';
+import 'package:otaku_app/core/router/app_router.dart';
+import 'package:otaku_app/core/router/route_paths.dart';
 
 import 'support/test_overrides.dart';
 
@@ -120,6 +122,7 @@ void main() {
 
   Widget wrap(WorkDataSource source) => ProviderScope(
     overrides: [
+      appInitialLocationProvider.overrideWithValue(RoutePaths.contents),
       workDataSourceProvider.overrideWithValue(source),
       // 列表页的账号入口会创建 AuthController，测试里必须给内存令牌。
       ...authOverrides(),

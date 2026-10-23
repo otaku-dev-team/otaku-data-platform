@@ -18,6 +18,8 @@ import 'package:otaku_app/data/models/work_type.dart';
 import 'package:otaku_app/data/repositories/collection_repository.dart';
 import 'package:otaku_app/data/repositories/work_repository.dart';
 import 'package:otaku_app/features/contents/contents_controller.dart';
+import 'package:otaku_app/core/router/app_router.dart';
+import 'package:otaku_app/core/router/route_paths.dart';
 
 import 'support/test_overrides.dart';
 
@@ -242,6 +244,7 @@ void main() {
     ProviderContainer newContainer() {
       final container = ProviderContainer(
         overrides: [
+          appInitialLocationProvider.overrideWithValue(RoutePaths.contents),
           ...authOverrides(),
           workRepositoryProvider.overrideWithValue(buildRepository()),
           workCacheProvider.overrideWithValue(cache),

@@ -16,6 +16,8 @@ import 'package:otaku_app/data/models/work_summary.dart';
 import 'package:otaku_app/data/models/work_type.dart';
 import 'package:otaku_app/data/repositories/work_repository.dart';
 import 'package:otaku_app/features/detail/work_detail_page.dart';
+import 'package:otaku_app/core/router/app_router.dart';
+import 'package:otaku_app/core/router/route_paths.dart';
 
 import 'support/test_overrides.dart';
 
@@ -112,6 +114,7 @@ void main() {
 
   Widget listApp(WorkDataSource source) => ProviderScope(
     overrides: [
+      appInitialLocationProvider.overrideWithValue(RoutePaths.contents),
       ...authOverrides(),
       workDataSourceProvider.overrideWithValue(source),
     ],

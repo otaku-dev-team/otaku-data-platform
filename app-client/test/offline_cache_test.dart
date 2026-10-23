@@ -16,6 +16,8 @@ import 'package:otaku_app/data/models/work_summary.dart';
 import 'package:otaku_app/data/models/work_type.dart';
 import 'package:otaku_app/data/repositories/collection_repository.dart';
 import 'package:otaku_app/data/repositories/work_repository.dart';
+import 'package:otaku_app/core/router/app_router.dart';
+import 'package:otaku_app/core/router/route_paths.dart';
 
 import 'support/test_overrides.dart';
 
@@ -335,6 +337,7 @@ Widget _app(
   return ProviderScope(
     key: key,
     overrides: [
+      appInitialLocationProvider.overrideWithValue(RoutePaths.contents),
       ...authOverrides(),
       // 整个仓储一起覆盖：仓储层的缓存只在非 mock 模式下才挂上，
       // 测试要能自由组合「离线数据源 + 内存缓存」。

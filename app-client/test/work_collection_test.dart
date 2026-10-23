@@ -21,6 +21,8 @@ import 'package:otaku_app/features/collection/collection_controller.dart';
 import 'package:otaku_app/features/contents/work_card.dart';
 import 'package:otaku_app/features/detail/work_collection_controller.dart';
 import 'package:otaku_app/features/detail/work_detail_page.dart';
+import 'package:otaku_app/core/router/app_router.dart';
+import 'package:otaku_app/core/router/route_paths.dart';
 
 import 'support/test_overrides.dart';
 
@@ -293,6 +295,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            appInitialLocationProvider.overrideWithValue(RoutePaths.contents),
             ...authOverrides(),
             workDataSourceProvider.overrideWithValue(_FakeWorkSource()),
             collectionDataSourceProvider.overrideWithValue(
