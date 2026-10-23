@@ -34,7 +34,18 @@ class LocalReminderScheduler implements ReminderScheduler {
   @override
   Stream<String> get taps => _taps.stream;
 
-  Future<void> _ensureReady() => _ready ??= _initialize();
+  Future<void> _ensureReady() {
+    // 初始化失败不缓存这个失败：插件偶尔会因系统服务未就绪抛一次，
+    // 把 rejected future 存下来，会让本次进程里所有后续尝试都直接失败，
+    // 表现是「开关是开的，但再也不排了」，而且没有任何提示。
+    return _ready ??= _initialize().catchError((
+      Object error,
+      StackTrace stack,
+    ) {
+      _ready = null;
+      Error.throwWithStackTrace(error, stack);
+    });
+  }
 
   Future<void> _initialize() async {
     await _plugin.initialize(
