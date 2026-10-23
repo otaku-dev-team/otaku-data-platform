@@ -49,6 +49,7 @@ class WorkListTile extends ConsumerWidget {
               height: AppLayout.coverHeight,
               radius: 8,
               placeholderLabel: firstChar,
+              source: work.source,
             ),
             const SizedBox(width: 12),
             Expanded(
