@@ -11,8 +11,11 @@ import '../../data/models/schedule.dart';
 import '../../data/models/work_type.dart';
 import '../../shared/widgets/account_menu.dart';
 import '../../shared/widgets/compact_work_card.dart';
+import '../../shared/widgets/desktop_nav_shell.dart';
+import '../../shared/widgets/desktop_shortcuts.dart';
 import '../article/article_card.dart';
 import '../contents/contents_controller.dart';
+import '../recent/recent_views_controller.dart';
 import 'home_controller.dart';
 
 /// 首页：把站点首页那四块聚合在一起——分类浏览 / 本日新番 / 高分作品 / 最新资讯。
@@ -32,33 +35,41 @@ class HomePage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('首页'),
-        actions: [
-          // 桌面端没有下拉手势，刷新得有个按钮（与列表页同一处理）。
-          if (PlatformInfo.isDesktop)
-            IconButton(
-              tooltip: '刷新',
-              onPressed: () => _refresh(ref),
-              icon: const Icon(Icons.refresh_rounded),
-            ),
-          const AccountMenuButton(),
-          const SizedBox(width: 8),
-        ],
-      ),
-      body: RefreshIndicator(
+    // 首页也要套桌面外壳：侧栏是全局导航，落地页少了它，桌面上进来就出不去
+    // （外层的 `_buildRail` 已经把「首页」算成第 0 项，这里必须接上）。
+    return DesktopNavShell(
+      child: DesktopShortcuts(
         onRefresh: () => _refresh(ref),
-        child: ListView(
-          // 内容不足一屏时也要能下拉：否则短屏/大字号下刷新手势失效。
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.only(top: 12, bottom: 24),
-          children: const [
-            _TypeBrowseSection(),
-            _TodayScheduleSection(),
-            _TopRatedSection(),
-            _LatestArticlesSection(),
-          ],
+        child: Scaffold(
+          appBar: AppBar(
+            title: const Text('首页'),
+            actions: [
+              // 桌面端没有下拉手势，刷新得有个按钮（与列表页同一处理）。
+              if (PlatformInfo.isDesktop)
+                IconButton(
+                  tooltip: '刷新',
+                  onPressed: () => _refresh(ref),
+                  icon: const Icon(Icons.refresh_rounded),
+                ),
+              const AccountMenuButton(),
+              const SizedBox(width: 8),
+            ],
+          ),
+          body: RefreshIndicator(
+            onRefresh: () => _refresh(ref),
+            child: ListView(
+              // 内容不足一屏时也要能下拉：否则短屏/大字号下刷新手势失效。
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.only(top: 12, bottom: 24),
+              children: const [
+                _RecentViewsSection(),
+                _TypeBrowseSection(),
+                _TodayScheduleSection(),
+                _TopRatedSection(),
+                _LatestArticlesSection(),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -111,12 +122,15 @@ class _Section extends StatelessWidget {
 }
 
 class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({required this.title, this.onMore});
+  const _SectionHeader({required this.title, this.onMore, this.trailing});
 
   final String title;
 
   /// 为 null 时不给「查看全部」——没有下一页可看的区块不该有个死按钮。
   final VoidCallback? onMore;
+
+  /// 标题右侧的附加操作（如「清空」），排在「查看全部」之前。
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -133,6 +147,7 @@ class _SectionHeader extends StatelessWidget {
             ),
           ),
           const Spacer(),
+          ?trailing,
           if (onMore != null)
             TextButton(
               onPressed: onMore,
@@ -288,6 +303,82 @@ class _SkeletonBlock extends StatelessWidget {
         borderRadius: BorderRadius.circular(AppLayout.cardRadius),
       ),
     );
+  }
+}
+
+/// 最近浏览：本地历史，断网也能看见自己看过什么。
+///
+/// **空的时候整块不渲染**：首页给新用户看的第一屏不该有一行「最近浏览（空）」。
+/// 这与「本日新番」空着也要说一句不同——「今天没有排期」是事实，
+/// 而「你还没看过任何作品」对刚装上 App 的人是句废话，只占地方。
+class _RecentViewsSection extends ConsumerWidget {
+  const _RecentViewsSection();
+
+  /// 比「高分作品」的 148 窄一档：这一块是自己的足迹，不该比推荐更抢眼。
+  static const double _cardWidth = 116;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final items = ref.watch(recentViewsProvider);
+    if (items.isEmpty) return const SizedBox.shrink();
+
+    final textScale = MediaQuery.textScalerOf(context).scale(1);
+    final stripHeight = CompactWorkCard.heightFor(_cardWidth, textScale);
+
+    return _Section(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _SectionHeader(
+            title: '最近浏览',
+            trailing: TextButton(
+              onPressed: () => _confirmClear(context, ref),
+              style: TextButton.styleFrom(
+                minimumSize: const Size(0, 32),
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: Text('清空', style: Theme.of(context).textTheme.labelMedium),
+            ),
+          ),
+          SizedBox(
+            height: stripHeight,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              // 不做「查看全部」：历史上限 50 条，这一条横排就是全部。
+              itemCount: items.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 12),
+              itemBuilder: (context, index) =>
+                  CompactWorkCard(work: items[index].work, width: _cardWidth),
+            ),
+          ),
+          const SizedBox(height: 20),
+        ],
+      ),
+    );
+  }
+
+  /// 清空要二次确认：这是纯本地数据，清了就再也拿不回来（不像收藏能重新拉）。
+  Future<void> _confirmClear(BuildContext context, WidgetRef ref) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('清空最近浏览？'),
+        content: const Text('只清空这台设备上的浏览记录，不影响收藏与离线缓存。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('清空'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    ref.read(recentViewsProvider.notifier).clear();
   }
 }
 
