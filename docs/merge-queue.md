@@ -43,6 +43,12 @@ client-home (#121)      ⊃ 上述全部（它基于演练分支 ci/merge-train-
 
 ### 第 1 批 · 后端与同步（3 个）
 
+> **已备好落地分支 [#134](https://github.com/otaku-dev-team/otaku-data-platform/pull/134)（`ci/batch1`）**：
+> 内容 = 下面三个 PR 合并后的结果，唯一的冲突（`PublicIdGenerator`）已解好，
+> `mvnw test` 111 / `pytest` 110 通过。**合它，然后关掉这三个。**
+> 若要按 PR 逐个合：`#102` 干净 → `#109` 会冲突（解法见 #109 评论）→ `#110` 干净。
+
+
 | 顺序 | PR | 分支 | 说明 |
 |---|---|---|---|
 | 1 | **#102** | `feat/schedule-backend` | 表 `V8__schedule.sql` + 公开接口 |
