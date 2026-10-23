@@ -166,6 +166,16 @@ void main() {
       expect(scheduler.replaceCalls, 0);
     });
 
+    test('会话还在恢复（checking）时先不动——别把已排的清掉', () async {
+      final container = createContainer();
+      // 故意不等认证恢复：冷启动时确实会走到这个顺序。
+      await container.read(reminderServiceProvider).refresh();
+
+      expect(scheduler.cancelCalls, 0, reason: 'checking 不等于未登录');
+      expect(scheduler.replaceCalls, 0);
+      expect(scheduleSource.calls, 0);
+    });
+
     test('开着且有「在看」→ 按档期排未来两周', () async {
       final container = createContainer();
       await settleAuth(container);

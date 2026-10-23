@@ -48,9 +48,15 @@ class ReminderService {
       return;
     }
 
-    final userId = _ref.read(authControllerProvider).user?.userId;
+    final auth = _ref.read(authControllerProvider);
+    if (auth.status == AuthStatus.checking) {
+      // 冷启动时令牌还在读，此刻「没有用户」不代表「未登录」。
+      // 这里清空会把刚排好的提醒全删掉，而且之后没人再触发重排。
+      return;
+    }
+    final userId = auth.user?.userId;
     if (userId == null) {
-      // 没登录就没有「在追」清单，留着上一个账号排的提醒是错的。
+      // 确定未登录：没有「在追」清单，留着上一个账号排的提醒是错的。
       await scheduler.cancelAll();
       return;
     }

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/router/app_router.dart';
 import '../../data/models/schedule.dart';
+import '../auth/auth_controller.dart';
 import '../schedule/schedule_controller.dart';
 import 'reminder_service.dart';
 import 'reminder_settings.dart';
@@ -25,6 +26,7 @@ class ReminderBootstrap extends ConsumerStatefulWidget {
 class _ReminderBootstrapState extends ConsumerState<ReminderBootstrap> {
   StreamSubscription<String>? _taps;
   ProviderSubscription<AsyncValue<SchedulePageData>>? _scheduleSub;
+  ProviderSubscription<AuthState>? _authSub;
   AppLifecycleListener? _lifecycle;
   Timer? _debounce;
 
@@ -33,6 +35,18 @@ class _ReminderBootstrapState extends ConsumerState<ReminderBootstrap> {
     super.initState();
 
     _taps = ref.read(reminderSchedulerProvider).taps.listen(_openPayload);
+
+    // 会话恢复是异步的：冷启动时先读到 checking，之后才变成 signedIn。
+    // 不跟着它重排，第一次 refresh 会因为「还没有用户」而什么都不做，
+    // 提醒就要等到下次切前台才排上。
+    _authSub = ref.listenManual<AuthState>(authControllerProvider, (previous,
+        next) {
+      if (previous?.user?.userId == next.user?.userId &&
+          previous?.status == next.status) {
+        return;
+      }
+      _refreshSoon();
+    });
 
     // 档期只在「提醒开着」时才订阅：否则每个用户每次冷启动都会白拉一次
     // 档期接口，而默认是关的。
@@ -47,6 +61,7 @@ class _ReminderBootstrapState extends ConsumerState<ReminderBootstrap> {
   void dispose() {
     _taps?.cancel();
     _scheduleSub?.close();
+    _authSub?.close();
     _lifecycle?.dispose();
     _debounce?.cancel();
     super.dispose();
