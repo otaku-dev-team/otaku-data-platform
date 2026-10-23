@@ -33,6 +33,38 @@
 | 桌面端 loopback | `http://127.0.0.1:<port>/callback` | ⏳ 唯一遗留项：客户端模块定端口后补报站点追加；站点同意先只收移动端 scheme 联调，不阻塞启动 |
 | 票据 / 令牌有效期 | 120 秒（一次性）/ 3600 秒 | ✅ |
 
+### 1.1 联调前置实测核对（2026-10-24，只读探测）
+
+> 目的：联调前把「契约写的样子」与「站点真实返回」对齐，避免 @pyxz0 / @riceyu02 照文档实现后才发现漂移。方式=读站点 `openapi.json`（138 路径）+ 无凭据 / 假值探测；**未使用真实 secret、未登录任何账号**。
+
+**端点存在性**：四个端点均已在站点 `openapi.json` 中登记——`GET /oauth/authorize`、`POST /api/auth/token`、`GET /api/me`、`POST /api/auth/revoke`。
+
+**实测行为**
+
+| 探测 | 实际结果 | 结论 |
+| --- | --- | --- |
+| `GET /oauth/authorize`（无参数） | `400` | 参数校验存在 |
+| `GET /oauth/authorize?client_id=otaku-app-client&redirect_uri=com.otaku.app:/oauth2redirect&state=probe` | `303` → `/login?next=...` | client_id 有效、redirect_uri 接受、**未登录先跳登录页**（无同意页）；客户端跟随系统浏览器即可，不解析此跳转 |
+| 同上但 `client_id=nope` | `400` | 非法 client 被拒 |
+| `GET /api/me`（无 Bearer） | `401 {"detail":"missing_token"}` | 缺令牌的错误码 |
+| `POST /api/auth/token`（假 ticket + 假 secret） | `401 {"detail":"invalid_client"}` | **secret 先于 ticket 校验**（防票据冒领）；平台侧「secret 错」应映射到此 |
+| `POST /api/auth/revoke`（无 Bearer） | `403 {"detail":"forbidden"}` | 需持有有效 Bearer |
+
+**请求体字段（站点 openapi 精确，名与类型以此为准）**
+- `POST /api/auth/token`（`x-www-form-urlencoded`）：`client_id`、`client_secret`、`ticket`（**无** `grant_type` / `response_type`）。
+- `POST /api/auth/revoke`（`x-www-form-urlencoded` + `Authorization` header）：`access_token`、`external_user_id`（按需取其一或并用）；与「按 token 或 external_user_id 全量吊销」一致。
+- `GET /oauth/authorize`（query）：`client_id`、`redirect_uri`、`state`（**无** `response_type`）。
+
+**需在实现层注意的差异**
+1. **错误信封不同**：站点是 FastAPI 的 `{"detail": "..."}`（422 为 `{"detail":[...]}`），平台是 `{code,message}`。平台后端必须捕获并**归一成平台错误码**，不得把站点 `detail` 原文透传给客户端（避免泄漏上游细节，也保证客户端只认平台错误契约）。
+2. 站点 openapi 的 `securitySchemes` 为空（用 `Authorization` header 参数表达），属文档层面缺声明，**不影响行为**；实现以实际 header 为准。
+3. token 表单字段在 schema 层均为可选（默认空串），缺失由应用层报错；平台侧仍须做非空校验后再转发。
+4. `authorize` 未登录返回 **303**（非 302）；桌面 loopback 补白前，联调先走移动端自定义 scheme。
+
+**尚未验证（留待第 1 步联调）**：`token` 成功响应体字段（`access_token` / `user{external_user_id,nickname,avatar_url}`）与 `/api/me` 成功体、`revoke` 成功体——这些需真实授权 ticket，openapi 未标注类型，本次只读探测拿不到，按 §1 契约在第 1 步用真实 ticket 验证。
+
+**结论**：契约（§1）与站点真实行为一致，具备联调条件；唯一遗留仍是桌面 loopback 端口补报。
+
 ## 2. 平台侧对接形态：令牌交换代理
 
 站点要求 `client_secret`「仅你们后端持有、永不进浏览器」。App 与浏览器同属公开侧——secret 进 App 等于公开。因此平台侧只有一种正确形态：**平台后端做令牌交换代理**。
