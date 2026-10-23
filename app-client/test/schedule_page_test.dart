@@ -147,6 +147,36 @@ Widget _app(ScheduleDataSource source) {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  testWidgets('桌面宽度下档期页也要有侧栏（W1.4 桌面走查实测漏过）', (tester) async {
+    // 默认测试视口的逻辑宽度 < railBreakpoint（600），侧栏本来就不出——
+    // 所以「漏套外壳」这种错在默认视口里根本暴露不出来，必须显式给一个桌面宽度。
+    tester.view.physicalSize = const Size(2560, 1440);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(_app(_FakeScheduleSource(page: _page())));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(NavigationRail), findsOneWidget);
+    expect(find.widgetWithText(AppBar, '每日新番'), findsOneWidget);
+    // 侧栏顺序的锚点（三处共管，改序号时这里会先红）：首页 / 作品库 / 资讯 / 收藏 / 新番。
+    expect(find.text('首页'), findsOneWidget);
+    expect(find.text('新番'), findsOneWidget);
+  });
+
+  testWidgets('窄视口下不出侧栏（设计内差异，不是缺陷）', (tester) async {
+    tester.view.physicalSize = const Size(400, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(_app(_FakeScheduleSource(page: _page())));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(NavigationRail), findsNothing);
+    expect(find.widgetWithText(AppBar, '每日新番'), findsOneWidget);
+  });
+
+
   testWidgets('默认展示全部，条目按顺序平铺', (tester) async {
     await tester.pumpWidget(_app(_FakeScheduleSource(page: _page())));
     await tester.pumpAndSettle();
