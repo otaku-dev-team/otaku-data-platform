@@ -5,10 +5,11 @@ import org.springframework.stereotype.Component;
 import java.security.SecureRandom;
 
 /**
- * 对外标识生成器（work_id / user_id）。
+ * 对外标识生成器（work_id / user_id / schedule_id）。
  *
  * 规则（契约把生成方式留给 Java，这里的选择及理由）：
- * - 作品：W-8f3a91k2m0p7qz5；用户：U-9k2m0p7qz58f3a1；客户端只当不透明字符串，不解析结构；
+ * - 作品：W-8f3a91k2m0p7qz5；用户：U-9k2m0p7qz58f3a1；档期：S-4c7b91k2m0p7qz5；
+ *   客户端只当不透明字符串，不解析结构；
  * - 使用随机字节而不是自增/时间戳，避免外部从 ID 推出总量或创建顺序；
  * - 字符集为小写 Crockford Base32（去掉 i/l/o/u，避免肉眼混淆）；
  * - 唯一性由各自的唯一索引兜底，冲突时重试。
@@ -27,6 +28,11 @@ public class PublicIdGenerator {
 
     public String nextUserId() {
         return next("U-");
+    }
+
+    /** 档期标识。与 work_id 同规则：随机、不透明、冲突由唯一索引兜底。 */
+    public String nextScheduleId() {
+        return next("S-");
     }
 
     public String next(String prefix) {
