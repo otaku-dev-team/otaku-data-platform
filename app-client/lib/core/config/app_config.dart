@@ -27,6 +27,13 @@ abstract final class AppConfig {
   /// 第一阶段单站点。只用于日志与 Mock，**请求不带站点参数**（契约第 9 节）。
   static const String siteId = 'otaku_site';
 
+  /// 应用版本，设置页「关于」里显示。
+  ///
+  /// **与 `pubspec.yaml` 的 `version:` 手工对齐**。没有引 `package_info_plus`：
+  /// 为一个静态字符串多加一个平台插件与一条构建链路不值当。
+  /// 发版时两处一起改——版本号留在编译期常量里，也省掉了「读不到就显示未知」的分支。
+  static const String version = '1.0.0';
+
   /// 后端地址。Android 模拟器访问宿主机必须用 10.0.2.2，不能用 127.0.0.1。
   static String get baseUrl {
     if (_baseUrlOverride.isNotEmpty) return _baseUrlOverride;

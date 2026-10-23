@@ -51,6 +51,13 @@ class HomePage extends ConsumerWidget {
                   onPressed: () => _refresh(ref),
                   icon: const Icon(Icons.refresh_rounded),
                 ),
+              // 手机上没有侧栏，设置只能从这里进。放在账号入口左边：
+              // 账号是「我是谁」，设置是「这个应用怎么表现」，都不是内容。
+              IconButton(
+                tooltip: '设置',
+                onPressed: () => context.push(RoutePaths.settings),
+                icon: const Icon(Icons.settings_outlined),
+              ),
               const AccountMenuButton(),
               const SizedBox(width: 8),
             ],
