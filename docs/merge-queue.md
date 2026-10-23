@@ -1,19 +1,24 @@
 # 合并队列与合并后动作清单
 
 > **现用清单。** 每次合并后更新这一份，不再另写。
-> 更新于 2026-10-24 01:50，基准 `main = 3c0bcae`（#129 已合并），开放 PR **20 个**。
+> 更新于 2026-10-24 02:40，基准 `main = ac51dbd`（#137 第三批已合并），开放 PR **8 个**（全部为 docs 类）。
 
 ## 0. 一句话
 
-客户端那些「已写完但看不到」的功能全卡在合并上：`main` 停在 10-22，代码在 PR 里。
-**按下面的顺序合，零冲突；按 PR 编号从小到大合，会造出一批本不存在的冲突。**
+前三批（共 11 个功能 PR）已经全部进 main，**客户端那条主链没有内容卡在 PR 里了**。
+剩下的悬而未决项都是**文档 / 待决策**：Issue #132 三个判据、#125 人物页方案、#126 通知方案、#127 资讯契约、#133 站点特色功能、#135 授权端点问需。
 
-## 1. 先看栈关系（`merge-base --is-ancestor` 实测）
+**如果还要合功能 PR**：先看 §1 的栈关系是否还存在——现在 main 上只剩 docs 类 PR 互相独立，直接合即可。
+
+## 1. 栈关系（`merge-base --is-ancestor` 实测，已全部落库）
 
 ```
-article-sync (#110)     ⊃ schedule-sync (#105)
-collection-offline(#116) ⊃ tag-filter (#107) ⊃ offline-cache (#103)
-client-home (#121)      ⊃ 上述全部（它基于演练分支 ci/merge-train-2026-10-23）
+article-sync (#110)        ⊃ schedule-sync (#105)
+collection-offline (#116)  ⊃ tag-filter (#107) ⊃ offline-cache (#103)
+client-home (#121)         ⊃ 上述全部（原基于演练分支 ci/merge-train-2026-10-23）
+search-and-settings (#123) ⊃ client-home (#121)
+reminders (#128)           ⊃ search-and-settings (#123)
+filter-links (#130)        ⊃ client-home (#121)
 ```
 
 三种「叠」的后果完全不同：
@@ -24,10 +29,10 @@ client-home (#121)      ⊃ 上述全部（它基于演练分支 ci/merge-train-
 
 ## 1.5 合并方式会改变顺序策略（先看这一节）
 
-`main` 上两种合并方式并存（2026-10-24 观察最近 20 个提交）：
+`main` 上两种合并方式并存：
 
-- **squash**：单亲提交、标题带 `(#NNN)`，占绝大多数（#119 / #118 / #117 / #115 / #113 …）；
-- **merge commit**：`Merge pull request #NNN from …`，最近的有 **#129**（产品定位，保留了 9 个提交）与 #104。
+- **squash**：单亲提交、标题带 `(#NNN)`，占多数（#119 / #118 / #117 / #115 / #113 …）；
+- **merge commit**：`Merge pull request #NNN from …`，最近的有 **#129 / #134 / #136 / #137**（功能整合批一律用它，保留被整合分支的提交历史）。
 
 这决定了栈内 PR 该怎么合：
 
@@ -36,66 +41,43 @@ client-home (#121)      ⊃ 上述全部（它基于演练分支 ci/merge-train-
 | **squash** | ❌ 冲突（实测 18 处 / 7 文件） | squash 产生**新提交**，底座的提交并未进入 main 的祖先链，上层的 diff 仍包含底座改动 → 重复应用 |
 | **merge commit** | ✅ 安全 | 底座的提交成为 main 的祖先，`merge-base` 自动前移，上层 diff 只剩自己的改动 |
 
-**结论**：栈内的功能 PR 用 **merge commit** 最省事；文档 PR 用哪种都行。
-如果坚持用 squash，就必须按「合栈顶、关底座」来做，并在合完后把被包含的 PR 关掉。
+**结论（已实测验证）**：前三批都用 merge commit 入 main，因此第二批、第三批的栈顶（`client-home` 及其上层）**不需要 squash 式 rebase**，
+但因为它们原本发源于「演练分支 / 已消失的功能分支」，仍需 `git rebase --onto main <旧 base> <分支>` 把发起点搬到 main ——这只是搬起点，冲突极小（第三批整批只有 1 处）。
 
-## 2. 合并顺序（4 批）
+> 合并权限：2026-10-24 起 **三人平等、可自合**（[`project-charter.md`](project-charter.md) §3.5），不再需要互相指派 reviewer。
+> 门槛只有三条：CI 全绿 / 不碰 §3.2 红线 / PR 里写清改了什么与怎么回滚。
 
-### 第 1 批 · 后端与同步（3 个）
+## 2. 合并进度（4 批，**已全部完成**）
 
-> **已备好落地分支 [#134](https://github.com/otaku-dev-team/otaku-data-platform/pull/134)（`ci/batch1`）**：
-> 内容 = 下面三个 PR 合并后的结果，唯一的冲突（`PublicIdGenerator`）已解好，
-> `mvnw test` 111 / `pytest` 110 通过。**合它，然后关掉这三个。**
-> 若要按 PR 逐个合：`#102` 干净 → `#109` 会冲突（解法见 #109 评论）→ `#110` 干净。
+| 批 | 整合 PR | 合入提交 | 含原 PR | 结果 |
+|---|---|---|---|---|
+| 第 1 批 · 后端与同步 | [#134](https://github.com/otaku-dev-team/otaku-data-platform/pull/134)（`ci/batch1`） | `ad07012` | #102 / #109 / #110（含 #105） | `mvnw test` 111 / `pytest` 110 通过 |
+| 第 2 批 · 客户端主链 | [#136](https://github.com/otaku-dev-team/otaku-data-platform/pull/136)（`ci/batch2`） | `a1f4d1c` | #116（含 #107 / #103）/ #106 / #112 / #114 | `flutter test` **193 passed** |
+| 第 3 批 · 客户端栈顶 | [#137](https://github.com/otaku-dev-team/otaku-data-platform/pull/137)（`ci/batch3`） | `ac51dbd` | #121（含 #122）/ #123 / #128 / #130 | `flutter test` **252 passed** |
+| 随时 · 文档 | — | `f7f4be9` | #131（本清单） | 文档，不触发 CI |
 
+每批整合 PR 合入后，**源 PR 已逐条关闭**并在里面留了「已随 #NNN 合入」的说明。
 
-| 顺序 | PR | 分支 | 说明 |
-|---|---|---|---|
-| 1 | **#102** | `feat/schedule-backend` | 表 `V8__schedule.sql` + 公开接口 |
-| 2 | **#109** | `feat/article-backend` | 表 `V9__article.sql` + 公开接口 |
-| 3 | **#110** | `feat/article-sync` | **已含 #105**，合它即可；#105 随后关掉 |
+## 3. 合并后动作
 
-> ⚠️ #109 与 #102 都改 `PublicIdGenerator`：保留两个方法（`nextScheduleId` / `nextArticleId`），类注释写全四个用途。
->
-> `#105` 是 `#110` 的底座：**squash 就只合 #110 并关 #105；merge commit 则先 #105 再 #110 也干净**（见 §1.5）。
+### 已完成
 
-### 第 2 批 · 客户端主链（4 个）
+- [x] #105 / #103 / #107 / #102 / #109 / #110 / #116 / #106 / #112 / #114 / #121 / #123 / #128 / #130 全部关闭（内容在各批整合 PR 里）
+- [x] #121 / #123 / #128 / #130 改基到 main（`rebase --onto`，仅 `desktop_nav_shell.dart` 一处冲突）
+- [x] `flutter analyze` 干净、`flutter test` 252 passed、`mvnw test` 111 passed、`pytest` 110 passed
 
-| 顺序 | PR | 分支 | 说明 |
-|---|---|---|---|
-| 4 | **#116** | `feat/client-collection-offline` | **已含 #107、#103**；合它即可，那两个随后关掉 |
-| 5 | **#106** | `feat/schedule-client` | 档期页 |
-| 6 | **#112** | `feat/article-client` | 资讯列表 + 详情；侧栏加到 4 项 |
-| 7 | **#114** | `feat/rating-sort-clarity` | 无评分沉底 |
+### 待办
 
-### 第 3 批 · 客户端栈顶（4 个，**必须等第 2 批全部进 main**）
+- [ ] **删掉已完成使命的功能分支**：`feat/schedule-backend`、`feat/article-backend`、`feat/article-sync`、`feat/schedule-sync`、
+      `feat/client-offline-cache`、`feat/client-tag-filter`、`feat/client-collection-offline`、`feat/schedule-client`、`feat/article-client`、
+      `feat/rating-sort-clarity`、`feat/client-home`、`feat/client-search-and-settings`、`feat/client-filter-links`、`feat/client-reminders`、
+      `ci/batch1` / `ci/batch2` / `ci/batch3`。
+      ⚠️ 按 ROADMAP §8.1：**涉及别人分支的一律开 PR 交原作者判断**；只有「内容 100% 在 main 的零差异分支」可直接清理并留痕。
+- [ ] **`ci/merge-train-2026-10-23` 删掉**：演练完成即废弃，留着会让人以为还有一条在飞。
+- [ ] **main 上跑一次完整校验**：`flutter analyze` → `flutter test` → `flutter build apk --debug`；`mvnw test`；`pytest`（本地已跑过前三批的组合，CI 上由各批 PR 分别验证）。
+- [ ] **ROADMAP W1 看板节**：见 PR #111（进度 + W1.4 双端一致性验收），提案待合。
 
-> 到这一步同样看合并方式：第 2 批用了 **merge commit**，`#121` 的 `merge-base` 会自动前移到演练分支头，
-> **改 base 到 main 即可，不必 rebase**；用了 **squash**，就必须先把它的两个提交 rebase 到 main。
-
-| 顺序 | PR | 当前 base | 合并前要做的事 |
-|---|---|---|---|
-| 8 | **#121** | `ci/merge-train-2026-10-23` | base 是演练分支，合进去等于白合。**先把两个提交 rebase 到 main，再把 base 改成 main**（W1 侧做，约 10 分钟） |
-| 9 | **#123** | `feat/client-home` | 等 #121 进 main 后 rebase 到 main（W1 侧做） |
-| 10 | **#130** | `feat/client-home` | 同上 |
-| 11 | **#128** | `feat/client-search-and-settings` | 等 #123 rebase 后再 rebase（那个分支已改写过一次，必须先 rebase） |
-
-### 随时 · 文档（6 个，互不冲突）
-
-`#111`、`#120`、`#125`、`#126`、`#127`、`#129`
-
-## 3. 合并后动作（逐条）
-
-- [ ] **#105 关闭**：内容已含于 #110，再合会重复应用。
-- [ ] **#103 / #107 关闭**：内容已含于 #116。
-- [ ] **#121 rebase 到 main**（两个提交：首页、最近浏览），base 改为 `main`。
-- [ ] **#123 rebase 到 main**（两个提交：搜索历史、设置页）。
-- [ ] **#130 rebase 到 main**（一个提交：标签跳转 + 清筛选）。
-- [ ] **#128 rebase 到 #123 的新 head**（追番提醒）。
-- [ ] **删掉 `ci/merge-train-2026-10-23`**：演练完成即废弃，留在那里只会让人以为还有一条在飞。
-- [ ] **main 上跑一遍**：`flutter analyze` → `flutter test` → `flutter build apk --debug`；`mvnw test`；`pytest`。
-
-## 4. 会踩到的三个坑
+## 4. 会踩到的四个坑
 
 1. **squash 合并会让 stacked PR 的 base 悬空**：#122 被 squash 进 `feat/client-home` 后，
    原分支 `feat/client-recent-views` 不再前进 —— #123 当时就卡在这儿（已修）。
@@ -103,12 +85,30 @@ client-home (#121)      ⊃ 上述全部（它基于演练分支 ci/merge-train-
    否则单 PR 绿、合起来 `flutter analyze` 报 `invalid_override`（两处已在各自分支补好）。
 3. **`#116` 分支里重复带了 #111 的两份内容**（ROADMAP 的 W1 节、`sort_related_parity_test.dart`）：
    合并时 ROADMAP 取 8.6 新版、测试取带 `tag` 的那版。
+4. **桌面侧栏的序号是三处共管**（第三批实测）：`#121` 要加「首页」，
+   `selectedIndex` / `onDestinationSelected` 的 switch / `destinations` 必须**一起改**，
+   否则会出现「点了侧栏跳错页」但编译和测试都不报错的情况。
 
-## 5. 验证基线（复检分支 `ci/train-recheck-1024`，基点 `1ff93b0`）
+## 5. 验证基线（main @ `ac51dbd`）
 
 | 区块 | 结果 |
 |---|---|
 | `backend-java` | `mvnw test` 111 通过 / 0 失败 / 8 跳过 |
 | `sync-python` | `pytest` 110 passed |
-| `app-client` | `flutter analyze` 干净；`flutter test` **228 passed** |
+| `app-client` | `flutter analyze` 干净；`flutter test` **252 passed**；滚动基准 p50=14.82ms / p95=45.43ms |
 | 迁移 | `V1…V9` 逐字节一致，空库跑通 |
+
+## 6. 剩余开放 PR（全部 docs 类，互不冲突）
+
+| PR | 主题 | 状态 |
+|---|---|---|
+| #111 | W1 看板进度节 + W1.4 双端一致性验收 | 待合 |
+| #120 | D3 跨源同名方案（pyxz0 已同意 A，待 zm 表态） | 待决策 |
+| #125 | 人物页 / 制作公司页 / 详情页富字段数据链路 | 待决策 |
+| #126 | W1.3 通知：拆本地提醒 / 服务端推送 | 待决策 |
+| #127 | 资讯接口⑥契约 | 待合 |
+| #133 | 站点特色功能适配方案（齐平原则） | 待决策 |
+| #135 | 身份授权端点问需说明 | 待决策 |
+| #138 | 章程 §3.5：合并权三人平等（可自合） | 待合 |
+
+三个判据（授权端点 / 客户端品牌归属 / 数据主来源）在 **Issue #132** 下统一讨论。
