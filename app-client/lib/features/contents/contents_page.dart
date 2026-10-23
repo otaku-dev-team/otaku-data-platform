@@ -387,10 +387,29 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
                 : Icons.movie_filter_outlined,
             title: title,
             message: message,
+            // 筛太窄时给一个出口：现在「标签」有自己的清除按钮，但类型和
+            // 关键词只能靠用户自己想起来去改——空结果这一屏是最该有出口的地方。
+            // 完全没数据时不给按钮：那不是一个能靠点击解决的问题。
+            action: filtering
+                ? FilledButton.tonal(
+                    onPressed: _clearFilters,
+                    child: const Text('清除筛选'),
+                  )
+                : null,
           ),
         ],
       ),
     );
+  }
+
+  /// 清空筛选条件，并把搜索框的可见文本一起清掉。
+  ///
+  /// 只清 provider 不清输入框的话，用户会看到空列表配着一个还写着关键词的
+  /// 输入框——他会以为按钮没生效。
+  void _clearFilters() {
+    _debounce?.cancel();
+    _searchController.clear();
+    ref.read(contentsFilterProvider.notifier).clearFilters();
   }
 
   Widget _buildList(
