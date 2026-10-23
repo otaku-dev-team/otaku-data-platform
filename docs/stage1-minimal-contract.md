@@ -323,13 +323,13 @@ Java 在接口② 收到来源地址后自行下载/缓存，并在对外响应�
 | 授权方式 | 用户在来源站完成登录，平台只持**可撤销的用户令牌**。**授权的形态由站点决定**——含站点单方面授权、无用户同意页的形态（定位 §4.1：网站观点大于用户观点；红线不变：密码全程只在站点侧、平台永不经手） |
 | 禁止 | 平台代收用户密码转发验证；平台持有来源站服务 / 管理员凭据 |
 | 令牌要求 | 可撤销、可过期、作用域限定在「本人收藏与状态」 |
-| 撤销入口归属 | 撤销能力在站点侧；**入口由站点决定**（首站 Otaku 定稿：仅站点管理员可撤销，终端用户不设自助撤销入口）。用户侧控制 = 客户端内退出登录时平台**即时本地解绑**（丢弃绑定、不再调用令牌）+ 需要远程吊销时经站点管理员 |
+| 撤销入口归属 | 撤销能力在站点侧；**入口由站点决定**。首站 Otaku 定稿双形态（均已启用）：① **self-revoke**——持有效 Bearer 令牌的平台后端可撤销该令牌持有者名下、同一 client 的全部未吊销令牌（用户在客户端内点「断开与网站的连接」时触发；2026-10-24 负责人拍板启用）；② **管理员应急吊销**——站点管理员按 access_token 或 external_user_id 全量吊销。用户侧控制 = 客户端内退出登录时平台**即时本地解绑**（丢弃绑定、不再调用令牌）+「断开与网站的连接」时 self-revoke 远程吊销 + 经站点管理员应急吊销 |
 | 未开放授权端点时 | 用平台自建账号过渡，并**预先设计**切换路径（账号映射、收藏迁移） |
 | 本人数据读写 | 在用户授权范围内，客户端的收藏 / 状态可与来源站保持一致 |
 | 多站 | 各站身份**互不打通**；同一用户在 A、B 两站是两个独立身份 |
 
 **首站现状（Otaku）**：站点拥有完整账号体系（`/login`、`/register`、`/me`、`/contents/{id}/favorite`、`/contents/{id}/status` 等），但均为**网页表单 + 会话 cookie 的页面端点，无对外 JSON 接口、无 OAuth / token 签发端点**（2026-10-24 只读核验 `GET {base}/openapi.json`，共 131 个路径）。
-**站主已确认将开放授权端点（2026-10-24 回复定稿契约）**：标准 OAuth 授权码——`GET /oauth/authorize`（浏览器重定向，白名单 + state）→ `POST /api/auth/token`（ticket + client_id + **client_secret**，服务端到服务端）→ `GET /api/me` → `POST /api/auth/revoke`（仅站点管理员会话）。令牌 1 小时、scope 固定 `identity`（收藏 / 状态读写二期，需站点再次授权）。client_secret 按铁律存环境变量、绝不入库。详见 [`identity-auth-endpoint-playbook.md`](identity-auth-endpoint-playbook.md) §2。
+**站主已确认将开放授权端点（2026-10-24 回复定稿契约）**：标准 OAuth 授权码——`GET /oauth/authorize`（浏览器重定向，白名单 + state）→ `POST /api/auth/token`（ticket + client_id + **client_secret**，服务端到服务端）→ `GET /api/me` → `POST /api/auth/revoke`（双形态：self-revoke 持 Bearer 自助吊销 + 站点管理员应急吊销，均已启用）。令牌 1 小时、scope 固定 `identity`（收藏 / 状态读写二期，需站点再次授权）。client_secret 按铁律存环境变量、绝不入库。详见 [`identity-auth-endpoint-playbook.md`](identity-auth-endpoint-playbook.md) §2。
 
 ---
 
