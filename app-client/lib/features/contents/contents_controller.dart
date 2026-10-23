@@ -120,6 +120,33 @@ class ContentsFilterController extends Notifier<ContentsFilter> {
       tag: next,
     );
   }
+
+  /// 从详情页点标签进来：**只保留标签**，清掉类型 / 搜索 / 排序。
+  ///
+  /// 与 [selectTag] 的区别在语义：selectTag 是「在当前条件下换一个标签」，
+  /// 而从详情页跳进来时，用户脑子里只有「这个标签还有什么」——如果列表里
+  /// 还残留着上次的分类或关键词，结果会莫名其妙只剩几条，而详情页上
+  /// 没有任何线索能解释为什么少了。
+  void showTag(String tag) {
+    final trimmed = tag.trim();
+    if (trimmed.isEmpty) return;
+    if (state.tag == trimmed &&
+        state.type == null &&
+        state.query.isEmpty &&
+        state.sort == WorkSort.id) {
+      return;
+    }
+    state = ContentsFilter(tag: trimmed);
+  }
+
+  /// 清掉全部筛选条件（类型 / 关键词 / 标签），**保留排序**。
+  ///
+  /// 排序不是筛选：用户选「按评分」是想看到顺序，不是想少看内容；
+  /// 清筛选时把它一起重置，会让他觉得排序也莫名其妙丢了。
+  void clearFilters() {
+    if (state.type == null && state.query.isEmpty && state.tag == null) return;
+    state = ContentsFilter(sort: state.sort);
+  }
 }
 
 final contentsFilterProvider =

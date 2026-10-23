@@ -21,6 +21,7 @@ import '../../shared/widgets/skeleton_list.dart';
 import '../../shared/widgets/tag_chips.dart';
 import '../../shared/widgets/work_type_tag.dart';
 import '../auth/auth_controller.dart';
+import '../contents/contents_controller.dart';
 import '../recent/recent_views_controller.dart';
 import 'related_works_section.dart';
 import 'work_collection_controller.dart';
@@ -84,6 +85,18 @@ class _WorkDetailPageState extends ConsumerState<WorkDetailPage> {
   /// 记一次浏览。重复记录是幂等的（去重 + 置顶），所以补记不会产生两条。
   void _remember(Work work) =>
       ref.read(recentViewsProvider.notifier).record(work);
+
+  /// 点详情页的标签：跳到作品库并按该标签筛。
+  ///
+  /// 用 `showTag` 而不是 `selectTag`：后者是「在当前条件下换个标签」，
+  /// 而这里是从另一页跳过来，用户要的是「这个标签下都有什么」——上一页
+  /// 留下的分类或关键词会让结果莫名只剩几条，详情页上没有任何线索能解释。
+  ///
+  /// 没有 router 时（单页测试）只改条件、不抛异常，与侧栏导航同一处理。
+  void _openTag(String tag) {
+    ref.read(contentsFilterProvider.notifier).showTag(tag);
+    GoRouter.maybeOf(context)?.go(RoutePaths.contents);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -178,7 +191,7 @@ class _WorkDetailPageState extends ConsumerState<WorkDetailPage> {
     }
 
     final resolved = fetched.requireValue;
-    final body = _DetailBody(work: resolved.value);
+    final body = _DetailBody(work: resolved.value, onTag: _openTag);
     if (!resolved.fromCache) return body;
 
     // 离线回退：内容照常展示，但顶部要说明这是上次同步的。
@@ -204,9 +217,12 @@ class _WorkDetailPageState extends ConsumerState<WorkDetailPage> {
 }
 
 class _DetailBody extends StatelessWidget {
-  const _DetailBody({required this.work});
+  const _DetailBody({required this.work, required this.onTag});
 
   final Work work;
+
+  /// 点标签时回调，一路传到 [_Headline] 里的标签行。
+  final ValueChanged<String> onTag;
 
   @override
   Widget build(BuildContext context) {
@@ -230,7 +246,7 @@ class _DetailBody extends StatelessWidget {
                   children: [
                     Center(child: cover),
                     const SizedBox(height: 20),
-                    _Headline(work: work),
+                    _Headline(work: work, onTag: onTag),
                   ],
                 );
               }
@@ -240,7 +256,7 @@ class _DetailBody extends StatelessWidget {
                 children: [
                   cover,
                   const SizedBox(width: 28),
-                  Expanded(child: _Headline(work: work)),
+                  Expanded(child: _Headline(work: work, onTag: onTag)),
                 ],
               );
             },
@@ -258,9 +274,11 @@ class _DetailBody extends StatelessWidget {
 
 /// 标题区：标题 / 类型 / 评分 / 标签 / 简介。
 class _Headline extends StatelessWidget {
-  const _Headline({required this.work});
+  const _Headline({required this.work, required this.onTag});
 
   final Work work;
+
+  final ValueChanged<String> onTag;
 
   @override
   Widget build(BuildContext context) {
@@ -298,7 +316,9 @@ class _Headline extends StatelessWidget {
         ),
         if (tags != null) ...[
           const SizedBox(height: 12),
-          TagChips(tags: tags, maxVisible: 10),
+          // 标签可点：列表卡片上的标签早就能这么用（#107），同一批标签在
+          // 详情页却是死文字——同一个东西两处行为不一致，用户会以为详情页坏了。
+          TagChips(tags: tags, maxVisible: 10, onTag: onTag),
         ],
         const SizedBox(height: 16),
         _CollectBar(work: work),
