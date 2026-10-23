@@ -54,6 +54,16 @@ class ApiException implements Exception {
   /// 契约 6.2：详情 404 只提示并返回列表，**不自动重试**。
   bool get isNotFound => code == ApiErrorCode.workNotFound;
 
+  /// 「后端不可达」——网络断了、超时了这类**拿不到数据**的情况。
+  ///
+  /// 只有这一类错误才允许用离线缓存兜底。其余（404 / 400 / 401 / 429 / 500）
+  /// 都是服务端的**明确答复**：服务端在说「这件事有结论」，
+  /// 不是「我不知道」。拿缓存顶替等于替服务端编了一个结论出来——
+  /// 把「作品不存在」说成「作品还在，只是没网」，方向正好和铁律 3
+  /// 警告的「把失败当删除」相反，同样是错的。
+  bool get isUnreachable =>
+      code == ApiErrorCode.network || code == ApiErrorCode.timeout;
+
   /// 适合直接展示给用户的一句话。
   String get userMessage => switch (code) {
     ApiErrorCode.network => '网络连接失败，请检查网络后重试',

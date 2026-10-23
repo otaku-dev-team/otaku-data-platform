@@ -42,6 +42,15 @@ class SourceRating {
   /// 0-10 尺度统一显示一位小数。
   String get display => value.toStringAsFixed(1);
 
+  /// 序列化。离线缓存用（见 `HiveWorkCache`）。
+  ///
+  /// 与 [tryParse] 对称：写出去的形状必须能被自己读回来。
+  Map<String, dynamic> toJson() => {
+    'value': value,
+    'scale': scale,
+    'source': source,
+  };
+
   @override
   bool operator ==(Object other) =>
       other is SourceRating &&

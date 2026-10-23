@@ -17,6 +17,7 @@ import '../../shared/widgets/desktop_nav_shell.dart';
 import '../../shared/widgets/desktop_shortcuts.dart';
 import '../../shared/widgets/empty_state.dart';
 import '../../shared/widgets/error_state.dart';
+import '../../shared/widgets/offline_notice.dart';
 import '../../shared/widgets/skeleton_list.dart';
 import 'catalog_counts.dart';
 import 'contents_controller.dart';
@@ -156,6 +157,11 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
     // "共 N 部"只认当前条件的数据，切换条件时的旧值不能拿来显示。
     final data = contents.value;
     final liveTotal = data != null && data.filter == filter ? data.total : null;
+    // 离线提示同理：换条件时 Riverpod 会把上一组数据留在 AsyncValue 里，
+    // 那份数据不属于当前条件，拿它的「来自缓存」状态说事是错的。
+    final cacheNotice = data != null && data.filter == filter && data.fromCache
+        ? data
+        : null;
 
     return DesktopNavShell(
       child: DesktopShortcuts(
@@ -239,6 +245,14 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
                     onViewChanged: (next) =>
                         ref.read(catalogViewProvider.notifier).select(next),
                   ),
+                  // 离线提示。放在筛选栏下面、列表上面：用户先看到内容，
+                  // 紧接着看到「这是缓存」的说明，而不是被一条横幅挡在内容之外。
+                  if (cacheNotice != null)
+                    OfflineNotice(
+                      cachedAt: cacheNotice.cachedAt,
+                      onRetry: () =>
+                          ref.read(contentsControllerProvider.notifier).refresh(),
+                    ),
                   Expanded(child: _buildBody(filter, contents, view)),
                 ],
               ),

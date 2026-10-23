@@ -9,10 +9,12 @@ import '../../core/theme/app_layout.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/models/collection_entry.dart';
 import '../../data/models/work.dart';
+import '../../data/repositories/work_repository.dart';
 import '../../shared/widgets/collection_status_menu.dart';
 import '../../shared/widgets/cover_image.dart';
 import '../../shared/widgets/desktop_shortcuts.dart';
 import '../../shared/widgets/error_state.dart';
+import '../../shared/widgets/offline_notice.dart';
 import '../../shared/widgets/rating_badge.dart';
 import '../../shared/widgets/release_year_text.dart';
 import '../../shared/widgets/skeleton_list.dart';
@@ -38,7 +40,10 @@ class WorkDetailPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final work = ref.watch(workDetailProvider(workId));
+    final fetched = ref.watch(workDetailProvider(workId));
+    // `Fetched` 包了一层，这里拆出来：页面正文只关心作品本身，
+    // 「是不是缓存」只影响顶部那一条提示。
+    final work = fetched.value;
 
     return DesktopShortcuts(
       child: Scaffold(
@@ -51,7 +56,7 @@ class WorkDetailPage extends ConsumerWidget {
             // 渲染前再过一次 parseSourceUrl，而不是直接用 `work.sourceUrl`：
             // 前者只保证「从 JSON 解析出来的值」安全，而 Work 也可能被测试或
             // 本地 mock 直接构造。这道闸放在出口，覆盖所有来源。
-            if (Work.parseSourceUrl(work.value?.sourceUrl) case final url?)
+            if (Work.parseSourceUrl(work?.value.sourceUrl) case final url?)
               IconButton(
                 tooltip: '在来源站查看',
                 onPressed: () => _openSource(context, url),
@@ -65,7 +70,7 @@ class WorkDetailPage extends ConsumerWidget {
             constraints: const BoxConstraints(
               maxWidth: AppLayout.detailMaxWidth,
             ),
-            child: _buildBody(context, ref, work),
+            child: _buildBody(context, ref, fetched),
           ),
         ),
       ),
@@ -100,14 +105,15 @@ class WorkDetailPage extends ConsumerWidget {
   Widget _buildBody(
     BuildContext context,
     WidgetRef ref,
-    AsyncValue<Work> work,
+    AsyncValue<Fetched<Work>> fetched,
   ) {
-    if (work.isLoading && !work.hasValue) {
+    final work = fetched.value;
+    if (fetched.isLoading && work == null) {
       return const SkeletonDetail();
     }
 
-    if (work.hasError) {
-      final error = ApiException.fromAny(work.error);
+    if (fetched.hasError) {
+      final error = ApiException.fromAny(fetched.error);
       if (error.isNotFound) {
         return ErrorState(
           error: error,
@@ -124,7 +130,21 @@ class WorkDetailPage extends ConsumerWidget {
       );
     }
 
-    return _DetailBody(work: work.requireValue);
+    final resolved = fetched.requireValue;
+    final body = _DetailBody(work: resolved.value);
+    if (!resolved.fromCache) return body;
+
+    // 离线回退：内容照常展示，但顶部要说明这是上次同步的。
+    // 不说的话，用户会把旧数据当成最新的（铁律 3）。
+    return Column(
+      children: [
+        OfflineNotice(
+          cachedAt: resolved.cachedAt,
+          onRetry: () => ref.invalidate(workDetailProvider(workId)),
+        ),
+        Expanded(child: body),
+      ],
+    );
   }
 
   void _backToList(BuildContext context) {
