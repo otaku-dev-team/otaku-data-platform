@@ -2,9 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/config/app_config.dart';
+import '../../core/platform_info.dart';
 import '../../core/storage/work_cache.dart';
 import '../../core/theme/app_layout.dart';
 import '../../shared/widgets/desktop_nav_shell.dart';
+import '../reminders/reminder_scheduler.dart';
+import '../reminders/reminder_service.dart';
+import '../reminders/reminder_settings.dart';
 import 'settings_controller.dart';
 
 /// 设置：外观 / 离线缓存 / 关于。
@@ -33,6 +37,8 @@ class SettingsPage extends ConsumerWidget {
               children: const [
                 _SectionTitle('外观'),
                 _ThemeModeSection(),
+                _SectionTitle('提醒'),
+                _ReminderSection(),
                 _SectionTitle('离线缓存'),
                 _CacheSection(),
                 _SectionTitle('关于'),
@@ -128,6 +134,96 @@ class _ThemeModeSection extends ConsumerWidget {
         ],
       ),
     );
+  }
+}
+
+/// 追番提醒。**默认关**，打开时才申请系统通知权限。
+///
+/// 桌面端整项禁用并说明原因：Windows 的本地通知要 AUMID/MSIX 打包配合，
+/// 牵动部署（W6 休眠）。与其给一个点了没反应的开关，不如直接说没有。
+class _ReminderSection extends ConsumerWidget {
+  const _ReminderSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final soft = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    final enabled = ref.watch(reminderEnabledProvider);
+    final supported = !PlatformInfo.isDesktop;
+
+    return _SectionCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('追番提醒', style: theme.textTheme.bodyLarge),
+                    const SizedBox(height: 2),
+                    Text(
+                      supported
+                          ? (enabled
+                                ? '每天早上 9:00 检查一次；有在追的作品更新就提醒你。'
+                                : '在追的作品更新当天，早上 9:00 提醒一次。')
+                          : '桌面端暂不支持系统通知，这一项只在 Android 上可用。',
+                      style: soft,
+                    ),
+                  ],
+                ),
+              ),
+              Switch(
+                value: enabled,
+                onChanged: supported
+                    ? (value) => _toggle(context, ref, value)
+                    : null,
+              ),
+            ],
+          ),
+          if (supported && enabled) ...[
+            const SizedBox(height: 8),
+            Text(
+              '依据本机已同步的档期与收藏计算，只排未来两周。'
+              '换季或长时间不打开 App 后会自然停止——「没提醒」不等于「没更新」。',
+              style: soft,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Future<void> _toggle(BuildContext context, WidgetRef ref, bool value) async {
+    if (!value) {
+      // 关掉之后 service 会清空已排的提醒（见 `ReminderService.refresh`）。
+      await ref.read(reminderEnabledProvider.notifier).setEnabled(false);
+      return;
+    }
+
+    final permission = await ref
+        .read(reminderSchedulerProvider)
+        .requestPermission();
+    if (!context.mounted) return;
+
+    if (permission == ReminderPermission.denied) {
+      // 被拒时**不要**把开关留在「开」：那会让用户以为已经生效。
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('没有通知权限，提醒无法开启。请在系统设置里允许通知后重试。')),
+      );
+      return;
+    }
+    if (permission == ReminderPermission.unsupported) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('这台设备不支持本地提醒')));
+      return;
+    }
+
+    await ref.read(reminderEnabledProvider.notifier).setEnabled(true);
   }
 }
 

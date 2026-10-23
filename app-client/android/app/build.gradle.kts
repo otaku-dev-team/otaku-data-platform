@@ -12,6 +12,10 @@ android {
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
+        // flutter_local_notifications（追番提醒，W1.3a）用了 java.time，
+        // 需要开启 core library desugaring 才能在 minSdk 24 上跑。
+        // 不开的话构建会直接失败，报 "requires core library desugaring"。
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -45,4 +49,9 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    // 与上面的 isCoreLibraryDesugaringEnabled 配套。
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
 }

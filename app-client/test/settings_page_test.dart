@@ -12,6 +12,7 @@ import 'package:otaku_app/core/storage/work_cache_provider.dart';
 import 'package:otaku_app/data/models/work.dart';
 import 'package:otaku_app/data/models/work_type.dart';
 import 'package:otaku_app/features/settings/settings_controller.dart';
+import 'package:otaku_app/features/reminders/reminder_settings.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -123,6 +124,40 @@ void main() {
       expect(find.text('暂无缓存'), findsOneWidget);
       expect((await cache.usage()).entries, 0);
       expect(find.text('已清除离线缓存'), findsOneWidget);
+    });
+  });
+
+  group('追番提醒', () {
+    test('默认关：没写过偏好就不该开', () {
+      final container = ProviderContainer(
+        overrides: [localPrefsProvider.overrideWithValue(InMemoryLocalPrefs())],
+      );
+      addTearDown(container.dispose);
+
+      expect(container.read(reminderEnabledProvider), isFalse);
+    });
+
+    test('写过 true 才开', () {
+      final container = ProviderContainer(
+        overrides: [
+          localPrefsProvider.overrideWithValue(
+            InMemoryLocalPrefs({'reminder_enabled': 'true'}),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      expect(container.read(reminderEnabledProvider), isTrue);
+    });
+
+    testWidgets('桌面端禁用开关并说明原因，不给点了没反应的按钮', (tester) async {
+      final container = createContainer();
+      await pumpSettings(tester, container);
+
+      expect(find.textContaining('桌面端暂不支持系统通知'), findsOneWidget);
+      // 测试跑在 Windows 上（desktop 模式），这一项必须是禁用的。
+      final toggle = tester.widget<Switch>(find.byType(Switch));
+      expect(toggle.onChanged, isNull);
     });
   });
 
