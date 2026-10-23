@@ -55,6 +55,7 @@ class CompactWorkCard extends StatelessWidget {
               height: coverHeightFor(width),
               radius: AppLayout.cardRadius,
               placeholderLabel: firstChar,
+              source: work.source,
             ),
             const SizedBox(height: 6),
             Text(

@@ -53,6 +53,7 @@ class WorkCard extends ConsumerWidget {
               height: double.infinity,
               radius: 0,
               placeholderLabel: firstChar,
+              source: work.source,
             ),
           ),
           SizedBox(

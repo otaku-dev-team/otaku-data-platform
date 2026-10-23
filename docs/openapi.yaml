@@ -737,7 +737,7 @@ components:
     WorkSummary:
       type: object
       description: |
-        列表项。**7 个字段，不含 `summary`**——简介最长 7225 字，列表带上会把响应撑爆，
+        列表项。**8 个字段，不含 `summary`**——简介最长 7225 字，列表带上会把响应撑爆，
         客户端需要简介时按 `work_id` 拉详情。
       required: [work_id, work_type, title]
       properties:
@@ -771,6 +771,20 @@ components:
           items: { type: string }
           example: ["日常", "搞笑"]
         main_rating: { $ref: "#/components/schemas/SourceRating" }
+        source:
+          type: string
+          nullable: true
+          description: |
+            记录所属来源站的标识，取值域与 `Work.source` 一致（如 `otaku_site` / `bangumi`）。
+            2026-10-24 补入（第 8 个字段）：列表 SQL 原本就 select 了 `source`，只是没往列表 DTO 透出。
+
+            **用途只有一个：可辨识。** 同一标题出现两条记录时，客户端靠它标出来源，
+            避免用户把两部不同作品当成同一部（实测 13,261 组跨源同名）。
+            按「齐平原则」（见站点特色功能适配方案 §8）它是**透明度底线**——
+            目录里只要存在非本站的记录，用户就必须能分辨；**它不是归并的前奏**，
+            也不意味着不同来源的记录被认定是同一部作品。
+            `null` = 来源未标注，客户端此时不渲染来源标识。
+          example: bangumi
 
     RelatedWorks:
       type: object

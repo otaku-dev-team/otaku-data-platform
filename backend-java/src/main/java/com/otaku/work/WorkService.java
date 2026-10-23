@@ -172,7 +172,8 @@ public class WorkService {
                 record.releaseYear(),
                 coverUrl(record),
                 parseTags(record.tagsJson()),
-                toRating(record));
+                toRating(record),
+                record.source());
     }
 
     private static SourceRatingDto toRating(WorkRecord record) {
