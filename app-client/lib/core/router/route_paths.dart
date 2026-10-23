@@ -4,6 +4,11 @@ abstract final class RoutePaths {
 
   static const String contents = '/works';
 
+  /// 首页。落地页，把分类浏览 / 本日新番 / 高分作品 / 最新资讯四块聚在一起。
+  ///
+  /// 路径就用 `/`：它是信息架构的根，也是深链接最自然的入口。
+  static const String home = '/';
+
   /// 最新资讯列表。与 `contents` 平级，不是它的子路由——
   /// 资讯和作品的筛选、分页各管一套，套在一起只会互相干扰。
   static const String articles = '/articles';

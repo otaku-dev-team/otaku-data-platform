@@ -1,12 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
-
-import '../../core/router/route_paths.dart';
 import '../../core/theme/app_layout.dart';
-import '../../data/models/work_summary.dart';
-import '../../shared/widgets/cover_image.dart';
-import '../../shared/widgets/rating_badge.dart';
+import '../../shared/widgets/compact_work_card.dart';
 import 'work_detail_controller.dart';
 
 /// 详情页底部的「相关作品」。契约 `GET /api/works/{work_id}/related`。
@@ -69,7 +64,11 @@ class RelatedWorksSection extends ConsumerWidget {
         ),
         const SizedBox(height: 12),
         SizedBox(
-          height: 250,
+          // 高度由卡片自己算，别在这里写死：标题行高跟着系统字号变。
+          height: CompactWorkCard.heightFor(
+            _cardWidth,
+            MediaQuery.textScalerOf(context).scale(1),
+          ),
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             // 横向列表也要能被外层滚动接管，否则在桌面端滚不动这一行。
@@ -77,61 +76,10 @@ class RelatedWorksSection extends ConsumerWidget {
             itemCount: data.items.length,
             separatorBuilder: (_, _) => const SizedBox(width: 10),
             itemBuilder: (context, index) =>
-                _RelatedCard(work: data.items[index], width: _cardWidth),
+                CompactWorkCard(work: data.items[index], width: _cardWidth),
           ),
         ),
       ],
-    );
-  }
-}
-
-/// 一张相关作品卡。竖版海报 + 两行标题 + 评分，字段与列表卡片一致
-/// （列表接口不返回简介，这里也不可能有）。
-class _RelatedCard extends StatelessWidget {
-  const _RelatedCard({required this.work, required this.width});
-
-  final WorkSummary work;
-  final double width;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final firstChar = work.title.characters.isEmpty
-        ? null
-        : work.title.characters.first;
-
-    return SizedBox(
-      width: width,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(AppLayout.cardRadius),
-        onTap: () => context.push(RoutePaths.workDetail(work.workId)),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            CoverImage(
-              url: work.coverUrl,
-              width: width,
-              height: width / AppLayout.posterAspect,
-              radius: AppLayout.cardRadius,
-              placeholderLabel: firstChar,
-            ),
-            const SizedBox(height: 6),
-            Text(
-              work.title,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-                height: 1.35,
-              ),
-            ),
-            const SizedBox(height: 4),
-            // 契约 6.3：没有评分整块不渲染，不显示 0.0。
-            if (work.mainRating != null)
-              RatingBadge(rating: work.mainRating, compact: true),
-          ],
-        ),
-      ),
     );
   }
 }
