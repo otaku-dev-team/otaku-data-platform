@@ -13,6 +13,8 @@ public enum ErrorCode {
     WORK_NOT_FOUND(HttpStatus.NOT_FOUND),
     /** 契约第 7 节的 404 只定义了 WORK_NOT_FOUND；批次查询需要区分，故补充此码。 */
     BATCH_NOT_FOUND(HttpStatus.NOT_FOUND),
+    /** 资讯不存在。与上面两个同模式：404 需要区分是哪种实体，客户端据此显示不同空状态。 */
+    ARTICLE_NOT_FOUND(HttpStatus.NOT_FOUND),
 
     /** 阶段 2：口令错误或用户不存在（不区分两者，避免枚举账号）。 */
     INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED),

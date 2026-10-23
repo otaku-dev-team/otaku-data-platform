@@ -35,24 +35,49 @@ from typing import Any, Iterable, Iterator
 
 import httpx
 
+from .article_html import parse_article_detail, parse_articles_page
 from .cleaning import (
     clean_cover_url,
     clean_rating,
     clean_summary,
     clean_tags,
+    clean_text,
     clean_title,
     clean_year,
+    normalize_url,
+    parse_platforms,
+    parse_weekday,
+    split_tags,
+    to_iso_utc,
 )
 from .config import (
     DEFAULT_MAX_PAGES,
     DEFAULT_PAGE_SIZE,
     DEFAULT_REQUEST_INTERVAL_SECONDS,
 )
-from .models import SourceRecord, WorkItem
+from .models import ArticleItem, ScheduleItem, SourceRecord, WorkItem
 
 # 站点人读作品详情页。2026-10-21 实测：首页 HTML 里站点自己生成的卡片链接即此形态，
 # /contents/476 返回 200 且标题为作品名。见模块 docstring。
 CONTENT_PAGE_PATH = "/contents/{content_id}"
+
+# 新番档期接口。2026-10-22 实测：total 1500 条、默认 page_size 20（75 页），
+# 按周一…周日 + 待定分组；weekday 为 1..7 或 null；work_tags 是斜杠分隔字符串
+# （"战斗/群像/英雄剧"）；platforms 是 [{name,url}] 对象数组；image_url 是
+# B 站外链未本地化。字段全清单见 docs/站点能力差距清单.md 第 3.2 节。
+SCHEDULE_PAGE_PATH = "/api/schedule"
+# 档期接口自己的 page_size 上限：contents 是 500，这里实测 100 通过、200 返 422。
+# 不与作品的 DEFAULT_PAGE_SIZE 混用——那个值传给档期会直接被站点拒。
+SCHEDULE_PAGE_SIZE = 100
+
+# 最新资讯。**只有 HTML**（/api/articles 返 404），2026-10-22 实测：
+# /articles?page=N 每页 20 条，class 规整（article-card-* / article-title /
+# article-byline / article-body / article-source-link），是服务端模板渲染。
+# 列表页给元数据，正文与原文链接要再抓 /articles/{id}。
+ARTICLES_PAGE_PATH = "/articles"
+ARTICLE_DETAIL_PATH = "/articles/{article_id}"
+# 列表页每页实测 20 条。站点不给 total，只能靠"本页解析不出条目"来停。
+ARTICLES_PER_PAGE = 20
 
 
 def unwrap(payload: Any) -> list[dict[str, Any]]:
@@ -91,6 +116,7 @@ class OtakuSiteSource:
         timeout: float = 30.0,
         user_agent: str = "otaku-data-platform-sync/0.1.0",
         page_size: int = DEFAULT_PAGE_SIZE,
+        schedule_page_size: int = SCHEDULE_PAGE_SIZE,
         request_interval_seconds: float = DEFAULT_REQUEST_INTERVAL_SECONDS,
         max_pages: int = DEFAULT_MAX_PAGES,
         max_attempts: int = 4,
@@ -98,6 +124,10 @@ class OtakuSiteSource:
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.page_size = max(1, page_size)
+        # 档期有自己的 page_size（站点上限 100），与作品的分开存。
+        # 请求与终止条件必须读同一个值：终止条件写死常量的话，
+        # 测试里注不进小页码，分页逻辑就没法用少量样本验证。
+        self.schedule_page_size = max(1, schedule_page_size)
         self.request_interval_seconds = max(0.0, request_interval_seconds)
         self.max_pages = max(1, max_pages)
         self.max_attempts = max(1, max_attempts)
@@ -309,3 +339,203 @@ class OtakuSiteSource:
         for work_type in work_types:
             items.extend(self.fetch(work_type, fetched_at))
         return items
+
+    # ------------------------------------------------------------------
+    # 新番档期（/api/schedule）
+    #
+    # 与作品列表同一套抓取骨架（分页、退避重试、逐页跳过记账），但映射是
+    # 独立的一套：档期条目不是作品，字段、清洗规则都不同。
+    # ------------------------------------------------------------------
+
+    def fetch_schedule_page(
+        self, page: int, page_size: int | None = None
+    ) -> dict[str, Any]:
+        """拉取一页档期。保留 total / total_pages 供调用方判断终止。"""
+        resp = self._get(
+            SCHEDULE_PAGE_PATH,
+            {
+                "page": page,
+                # 站点档期接口的 page_size 上限与 contents 不同：contents 是 500，
+                # 档期实测 100 通过、200 返回 422（2026-10-22 逐个探测）。
+                # 传 200 会被当致命错误抛出——请求本身不对，重试无意义。
+                # 这里不跟作品的 page_size 配置混用。
+                "page_size": page_size or self.schedule_page_size,
+            },
+        )
+        payload = resp.json()
+        return payload if isinstance(payload, dict) else {"items": payload}
+
+    def iter_schedule_raw(self) -> Iterator[list[dict[str, Any]]]:
+        """逐页产出档期条目，单页彻底失败时跳过并记账。
+
+        终止条件与 `iter_raw` 相同：本页为空、已到 total_pages、本页不满。
+        「本页不满」用的是**档期自己的 page_size**（`self.schedule_page_size`，
+        默认 100）而不是 self.page_size——后者是作品接口的配置，拿它判断会把
+        第一页 100 条误判成"不满"从而提前终止（实测踩过：1500 条只抓到 100 条）。
+        请求与判断读同一个属性，改一处不会只改一半。
+        """
+        for page in range(1, self.max_pages + 1):
+            try:
+                payload = self.fetch_schedule_page(page)
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code not in RETRYABLE_STATUS:
+                    raise
+                self.failed_pages.append(
+                    FailedPage("schedule", page, f"HTTP {exc.response.status_code}")
+                )
+                continue
+            except httpx.TransportError as exc:
+                self.failed_pages.append(
+                    FailedPage("schedule", page, f"{type(exc).__name__}: {exc}")
+                )
+                continue
+
+            items = unwrap(payload)
+            if not items:
+                break
+            yield items
+
+            total_pages = payload.get("total_pages")
+            if isinstance(total_pages, int) and page >= total_pages:
+                break
+            if len(items) < self.schedule_page_size:
+                break
+
+    def iter_schedule_items(self, fetched_at: str) -> Iterator[ScheduleItem]:
+        """逐页产出 ScheduleItem，失败页跳过（记在 `failed_pages` 里）。"""
+        for page_items in self.iter_schedule_raw():
+            for raw in page_items:
+                yield self.to_schedule_item(raw, fetched_at)
+
+    def to_schedule_item(self, raw: dict[str, Any], fetched_at: str) -> ScheduleItem:
+        """把站点档期记录映射成导入条目。
+
+        与 `to_work_item` 的差异：
+        - 主标题兜底链 title_main → title_cn → title_jp（后端要求 title_main
+          非空，站点个别条目主标题缺失时用副标题顶上，好过整条拒收）；
+        - `work_tags` 站点给斜杠字符串，这里拆成数组；
+        - `weekday` 原样透传（1..7 或 null），0 与越界值交给后端拒收——
+          两侧校验规则一致，避免"同步侧放行、后端拒收"的口径分裂；
+        - `content_id` 转字符串，与作品导入的 source_id 口径一致；
+        - `source_url` 是 yuc.wiki 原页，站点偶尔缺失，缺失就不给回流入口。
+        """
+        source_id = str(raw.get("id"))
+        return ScheduleItem(
+            source_record=SourceRecord(
+                source_id=source_id,
+                source_url=normalize_url(raw.get("source_url")),
+                fetched_at=fetched_at,
+                source_updated_at=None,
+            ),
+            season_code=clean_text(raw.get("season_code")),
+            title_main=(
+                clean_title(raw.get("title_main"))
+                or clean_title(raw.get("title_cn"))
+                or clean_title(raw.get("title_jp"))
+            ),
+            title_cn=clean_title(raw.get("title_cn")),
+            title_jp=clean_title(raw.get("title_jp")),
+            weekday=parse_weekday(raw.get("weekday")),
+            broadcast_time=clean_text(raw.get("broadcast_time")),
+            broadcast_note=clean_text(raw.get("broadcast_note")),
+            work_type=clean_text(raw.get("work_type")),
+            work_tags=split_tags(raw.get("work_tags")),
+            image_url=normalize_url(raw.get("image_url")),
+            platforms=parse_platforms(raw.get("platforms")),
+            source_url=normalize_url(raw.get("source_url")),
+            content_id=(
+                str(raw["content_id"]) if raw.get("content_id") is not None else None
+            ),
+            source_updated_at=to_iso_utc(raw.get("last_synced_at")),
+        )
+
+    # ------------------------------------------------------------------
+    # 最新资讯（/articles 与 /articles/{id}，只有 HTML）
+    #
+    # 与前两条链路的关键差异：**没有 total**，所以终止条件只能是
+    # 「本页解析不出条目」。解析规则集中在 article_html.py，
+    # 这里只管抓取、重试与逐页跳过记账。
+    # ------------------------------------------------------------------
+
+    def fetch_articles_page(self, page: int) -> str:
+        """拉一页资讯列表的 HTML。失败由 _get 的重试与调用方的记账处理。"""
+        resp = self._get(ARTICLES_PAGE_PATH, {"page": page})
+        return resp.text
+
+    def fetch_article_detail_html(self, article_id: str) -> str:
+        """拉一篇资讯详情页的 HTML。"""
+        resp = self._get(ARTICLE_DETAIL_PATH.format(article_id=article_id))
+        return resp.text
+
+    def iter_articles_raw(
+        self, limit: int | None = None
+    ) -> Iterator[dict[str, Any]]:
+        """逐页产出资讯元数据，单页彻底失败时跳过并记账。
+
+        `limit` 给的是**总条数上限**（不是页数）：详情页要逐条抓，
+        一次全量几百条会让同步作业跑很久，首批先取够用于验证。
+
+        终止条件只有「本页解析不出条目」——站点 HTML 里没有 total 字段，
+        猜页数上限会把最后几页漏掉。
+        """
+        produced = 0
+        for page in range(1, self.max_pages + 1):
+            try:
+                html_text = self.fetch_articles_page(page)
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code not in RETRYABLE_STATUS:
+                    raise
+                self.failed_pages.append(
+                    FailedPage("articles", page, f"HTTP {exc.response.status_code}")
+                )
+                continue
+            except httpx.TransportError as exc:
+                self.failed_pages.append(
+                    FailedPage("articles", page, f"{type(exc).__name__}: {exc}")
+                )
+                continue
+
+            entries = parse_articles_page(html_text)
+            if not entries:
+                # 空页 = 到头了。站点返回 200 + 空列表而不是 404，
+                # 所以这里只能靠"没东西"判断结束。
+                break
+            for entry in entries:
+                yield entry
+                produced += 1
+                if limit is not None and produced >= limit:
+                    return
+
+    def fetch_article_detail(self, article_id: str) -> dict[str, Any]:
+        """抓并解析一篇资讯的详情。
+
+        失败抛异常由调用方记账：详情拿不到时那条资讯仍然入库
+        （标题、摘要、时间、封面都齐了），只是没有正文和原文链接。
+        """
+        return parse_article_detail(self.fetch_article_detail_html(article_id))
+
+    def to_article_item(
+        self, raw: dict[str, Any], fetched_at: str, detail: dict[str, Any] | None = None
+    ) -> ArticleItem:
+        """把列表页元数据（可叠加详情）转成待导入条目。"""
+        extra = detail or {}
+        return ArticleItem(
+            source_record=SourceRecord(
+                source_id=str(raw.get("source_id") or ""),
+                source_url=normalize_url(raw.get("source_url")),
+                fetched_at=fetched_at,
+                source_updated_at=None,
+            ),
+            title=clean_title(raw.get("title")),
+            summary=clean_text(raw.get("summary")),
+            body=clean_text(extra.get("body")),
+            category=clean_text(raw.get("category")),
+            published_at=to_iso_utc(raw.get("published_at")),
+            source_name=clean_text(extra.get("source_name")),
+            # 原文链接（章程 G3）：列表页的 source_url 是我们自己的资讯页，
+            # 详情页的 source_url 才是来源站的原文，两者不能混。
+            source_url=normalize_url(extra.get("source_url")),
+            cover_url=normalize_url(raw.get("cover_url")),
+            tags=clean_tags(raw.get("tags")),
+            related_work_ids=clean_tags(extra.get("related_work_ids")),
+        )
