@@ -9,6 +9,7 @@ import 'package:window_manager/window_manager.dart';
 import 'app.dart';
 import 'core/diagnostics/frame_stats.dart';
 import 'core/storage/collection_cache_provider.dart';
+import 'core/storage/local_prefs_provider.dart';
 import 'core/storage/recent_views_provider.dart';
 import 'core/storage/work_cache_provider.dart';
 import 'core/theme/app_layout.dart';
@@ -35,6 +36,9 @@ Future<void> main() async {
   // 浏览历史同样单独一个盒，但它**不在退出登录时清**：
   // 它是纯本机数据，清了就再也拿不回来（详见 RecentViewsStore 的注释）。
   await RecentViewsHolder.instance.initialize();
+  // 主题与搜索历史。必须在 runApp 之前：`MaterialApp` 的第一帧就要用哪套主题，
+  // 晚一步就会先按系统主题画一帧、再跳成用户选的那套。
+  await LocalPrefsHolder.instance.initialize();
 
   // 只在 OTAKU_FRAME_STATS=true 时生效，正常构建是空操作。
   FrameStats.start();
