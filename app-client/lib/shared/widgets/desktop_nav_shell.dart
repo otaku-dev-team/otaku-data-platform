@@ -46,17 +46,22 @@ class DesktopNavShell extends StatelessWidget {
     final location = _locationOf(context);
     final onCollections = location.startsWith(RoutePaths.collections);
     final onSchedule = location.startsWith(RoutePaths.schedule);
+    final onArticles = location.startsWith(RoutePaths.articles);
     final onContents = location.startsWith(RoutePaths.contents);
 
     return NavigationRail(
-      // 路由不认识时（比如测试里单独 pump 某页）三项都不选中，
+      // 路由不认识时（比如测试里单独 pump 某页）四项都不选中，
       // 而不是默认高亮第一项——高亮错了比不亮更误导。
-      selectedIndex: onCollections
-          ? 1
-          : onSchedule
-          ? 2
-          : onContents
+        // 序号必须与下面 destinations 的顺序一一对应：
+      // 0 作品库 / 1 资讯 / 2 收藏 / 3 新番。
+      selectedIndex: onContents
           ? 0
+          : onArticles
+          ? 1
+          : onCollections
+          ? 2
+          : onSchedule
+          ? 3
           : null,
       labelType: NavigationRailLabelType.none,
       groupAlignment: -0.85,
@@ -65,7 +70,8 @@ class DesktopNavShell extends StatelessWidget {
         if (router == null) return;
         router.go(switch (index) {
           0 => RoutePaths.contents,
-          1 => RoutePaths.collections,
+          1 => RoutePaths.articles,
+          2 => RoutePaths.collections,
           _ => RoutePaths.schedule,
         });
       },
@@ -77,6 +83,17 @@ class DesktopNavShell extends StatelessWidget {
             child: Icon(Icons.grid_view_rounded),
           ),
           label: Text('浏览'),
+        ),
+        NavigationRailDestination(
+          icon: Tooltip(
+            message: '最新资讯',
+            child: Icon(Icons.newspaper_outlined),
+          ),
+          selectedIcon: Tooltip(
+            message: '最新资讯',
+            child: Icon(Icons.newspaper_rounded),
+          ),
+          label: Text('资讯'),
         ),
         NavigationRailDestination(
           icon: Tooltip(
