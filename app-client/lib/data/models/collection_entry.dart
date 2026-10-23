@@ -88,6 +88,20 @@ class CollectionEntry {
     );
   }
 
+  /// 离线缓存用的序列化。与 [fromJson] 成对，字段对齐同一个契约。
+  ///
+  /// **省略 null 而不是写 `null`**：缓存是「上一次服务端给的样子」，
+  /// 写不写 null 解析结果一样，但少两个键能让缓存体积小一点；
+  /// 反过来，[fromJson] 对 null 一律按「没有」处理，两边始终对得上。
+  Map<String, dynamic> toJson() => {
+    'work_id': workId,
+    'work_type': workType.value,
+    'title': title,
+    if (coverUrl != null) 'cover_url': coverUrl,
+    if (status != null) 'status': status!.value,
+    if (updatedAt != null) 'updated_at': updatedAt!.toUtc().toIso8601String(),
+  };
+
   @override
   String toString() => 'CollectionEntry($workId, ${status?.value ?? 'none'})';
 }
