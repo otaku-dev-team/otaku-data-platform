@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:otaku_app/app.dart';
 import 'package:otaku_app/core/network/api_exception.dart';
+import 'package:otaku_app/core/router/app_router.dart';
+import 'package:otaku_app/core/router/route_paths.dart';
 import 'package:otaku_app/data/datasources/work_data_source.dart';
 import 'package:otaku_app/data/datasources/work_mock_data_source.dart';
 import 'package:otaku_app/data/models/paged_result.dart';
@@ -134,6 +136,10 @@ void main() {
         workDataSourceProvider.overrideWithValue(source ?? _FakeDataSource()),
         // 详情页与列表页都会碰认证状态（账号入口、收藏区），不让它走平台通道。
         ...authOverrides(),
+        // 首页现在是落地页，而这个文件测的是列表页：把落点钉在 `/works`，
+        // 否则每个用例都会先跑一遍首页的三次请求。
+        // 单独 pump 某页（`MaterialApp(home: …)`）时不读路由，设了也无影响。
+        appInitialLocationProvider.overrideWithValue(RoutePaths.contents),
       ],
       child: child,
     );

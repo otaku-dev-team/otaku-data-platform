@@ -4,6 +4,11 @@ abstract final class RoutePaths {
 
   static const String contents = '/works';
 
+  /// 首页。落地页，把分类浏览 / 本日新番 / 高分作品 / 最新资讯四块聚在一起。
+  ///
+  /// 路径就用 `/`：它是信息架构的根，也是深链接最自然的入口。
+  static const String home = '/';
+
   /// 最新资讯列表。与 `contents` 平级，不是它的子路由——
   /// 资讯和作品的筛选、分页各管一套，套在一起只会互相干扰。
   static const String articles = '/articles';
@@ -23,6 +28,11 @@ abstract final class RoutePaths {
 
   /// 每日新番档期。与列表/收藏平级：从任何地方都能直接进。
   static const String schedule = '/schedule';
+
+  /// 设置：外观 / 离线缓存 / 关于。
+  ///
+  /// 平级而不是挂在某个页面下面：主题与缓存是设备级的，与「当前在看什么」无关。
+  static const String settings = '/settings';
 
   /// 相对 `contents` 的子路由。
   static const String workDetailSegment = ':workId';
