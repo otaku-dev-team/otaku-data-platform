@@ -21,6 +21,7 @@ import '../../shared/widgets/skeleton_list.dart';
 import '../../shared/widgets/tag_chips.dart';
 import '../../shared/widgets/work_type_tag.dart';
 import '../auth/auth_controller.dart';
+import '../recent/recent_views_controller.dart';
 import 'related_works_section.dart';
 import 'work_collection_controller.dart';
 import 'work_detail_controller.dart';
@@ -33,14 +34,60 @@ import 'work_detail_controller.dart';
 /// 版面按站点的详情页顺序摆：封面 + 标题 + 分类评分 → 简介 → 收录信息。
 /// 站点还有原名、别名、年份、话数、制作、导演、声优、系列、相关推荐，
 /// 这些字段平台契约里都还没有，**这里不摆空位**——空占位比少显示更误导。
-class WorkDetailPage extends ConsumerWidget {
+class WorkDetailPage extends ConsumerStatefulWidget {
   const WorkDetailPage({super.key, required this.workId});
 
   final String workId;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final fetched = ref.watch(workDetailProvider(workId));
+  ConsumerState<WorkDetailPage> createState() => _WorkDetailPageState();
+}
+
+class _WorkDetailPageState extends ConsumerState<WorkDetailPage> {
+  /// 详情 provider 的订阅。`listenManual` 不会被框架自动回收，必须自己关。
+  late final ProviderSubscription<AsyncValue<Fetched<Work>>> _detailSub;
+
+  @override
+  void initState() {
+    super.initState();
+
+    // 记「最近浏览」的时机：**详情数据到手**才算看过，加载失败与 404 都不记
+    // （把打不开的页面记进历史，只会让人再点一次还是打不开）。
+    //
+    // 用 `listenManual` 而不是 build 里的 `ref.listen`：前者可以挂在 initState，
+    // 且回调发生在 provider 变化之后而不是构建期间，能安全地写另一个 provider。
+    _detailSub = ref.listenManual<AsyncValue<Fetched<Work>>>(
+      workDetailProvider(widget.workId),
+      (previous, next) {
+        final work = next.value?.value;
+        if (work != null) _remember(work);
+      },
+    );
+
+    // provider 不自动销毁，所以「从列表第二次点进同一部作品」不会产生值变化，
+    // 上面那个订阅不会再触发。这里补记一次，否则「最近浏览」的顺序会停在
+    // 第一次打开的时间上（A → B → 再回 A，A 还排在 B 后面）。
+    final existing = ref.read(workDetailProvider(widget.workId)).value?.value;
+    if (existing != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _remember(existing);
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _detailSub.close();
+    super.dispose();
+  }
+
+  /// 记一次浏览。重复记录是幂等的（去重 + 置顶），所以补记不会产生两条。
+  void _remember(Work work) =>
+      ref.read(recentViewsProvider.notifier).record(work);
+
+  @override
+  Widget build(BuildContext context) {
+    final fetched = ref.watch(workDetailProvider(widget.workId));
     // `Fetched` 包了一层，这里拆出来：页面正文只关心作品本身，
     // 「是不是缓存」只影响顶部那一条提示。
     final work = fetched.value;
@@ -126,7 +173,7 @@ class WorkDetailPage extends ConsumerWidget {
       }
       return ErrorState(
         error: error,
-        onRetry: () => ref.invalidate(workDetailProvider(workId)),
+        onRetry: () => ref.invalidate(workDetailProvider(widget.workId)),
       );
     }
 
@@ -140,7 +187,7 @@ class WorkDetailPage extends ConsumerWidget {
       children: [
         OfflineNotice(
           cachedAt: resolved.cachedAt,
-          onRetry: () => ref.invalidate(workDetailProvider(workId)),
+          onRetry: () => ref.invalidate(workDetailProvider(widget.workId)),
         ),
         Expanded(child: body),
       ],
