@@ -35,6 +35,7 @@
 - [`docs/flutter-git-branches.md`](flutter-git-branches.md)：客户端侧 Git 分支操作手册——一次性接入、6 条分支的职责与依赖顺序、命名规则、分支从生到死、冲突处理。
 - [`docs/flutter-lead-plan.md`](flutter-lead-plan.md)：客户端负责人执行方案——技术选型、目录结构、六周节奏、给 Java 的接口需求单、两端差异清单、验收 checklist。
 - [`docs/flutter-scaffold-spec.md`](flutter-scaffold-spec.md)：脚手架开工时确定的实现规格（页面边界、目录、双端差异）。**已按此落地**，保留作追溯，实际行为以代码与 `app-client/README.md` 为准。
+- [`docs/client-capability-list.md`](client-capability-list.md)：**客户端能力承载清单**——哪些能力 App 原生做、哪些跳来源站，按站点维护，随版本更新。回答客户那句「什么都跳回网站要你们干什么」。
 
 ## 五、产品规划
 
