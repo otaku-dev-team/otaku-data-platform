@@ -225,14 +225,14 @@ void main() {
       addTearDown(detailSub.close);
 
       final before = await container.read(collectionControllerProvider.future);
-      expect(before.any((entry) => entry.workId == 'W-9'), isFalse);
+      expect(before.value.any((entry) => entry.workId == 'W-9'), isFalse);
 
       await container
           .read(workCollectionProvider('W-9').notifier)
           .toggle(_work('W-9'));
 
       final after = await container.read(collectionControllerProvider.future);
-      expect(after.any((entry) => entry.workId == 'W-9'), isTrue);
+      expect(after.value.any((entry) => entry.workId == 'W-9'), isTrue);
     });
   });
 

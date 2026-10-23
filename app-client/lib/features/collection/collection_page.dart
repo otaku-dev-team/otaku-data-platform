@@ -6,6 +6,7 @@ import '../../core/network/api_exception.dart';
 import '../../core/router/route_paths.dart';
 import '../../core/theme/app_layout.dart';
 import '../../data/models/collection_entry.dart';
+import '../../data/repositories/work_repository.dart' show Fetched;
 import '../../shared/widgets/account_menu.dart';
 import '../../shared/widgets/desktop_nav_shell.dart';
 import '../../shared/widgets/desktop_shortcuts.dart';
@@ -13,6 +14,7 @@ import '../../shared/widgets/collection_status_menu.dart';
 import '../../shared/widgets/cover_image.dart';
 import '../../shared/widgets/empty_state.dart';
 import '../../shared/widgets/error_state.dart';
+import '../../shared/widgets/offline_notice.dart';
 import '../../shared/widgets/poster_card.dart';
 import '../../shared/widgets/skeleton_list.dart';
 import '../../shared/widgets/work_type_tag.dart';
@@ -97,6 +99,11 @@ class _CollectionBody extends ConsumerWidget {
     final filter = ref.watch(collectionFilterProvider);
     final collections = ref.watch(collectionControllerProvider);
 
+    // 离线提示放在筛选栏下、列表上，与作品库同一位置：先看到内容，
+    // 紧接着看到「这是缓存」的说明，而不是被一条横幅挡在内容之外。
+    final cached = collections.value;
+    final offline = cached != null && cached.fromCache;
+
     return Column(
       children: [
         _StatusFilters(
@@ -104,6 +111,12 @@ class _CollectionBody extends ConsumerWidget {
           onSelected: (status) =>
               ref.read(collectionFilterProvider.notifier).select(status),
         ),
+        if (offline)
+          OfflineNotice(
+            cachedAt: cached.cachedAt,
+            onRetry: () =>
+                ref.read(collectionControllerProvider.notifier).refresh(),
+          ),
         Expanded(child: _buildList(context, ref, collections, filter)),
       ],
     );
@@ -112,10 +125,11 @@ class _CollectionBody extends ConsumerWidget {
   Widget _buildList(
     BuildContext context,
     WidgetRef ref,
-    AsyncValue<List<CollectionEntry>> collections,
+    AsyncValue<Fetched<List<CollectionEntry>>> collections,
     CollectionStatus? filter,
   ) {
-    final items = collections.value;
+    final fetched = collections.value;
+    final items = fetched?.value;
     if (collections.isLoading && items == null) return const SkeletonList();
 
     if (collections.hasError && items == null) {
