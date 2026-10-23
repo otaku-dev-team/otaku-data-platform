@@ -4,6 +4,8 @@
     python -m sync --source bangumi --archive <dump.zip> --stats
     python -m sync --source bangumi --archive <dump.zip> --type anime --limit 100 --dry-run
     python -m sync --source bangumi --archive <dump.zip> --limit 10000 --sample uniform --dry-run
+    python -m sync --schedule                 # 每日新番档期（otaku_site）
+    python -m sync --schedule --dry-run       # 只落盘载荷不提交
 
 Java 后端就绪后再去掉 --dry-run 并配置 OTAKU_INTERNAL_TOKEN。
 """
@@ -15,7 +17,7 @@ import sys
 
 from .bangumi import BangumiArchiveSource, WORK_TYPE_LABELS
 from .config import VALID_SOURCES, SyncConfig
-from .pipeline import run, summarize
+from .pipeline import run, run_schedule, summarize
 from .models import VALID_WORK_TYPES
 
 
@@ -62,6 +64,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="只统计档案里各类型条数，不生成载荷",
     )
     parser.add_argument(
+        "--schedule",
+        action="store_true",
+        help="同步每日新番档期（来源站 /api/schedule），与 --type 互斥",
+    )
+    parser.add_argument(
         "--source-base-url", default=None, help="覆盖来源站点地址"
     )
     parser.add_argument("--java-base-url", default=None, help="覆盖 Java 后端地址")
@@ -102,6 +109,25 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 2
+
+    if args.schedule:
+        if args.work_types:
+            print("错误：--schedule 与 --type 互斥（档期没有类型维度）", file=sys.stderr)
+            return 2
+        if config.source != "otaku_site":
+            print(
+                "错误：--schedule 只支持来源站 otaku_site（档期是站点自己的排播数据）",
+                file=sys.stderr,
+            )
+            return 2
+        report = run_schedule(config, dry_run=args.dry_run, output_dir=args.out)
+        print(summarize(report))
+        for item in report.rejected_items[:20]:
+            print(f"  拒绝 {item.source_id}: {item.reason_code} - {item.message}")
+        for batch in report.batches:
+            if not batch.get("delivered") and not report.dry_run:
+                print(f"  批次 {batch['batch_id']} 未送达：{batch.get('error')}")
+        return 0
 
     if args.stats:
         if config.source != "bangumi":
