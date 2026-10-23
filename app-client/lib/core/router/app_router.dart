@@ -6,6 +6,7 @@ import '../../features/auth/login_page.dart';
 import '../../features/collection/collection_page.dart';
 import '../../features/contents/contents_page.dart';
 import '../../features/detail/work_detail_page.dart';
+import '../../features/schedule/schedule_page.dart';
 import '../../shared/widgets/empty_state.dart';
 import 'route_paths.dart';
 
@@ -41,6 +42,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: RoutePaths.collections,
         builder: (context, state) => const CollectionPage(),
+      ),
+      GoRoute(
+        path: RoutePaths.schedule,
+        builder: (context, state) => const SchedulePage(),
       ),
     ],
     errorBuilder: (context, state) => Scaffold(
