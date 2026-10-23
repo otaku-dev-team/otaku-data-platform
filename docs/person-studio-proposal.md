@@ -24,9 +24,9 @@
 | 原名 / 别名 / 话数 / 放送信息 / Staff | **现有瘦身档 `subject.jsonlines` 的 `infobox`** | **动画**：话数 85%、中文名 74%、别名 51%、导演 57%（口径见 §2） | **不需要** |
 | 漫画 / 小说 / 游戏的同类字段 | 同上，但「键齐全、值为空」 | 中文名 15%–32%、话数 0%–14% | 要支持得另做字段映射 |
 | Staff（导演 / 脚本 / 音乐 / 人物设定 / 动画制作…） | 同上，`infobox` 里的键 | 动画：导演 56.8% / 原作 32.0% / 脚本 28.4% / 音乐 24.1% | **不需要** |
-| 人物页（姓名 / 参与作品）、角色与声优 | **完整档 `dump.zip`** 的 person / character / subject-persons / person-characters | 待实测 | 需要换一份档案（426 MB） |
-| 制作公司页 | 完整档 `person.jsonlines` 里 `type=2`（公司）+ subject-persons | 待实测 | 同上 |
-| 系列 | 完整档 `subject-relations.jsonlines` | 待实测 | 同上 |
+| 人物页（姓名 / 参与作品）、角色与声优 | **完整档 `dump.zip`** 的 person / character / subject-persons / person-characters | Staff 覆盖 **77.3%**、角色 39.3%、声优 33.7%（§6.1） | 需要换一份档案（426 MB） |
+| 制作公司页 | 完整档 `person.jsonlines` 里 `type=2`（公司）+ subject-persons | **8,465 家公司**，staff 涉及 54,968 个实体 | 同上 |
+| 系列 | 完整档 `subject-relations.jsonlines` | 85,063 条，覆盖动画 **64.1%** | 同上 |
 
 也就是说：**详情页富字段用今天的档案就能做，一个人物/公司页需要一次 426 MB 下载 + 三张新表；
 两条路都不需要打站点、不需要 Bangumi API 令牌。**
@@ -153,10 +153,34 @@ A 的唯一优势是覆盖 otaku_site 那 1.5 万条，而它们恰好是**封�
 现用档案是**瘦身档**（只有 `subject.jsonlines`，268 MB）；完整档 `dump.zip` **426 MB**，
 同一个 draft release（`data-bangumi-2026-10-21`），下载需要仓库写权限。
 
+⚠️ 更正：完整档**不在我们的 draft release 里**（那里只有 `dump-subject-only.zip`），
+要从上游 `github.com/bangumi/Archive` 的 `archive` 标签下载。最新一版 `dump-2026-10-20.zip` 是 426.7 MB。
+
+### 6.1 完整档实测（2026-10-24，直接扫包，未解压落盘）
+
+| 文件 | 解压后 | 行数 | 对动画 31,215 条的覆盖 |
+|---|---|---|---|
+| `subject.jsonlines` | 944 MB | — | — |
+| `person.jsonlines` | 70 MB | 104,055（公司 `type=2` **8,465**） | — |
+| `character.jsonlines` | 157 MB | 224,679 | — |
+| `subject-persons.jsonlines` | 150 MB | — | **Staff 1,085,840 条，覆盖 24,120 部（77.3%），平均 45 条/部** |
+| `subject-characters.jsonlines` | 27 MB | — | 角色 176,284 条，覆盖 12,254 部（39.3%） |
+| `person-characters.jsonlines` | 23 MB | — | 声优关系 292,429 条，覆盖 10,509 部（33.7%），10,387 位声优 |
+| `episode.jsonlines` | 325 MB | — | 正篇 342,720 集，覆盖 26,008 部（83.3%），平均 13.2 集 |
+| `subject-relations.jsonlines` | 72 MB | — | 85,063 条，覆盖 20,003 部（64.1%） |
+| `person-relations.jsonlines` | 15 MB | — | 人物/角色之间的关系，本方案不用 |
+
+**这张表回答了 T2 值不值得做**：
+
+- **Staff 覆盖 77.3%，是这一档里最强的一块**——比 infobox 的「导演 56.8%」更高，而且是结构化的
+  （`person_id` + `position`），能直接连到人物页；
+- 角色声优只有 33.7%：「有就有、没有就没有」，界面上不该承诺「每部都有声优表」；
+- 话数用 `episode` 能到 83.3%，与 infobox 的 85.2% 相当，但 `episode` 更准（能区分正篇 / SP）。
+
 ## 7. 未验证项（写方案时不允许含糊）
 
-- **完整档未下载**：person / character / 三张关系表的行数与磁盘占用未知，
-  T2 的导入耗时与库体积因此**无法给出数字**；
+- **导入耗时与库体积仍未实测**：行数已知（关系表合计约 170 万条），但没真跑过导入，
+  磁盘增量与耗时给不出数字——这是 T2 开工前唯一还缺的数；
 - `platform` 常量映射未核（实测分布 1:9757 / 3:6574 / 空:5721 / 5:4754 / 2:4209），
   映射表在 `bangumi/common` 的 yaml，做 T1 前需核对；
 - `infobox` 解析**正确率只测到「结构」层面**（话数能否转整数 81.6%、放送开始是否符合日期写法），
