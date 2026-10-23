@@ -107,6 +107,11 @@ https://github.com/otaku-dev-team/otaku-data-platform/releases/download/untagged
 
 两个版本导入结果**完全一致**（556,216 条），瘦身档只是少了 158 MB 用不上的文件。
 
+> ⚠️ **现状（2026-10-24 核对）**：draft release 里**只上传了瘦身档**，没有 `dump.zip`。
+> 完整档要去上游 `github.com/bangumi/Archive` 的 `archive` 标签下（最新一版 `dump-2026-10-20.zip`，426.7 MB）。
+> 需要人物 / 角色 / Staff 数据时才要完整档，字段与实测覆盖率见
+> [`person-studio-proposal.md`](person-studio-proposal.md) §6.1。
+
 ### 2.3 放哪
 
 放仓库**外面**，例如 `~/data/dump-subject-only.zip`。git 不跟踪它，放仓库里容易被误提交。
