@@ -9,6 +9,7 @@ import 'package:window_manager/window_manager.dart';
 import 'app.dart';
 import 'core/diagnostics/frame_stats.dart';
 import 'core/storage/collection_cache_provider.dart';
+import 'core/storage/recent_views_provider.dart';
 import 'core/storage/work_cache_provider.dart';
 import 'core/theme/app_layout.dart';
 
@@ -31,6 +32,9 @@ Future<void> main() async {
   await WorkCacheHolder.instance.initialize();
   // 收藏缓存单独一个盒：退出登录时要清它，但作品缓存是公共数据可以留着。
   await CollectionCacheHolder.instance.initialize();
+  // 浏览历史同样单独一个盒，但它**不在退出登录时清**：
+  // 它是纯本机数据，清了就再也拿不回来（详见 RecentViewsStore 的注释）。
+  await RecentViewsHolder.instance.initialize();
 
   // 只在 OTAKU_FRAME_STATS=true 时生效，正常构建是空操作。
   FrameStats.start();

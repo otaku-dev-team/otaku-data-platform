@@ -200,7 +200,9 @@ void main() {
   testWidgets('落地页就是首页，四块内容都在', (tester) async {
     await pumpApp(tester, app());
 
-    expect(find.text('首页'), findsOneWidget);
+    // 侧栏也有一个「首页」标签（`labelType: none` 不画出来，但仍在树里），
+    // 所以标题要限定在 AppBar 上找，否则会一次命中两个。
+    expect(find.widgetWithText(AppBar, '首页'), findsOneWidget);
     expect(find.text('分类浏览'), findsOneWidget);
     expect(find.text('本日新番'), findsOneWidget);
     expect(find.text('高分作品'), findsOneWidget);
