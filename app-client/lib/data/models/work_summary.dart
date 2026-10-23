@@ -76,6 +76,21 @@ class WorkSummary {
     return tags.isEmpty ? null : tags;
   }
 
+  /// 序列化。离线缓存用（见 `HiveWorkCache`）。
+  ///
+  /// 与 [fromJson] 对称。注意 `tags` 为空数组时写 `null`：
+  /// 解析侧把空数组与 null 归一为同一个意思（都不渲染标签区），
+  /// 这里保持一致，免得缓存往返一趟后语义变了。
+  Map<String, dynamic> toJson() => {
+    'work_id': workId,
+    'work_type': workType.value,
+    'title': title,
+    'release_year': releaseYear,
+    'cover_url': coverUrl,
+    'tags': (tags == null || tags!.isEmpty) ? null : tags,
+    'main_rating': mainRating?.toJson(),
+  };
+
   @override
   String toString() => 'WorkSummary($workId, $title)';
 }

@@ -261,6 +261,22 @@ packages:
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "18.1.1"
+  hive_ce:
+    dependency: "direct main"
+    description:
+      name: hive_ce
+      sha256: "8b6eea82b06a7e2bb298a6a279139c45838b82491a66f3972bf609d48681392a"
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "2.22.0"
+  hive_ce_flutter:
+    dependency: "direct main"
+    description:
+      name: hive_ce_flutter
+      sha256: "7853fb2924c5dd6715c81f7a5cc4574afe4aac3c2d7ecd657fdeba409505f1d1"
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "2.5.0"
   hooks:
     dependency: transitive
     description:
@@ -293,6 +309,14 @@ packages:
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "0.20.3"
+  isolate_channel:
+    dependency: transitive
+    description:
+      name: isolate_channel
+      sha256: a9d3d620695bc984244dafae00b95e4319d6974b2d77f4b9e1eb4f2efe099094
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "0.6.1"
   jni:
     dependency: transitive
     description:

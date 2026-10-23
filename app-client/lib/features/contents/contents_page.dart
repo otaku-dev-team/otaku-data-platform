@@ -17,6 +17,7 @@ import '../../shared/widgets/desktop_nav_shell.dart';
 import '../../shared/widgets/desktop_shortcuts.dart';
 import '../../shared/widgets/empty_state.dart';
 import '../../shared/widgets/error_state.dart';
+import '../../shared/widgets/offline_notice.dart';
 import '../../shared/widgets/skeleton_list.dart';
 import 'catalog_counts.dart';
 import 'contents_controller.dart';
@@ -156,6 +157,21 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
     // "共 N 部"只认当前条件的数据，切换条件时的旧值不能拿来显示。
     final data = contents.value;
     final liveTotal = data != null && data.filter == filter ? data.total : null;
+    // 离线提示同理：换条件时 Riverpod 会把上一组数据留在 AsyncValue 里，
+    // 那份数据不属于当前条件，拿它的「来自缓存」状态说事是错的。
+    final cacheNotice = data != null && data.filter == filter && data.fromCache
+        ? data
+        : null;
+
+    // 按评分排序时，无评分条目由服务端沉到末尾（rating_value DESC）。
+    // 这个顺序必须解释一句：否则末尾那一片「没有徽标」的卡片会被读成
+    // 加载失败，而不是「这些作品本来就没分」（W1.5 D2）。
+    final ratingSort = filter.sort == WorkSort.rating;
+    final showMissingRating = ratingSort;
+    final showRatingNotice =
+        ratingSort &&
+        liveTotal != null &&
+        data!.items.any((item) => item.mainRating == null);
 
     return DesktopNavShell(
       child: DesktopShortcuts(
@@ -175,9 +191,21 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
                   icon: const Icon(Icons.refresh_rounded),
                 ),
               IconButton(
+                tooltip: '最新资讯',
+                onPressed: () => context.push(RoutePaths.articles),
+                icon: const Icon(Icons.newspaper_outlined),
+              ),
+              IconButton(
                 tooltip: '我的收藏',
                 onPressed: () => context.push(RoutePaths.collections),
                 icon: const Icon(Icons.bookmark_border_rounded),
+              ),
+              // 每日新番入口。与收藏并列而不是塞进筛选栏：筛选栏已经
+              // 被类型 chips 和排序占满，再放一个入口会把 chips 挤没。
+              IconButton(
+                tooltip: '每日新番',
+                onPressed: () => context.push(RoutePaths.schedule),
+                icon: const Icon(Icons.calendar_today_outlined),
               ),
               // 排序放在 AppBar 而不是筛选栏：筛选栏已经塞了类型 chips 和
               // 视图切换，再放一个控件会在手机上把 chips 挤到只剩一两个。
@@ -239,7 +267,34 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
                     onViewChanged: (next) =>
                         ref.read(catalogViewProvider.notifier).select(next),
                   ),
-                  Expanded(child: _buildBody(filter, contents, view)),
+                  // 当前标签筛选状态 + 清除入口。
+                  //
+                  // 筛选条件**必须显式可见**：卡片上的标签被标了色，但
+                  // 一屏 50 张卡里只看一张时，用户很容易不知道自己筛过标签，
+                  // 也不知道为什么结果变少了。空结果时尤其重要——
+                  // 「按『科幻』筛出 0 部」和「库里没有科幻」是两回事。
+                  if (filter.tag != null)
+                    _TagFilterBar(
+                      tag: filter.tag!,
+                      // `tag` 与 `q` 同用约 720ms（后端实测：LIKE '%kw%' 与
+                      // 标签求交集，两边都定位不了索引）。这不是客户端能绕过的，
+                      // 所以先选标签时把搜索框禁用并说明原因，
+                      // 而不是让用户组合出一个 0.7 秒的查询还不知情。
+                      searchBlocked: filter.query.isNotEmpty,
+                    ),
+                  // 离线提示。放在筛选栏下面、列表上面：用户先看到内容，
+                  // 紧接着看到「这是缓存」的说明，而不是被一条横幅挡在内容之外。
+                  if (cacheNotice != null)
+                    OfflineNotice(
+                      cachedAt: cacheNotice.cachedAt,
+                      onRetry: () =>
+                          ref.read(contentsControllerProvider.notifier).refresh(),
+                    ),
+                  
+                  if (showRatingNotice) const _RatingSortNotice(),
+                  Expanded(
+                    child: _buildBody(filter, contents, view, showMissingRating),
+                  ),
                 ],
               ),
             ),
@@ -253,6 +308,7 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
     ContentsFilter filter,
     AsyncValue<ContentsData> contents,
     CatalogView view,
+    bool showMissingRating,
   ) {
     final data = contents.value;
     // 换条件后 Riverpod 会把上一组数据保留在 AsyncLoading/AsyncError 里，
@@ -281,19 +337,43 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
             error: error,
             onRetry: () => ref.invalidate(contentsControllerProvider),
           ),
-          Expanded(child: _buildList(data, view)),
+          Expanded(child: _buildList(data, view, showMissingRating)),
         ],
       );
     }
 
     final resolved = contents.requireValue;
     if (resolved.items.isEmpty) return _buildEmpty(filter);
-    return _buildList(resolved, view);
+    return _buildList(resolved, view, showMissingRating);
   }
 
   Widget _buildEmpty(ContentsFilter filter) {
     final searching = filter.query.isNotEmpty;
     final hasType = filter.type != null;
+    final tag = filter.tag;
+
+    // 按标签筛出 0 条与「库里没有东西」是两回事，文案必须分开：
+    // 契约里未知标签返 `200 + 空数组`（不是 404），所以这一屏是**筛太窄**，
+    // 不是**没数据**。说成「这里还没有作品」会让用户以为同步没跑完。
+    final filtering = searching || hasType || tag != null;
+    final (title, message) = switch (null) {
+      _ when tag != null && searching => (
+        '这个标签下没有匹配的作品',
+        '「$tag」与关键词「${filter.query}」同时筛选超出了当前检索能力，'
+            '去掉一个条件试试',
+      ),
+      _ when tag != null => (
+        '没有这个标签的作品',
+        '「$tag」是精确匹配——「科幻」不会包含「科幻机甲」。'
+            '换个标签或清除筛选看看',
+      ),
+      _ when searching => (
+        '没有匹配的作品',
+        '换个更短的关键词试试，搜索只匹配标题，不支持拼音与别名',
+      ),
+      _ when hasType => ('这个分类下暂时没有内容', '换个分类看看'),
+      _ => ('这里还没有作品', '等同步任务跑完就有了'),
+    };
 
     return RefreshIndicator(
       onRefresh: () => ref.read(contentsControllerProvider.notifier).refresh(),
@@ -302,28 +382,32 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
         children: [
           const SizedBox(height: 72),
           EmptyState(
-            icon: searching
+            icon: filtering
                 ? Icons.search_off_rounded
                 : Icons.movie_filter_outlined,
-            title: searching ? '没有匹配的作品' : '这里还没有作品',
-            message: searching
-                ? '换个更短的关键词试试，搜索只匹配标题，不支持拼音与别名'
-                : (hasType ? '这个分类下暂时没有内容，换个分类看看' : '等同步任务跑完就有了'),
+            title: title,
+            message: message,
           ),
         ],
       ),
     );
   }
 
-  Widget _buildList(ContentsData data, CatalogView view) {
+  Widget _buildList(
+    ContentsData data,
+    CatalogView view,
+    bool showMissingRating,
+  ) {
     _flushScrollReset();
     return RefreshIndicator(
       onRefresh: () => ref.read(contentsControllerProvider.notifier).refresh(),
-      child: view == CatalogView.list ? _buildRows(data) : _buildGrid(data),
+      child: view == CatalogView.list
+          ? _buildRows(data, showMissingRating)
+          : _buildGrid(data, showMissingRating),
     );
   }
 
-  Widget _buildGrid(ContentsData data) {
+  Widget _buildGrid(ContentsData data, bool showMissingRating) {
     // 海报网格：列数按可用宽度算，卡片高度写死，保证长短标题不会让行高参差。
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -355,7 +439,10 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
                   mainAxisSpacing: AppLayout.gridGap,
                 ),
                 delegate: SliverChildBuilderDelegate(
-                  (context, index) => WorkCard(work: data.items[index]),
+                  (context, index) => WorkCard(
+                        work: data.items[index],
+                        showMissingRating: showMissingRating,
+                      ),
                   childCount: data.items.length,
                 ),
               ),
@@ -367,7 +454,7 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
     );
   }
 
-  Widget _buildRows(ContentsData data) {
+  Widget _buildRows(ContentsData data, bool showMissingRating) {
     return CustomScrollView(
       controller: _scrollController,
       physics: const AlwaysScrollableScrollPhysics(),
@@ -383,7 +470,10 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
             delegate: SliverChildBuilderDelegate(
               (context, index) => Padding(
                 padding: const EdgeInsets.only(bottom: AppLayout.gridGap),
-                child: WorkListTile(work: data.items[index]),
+                child: WorkListTile(
+                  work: data.items[index],
+                  showMissingRating: showMissingRating,
+                ),
               ),
               childCount: data.items.length,
             ),
@@ -463,6 +553,61 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
     }
 
     return const SizedBox(height: 8);
+  }
+}
+
+/// 当前标签筛选条：说清「正在按哪个标签筛」并给一个清除出口。
+///
+/// 单独一条而不是把提示混进空结果页：筛出 0 条时列表会显示空状态，
+/// 那时用户最容易困惑「是我筛错了，还是库里真没有」——这一条正好回答它。
+class _TagFilterBar extends ConsumerWidget {
+  const _TagFilterBar({required this.tag, required this.searchBlocked});
+
+  final String tag;
+
+  /// 搜索框里已经有词了。`tag` + `q` 同用是一次约 720ms 的查询
+  /// （后端实测），所以这个组合要明确提示，而不是让它悄悄变慢。
+  final bool searchBlocked;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final controller = ref.read(contentsFilterProvider.notifier);
+
+    return Padding(
+      padding: const EdgeInsets.only(
+        left: AppLayout.pagePadding,
+        right: AppLayout.pagePadding,
+        top: 2,
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.sell_outlined,
+            size: 14,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+          const SizedBox(width: 6),
+          Text(
+            '标签：$tag',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const Spacer(),
+          // 清除出口用文字按钮而不是图标按钮：图标（×）在这里含义不够明确，
+          // 而「清除筛选」四个字不会误解。
+          TextButton(
+            onPressed: () => controller.selectTag(null),
+            style: TextButton.styleFrom(
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+            ),
+            child: const Text('清除'),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -719,6 +864,48 @@ class _RefreshErrorBar extends StatelessWidget {
             ),
           ),
           TextButton(onPressed: onRetry, child: const Text('重试')),
+        ],
+      ),
+    );
+  }
+}
+
+/// 按评分排序时的说明条（W1.5 D2）。
+///
+/// 只在「结果里确实有无评分条目」时出现：全都有分的话这一行是废话，
+/// 反而占掉列表的一屏高度。文案说的是排序规则，不是「数据缺失」——
+/// 没有评分是来源站本来就有的情况（bangumi 只有 34.4% 有分），不是故障。
+class _RatingSortNotice extends StatelessWidget {
+  const _RatingSortNotice();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppLayout.pagePadding + 4,
+        0,
+        AppLayout.pagePadding,
+        0,
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.info_outline_rounded,
+            size: 14,
+            color: scheme.onSurfaceVariant,
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              '没有评分的作品排在最后',
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
+          ),
         ],
       ),
     );
