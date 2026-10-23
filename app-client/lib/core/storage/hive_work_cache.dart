@@ -157,6 +157,26 @@ class HiveWorkCache implements WorkCache {
     await _box.clear();
   }
 
+  @override
+  Future<CacheUsage> usage() async {
+    try {
+      var entries = 0;
+      var bytes = 0;
+      // 逐个读值而不是读 `box.length`：要的是字节数，而 `length` 只给条数。
+      // 缓存盒子不设 TTL、条目也只有几百到几千，遍历一次的代价可以接受，
+      // 设置页本来就不是高频页面。
+      for (final key in _box.keys) {
+        final value = _box.get(key);
+        if (value is! String) continue;
+        entries++;
+        bytes += utf8.encode('$key').length + utf8.encode(value).length;
+      }
+      return CacheUsage(entries: entries, bytes: bytes);
+    } catch (_) {
+      return CacheUsage.empty;
+    }
+  }
+
   Future<String?> _read(String storageKey) async {
     try {
       return _box.get(storageKey);

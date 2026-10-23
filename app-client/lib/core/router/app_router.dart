@@ -10,6 +10,7 @@ import '../../features/contents/contents_page.dart';
 import '../../features/detail/work_detail_page.dart';
 import '../../features/home/home_page.dart';
 import '../../features/schedule/schedule_page.dart';
+import '../../features/settings/settings_page.dart';
 import '../../shared/widgets/empty_state.dart';
 import 'route_paths.dart';
 
@@ -72,6 +73,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: RoutePaths.schedule,
         builder: (context, state) => const SchedulePage(),
+      ),
+      GoRoute(
+        path: RoutePaths.settings,
+        builder: (context, state) => const SettingsPage(),
       ),
     ],
     errorBuilder: (context, state) => Scaffold(
