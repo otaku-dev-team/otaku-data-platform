@@ -38,6 +38,7 @@
 ## 五、产品规划
 
 - [`docs/otaku-project-plan-v2.md`](otaku-project-plan-v2.md)：产品范围、总体架构、两种同步的边界、阶段划分与验收口径（规划 v0.2 讨论稿）。
+- [`docs/site-feature-adaptation-plan.md`](site-feature-adaptation-plan.md)：**站点特色功能适配方案**——齐平原则（网站没有的我们也没有、网站有的也要适配）与适配能力提前建设（L1 配置 / L2 适配 / L3 底座三级、适配包、数据链路、契约补丁先例、快速部署要求）。2026-10-24 拍板立项，含 D3 的齐平原则适用与四项待确认。
 
 ## 六、文档维护约定
 
