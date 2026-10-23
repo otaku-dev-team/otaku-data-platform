@@ -29,6 +29,11 @@ abstract final class RoutePaths {
   /// 每日新番档期。与列表/收藏平级：从任何地方都能直接进。
   static const String schedule = '/schedule';
 
+  /// 设置：外观 / 离线缓存 / 关于。
+  ///
+  /// 平级而不是挂在某个页面下面：主题与缓存是设备级的，与「当前在看什么」无关。
+  static const String settings = '/settings';
+
   /// 相对 `contents` 的子路由。
   static const String workDetailSegment = ':workId';
 

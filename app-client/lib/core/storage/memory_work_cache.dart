@@ -78,4 +78,14 @@ class InMemoryWorkCache implements WorkCache {
     _related.clear();
     _cachedAt.clear();
   }
+
+  @override
+  Future<CacheUsage> usage() async {
+    // 条目数是准的，字节数没有意义（这里存的是对象，不是序列化后的字符串）。
+    // 这个实现只出现在降级与测试里，设置页显示「0 B」不影响真实使用。
+    return CacheUsage(
+      entries: _lists.length + _details.length + _related.length,
+      bytes: 0,
+    );
+  }
 }
