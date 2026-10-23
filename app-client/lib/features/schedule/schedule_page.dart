@@ -6,6 +6,7 @@ import '../../core/network/api_exception.dart';
 import '../../core/router/route_paths.dart';
 import '../../core/theme/app_layout.dart';
 import '../../data/models/schedule.dart';
+import '../../shared/widgets/desktop_nav_shell.dart';
 import '../../shared/widgets/empty_state.dart';
 import '../../shared/widgets/error_state.dart';
 import '../../shared/widgets/tag_chips.dart';
@@ -39,9 +40,12 @@ class SchedulePage extends ConsumerWidget {
     final group = ref.watch(visibleScheduleProvider);
     final data = schedule.value;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('每日新番'),
+    // 桌面端要套侧栏外壳：这个页面之前漏了（W1.4 桌面走查实测发现），
+    // 进来后侧栏直接消失——外壳是每页自己套的，不是路由级的。
+    return DesktopNavShell(
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('每日新番'),
         actions: [
           // 季度切换。只有真的拿到多个季度才显示，否则一个孤零零的
           // 下拉箭头会让人以为还有别的季度可看。
@@ -64,6 +68,7 @@ class SchedulePage extends ConsumerWidget {
         ],
       ),
       body: _buildBody(context, ref, schedule, selected, group),
+      ),
     );
   }
 
