@@ -14,6 +14,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.time.ZoneOffset;
 import java.util.List;
 
@@ -56,20 +57,23 @@ public class WorkService {
     }
 
     public PageResponse<WorkSummaryDto> list(String typeParam, String qParam, String tagParam,
-                                             String sortParam, int page, int pageSize) {
+                                             String sortParam, String minRatingParam,
+                                             int page, int pageSize) {
         String workType = normalizeType(typeParam);
         String keyword = normalizeKeyword(qParam);
         String tag = normalizeTag(tagParam);
         WorkSort sort = WorkSort.parse(sortParam);
+        BigDecimal minRating = normalizeMinRating(minRatingParam);
 
         int safePage = Math.max(page, 1);
         int safeSize = pageSize <= 0 ? DEFAULT_PAGE_SIZE : Math.min(pageSize, MAX_PAGE_SIZE);
         String pattern = keyword == null ? null : LikePattern.contains(keyword);
 
-        long total = repository.count(workType, pattern, tag);
+        long total = repository.count(workType, pattern, tag, minRating);
         List<WorkSummaryDto> items = total == 0
                 ? List.of()
-                : repository.findPage(workType, pattern, tag, sort, safeSize, (safePage - 1) * safeSize)
+                : repository.findPage(workType, pattern, tag, sort, minRating,
+                        safeSize, (safePage - 1) * safeSize)
                         .stream()
                         .map(this::toSummary)
                         .toList();
@@ -237,5 +241,37 @@ public class WorkService {
             return null;
         }
         return tag.length() > MAX_TAG_LENGTH ? tag.substring(0, MAX_TAG_LENGTH) : tag;
+    }
+
+    /**
+     * 榜单评分下限：只保留评分 ≥ 该值的作品，**无评分（{@code null}）一律排除**。
+     *
+     * <p>与 {@code sort=rating} 的「NULL 沉底」互补：沉底只是排在最后，作品仍在结果里；
+     * 榜单要的是「没评分就不该参与排名」，所以这里把它们移出结果集。
+     * 传 {@code min_rating=0} 时语义为「只要有过评分」——{@code NULL >= 0} 不成立，因此只留已评分的。
+     *
+     * <p>尺度取 0–10：库里 {@code rating_scale} 当前全是 {@code 0-10}（otaku_site 与 bangumi 皆是），
+     * 因此下限也按同一尺度校验。将来接入非 0–10 尺度的来源时，这个参数需要跟着尺度走，
+     * 不能只改这里的常量。
+     *
+     * <p>缺省 / 空串 = 不过滤；非数字、负数、超上限一律 400——与「筛出来没有结果」区分开，
+     * 避免客户端把参数写错当成「这个榜单是空的」。
+     */
+    private static BigDecimal normalizeMinRating(String minRatingParam) {
+        if (minRatingParam == null || minRatingParam.isBlank()) {
+            return null;
+        }
+        BigDecimal value;
+        try {
+            value = new BigDecimal(minRatingParam.trim());
+        } catch (NumberFormatException ex) {
+            throw ApiException.badRequest(
+                    "min_rating 取值非法：" + minRatingParam + "（需为 0-10 的数字）");
+        }
+        if (value.compareTo(BigDecimal.ZERO) < 0 || value.compareTo(BigDecimal.TEN) > 0) {
+            throw ApiException.badRequest(
+                    "min_rating 取值非法：" + minRatingParam + "（需在 0-10 之间）");
+        }
+        return value;
     }
 }

@@ -110,18 +110,45 @@ class WorkTagFilterIntegrationTest {
                 item("it-tag-6", "科幻漫画", List.of("科幻"), "7.5"),
                 item("it-tag-7", "纯日常动画", List.of("日常"), "7.0"));
 
-        var scifi = workService.list(null, null, "科幻", null, 1, 50);
+        var scifi = workService.list(null, null, "科幻", null, null, 1, 50);
         assertThat(scifi.total()).isEqualTo(2);
         assertThat(scifi.items())
                 .extracting(com.otaku.work.dto.WorkSummaryDto::workId)
                 .doesNotContain(workIdOf("it-tag-7"));
 
-        var scifiAnime = workService.list("anime", null, "科幻", null, 1, 50);
+        var scifiAnime = workService.list("anime", null, "科幻", null, null, 1, 50);
         assertThat(scifiAnime.total()).isEqualTo(2);
 
-        var unknown = workService.list(null, null, "不存在的标签", null, 1, 50);
+        var unknown = workService.list(null, null, "不存在的标签", null, null, 1, 50);
         assertThat(unknown.total()).isZero();
         assertThat(unknown.items()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("榜单下限：无评分作品被排除；标签内与全站两条查询路径都要生效")
+    void minRatingExcludesUnrated() {
+        importBatch(
+                item("it-tag-8", "高分科幻", List.of("榜单样本"), "8.5"),
+                item("it-tag-9", "低分科幻", List.of("榜单样本"), "5.0"),
+                item("it-tag-10", "无分科幻", List.of("榜单样本"), null));
+
+        // 全站路径（tag 为空，条件落在 work 表）：min_rating=0 的计数必须等于「有评分」的条数，
+        // 这比对具体 ID 更稳——库里本来就有别的 anime，不该假设只有测试数据。
+        Long ratedAnime = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM work WHERE work_type = 'anime' AND rating_value IS NOT NULL",
+                Long.class);
+        var allRated = workService.list("anime", null, null, "rating", "0", 1, 1);
+        assertThat(allRated.total()).isEqualTo(ratedAnime);
+
+        // 标签路径（条件落在 work_tag.rating_value 冗余列上）
+        var tagged = workService.list(null, null, "榜单样本", "rating", "7", 1, 50);
+        assertThat(tagged.total()).isEqualTo(1);
+        assertThat(tagged.items())
+                .extracting(com.otaku.work.dto.WorkSummaryDto::workId)
+                .containsExactly(workIdOf("it-tag-8"));
+
+        // 下限不影响「有评分」之外的语义：不过滤时三条都在
+        assertThat(workService.list(null, null, "榜单样本", null, null, 1, 50).total()).isEqualTo(3);
     }
 
     // ---------------------------------------------------------------- helpers
