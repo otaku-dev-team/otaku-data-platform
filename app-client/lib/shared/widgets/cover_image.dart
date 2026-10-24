@@ -2,6 +2,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_layout.dart';
+import 'source_badge.dart';
 
 /// 统一的封面展示。
 ///
@@ -21,6 +22,7 @@ class CoverImage extends StatelessWidget {
     this.height = AppLayout.coverHeight,
     this.radius = 8,
     this.placeholderLabel,
+    this.source,
   });
 
   final String? url;
@@ -32,15 +34,18 @@ class CoverImage extends StatelessWidget {
   /// 传 `null` 则退回图标占位——详情页那种大图更适合图标 + 文字说明。
   final String? placeholderLabel;
 
+  /// 来源站标识（W1.5 D3）。非空时在左下角贴一枚 [SourceBadge]：
+  /// 只有跨源同名这条理由，够了才显示；`null` 表示来源没标注（含旧缓存）→ 不渲染。
+  final String? source;
+
   @override
   Widget build(BuildContext context) {
     final imageUrl = url;
     final hasCover = imageUrl != null && imageUrl.isNotEmpty;
+    final badge = source;
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(radius),
-      child: hasCover
-          ? CachedNetworkImage(
+    final cover = hasCover
+        ? CachedNetworkImage(
               imageUrl: imageUrl,
               width: width,
               height: height,
@@ -60,6 +65,24 @@ class CoverImage extends StatelessWidget {
               height: height,
               loading: false,
               label: placeholderLabel,
+            );
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(radius),
+      child: badge == null
+          ? cover
+          : Stack(
+              children: [
+                Positioned.fill(child: cover),
+                // 贴角而不是占一行：这里的高度（尤其是网格卡片）是按字号量死的，
+                // 多一行会把正文挤出卡片。
+                Positioned.directional(
+                  textDirection: Directionality.of(context),
+                  start: 6,
+                  bottom: 6,
+                  child: SourceBadge(source: badge),
+                ),
+              ],
             ),
     );
   }

@@ -25,8 +25,8 @@ Java 业务后端。负责人：**Java 负责人**（@pyxz0）。
 | 接口③ 作品列表 / 搜索 | ✅ 已实现 |
 | 接口④ 作品详情 | ✅ 已实现 |
 | 封面代理 + 本地缓存（契约要求，openapi 未定义） | ✅ 已实现 |
-| 单元测试 | ✅ 67 项，`mvnw.cmd test` 通过（含对外 JSON 键名形状测试） |
-| 集成测试 | ✅ 3 项（并发导入，需真实 MySQL，见「集成测试」一节）；未设 `IT_DB_PORT` 时整类跳过 |
+| 单元测试 | ✅ 75 项，`mvnw.cmd test` 通过（含对外 JSON 键名形状测试） |
+| 集成测试 | ✅ 8 项（并发导入 3 + 标签筛选 5，需真实 MySQL，见「集成测试」一节）；未设 `IT_DB_PORT` 时整类跳过 |
 | 启动与鉴权冒烟 | ✅ `java -jar` 5–6 秒内启动；无/错令牌 POST 均返回 `401 {"error":{"code":"UNAUTHORIZED"}}` |
 | 数据侧验收 D1–D10 | ✅ 已在真实 MySQL 8.0.46 实例上逐条跑通，见下节 |
 | 容器化本地环境 | ✅ `compose.yaml` 起 MySQL 8.0.46（:3307），`local` profile 直连验证过 D1/D2、列表、封面 |
@@ -228,7 +228,7 @@ $env:DB_USER="root"; $env:DB_PASSWORD="<你的密码>"; $env:OTAKU_INTERNAL_TOKE
 | --- | --- | --- | --- |
 | ② 提交批次 | `POST /internal/import/batches` | `X-Internal-Token` | 单批 ≤500 条，逐条返回四类计数与失败明细 |
 | ②b 查批次 | `GET /internal/import/batches/{batch_id}` | `X-Internal-Token` | 重跑前核对用 |
-| ③ 列表 | `GET /api/works?type=&q=&sort=&page=&page_size=` | 无 | 7 字段（含 `release_year`），**不含 summary**；`page_size` 上限 50 自动截断；`sort` 可选 `id`（默认）`/ rating / year`，非法值 400 |
+| ③ 列表 | `GET /api/works?type=&q=&tag=&sort=&page=&page_size=` | 无 | 7 字段（含 `release_year`），**不含 summary**；`page_size` 上限 50 自动截断；`sort` 可选 `id`（默认）`/ rating / year`，非法值 400；`tag` 为精确匹配，未知标签返回空结果 |
 | ④ 详情 | `GET /api/works/{work_id}` | 无 | 12 字段（含 `release_year`、`source_url`）；不存在或格式非法都是 404 |
 | ④b 相关推荐 | `GET /api/works/{work_id}/related?limit=` | 无 | 按共享标签取相关作品，评分高→低，不含自身；无标签返回空 items（不是 404）；`limit` 默认 6、上限 20 |
 | ⑤ 封面 | `GET /api/covers/{work_id}` | 无 | 代理 + 本地缓存，30 天缓存 + ETag；无封面/回源失败返回 404 |
@@ -283,11 +283,40 @@ curl -s -i "http://localhost:8080/api/works/no-such-id"       # 404 WORK_NOT_FOU
 curl -s "http://localhost:8080/api/works?sort=rating&page_size=10"
 curl -s "http://localhost:8080/api/works?sort=hot"            # 400 BAD_REQUEST
 curl -s "http://localhost:8080/api/works/W-abc123/related?limit=6"
+
+# 标签筛选（精确匹配，可与 type/q/sort 组合）
+curl -s "http://localhost:8080/api/works?tag=%E7%A7%91%E5%B9%BB&sort=rating&page_size=10"
+curl -s "http://localhost:8080/api/works?tag=%E7%A7%91%E5%B9%BB&type=anime"
 ```
 
 > Windows 控制台注意：URL 里的中文必须百分号编码，直接写 `q=魔法` 会让 Tomcat 返回 400
 > （Flutter 的 Dio 会自动编码，所以只有手工 curl 才会踩到）。
 > 上面 `q=%E9%AD%94%E6%B3%95` 就是"魔法"的 UTF-8 百分号编码。
+
+### 标签筛选（`tag`）
+
+`tags` 是 JSON 数组，直接在上面过滤不可行：55.6 万条实测三条路，只有关联表能用——
+`JSON_CONTAINS` 配多值索引**优化器根本不走**（`key=NULL`，743ms → 1435ms 更差）；
+换 `MEMBER OF` 走了索引反而 1285ms（高频标签占 20% 行，索引对高频值无效）。
+
+所以有 `V7__work_tag_filter.sql`：`work_tag(work_ref, tag, work_type, rating_value, release_year)`，
+主键 `(tag, work_ref)` + 三个按排序键的索引。评分/年份/类型冗余进来，是为了让
+「标签 + 排序 + 类型」全走索引；代价是这三项变化时要同步，而导入本来就会重写整组标签
+（`WorkRepository#replaceTags`，与 work 行同一事务）。
+
+| 场景（55.6 万条，HTTP 含 COUNT） | 耗时 |
+| --- | --- |
+| `tag=科幻`（4.6 万条）首页 / `+sort=rating` / `+sort=year` | 20–31 / 20–26 / 20–27 ms |
+| `tag=科幻&sort=rating&page=500`（OFFSET 24,950） | 24–32 ms |
+| `tag=科幻&type=anime&sort=rating` | 24–34 ms |
+| `tag=TV&type=game`（9.3 万条标签） | 18–21 ms |
+| `tag=科幻&q=魔法` | **~720 ms（已知限制）** |
+
+最后一行是 `LIKE '%关键词%'` 与标签求交集的固有成本：两个条件都无法走索引定位，
+只能扫一侧再逐行探测另一侧。根治要给 title 上 ngram 全文索引，属独立的搜索升级，没有夹在这里做。
+
+**迁移成本**：55.6 万条 × 4 个标签 = 222 万行，回填约 38 秒（一次性）；之后每条导入多一次
+`DELETE` + 一次 `INSERT ... SELECT`，都在原事务内。
 
 ### 列表排序与分页性能
 
@@ -314,7 +343,7 @@ curl -s "http://localhost:8080/api/works/W-abc123/related?limit=6"
 > 相关推荐能快，是因为它 `LIMIT 6` 且按评分倒序，靠 `idx_work_rating` 扫十几行就够；
 > **不要**改成「按共享标签数排序」——那需要全表算分 + filesort。
 
-### 集成测试（并发导入，需要真实 MySQL）
+### 集成测试（需要真实 MySQL）
 
 `ImportConcurrencyIntegrationTest` 验证**两个作业同时写同一批数据**时不会互相把记录判成
 `rejected`（issue #81）。这类缺陷只在 MySQL 的 REPEATABLE READ 快照语义下出现，
@@ -357,8 +386,8 @@ backend-java/
     application.yml
     db/migration/         Flyway 迁移（V1 作品、V2 账号与会话）
     db/manual/            建库语句（手动执行一次，Flyway 不管）
-  src/test/java/          合并规则、条目校验、LIKE 转义、ID/令牌、JSON 形状的单元测试
-                          + 并发导入集成测试（ImportConcurrencyIntegrationTest）
+  src/test/java/          合并规则、条目校验、LIKE 转义、ID/令牌/排序/标签、JSON 形状的单元测试
+                          + 集成测试：并发导入、标签筛选与 work_tag 同步
   src/test/resources/     application-it.yml：集成测试连的库（otaku_it）
 ```
 

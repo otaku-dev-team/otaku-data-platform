@@ -93,7 +93,9 @@ public class CoverService {
         this.minIntervalNanos = Duration.ofSeconds(1).toNanos() / rate;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(cover.getTimeout())
-                .followRedirects(HttpClient.Redirect.NORMAL)
+                // 不自动跟随：自动跟随只校验起始 URI，一次 302 就能绕出白名单。
+                // 重定向在 send() 里逐跳校验（见该方法注释）。
+                .followRedirects(HttpClient.Redirect.NEVER)
                 .build();
         try {
             Files.createDirectories(cacheDir);
@@ -227,13 +229,10 @@ public class CoverService {
             acquired = true;
             acquireRateSlot();
 
-            HttpRequest request = HttpRequest.newBuilder(uri)
-                    .timeout(properties.getCover().getTimeout())
-                    .header("User-Agent", "otaku-data-platform/0.1.0")
-                    .GET()
-                    .build();
-            HttpResponse<InputStream> response =
-                    httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
+            HttpResponse<InputStream> response = send(uri);
+            if (response == null) {
+                return Optional.empty();
+            }
 
             if (response.statusCode() != 200) {
                 closeQuietly(response.body());
@@ -281,6 +280,57 @@ public class CoverService {
         }
     }
 
+    /** 最多跟随几跳重定向；每跳都过白名单，把「一次 302 绕出白名单」这条路堵死。 */
+    private static final int MAX_REDIRECTS = 3;
+
+    private static boolean isRedirect(int status) {
+        return status == 301 || status == 302 || status == 303 || status == 307 || status == 308;
+    }
+
+    /**
+     * 按白名单逐跳跟随重定向，返回**最终**响应；任何一跳不合规就返回 {@code null}。
+     *
+     * <p>为什么不用 {@code HttpClient.Redirect.NORMAL}：自动跟随只校验**起始** URI，
+     * 一个 302 就能把请求带到任意主机——白名单形同虚设。这里每跳重新校验协议与 host:port。
+     *
+     * <p>限流按「一次取图」算一个槽位，不按跳数算：跳数由 {@link #MAX_REDIRECTS} 封顶，
+     * 对来源站的额外压力最多 3 倍，可接受；换来的是不会因为一次跳转把令牌桶打散。
+     */
+    private HttpResponse<InputStream> send(URI start) throws IOException, InterruptedException {
+        URI uri = start;
+        for (int hop = 0; hop <= MAX_REDIRECTS; hop++) {
+            HttpRequest request = HttpRequest.newBuilder(uri)
+                    .timeout(properties.getCover().getTimeout())
+                    .header("User-Agent", "otaku-data-platform/0.1.0")
+                    .GET()
+                    .build();
+            HttpResponse<InputStream> response =
+                    httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
+            if (!isRedirect(response.statusCode())) {
+                return response;
+            }
+            String location = response.headers().firstValue("Location").orElse(null);
+            closeQuietly(response.body());
+            if (location == null || location.isBlank()) {
+                log.warn("封面重定向缺少 Location，放弃：{}", uri);
+                return null;
+            }
+            URI next = uri.resolve(location.trim());
+            String scheme = next.getScheme();
+            if (scheme == null || !(scheme.equalsIgnoreCase("http") || scheme.equalsIgnoreCase("https"))) {
+                log.warn("封面重定向到不支持的协议，放弃：{} -> {}", uri, next);
+                return null;
+            }
+            if (!isAllowed(next)) {
+                log.warn("封面重定向目标不在白名单，放弃：{} -> {}", uri, next);
+                return null;
+            }
+            uri = next;
+        }
+        log.warn("封面重定向超过 {} 跳，放弃：{}", MAX_REDIRECTS, start);
+        return null;
+    }
+
     /** 令牌桶式的最小间隔限速；来源站要求 1–2 req/s。 */
     private synchronized void acquireRateSlot() {
         long now = System.nanoTime();
@@ -292,12 +342,24 @@ public class CoverService {
         nextSlotNanos = slot + minIntervalNanos;
     }
 
-    private boolean isAllowed(URI uri) {
+    /**
+     * 白名单校验：**列表为空 = 全部拒绝**（fail-closed）。
+     *
+     * <p>早期是「为空 = 不限制」，理由是方便本地开发。但封面回源的目标地址直接来自导入载荷，
+     * 一旦配置漏写，就等于把任意 URL 变成服务端出站请求——失败方向搞反了。
+     * 现在漏配的表现是封面全部 404 + 每次一条 WARN，可见、可查，不会静默放开。
+     *
+     * <p>包内可见是为了直接单测边界（端口、默认端口、大小写），不必起 HTTP 服务。
+     */
+    boolean isAllowed(URI uri) {
         var allowed = properties.getCover().getAllowedHosts();
         if (allowed == null || allowed.isEmpty()) {
-            return true;
+            return false;
         }
         String host = uri.getHost();
+        if (host == null || host.isBlank()) {
+            return false;
+        }
         int port = uri.getPort();
         String effectivePort = String.valueOf(port > 0 ? port
                 : ("https".equalsIgnoreCase(uri.getScheme()) ? 443 : 80));

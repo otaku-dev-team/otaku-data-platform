@@ -64,4 +64,23 @@ class WorkSortTest {
         assertThat(WorkSort.ID.orderBy("")).isEqualTo("id ASC");
         assertThat(WorkSort.ID.orderBy(null)).isEqualTo("id ASC");
     }
+
+    @Test
+    @DisplayName("标签表排序用 work_ref 而非 id，且每列都带别名（同名列表 JOIN 时不加就报 ambiguous）")
+    void tagTableOrderBy() {
+        assertThat(WorkSort.ID.orderByOnTagTable("t")).isEqualTo("t.work_ref ASC");
+        assertThat(WorkSort.RATING.orderByOnTagTable("t"))
+                .isEqualTo("t.rating_value DESC, t.work_ref DESC");
+        assertThat(WorkSort.YEAR.orderByOnTagTable("t"))
+                .isEqualTo("t.release_year DESC, t.work_ref DESC");
+        // 回归守卫：work 与 work_tag 都有 rating_value，缺别名会被 MySQL 判为歧义列。
+        // 每一段都必须以别名开头，且不能出现 work 表的 id 列。
+        for (WorkSort sort : WorkSort.values()) {
+            String clause = sort.orderByOnTagTable("t");
+            for (String part : clause.split(",")) {
+                assertThat(part.trim()).startsWith("t.");
+            }
+            assertThat(clause).doesNotContain("t.id ");
+        }
+    }
 }

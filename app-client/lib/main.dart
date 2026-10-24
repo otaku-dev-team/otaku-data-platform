@@ -8,6 +8,10 @@ import 'package:window_manager/window_manager.dart';
 
 import 'app.dart';
 import 'core/diagnostics/frame_stats.dart';
+import 'core/storage/collection_cache_provider.dart';
+import 'core/storage/local_prefs_provider.dart';
+import 'core/storage/recent_views_provider.dart';
+import 'core/storage/work_cache_provider.dart';
 import 'core/theme/app_layout.dart';
 
 /// 窗口尺寸的本地存储键。只存尺寸，不存位置——见 [_readSavedWindowSize]。
@@ -21,6 +25,20 @@ Future<void> main() async {
   if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
     await _setupDesktopWindow();
   }
+
+  // 离线缓存。必须在 runApp 之前打开：缓存盒是异步开的，
+  // 放到 runApp 之后会出现「首屏还没读缓存，缓存才刚准备好」的竞态。
+  //
+  // 打不开不算致命错误——已降级为内存缓存，App 照常启动。
+  await WorkCacheHolder.instance.initialize();
+  // 收藏缓存单独一个盒：退出登录时要清它，但作品缓存是公共数据可以留着。
+  await CollectionCacheHolder.instance.initialize();
+  // 浏览历史同样单独一个盒，但它**不在退出登录时清**：
+  // 它是纯本机数据，清了就再也拿不回来（详见 RecentViewsStore 的注释）。
+  await RecentViewsHolder.instance.initialize();
+  // 主题与搜索历史。必须在 runApp 之前：`MaterialApp` 的第一帧就要用哪套主题，
+  // 晚一步就会先按系统主题画一帧、再跳成用户选的那套。
+  await LocalPrefsHolder.instance.initialize();
 
   // 只在 OTAKU_FRAME_STATS=true 时生效，正常构建是空操作。
   FrameStats.start();

@@ -14,6 +14,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.time.ZoneOffset;
 import java.util.List;
 
@@ -32,6 +33,8 @@ public class WorkService {
     static final int MAX_PAGE_SIZE = 50;
     private static final int MAX_QUERY_LENGTH = 100;
     private static final int MAX_WORK_ID_LENGTH = 64;
+    /** 与 work_tag.tag 列宽一致；超长参数截断而不是报错，见 normalizeTag。 */
+    private static final int MAX_TAG_LENGTH = 64;
 
     /** 详情页推荐默认返回 6 条、最多 20 条——与来源站详情页的 6 条对齐，避免一次拉太多。 */
     static final int DEFAULT_RELATED_LIMIT = 6;
@@ -53,20 +56,24 @@ public class WorkService {
         this.objectMapper = objectMapper;
     }
 
-    public PageResponse<WorkSummaryDto> list(String typeParam, String qParam, String sortParam,
+    public PageResponse<WorkSummaryDto> list(String typeParam, String qParam, String tagParam,
+                                             String sortParam, String minRatingParam,
                                              int page, int pageSize) {
         String workType = normalizeType(typeParam);
         String keyword = normalizeKeyword(qParam);
+        String tag = normalizeTag(tagParam);
         WorkSort sort = WorkSort.parse(sortParam);
+        BigDecimal minRating = normalizeMinRating(minRatingParam);
 
         int safePage = Math.max(page, 1);
         int safeSize = pageSize <= 0 ? DEFAULT_PAGE_SIZE : Math.min(pageSize, MAX_PAGE_SIZE);
         String pattern = keyword == null ? null : LikePattern.contains(keyword);
 
-        long total = repository.count(workType, pattern);
+        long total = repository.count(workType, pattern, tag, minRating);
         List<WorkSummaryDto> items = total == 0
                 ? List.of()
-                : repository.findPage(workType, pattern, sort, safeSize, (safePage - 1) * safeSize)
+                : repository.findPage(workType, pattern, tag, sort, minRating,
+                        safeSize, (safePage - 1) * safeSize)
                         .stream()
                         .map(this::toSummary)
                         .toList();
@@ -81,6 +88,10 @@ public class WorkService {
      *
      * <p>{@code basis_tags} 回传实际用于匹配的标签，让客户端能显示
      * 「同题材：科幻、机战」这类理由，而不是给一堆无解释的卡片。
+     *
+     * <p>按标题去重：多来源并存意味着同一作品可能有 2 条以上（实测 13,261 组
+     * 跨源同名），不去重推荐位会连着出现同一个名字。去重后不足 limit 就少返回
+     * 几条——宁可少，不要把同一作品拆成两张卡片。
      */
     public RelatedWorksDto related(String workId, Integer limitParam) {
         WorkRecord current = requireWork(workId);
@@ -92,10 +103,16 @@ public class WorkService {
             return new RelatedWorksDto(List.of(), List.of());
         }
         List<String> basis = tags.size() > MAX_BASIS_TAGS ? tags.subList(0, MAX_BASIS_TAGS) : tags;
+        // 多取几倍再按标题去重：同名组实测最多两三个来源，取 3 倍通常够。
+        // 去重后不足 limit 时按实际数量返回，不补位、不凑数。
         List<WorkSummaryDto> items = repository
-                .findRelated(current.id(), toTagsJson(basis), limit)
+                .findRelated(current.id(), toTagsJson(basis), limit * 3)
                 .stream()
                 .map(this::toSummary)
+                .collect(RelatedWorksDto.dedupeByTitle())
+                .values()
+                .stream()
+                .limit(limit)
                 .toList();
         return new RelatedWorksDto(basis, items);
     }
@@ -159,7 +176,8 @@ public class WorkService {
                 record.releaseYear(),
                 coverUrl(record),
                 parseTags(record.tagsJson()),
-                toRating(record));
+                toRating(record),
+                record.source());
     }
 
     private static SourceRatingDto toRating(WorkRecord record) {
@@ -203,5 +221,57 @@ public class WorkService {
             return null;
         }
         return keyword.length() > MAX_QUERY_LENGTH ? keyword.substring(0, MAX_QUERY_LENGTH) : keyword;
+    }
+
+    /**
+     * 标签是精确匹配，不做模糊、不做分词。
+     *
+     * <p>未知标签**不报错**，返回 200 + 空数组——标签是数据里的值，不是接口枚举，
+     * 用户从旧链接进来时标签可能已被来源站改名，这属于「没有结果」而不是「请求非法」。
+     *
+     * <p>长度按库里的 {@code work_tag.tag} 上限（64）截断，与回填脚本的 {@code LEFT(...,64)}
+     * 保持一致；否则超长参数永远查不到东西，还看不出原因。
+     */
+    private static String normalizeTag(String tagParam) {
+        if (tagParam == null) {
+            return null;
+        }
+        String tag = tagParam.trim();
+        if (tag.isEmpty()) {
+            return null;
+        }
+        return tag.length() > MAX_TAG_LENGTH ? tag.substring(0, MAX_TAG_LENGTH) : tag;
+    }
+
+    /**
+     * 榜单评分下限：只保留评分 ≥ 该值的作品，**无评分（{@code null}）一律排除**。
+     *
+     * <p>与 {@code sort=rating} 的「NULL 沉底」互补：沉底只是排在最后，作品仍在结果里；
+     * 榜单要的是「没评分就不该参与排名」，所以这里把它们移出结果集。
+     * 传 {@code min_rating=0} 时语义为「只要有过评分」——{@code NULL >= 0} 不成立，因此只留已评分的。
+     *
+     * <p>尺度取 0–10：库里 {@code rating_scale} 当前全是 {@code 0-10}（otaku_site 与 bangumi 皆是），
+     * 因此下限也按同一尺度校验。将来接入非 0–10 尺度的来源时，这个参数需要跟着尺度走，
+     * 不能只改这里的常量。
+     *
+     * <p>缺省 / 空串 = 不过滤；非数字、负数、超上限一律 400——与「筛出来没有结果」区分开，
+     * 避免客户端把参数写错当成「这个榜单是空的」。
+     */
+    private static BigDecimal normalizeMinRating(String minRatingParam) {
+        if (minRatingParam == null || minRatingParam.isBlank()) {
+            return null;
+        }
+        BigDecimal value;
+        try {
+            value = new BigDecimal(minRatingParam.trim());
+        } catch (NumberFormatException ex) {
+            throw ApiException.badRequest(
+                    "min_rating 取值非法：" + minRatingParam + "（需为 0-10 的数字）");
+        }
+        if (value.compareTo(BigDecimal.ZERO) < 0 || value.compareTo(BigDecimal.TEN) > 0) {
+            throw ApiException.badRequest(
+                    "min_rating 取值非法：" + minRatingParam + "（需在 0-10 之间）");
+        }
+        return value;
     }
 }

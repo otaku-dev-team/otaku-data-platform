@@ -9,16 +9,21 @@ import '../../core/theme/app_layout.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/models/collection_entry.dart';
 import '../../data/models/work.dart';
+import '../../data/repositories/work_repository.dart';
 import '../../shared/widgets/collection_status_menu.dart';
 import '../../shared/widgets/cover_image.dart';
 import '../../shared/widgets/desktop_shortcuts.dart';
 import '../../shared/widgets/error_state.dart';
+import '../../shared/widgets/offline_notice.dart';
 import '../../shared/widgets/rating_badge.dart';
 import '../../shared/widgets/release_year_text.dart';
 import '../../shared/widgets/skeleton_list.dart';
 import '../../shared/widgets/tag_chips.dart';
 import '../../shared/widgets/work_type_tag.dart';
 import '../auth/auth_controller.dart';
+import '../contents/contents_controller.dart';
+import '../recent/recent_views_controller.dart';
+import 'related_works_section.dart';
 import 'work_collection_controller.dart';
 import 'work_detail_controller.dart';
 
@@ -30,14 +35,75 @@ import 'work_detail_controller.dart';
 /// 版面按站点的详情页顺序摆：封面 + 标题 + 分类评分 → 简介 → 收录信息。
 /// 站点还有原名、别名、年份、话数、制作、导演、声优、系列、相关推荐，
 /// 这些字段平台契约里都还没有，**这里不摆空位**——空占位比少显示更误导。
-class WorkDetailPage extends ConsumerWidget {
+class WorkDetailPage extends ConsumerStatefulWidget {
   const WorkDetailPage({super.key, required this.workId});
 
   final String workId;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final work = ref.watch(workDetailProvider(workId));
+  ConsumerState<WorkDetailPage> createState() => _WorkDetailPageState();
+}
+
+class _WorkDetailPageState extends ConsumerState<WorkDetailPage> {
+  /// 详情 provider 的订阅。`listenManual` 不会被框架自动回收，必须自己关。
+  late final ProviderSubscription<AsyncValue<Fetched<Work>>> _detailSub;
+
+  @override
+  void initState() {
+    super.initState();
+
+    // 记「最近浏览」的时机：**详情数据到手**才算看过，加载失败与 404 都不记
+    // （把打不开的页面记进历史，只会让人再点一次还是打不开）。
+    //
+    // 用 `listenManual` 而不是 build 里的 `ref.listen`：前者可以挂在 initState，
+    // 且回调发生在 provider 变化之后而不是构建期间，能安全地写另一个 provider。
+    _detailSub = ref.listenManual<AsyncValue<Fetched<Work>>>(
+      workDetailProvider(widget.workId),
+      (previous, next) {
+        final work = next.value?.value;
+        if (work != null) _remember(work);
+      },
+    );
+
+    // provider 不自动销毁，所以「从列表第二次点进同一部作品」不会产生值变化，
+    // 上面那个订阅不会再触发。这里补记一次，否则「最近浏览」的顺序会停在
+    // 第一次打开的时间上（A → B → 再回 A，A 还排在 B 后面）。
+    final existing = ref.read(workDetailProvider(widget.workId)).value?.value;
+    if (existing != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _remember(existing);
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _detailSub.close();
+    super.dispose();
+  }
+
+  /// 记一次浏览。重复记录是幂等的（去重 + 置顶），所以补记不会产生两条。
+  void _remember(Work work) =>
+      ref.read(recentViewsProvider.notifier).record(work);
+
+  /// 点详情页的标签：跳到作品库并按该标签筛。
+  ///
+  /// 用 `showTag` 而不是 `selectTag`：后者是「在当前条件下换个标签」，
+  /// 而这里是从另一页跳过来，用户要的是「这个标签下都有什么」——上一页
+  /// 留下的分类或关键词会让结果莫名只剩几条，详情页上没有任何线索能解释。
+  ///
+  /// 没有 router 时（单页测试）只改条件、不抛异常，与侧栏导航同一处理。
+  void _openTag(String tag) {
+    ref.read(contentsFilterProvider.notifier).showTag(tag);
+    GoRouter.maybeOf(context)?.go(RoutePaths.contents);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final fetched = ref.watch(workDetailProvider(widget.workId));
+    // `Fetched` 包了一层，这里拆出来：页面正文只关心作品本身，
+    // 「是不是缓存」只影响顶部那一条提示。
+    final work = fetched.value;
 
     return DesktopShortcuts(
       child: Scaffold(
@@ -50,7 +116,7 @@ class WorkDetailPage extends ConsumerWidget {
             // 渲染前再过一次 parseSourceUrl，而不是直接用 `work.sourceUrl`：
             // 前者只保证「从 JSON 解析出来的值」安全，而 Work 也可能被测试或
             // 本地 mock 直接构造。这道闸放在出口，覆盖所有来源。
-            if (Work.parseSourceUrl(work.value?.sourceUrl) case final url?)
+            if (Work.parseSourceUrl(work?.value.sourceUrl) case final url?)
               IconButton(
                 tooltip: '在来源站查看',
                 onPressed: () => _openSource(context, url),
@@ -64,7 +130,7 @@ class WorkDetailPage extends ConsumerWidget {
             constraints: const BoxConstraints(
               maxWidth: AppLayout.detailMaxWidth,
             ),
-            child: _buildBody(context, ref, work),
+            child: _buildBody(context, ref, fetched),
           ),
         ),
       ),
@@ -99,14 +165,15 @@ class WorkDetailPage extends ConsumerWidget {
   Widget _buildBody(
     BuildContext context,
     WidgetRef ref,
-    AsyncValue<Work> work,
+    AsyncValue<Fetched<Work>> fetched,
   ) {
-    if (work.isLoading && !work.hasValue) {
+    final work = fetched.value;
+    if (fetched.isLoading && work == null) {
       return const SkeletonDetail();
     }
 
-    if (work.hasError) {
-      final error = ApiException.fromAny(work.error);
+    if (fetched.hasError) {
+      final error = ApiException.fromAny(fetched.error);
       if (error.isNotFound) {
         return ErrorState(
           error: error,
@@ -119,11 +186,25 @@ class WorkDetailPage extends ConsumerWidget {
       }
       return ErrorState(
         error: error,
-        onRetry: () => ref.invalidate(workDetailProvider(workId)),
+        onRetry: () => ref.invalidate(workDetailProvider(widget.workId)),
       );
     }
 
-    return _DetailBody(work: work.requireValue);
+    final resolved = fetched.requireValue;
+    final body = _DetailBody(work: resolved.value, onTag: _openTag);
+    if (!resolved.fromCache) return body;
+
+    // 离线回退：内容照常展示，但顶部要说明这是上次同步的。
+    // 不说的话，用户会把旧数据当成最新的（铁律 3）。
+    return Column(
+      children: [
+        OfflineNotice(
+          cachedAt: resolved.cachedAt,
+          onRetry: () => ref.invalidate(workDetailProvider(widget.workId)),
+        ),
+        Expanded(child: body),
+      ],
+    );
   }
 
   void _backToList(BuildContext context) {
@@ -136,9 +217,12 @@ class WorkDetailPage extends ConsumerWidget {
 }
 
 class _DetailBody extends StatelessWidget {
-  const _DetailBody({required this.work});
+  const _DetailBody({required this.work, required this.onTag});
 
   final Work work;
+
+  /// 点标签时回调，一路传到 [_Headline] 里的标签行。
+  final ValueChanged<String> onTag;
 
   @override
   Widget build(BuildContext context) {
@@ -162,7 +246,7 @@ class _DetailBody extends StatelessWidget {
                   children: [
                     Center(child: cover),
                     const SizedBox(height: 20),
-                    _Headline(work: work),
+                    _Headline(work: work, onTag: onTag),
                   ],
                 );
               }
@@ -172,13 +256,16 @@ class _DetailBody extends StatelessWidget {
                 children: [
                   cover,
                   const SizedBox(width: 28),
-                  Expanded(child: _Headline(work: work)),
+                  Expanded(child: _Headline(work: work, onTag: onTag)),
                 ],
               );
             },
           ),
           const SizedBox(height: 24),
           _RecordPanel(work: work),
+          // 相关推荐排在最后：正文与收录信息才是这页的主角，推荐是延伸阅读。
+          // 拿不到或没标签时组件自己渲染成 SizedBox.shrink()，这里不用判空。
+          RelatedWorksSection(workId: work.workId),
         ],
       ),
     );
@@ -187,9 +274,11 @@ class _DetailBody extends StatelessWidget {
 
 /// 标题区：标题 / 类型 / 评分 / 标签 / 简介。
 class _Headline extends StatelessWidget {
-  const _Headline({required this.work});
+  const _Headline({required this.work, required this.onTag});
 
   final Work work;
+
+  final ValueChanged<String> onTag;
 
   @override
   Widget build(BuildContext context) {
@@ -227,7 +316,9 @@ class _Headline extends StatelessWidget {
         ),
         if (tags != null) ...[
           const SizedBox(height: 12),
-          TagChips(tags: tags, maxVisible: 10),
+          // 标签可点：列表卡片上的标签早就能这么用（#107），同一批标签在
+          // 详情页却是死文字——同一个东西两处行为不一致，用户会以为详情页坏了。
+          TagChips(tags: tags, maxVisible: 10, onTag: onTag),
         ],
         const SizedBox(height: 16),
         _CollectBar(work: work),

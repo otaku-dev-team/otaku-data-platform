@@ -14,6 +14,7 @@
 - [`docs/project-charter.md`](project-charter.md)：**项目总纲**——总目标 G1–G3、六条工作流 W1–W6、两个探索项、授权与自治规则、必须回来确认的红线、验收与信任机制。**先读这一份再看其他。**
 - [`docs/ROADMAP.md`](ROADMAP.md)：唯一看板，含阶段总览（§6）与工作流看板（§8）。
 - [`docs/product-positioning.md`](product-positioning.md)：**上位依据**（2026-10-24 起，定位 > 契约 > 其他文档）——商业模式、身份归属、六条边界、运营形态三态（附录 A：站点生命周期与关停预案）。技术判断有分歧时以它为准。
+- [`docs/merge-queue.md`](merge-queue.md)：合并队列与合并后动作清单——栈关系、四批合并顺序、合并后要关 / rebase 的分支、三个已知坑。合并期间以这份为准。
 
 ## 二、草案与背景材料
 
@@ -26,7 +27,7 @@
 - [`docs/stage3-performance-baseline.md`](stage3-performance-baseline.md)：**万级列表的滚动基线**（2026-10-21 实测）。含帧耗时、内存曲线、分页请求数与两个真实瓶颈（封面重复回源、封面按原图解码），以及复现脚本的用法。
 - [`docs/stage3-reliability-record.md`](stage3-reliability-record.md)：阶段 3 可靠性实测记录。
 - [`docs/identity-auth-endpoint-playbook.md`](identity-auth-endpoint-playbook.md)：站点授权端点预案与联调手册——标准 OAuth 授权码四端点、三点安全调整、self-revoke 三态、联调配置（凭据存环境变量，不入库）。
-- [`docs/identity-linkup-contract.md`](identity-linkup-contract.md)：平台侧令牌交换代理联调契约草案（PR #147，待三人确认）——用户表加列、账号映射与收藏迁移设计。
+- 平台侧令牌交换代理联调契约草案（PR #147，待三人确认）：用户表加列、账号映射与收藏迁移设计。
 - [`docs/data-completeness-plan.md`](data-completeness-plan.md)：数据缺口体检与补齐路径（封面 / 评分 / 简介三线，结论：封面走 C+A）。
 - [`docs/client-enhancement-plan.md`](client-enhancement-plan.md)：客户端体验增强计划（边界状态、发现体验等轨道）。
 - [`docs/generalization-proposal.md`](generalization-proposal.md)：**未来目标**（当前不实施）——通用化方向 `custom_fields` + `display_template`；新决策须兼容它。
@@ -44,6 +45,7 @@
 - [`docs/flutter-git-branches.md`](flutter-git-branches.md)：客户端侧 Git 分支操作手册——一次性接入、6 条分支的职责与依赖顺序、命名规则、分支从生到死、冲突处理。
 - [`docs/flutter-lead-plan.md`](flutter-lead-plan.md)：客户端负责人执行方案——技术选型、目录结构、六周节奏、给 Java 的接口需求单、两端差异清单、验收 checklist。
 - [`docs/flutter-scaffold-spec.md`](flutter-scaffold-spec.md)：脚手架开工时确定的实现规格（页面边界、目录、双端差异）。**已按此落地**，保留作追溯，实际行为以代码与 `app-client/README.md` 为准。
+- [`docs/client-capability-list.md`](client-capability-list.md)：**客户端能力承载清单**——哪些能力 App 原生做、哪些跳来源站，按站点维护，随版本更新。回答客户那句「什么都跳回网站要你们干什么」。
 
 ## 五、产品规划
 
@@ -55,7 +57,6 @@
 
 - [`docs/how-we-serve-sites.md`](how-we-serve-sites.md)：对站点方说明"我们做什么、不做什么、怎么计费"的对外口径。
 - [`docs/deploy-production.md`](deploy-production.md)：生产部署步骤与拓扑（MySQL + 后端容器、封面回源白名单）。
-- [`docs/sync-python-handover.md`](sync-python-handover.md)：sync-python 灌库与定时化操作手册。
 - [`docs/bangumi-archive-handover.md`](bangumi-archive-handover.md)：Bangumi 档案灌库说明（55.6 万条来源与管线）。
 
 ## 七、文档维护约定

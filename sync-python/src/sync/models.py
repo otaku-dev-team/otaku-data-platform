@@ -18,6 +18,7 @@ VALID_RESULTS = (RESULT_INSERTED, RESULT_UPDATED, RESULT_UNCHANGED, RESULT_REJEC
 
 REASON_INVALID_TYPE = "INVALID_TYPE"
 REASON_TITLE_REQUIRED = "TITLE_REQUIRED"
+REASON_INVALID_WEEKDAY = "INVALID_WEEKDAY"
 REASON_RATING_OUT_OF_SCALE = "RATING_OUT_OF_SCALE"
 REASON_INTERNAL_ERROR = "INTERNAL_ERROR"
 
@@ -92,6 +93,114 @@ class WorkItem:
             "tags": self.tags,
             "main_rating": self.main_rating.to_payload() if self.main_rating else None,
             "source_url": self.source_record.source_url,
+        }
+
+
+@dataclass
+class ScheduleItem:
+    """待导入的一条新番档期（来源站 /api/schedule）。
+
+    与 WorkItem 平行：同一套 SourceRecord / fetched_at 口径，字段按站点档期
+    结构来。work_tags 在同步侧就把斜杠字符串拆成数组——后端契约收数组，
+    让两边都不猜对方的格式。
+    """
+
+    source_record: SourceRecord
+    season_code: str | None = None
+    title_main: str | None = None
+    title_cn: str | None = None
+    title_jp: str | None = None
+    weekday: int | None = None
+    broadcast_time: str | None = None
+    broadcast_note: str | None = None
+    work_type: str | None = None
+    work_tags: list[str] | None = None
+    image_url: str | None = None
+    platforms: list[dict] | None = None
+    source_url: str | None = None
+    content_id: str | None = None
+    source_updated_at: str | None = None
+
+    @property
+    def source_id(self) -> str:
+        return self.source_record.source_id
+
+    def to_payload(self) -> dict[str, Any]:
+        """转成内部导入接口（档期）的 JSON 体。
+
+        字段名与后端 ScheduleImportRequest 一致。空值一律传 null。
+        `source_updated_at` 取自站点 last_synced_at，同步侧转成 ISO-8601
+        （站点给的是 "2026-10-20 06:01:50" 空格分隔、无时区，按 UTC 处理）。
+        """
+        return {
+            "source_id": self.source_record.source_id,
+            "season_code": self.season_code,
+            "title_main": self.title_main,
+            "title_cn": self.title_cn,
+            "title_jp": self.title_jp,
+            "weekday": self.weekday,
+            "broadcast_time": self.broadcast_time,
+            "broadcast_note": self.broadcast_note,
+            "work_type": self.work_type,
+            "work_tags": self.work_tags,
+            "image_url": self.image_url,
+            "platforms": self.platforms,
+            "source_url": self.source_url,
+            "content_id": self.content_id,
+            "source_updated_at": self.source_updated_at,
+        }
+
+
+@dataclass
+class ArticleItem:
+    """待导入的一条资讯（来源站 /articles 与 /articles/{id}）。
+
+    与 WorkItem / ScheduleItem 平行：同一套 SourceRecord / fetched_at 口径。
+
+    **两个 source_url 别混**：
+    - `source_record.source_url` 是站点上的**资讯页**（/articles/339），
+      用于排障时人工核对；
+    - `source_url` 是**原文链接**（如 ln-news.com），只有详情页给得出，
+      客户端用它跳回来源站（项目章程 G3「用户不被困在平台内」）。
+
+    正文与原文链接来自详情页，列表页没有：抓详情失败时这条资讯照样入库，
+    只是 body / source_url / source_name 为 None——标题、摘要、时间、
+    封面仍然够列表页用，不该因为一个详情页抓不到就整条丢掉。
+    """
+
+    source_record: SourceRecord
+    title: str | None = None
+    summary: str | None = None
+    body: str | None = None
+    category: str | None = None
+    published_at: str | None = None
+    source_name: str | None = None
+    source_url: str | None = None
+    cover_url: str | None = None
+    tags: list[str] | None = None
+    related_work_ids: list[str] | None = None
+
+    @property
+    def source_id(self) -> str:
+        return self.source_record.source_id
+
+    def to_payload(self) -> dict[str, Any]:
+        """转成内部导入接口（资讯）的 JSON 体。
+
+        字段名与后端 ArticleImportRequest 一致，空值一律传 null。
+        """
+        return {
+            "source_id": self.source_record.source_id,
+            "title": self.title,
+            "summary": self.summary,
+            "body": self.body,
+            "category": self.category,
+            "published_at": self.published_at,
+            "source_name": self.source_name,
+            "source_url": self.source_url,
+            "cover_url": self.cover_url,
+            "tags": self.tags,
+            "related_work_ids": self.related_work_ids,
         }
 
 

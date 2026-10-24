@@ -6,7 +6,9 @@ import 'package:otaku_app/data/datasources/collection_mock_data_source.dart';
 import 'package:otaku_app/data/datasources/work_data_source.dart';
 import 'package:otaku_app/data/repositories/work_repository.dart';
 import 'package:otaku_app/data/models/paged_result.dart';
+import 'package:otaku_app/data/models/related_works.dart';
 import 'package:otaku_app/data/models/work.dart';
+import 'package:otaku_app/data/models/work_sort.dart';
 import 'package:otaku_app/data/models/work_summary.dart';
 import 'package:otaku_app/data/models/work_type.dart';
 import 'package:otaku_app/features/detail/work_detail_page.dart';
@@ -26,11 +28,17 @@ class _FakeWorkSource implements WorkDataSource {
   Future<Work> fetchDetail(String workId) async => work;
 
   @override
+  Future<RelatedWorks> fetchRelated(String workId, {int limit = 6}) async =>
+      const RelatedWorks(basisTags: <String>[], items: <WorkSummary>[]);
+
+  @override
   Future<PagedResult<WorkSummary>> fetchWorks({
     WorkType? type,
     String? query,
+    WorkSort sort = WorkSort.id,
     int page = 1,
     int pageSize = 20,
+    String? tag,
   }) async => const PagedResult<WorkSummary>(
     items: [],
     total: 0,

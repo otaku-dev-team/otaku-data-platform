@@ -3,10 +3,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:otaku_app/app.dart';
 import 'package:otaku_app/core/network/api_exception.dart';
+import 'package:otaku_app/core/router/app_router.dart';
+import 'package:otaku_app/core/router/route_paths.dart';
 import 'package:otaku_app/data/datasources/work_data_source.dart';
 import 'package:otaku_app/data/datasources/work_mock_data_source.dart';
 import 'package:otaku_app/data/models/paged_result.dart';
+import 'package:otaku_app/data/models/related_works.dart';
 import 'package:otaku_app/data/models/work.dart';
+import 'package:otaku_app/data/models/work_sort.dart';
 import 'package:otaku_app/data/models/work_summary.dart';
 import 'package:otaku_app/data/models/work_type.dart';
 import 'package:otaku_app/data/repositories/work_repository.dart';
@@ -37,8 +41,10 @@ class _FakeDataSource implements WorkDataSource {
   Future<PagedResult<WorkSummary>> fetchWorks({
     WorkType? type,
     String? query,
+    WorkSort sort = WorkSort.id,
     int page = 1,
     int pageSize = 20,
+    String? tag,
   }) async {
     return const PagedResult<WorkSummary>(
       items: [summaryItem, summaryItem, summaryItem],
@@ -68,6 +74,10 @@ class _FakeDataSource implements WorkDataSource {
       updatedAt: DateTime.utc(2026, 10, 19, 15, 28, 57),
     );
   }
+
+  @override
+  Future<RelatedWorks> fetchRelated(String workId, {int limit = 6}) async =>
+      const RelatedWorks(basisTags: <String>[], items: <WorkSummary>[]);
 }
 
 /// 不筛选时正常返回，一旦按类型筛选就断网——用来复现"换条件后请求失败"。
@@ -76,8 +86,10 @@ class _OfflineOnFilterDataSource extends _FakeDataSource {
   Future<PagedResult<WorkSummary>> fetchWorks({
     WorkType? type,
     String? query,
+    WorkSort sort = WorkSort.id,
     int page = 1,
     int pageSize = 20,
+    String? tag,
   }) async {
     if (type != null) {
       throw const ApiException(
@@ -97,8 +109,10 @@ class _OfflineAfterFirstLoadDataSource extends _FakeDataSource {
   Future<PagedResult<WorkSummary>> fetchWorks({
     WorkType? type,
     String? query,
+    WorkSort sort = WorkSort.id,
     int page = 1,
     int pageSize = 20,
+    String? tag,
   }) async {
     calls++;
     if (calls > 1) {
@@ -122,6 +136,10 @@ void main() {
         workDataSourceProvider.overrideWithValue(source ?? _FakeDataSource()),
         // 详情页与列表页都会碰认证状态（账号入口、收藏区），不让它走平台通道。
         ...authOverrides(),
+        // 首页现在是落地页，而这个文件测的是列表页：把落点钉在 `/works`，
+        // 否则每个用例都会先跑一遍首页的三次请求。
+        // 单独 pump 某页（`MaterialApp(home: …)`）时不读路由，设了也无影响。
+        appInitialLocationProvider.overrideWithValue(RoutePaths.contents),
       ],
       child: child,
     );

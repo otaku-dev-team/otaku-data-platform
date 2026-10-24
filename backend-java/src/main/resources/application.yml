@@ -38,6 +38,8 @@ app:
     max-concurrency: 2
     timeout: 10s
     max-bytes: 5242880
+    # 封面回源白名单（host:port）。**留空 = 全部拒绝**（fail-closed），不是"不限"。
+    # 接新的来源站时，把它的 host:port 加在这里即可，不需要改代码。
     allowed-hosts:
       - 154.8.194.198:8000
 

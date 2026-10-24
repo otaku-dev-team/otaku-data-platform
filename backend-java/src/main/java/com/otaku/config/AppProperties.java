@@ -54,8 +54,17 @@ public class AppProperties {
         /** 单张封面大小上限，超过则放弃缓存。 */
         private long maxBytes = 5 * 1024 * 1024L;
 
-        /** 允许回源的 host:port 白名单；为空表示不限制（仅建议在本地开发时留空）。 */
-        private List<String> allowedHosts = new ArrayList<>(List.of("154.8.194.198:8000"));
+        /**
+         * 允许回源的 host:port 白名单。**为空表示全部拒绝**（fail-closed）。
+         *
+         * <p>这里刻意**不设默认值**：默认值一旦写成某个具体地址，就等于把「某个站」焊进代码。
+         * 唯一来源是 {@code application.yml} 的 {@code app.cover.allowed-hosts}——
+         * 换来的是「配置没写」时表现为封面全部 404（可见、可查日志），
+         * 而不是「悄悄允许所有主机」（不可见，且把导入载荷里的任意 URL 变成出站请求）。
+         *
+         * <p>接第二个来源站时，把它的 host:port 加进配置即可，不需要改代码。
+         */
+        private List<String> allowedHosts = new ArrayList<>();
 
         public String getCacheDir() {
             return cacheDir;

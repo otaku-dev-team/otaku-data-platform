@@ -35,23 +35,26 @@ class ContractJsonShapeTest {
     private ObjectMapper objectMapper;
 
     @Test
-    @DisplayName("列表项是 7 个 snake_case 字段，且不含 summary")
+    @DisplayName("列表项是 8 个 snake_case 字段，且不含 summary")
     void summaryShape() {
         WorkSummaryDto dto = new WorkSummaryDto(
                 "W-abc123", "anime", "街角魔族 2丁目", 2022,
                 "http://localhost:8080/api/covers/W-abc123",
                 List.of("日常", "搞笑"),
-                new SourceRatingDto(new BigDecimal("7.80"), "0-10", "otaku_site"));
+                new SourceRatingDto(new BigDecimal("7.80"), "0-10", "otaku_site"),
+                "bangumi");
 
         JsonNode json = objectMapper.valueToTree(dto);
 
         assertThat(json.has("work_id")).isTrue();
+        assertThat(json.has("source")).as("跨源同名要靠这个字段区分").isTrue();
+        assertThat(json.get("source").asText()).isEqualTo("bangumi");
         assertThat(json.has("work_type")).isTrue();
         assertThat(json.has("release_year")).isTrue();
         assertThat(json.has("cover_url")).isTrue();
         assertThat(json.has("main_rating")).isTrue();
         assertThat(json.has("summary")).as("列表不得返回 summary").isFalse();
-        assertThat(json.size()).isEqualTo(7);
+        assertThat(json.size()).isEqualTo(8);
         assertThat(json.get("release_year").asInt()).isEqualTo(2022);
         assertThat(json.get("main_rating").get("value").decimalValue()).isEqualByComparingTo("7.8");
     }
@@ -74,7 +77,7 @@ class ContractJsonShapeTest {
     }
 
     @Test
-    @DisplayName("source_url 有值时原样输出，列表结构不受影响（7 字段）")
+    @DisplayName("source_url 有值时原样输出，列表结构不受影响（8 字段）")
     void sourceUrlIsPassedThrough() {
         WorkDto dto = new WorkDto("W-abc123", "anime", "标题", null, 2022, null, null, null,
                 "otaku_site", "476", "http://154.8.194.198:8000/contents/476", UPDATED_AT);
@@ -84,8 +87,11 @@ class ContractJsonShapeTest {
         assertThat(json.get("source_url").asText())
                 .isEqualTo("http://154.8.194.198:8000/contents/476");
         assertThat(json.get("release_year").asInt()).isEqualTo(2022);
-        WorkSummaryDto summary = new WorkSummaryDto("W-abc123", "anime", "标题", 2022, null, null, null);
-        assertThat(objectMapper.valueToTree(summary).size()).isEqualTo(7);
+        WorkSummaryDto summary = new WorkSummaryDto("W-abc123", "anime", "标题", 2022, null, null, null, null);
+        assertThat(objectMapper.valueToTree(summary).size()).isEqualTo(8);
+        assertThat(objectMapper.valueToTree(summary).get("source").isNull())
+                .as("来源缺失时写 null，不整键消失——客户端解析要能兜住")
+                .isTrue();
     }
 
     @Test

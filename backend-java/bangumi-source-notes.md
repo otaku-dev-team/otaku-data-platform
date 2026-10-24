@@ -45,7 +45,7 @@ source:
 
 契约 §2.1：`cover_url` 由 Java 代理 + 本地缓存来源地址。**但 bangumi 档案里没有任何图片字段**，Python 提交时 `cover_url` 一律为 `null`（不伪造图床地址——档案里没有这个字段，构造出来就是假数据）。
 
-⚠️ 与 otaku_site 的本质区别：
+与 otaku_site 的本质区别：
 
 | 来源 | Python 提交的 cover_url | Java 行为 |
 | --- | --- | --- |
