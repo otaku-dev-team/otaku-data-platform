@@ -326,7 +326,7 @@
 | 标签筛选 `tag=`（+ `V7` 反查表） | ✅ 已合并（后端 #104 / 客户端接入 #107） | 55.6 万：20–31ms；组合类型 18–34ms；`tag+q` 约 720ms（LIKE 求交集的固有成本） |
 | 跨源同名可辨识（列表透出 `source`） | ✅ 已合并（#143，W1.5 D3） | 客户端按 `source` 渲染来源角标；**只做可辨识，不做归并** |
 | 榜单 `min_rating=`（无评分不参与排名） | 🟡 分支 `feat/min-rating-ranking`，**待三人确认** | 方案见 [`ranking-proposal.md`](ranking-proposal.md)；2 条查询路径均有集成测试；**55.6 万性能未测** |
-| 搜索扩面（ngram 全文） | ⬜ 未启动 | 目标：`q` + `tag` 组合 720ms 降下来 |
+| 搜索扩面（ngram 全文） | 🟡 已评估，**本轮不做** | ngram 实测会漏召回（`LIKE '%ab%'` 3 条 vs `MATCH('ab')` **0 条**），不能当预过滤；保语义的唯一路是 bigram 倒排，成本约 1,000 万行，需单独立项。见 [`search-scaling-evaluation.md`](search-scaling-evaluation.md) |
 
 **已知限制**：`LIMIT/OFFSET` 深页仍是 O(OFFSET)（默认排序第 11000 页约 490ms），根治要键集分页，需动契约；
 `q` + `tag` 组合约 720ms，根治要给 `title` 上 ngram 全文索引。两项都单独立项，不夹在功能 PR 里。
