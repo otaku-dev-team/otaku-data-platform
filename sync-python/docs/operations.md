@@ -127,43 +127,29 @@ python -m sync            # 等价于 --source otaku_site，默认同步四类
 
 #### 检查脚本（放到 cron 里串在 sync 之后）
 
-不依赖 `jq`（环境不一定有），用 Python 直接读最近一份 `runs/run-*.json`：
+仓库已提供 **`scripts/check_run_report.py`**，不依赖 `jq`（环境不一定有），直接读最近一份 `runs/run-*.json`：
 
-```python
-#!/usr/bin/env python3
-"""检查最近一次 RunReport；有问题则非 0 退出，供 cron / systemd 捕获告警。"""
-import glob, json, os, sys
+```bash
+# 检查 runs/ 下最新的报告
+python scripts/check_run_report.py
 
-def latest(report_dir: str = "runs") -> str | None:
-    files = sorted(glob.glob(os.path.join(report_dir, "run-*.json")))
-    return files[-1] if files else None
+# 指定某份报告
+python scripts/check_run_report.py --report runs/run-20260101-030000.json
 
-path = latest()
-if not path:
-    print("SYNC_ALERT: no run report found")
-    sys.exit(1)
-
-r = json.load(open(path, encoding="utf-8"))
-fetched = r.get("fetched", 0)
-problems: list[str] = []
-
-if r.get("failed_pages"):
-    problems.append(f"failed_pages={len(r['failed_pages'])} → 未全量，重跑同一命令补齐")
-if r.get("server_error_items"):
-    problems.append(f"server_error_items={len(r['server_error_items'])} → 服务端故障，重跑同 batch_id")
-if r.get("detail_failures"):
-    problems.append(f"detail_failures={len(r['detail_failures'])} → 资讯详情缺正文，重跑补抓")
-rejected = r.get("rejected", 0)
-if fetched and rejected / fetched > 0.05:
-    problems.append(f"rejected 占比 {rejected}/{fetched} > 5% → 可能来源站字段变化，人工看 rejected_items")
-
-if problems:
-    print(f"SYNC_ALERT {path}: " + "; ".join(problems))
-    sys.exit(1)
-
-print(f"OK {path}")
-sys.exit(0)
+# 放宽 rejected 占比告警阈值（默认 5%）
+python scripts/check_run_report.py --threshold 0.1
 ```
+
+退出码约定（cron / systemd 靠它判断成败）：
+
+| 退出码 | 含义 |
+|---|---|
+| `0` | 正常，无需处置 |
+| `1` | 发现需要处置的问题（判定口径见下） |
+| `2` | 没找到报告，或报告无法解析 —— 与「有问题」区分开，便于分别处置 |
+
+判定逻辑在脚本的 `evaluate()` 里，判定与退出码均有测试覆盖（`tests/test_check_run_report.py`）。
+**不要在本文里另抄一份脚本**——改动一律落到 `scripts/check_run_report.py`，避免两份实现漂移。
 
 串进 cron（检查脚本非 0 退出 → 邮件/告警通道才能收到）：
 

@@ -186,6 +186,25 @@ PYTHONPATH=src python -m sync --source bangumi --archive <dump.zip> \
 | `OTAKU_BACKOFF_SECONDS` | `2` | 重试间隔 |
 | `OTAKU_OUTPUT_DIR` | `runs` | 产物目录 |
 
+## 定时化与运行检查
+
+定期运行 / 生产运维见 [`docs/operations.md`](docs/operations.md)：灌库指引、外部 cron 与 systemd.timer 配置、日志轮转与报告留存。
+
+⚠️ **不要只靠退出码判断成败**：`python -m sync` 在正常路径上一律返回 `0`，**即使 `failed_pages` 非空（本次根本没拿到全量），退出码也是 0**。跑完请用检查脚本判定：
+
+```bash
+python scripts/check_run_report.py          # 检查 runs/ 下最新的运行报告
+python scripts/check_run_report.py --help   # 查看参数与阈值
+```
+
+| 退出码 | 含义 |
+| --- | --- |
+| `0` | 正常，无需处置 |
+| `1` | 发现需要处置的问题（未全量 / 服务端故障 / 资讯详情缺失 / 被拒占比过高） |
+| `2` | 没找到报告，或报告无法解析 |
+
+判定与退出码均有测试覆盖：`pytest tests/test_check_run_report.py`。
+
 ## 约定
 
 - Python **不直接写业务数据库**，只通过内部导入 API 提交。
