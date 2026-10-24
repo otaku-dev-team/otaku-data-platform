@@ -56,7 +56,6 @@ public class ImportService {
     private static final int MAX_SOURCE_URL_LENGTH = 1024;
     private static final int MAX_SOURCE_LENGTH = 64;
     private static final int RATING_SCALE_DIGITS = 2;
-    private static final String DEFAULT_SOURCE = "otaku_site";
 
     private final WorkRepository workRepository;
     private final ImportBatchRepository batchRepository;
@@ -86,9 +85,6 @@ public class ImportService {
         if (items.size() > MAX_ITEMS_PER_BATCH) {
             throw new ApiException(ErrorCode.BATCH_TOO_LARGE,
                     "单批最多 " + MAX_ITEMS_PER_BATCH + " 条，当前 " + items.size() + " 条，请拆批后重发");
-        }
-        if (!DEFAULT_SOURCE.equals(source)) {
-            log.info("收到非常规 source：{}（第一阶段约定只有 {}）", source, DEFAULT_SOURCE);
         }
 
         OffsetDateTime startedAt = OffsetDateTime.now(ZoneOffset.UTC);
