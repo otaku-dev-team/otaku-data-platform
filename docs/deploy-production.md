@@ -248,7 +248,7 @@ flutter build apk --dart-define=USE_MOCK=false \
 不传 `API_BASE_URL` 时会按平台取默认值（Android `10.0.2.2:8080`、其它 `127.0.0.1:8080`），
 那是开发用的，发出去的包必须显式传。
 
-### ⚠️ Android 明文 HTTP 的问题
+### Android 明文 HTTP 的问题
 
 Android 9+ 默认禁明文 HTTP。现在的放行配置在
 `app-client/android/app/src/debug/res/xml/network_security_config.xml`，

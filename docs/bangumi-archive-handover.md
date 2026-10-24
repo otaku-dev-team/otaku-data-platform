@@ -38,7 +38,7 @@ $env:SPRING_PROFILES_ACTIVE = "local"
 
 **方式 B：用本机已装的 MySQL（没有 Docker 时走这条）**
 
-⚠️ **不要加 `SPRING_PROFILES_ACTIVE=local`。** `application-local.yml` 里写死的是 compose 那套
+**不要加 `SPRING_PROFILES_ACTIVE=local`。** `application-local.yml` 里写死的是 compose 那套
 （`localhost:3307` + 账号 `otaku/otaku123`），套到本机 MySQL 上会连不上。走**默认 profile + 显式环境变量**：
 
 ```bash
@@ -84,7 +84,7 @@ https://github.com/otaku-dev-team/otaku-data-platform/releases/download/untagged
 - 也可以在 releases 页面里翻到草稿区下载。
 - 文件：`dump-subject-only.zip`，**280,329,424 字节（268 MB）**。
 
-> ⚠️ **不要把这份 draft 发布成正式 release。**
+> **不要把这份 draft 发布成正式 release。**
 > 仓库是 **public**，一发布就等于把 268 MB 的 Bangumi 数据集对全网开放，违反数据集「不公开再分发」的条款，也超出团队授权范围。要给别人就私下传（网盘 / 对象存储），别走公开发布。
 > 同理：这个 zip **不要提交进 git**。
 

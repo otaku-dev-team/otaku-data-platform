@@ -14,9 +14,9 @@
 | --- | --- |
 | 远程仓库 | 已有 `main`、`feat/source-pagination-and-fields`、`docs/legacy-asset-review` 三个分支 |
 | 远程 `app-client/` | 只有一个 `README.md`，没有 Flutter 工程 |
-| 你本地 `D:\otaku\app-client` | 完整 Flutter 工程，能构建，但**不是 git 仓库** |
+| 你本地 `D:\otaku\app-client` | 完整 Flutter 工程，能构建，但不是 git 仓库 |
 
-结论：**你现在在这个目录里敲 `git branch` 会直接报 `not a git repository`。**
+结论：你现在在这个目录里敲 `git branch` 会直接报 `not a git repository`。
 所以"弄分支"的第一步不是 `git branch`，而是**先把本地目录接上远程仓库**。
 
 还有一件事：**不要** `git init` 完就 `git add . && git commit`。
@@ -72,7 +72,7 @@ git log --oneline -5
 
 正常结果是：
 - `git log` 能看到别人的提交（如 PR #13–#16 相关）
-- `git status` 里 `app-client/lib/`、`pubspec.yaml`、`android/` 等显示为 **untracked**——这正是你的工作量，等着被提交
+- `git status` 里 `app-client/lib/`、`pubspec.yaml`、`android/` 等显示为 untracked——这正是你的工作量，等着被提交
 - `.workbuddy/`、`app-client/build/`、`.dart_tool/` **不应该**出现在列表里（已被 `.gitignore` 挡住）
 
 如果 `.workbuddy/` 出现了，说明根 `.gitignore` 没生效，先别提交，回头查。
@@ -85,9 +85,9 @@ git log --oneline -5
 
 三条铁律：
 
-1. **`main` 是只读的。** 任何人都不直接往 `main` 提交，包括你。所有改动走"分支 → PR → 合并"。
-2. **一个分支只做一件事。** 分支里混进两件不相关的事，review 就没法做，出问题也没法单独回滚。
-3. **分支从最新的 `main` 切出来。** 基于旧代码开分支，等于给自己预埋冲突。
+1. `main` 是只读的。任何人都不直接往 `main` 提交，包括你。所有改动走"分支 → PR → 合并"。
+2. 一个分支只做一件事。分支里混进两件不相关的事，review 就没法做，出问题也没法单独回滚。
+3. 分支从最新的 `main` 切出来。基于旧代码开分支，等于给自己预埋冲突。
 
 你只需要记四条命令：
 
@@ -129,9 +129,9 @@ scaffold ──┬── contents-list
 ### 命名规则
 
 - 前缀只用仓库现有的四种：`feat/` `fix/` `docs/` `chore/`
-- 全小写，用短横线连接：`feat/contents-list` ✅ `feat/ContentsList` ❌ `feat/内容列表` ❌
+- 全小写，用短横线连接：`feat/contents-list` `feat/ContentsList` `feat/内容列表` 
 - 名字要能看出做什么，不要 `feat/dev`、`feat/test`、`feat/update`
-- **契约改动单独开 `docs/*` 分支**，不要混在 `feat/` 里。比如要改 `docs/openapi.yaml`，就开 `docs/collection-idempotent`
+- 契约改动单独开 `docs/*` 分支，不要混在 `feat/` 里。比如要改 `docs/openapi.yaml`，就开 `docs/collection-idempotent`
 
 ---
 
@@ -301,7 +301,7 @@ git merge --continue
 | `untracked working tree files would be overwritten` | 本地文件和要检出的分支文件同名 | 先删/改名本地那个文件 |
 | `CONNECT tunnel failed, response 502` | 本机代理不支持 HTTP/2 的 CONNECT | `git config http.version HTTP/1.1` |
 | `Permission denied (403)` | 没有仓库写权限 | 找仓库所有者加 collaborator；或 fork 后从自己仓库发 PR |
-| `Updates were rejected (non-fast-forward)` | 远程有你本地没有的提交 | `git pull` 后再 push；**不要用 `--force`** |
+| `Updates were rejected (non-fast-forward)` | 远程有你本地没有的提交 | `git pull` 后再 push；不要用 `--force` |
 | `Your branch is behind 'origin/main'` | 你落后了 | 正常提示，`git pull` 即可 |
 | `detached HEAD` | 检出了某个 commit 而不是分支 | `git switch main` 回来 |
 | `Please tell me who you are` | 没配 user.name/email | 回 §1.1 |
@@ -312,10 +312,10 @@ git merge --continue
 
 VS Code 左下角状态栏会显示当前分支名（装了 GitLens 更清楚）：
 
-- **点分支名** → 弹出分支列表，可以直接切换
-- **列表顶部 "Create new branch..."** → 输入 `feat/contents-list`，等于 `git switch -c`
-- **源代码管理面板**（左侧第三个图标）→ 改动的文件都在这里，填 commit message 点 ✓
-- **同步按钮**（状态栏的 `↑↓` 数字）→ 等于 `git pull` + `git push`
+- 点分支名 → 弹出分支列表，可以直接切换
+- 列表顶部 "Create new branch..." → 输入 `feat/contents-list`，等于 `git switch -c`
+- 源代码管理面板（左侧第三个图标）→ 改动的文件都在这里，填 commit message 点 ✓
+- 同步按钮（状态栏的 `↑↓` 数字）→ 等于 `git pull` + `git push`
 
 命令行的好处是每一步发生了什么你看得见。前两周建议命令行，熟了再交给图形界面。
 
@@ -325,7 +325,7 @@ VS Code 左下角状态栏会显示当前分支名（装了 GitLens 更清楚）
 
 别一上来就推整个业务代码。第一个 PR 只做脚手架，让另外两人先看清你的目录结构和分层：
 
-**`feat/flutter-scaffold` 的 PR 内容：**
+`feat/flutter-scaffold` 的 PR 内容：
 
 - `app-client/` 完整 Flutter 工程（android + windows 两个平台）
 - `pubspec.yaml` + `pubspec.lock`（**lock 必须提交**，保证三人依赖版本一致）
@@ -334,7 +334,7 @@ VS Code 左下角状态栏会显示当前分支名（装了 GitLens 更清楚）
 - Mock 仓储 + `--dart-define=USE_MOCK=true` 开关
 - 更新 `app-client/README.md`：怎么跑、怎么切 Mock、目录约定
 
-**明确不要提交：**
+明确不要提交：
 
 - `build/`、`.dart_tool/`、`.idea/`、`*.iml`、`windows/flutter/ephemeral/`
 - 任何 `.apk`、`.exe`

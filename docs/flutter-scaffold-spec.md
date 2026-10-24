@@ -54,14 +54,14 @@
 
 | 事情 | 能否现在做 | 说明 |
 | --- | --- | --- |
-| lib 分层骨架 | ✅ | 纯结构 |
-| 主题 / 路由 | ✅ | 已定 Riverpod + go_router |
-| dio 封装 + 错误模型 | ✅ | 信封格式已定，照着写 |
-| 数据模型 | ✅ | openapi 里 schema 完整 |
-| Mock 数据源 + `USE_MOCK` 开关 | ✅ | 见下节注意 |
-| 列表页 / 详情页 / 搜索 | ✅ | 用 Mock 先跑通 |
-| 真实联调 | ❌ | 等 Java 给 base URL |
-| Android 明文 HTTP 例外 | ⚠️ | 首期 Java 可能跑在 `http://`，配置保留 |
+| lib 分层骨架 | | 纯结构 |
+| 主题 / 路由 | | 已定 Riverpod + go_router |
+| dio 封装 + 错误模型 | | 信封格式已定，照着写 |
+| 数据模型 | | openapi 里 schema 完整 |
+| Mock 数据源 + `USE_MOCK` 开关 | | 见下节注意 |
+| 列表页 / 详情页 / 搜索 | | 用 Mock 先跑通 |
+| 真实联调 | | 等 Java 给 base URL |
+| Android 明文 HTTP 例外 | | 首期 Java 可能跑在 `http://`，配置保留 |
 
 ### Mock 数据不能直接用现成样本
 

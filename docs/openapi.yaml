@@ -88,6 +88,16 @@ paths:
             标题关键词，子串匹配、忽略大小写。不支持别名与拼音
             （别名来源未出口，第一阶段做不到）。省略表示不过滤。
           schema: { type: string, maxLength: 100 }
+        - name: tag
+          in: query
+          description: |
+            **标签精确匹配**（不做模糊、不做分词），可与 `type` / `q` / `sort` 组合。
+
+            - 未知标签**不报错**：返回 `200` + `items: []` + `total: 0`
+              （标签是数据里的值、不是接口枚举，来源站改名后旧链接属「没有结果」）。
+            - 超过 64 字符按 64 截断（与该列宽度一致），不报错。
+            - 匹配的是**整个标签**：`科幻` 不会命中 `科幻机甲`。
+          schema: { type: string, maxLength: 64, example: 科幻 }
         - name: sort
           in: query
           description: |
@@ -133,7 +143,7 @@ paths:
       summary: 作品详情（接口④）
       operationId: getWork
       description: |
-        按 `work_id` 取全部 11 个字段。
+        按 `work_id` 取全部 12 个字段。
 
         `work_id` 一律当作**不透明字符串**：不解析其结构，不做数值比较。
         不存在与格式非法**都返回 404**，不用错误码区分"是否存在"。
@@ -161,6 +171,9 @@ paths:
         - 作品**没有标签** → `200` + `basis_tags: []` + `items: []`，不是 404、不是空错误。
         - `limit` 省略为 6，超过 20 按 20 截断，不报错。
         - 排序为评分高 → 低（无评分排最后）；不返回作品自身。
+        - **按标题去重**（trim + 小写归一的键，保留评分更高的那条）：多来源并存
+          意味着同一作品可能有 2 条以上（实测 13,261 组跨源同名），不去重推荐位
+          会连着出现同一个名字。去重后不足 `limit` 时**按实际数量返回**，不补位。
 
         `basis_tags` 是**本次实际参与匹配的标签**（最多 5 个），客户端据此展示
         「同题材：科幻、机战」这类理由。为空表示该作品没有标签，此时 `items` 必为空。
@@ -180,6 +193,50 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/RelatedWorks" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /api/schedule:
+    get:
+      tags: [作品查询]
+      summary: 每日新番档期（按星期分组）
+      operationId: getSchedule
+      description: |
+        接口⑤：每日新番档期（公开，客户端可直连）。按星期分组返回当前/指定季度的档期。
+
+        边界约定（与作品列表一致）：
+        - 无匹配 → `200` + 空分组，不是错误；`season` 传不存在的值同样返回空分组，由客户端显示空状态。
+        - `season` 省略 → 取库内最新季度；库里没有任何数据时 `season` 与 `seasons` 均为 `null`，`groups` 为 8 个空组。
+        - `groups` 固定 8 组（周一…周日 + 待定），`weekday = null` 的待定组排在最后，与站点一致。
+        - 某条档期命中本地作品时 `work_id` 非空，客户端可据此跳转本地详情；`null` 时只展示、不给死链。
+      parameters:
+        - name: season
+          in: query
+          required: false
+          description: 季度编码（如 202504）；省略取库内最新季度
+          schema: { type: string, pattern: "^[0-9]{6}$", example: "202504" }
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SchedulePage" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /api/schedule/seasons:
+    get:
+      tags: [作品查询]
+      summary: 可用季度列表
+      operationId: listScheduleSeasons
+      description: |
+        全部可用季度，新的在前。给「切换季度」下拉用。库里没有任何档期时返回空数组。
+      responses:
+        "200":
+          description: 成功，字符串数组（如 ["202504","202501"]），新的在前
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { type: string, pattern: "^[0-9]{6}$" }
         "500": { $ref: "#/components/responses/InternalError" }
 
   /api/covers/{work_id}:
@@ -292,6 +349,149 @@ paths:
                   - $ref: "#/components/schemas/ImportBatchDetail"
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  # ---------------------------------------------------------------------------
+  # 接口⑤：每日新番档期（内部导入侧，接口②的档期分支）
+  # ---------------------------------------------------------------------------
+
+  /internal/import/schedules:
+    post:
+      tags: [内部导入]
+      summary: 提交一个档期同步批次（接口②档期侧）
+      operationId: submitScheduleImportBatch
+      description: |
+        Python 同步作业专用，不对外暴露。与作品的 `/internal/import/batches` 平行：
+        两种条目字段、校验、合并逻辑不同，故拆成独立端点而非共用一个带 entity 参数的端点。
+
+        批次记录仍走同一张 import_batch 表，运维侧同一套口径。
+        幂等、单批上限、创建/更新/`null` 不覆盖、`(source, source_id)` 唯一键、来源侧消失不删除——
+        全部与 ImportBatchRequest 一致（见该 schema 说明）。
+        差异：条目字段为档期侧（`ScheduleImportItem`），`work_tags` 收**数组**（站点给斜杠字符串，
+        转换在同步侧做），`content_id` 原样透传，关联本地作品由后端按 `(source, source_id)` 尽力匹配。
+      security:
+        - internalToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ScheduleImportRequest" }
+      responses:
+        "200":
+          description: 批次处理完成，逐条结果见 counts 与 errors
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ImportBatchResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "413": { $ref: "#/components/responses/BatchTooLarge" }
+        "429": { $ref: "#/components/responses/RateLimitedWithRetry" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  # ---------------------------------------------------------------------------
+  # 阶段 3：最新资讯（与作品、档期平行的第三条条目线）
+  # 资讯不是作品：无 work_id，正文只在详情给，source_url 是原文链接
+  # ---------------------------------------------------------------------------
+
+  /api/articles:
+    get:
+      tags: [最新资讯]
+      summary: 一页最新资讯，按发布时间倒序
+      operationId: listArticles
+      description: |
+        无匹配返回 200 + 空列表，与作品列表口径一致：「这个分类没数据」不是错误。
+        未知分类同样返回空——分类是数据里的值不是接口枚举。
+      parameters:
+        - name: category
+          in: query
+          required: false
+          schema: { type: string }
+          description: 分类筛选，省略不过滤
+        - name: page
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, default: 1 }
+          description: 页码从 1 起，小于 1 按 1 处理
+        - name: page_size
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+          description: 每页条数，上限 50，超出按 50 截断
+      responses:
+        "200":
+          description: 一页资讯
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ArticlePage" }
+
+  /api/articles/categories:
+    get:
+      tags: [最新资讯]
+      summary: 全部分类（条数多的在前），给客户端的分类筛选用
+      operationId: listArticleCategories
+      responses:
+        "200":
+          description: 分类列表
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ArticleCategory" }
+
+  /api/articles/{articleId}:
+    get:
+      tags: [最新资讯]
+      summary: 资讯详情（正文只在这里给，列表不带）
+      operationId: getArticle
+      description: |
+        path 变量名沿用实现端的 `articleId`（Spring `@PathVariable` 按模板变量名绑定）。
+        未知 id 返回 404 `ARTICLE_NOT_FOUND`。
+      parameters:
+        - name: articleId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: 资讯详情
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ArticleDetail" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /internal/import/articles:
+    post:
+      tags: [内部导入]
+      summary: 提交一个资讯同步批次（接口②资讯侧）
+      operationId: submitArticleImportBatch
+      description: |
+        Python 同步作业专用，不对外暴露。与作品的 `/internal/import/batches`、档期的
+        `/internal/import/schedules` 是三条平行的端点，而不是给现有端点加一个 entity
+        参数：三种条目的字段、校验、合并逻辑都不同，合成一个端点会让请求体变成
+        「带条件的联合类型」，出错时也分不清是哪一侧的问题。
+        批次记录仍然走同一张 import_batch 表，运维侧同一套口径。
+
+        幂等、单批上限、创建/更新/`null` 不覆盖、`(source, source_id)` 唯一键、来源侧消失不删除
+        ——全部与 ImportBatchRequest 一致（见该 schema 说明）。
+        差异：条目字段为资讯侧（`ArticleImportItem`）；`related_work_ids` 收**站点作品 id 原文**，
+        不回填本地 work_id（来源站编辑推荐区块，回填会让客户端给出错误的本地跳转）。
+      security:
+        - internalToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ArticleImportRequest" }
+      responses:
+        "200":
+          description: 批次处理完成，逐条结果见 counts 与 errors
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ImportBatchResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "413": { $ref: "#/components/responses/BatchTooLarge" }
+        "429": { $ref: "#/components/responses/RateLimitedWithRetry" }
         "500": { $ref: "#/components/responses/InternalError" }
 
   # ---------------------------------------------------------------------------
@@ -758,6 +958,173 @@ components:
           format: date-time
           description: 该记录最后一次变更时间，由 Java 维护，RFC 3339
 
+    SchedulePage:
+      type: object
+      description: |
+        一页档期。按星期分组返回而不是平铺列表：客户端「每日新番」页就是周一…周日分组布局，
+        服务端分组可少传 7 次星期字段，客户端也少一层 groupBy。
+      required: [season, seasons, groups]
+      properties:
+        season:
+          type: string
+          nullable: true
+          description: 本次返回的季度；库里没有任何档期时为 null
+          pattern: "^[0-9]{6}$"
+          example: "202504"
+        seasons:
+          type: array
+          description: 全部可用季度（新的在前），给「切换季度」下拉用；无数据时为空数组
+          items: { type: string, pattern: "^[0-9]{6}$" }
+        groups:
+          type: array
+          description: 按星期分组的档期，固定 8 组（周一…周日 + 待定）；空季度时组内为空
+          items: { $ref: "#/components/schemas/ScheduleGroup" }
+
+    ScheduleGroup:
+      type: object
+      required: [weekday, label, items]
+      properties:
+        weekday:
+          type: integer
+          nullable: true
+          description: 星期几（1=周一 … 7=周日）；null = 待定组，排在最后
+          minimum: 1
+          maximum: 7
+          example: 2
+        label:
+          type: string
+          description: 分组标签，如「周二」
+          example: 周二
+        items:
+          type: array
+          description: 该星期的档期条目
+          items: { $ref: "#/components/schemas/ScheduleItem" }
+
+    ScheduleItem:
+      type: object
+      description: 一条档期。
+      required: [scheduleId, seasonCode]
+      properties:
+        scheduleId:
+          type: string
+          description: 档期记录主键（来源站侧），不透明
+          example: "sch-202504-12345"
+        seasonCode: { type: string, pattern: "^[0-9]{6}$", example: "202504" }
+        titleMain: { type: string, description: 主标题（来源站语言）, example: 葬送的芙莉莲 }
+        titleCn: { type: string, nullable: true, description: 中文译名；无则 null }
+        titleJp: { type: string, nullable: true, description: 日文原名；无则 null }
+        weekday:
+          type: integer
+          nullable: true
+          minimum: 1
+          maximum: 7
+          description: 播出星期（1=周一…7=周日）；null=待定
+        broadcastTime:
+          type: string
+          nullable: true
+          description: 播出时间（来源站原格式，如「23:30」）；无则 null
+        broadcastNote:
+          type: string
+          nullable: true
+          description: 播出备注（如「每周五 深夜」）；无则 null
+        workType:
+          type: string
+          nullable: true
+          enum: [anime, comic, game, novel]
+          description: 类型；来源未给则 null
+        workTags:
+          type: array
+          nullable: true
+          description: 标签；null=来源未提供
+          items: { type: string }
+          example: ["奇幻", "冒险"]
+        imageUrl:
+          type: string
+          nullable: true
+          description: 封面图地址（来源站原图）；无则 null，客户端显示占位图
+        platforms:
+          type: array
+          nullable: true
+          description: 播放平台列表；无则 null
+          items: { $ref: "#/components/schemas/SchedulePlatform" }
+        sourceUrl:
+          type: string
+          nullable: true
+          description: 来源站人读原页；null 时不渲染回流入口（同契约 source_url 规则）
+        workId:
+          type: string
+          nullable: true
+          description: 命中本地作品时为其 work_id，客户端据此跳转本地详情；null 时只展示、不给死链
+
+    SchedulePlatform:
+      type: object
+      required: [name, url]
+      properties:
+        name: { type: string, example: bilibili }
+        url: { type: string, format: uri, example: "https://www.bilibili.com/bangumi" }
+
+    ScheduleImportRequest:
+      type: object
+      required: [batch_id, source, items]
+      properties:
+        batch_id:
+          type: string
+          maxLength: 128
+          description: 幂等键，格式与 ImportBatchRequest 一致（`{source}-schedule-{日期}-{内容指纹}`）
+          example: bangumi-schedule-20261022-9c1f3a
+        source:
+          type: string
+          enum: [otaku_site, bangumi]
+          description: 接入方唯一标识；档期侧目前由同步器按来源填充
+        fetched_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: 本次拉取时间，仅作排查参考
+        items:
+          type: array
+          maxItems: 500
+          items: { $ref: "#/components/schemas/ScheduleImportItem" }
+
+    ScheduleImportItem:
+      type: object
+      description: 档期提交项。字段命名与站点 GET /api/schedule 对齐（snake_case）。
+      required: [sourceId, seasonCode, titleMain]
+      properties:
+        sourceId: { type: string, minLength: 1, description: 来源站档期 ID }
+        seasonCode: { type: string, pattern: "^[0-9]{6}$", example: "202504" }
+        titleMain: { type: string, minLength: 1, maxLength: 500, description: 主标题 }
+        titleCn: { type: string, nullable: true, maxLength: 500 }
+        titleJp: { type: string, nullable: true, maxLength: 500 }
+        weekday: { type: integer, nullable: true, minimum: 1, maximum: 7 }
+        broadcastTime: { type: string, nullable: true }
+        broadcastNote: { type: string, nullable: true }
+        workType: { type: string, nullable: true, enum: [anime, comic, game, novel] }
+        workTags:
+          type: array
+          nullable: true
+          description: 站点给斜杠字符串（如「奇幻/冒险」），同步侧拆成数组后提交；null=未提供
+          items: { type: string }
+        imageUrl: { type: string, nullable: true, description: 封面图地址；空串在同步侧转 null }
+        platforms:
+          type: array
+          nullable: true
+          items: { $ref: "#/components/schemas/SchedulePlatform" }
+        sourceUrl:
+          type: string
+          nullable: true
+          maxLength: 1024
+          description: 来源站人读原页；只接受 http/https
+        contentId:
+          type: string
+          nullable: true
+          description: 原样透传的来源站内容 ID；关联本地作品由后端按 (source, source_id) 尽力匹配
+        sourceUpdatedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: 来源侧该条目的更新时间；用于增量判断
+
     ImportBatchRequest:
       type: object
       required: [batch_id, source, items]
@@ -1116,3 +1483,100 @@ components:
             items:
               type: array
               items: { $ref: "#/components/schemas/CollectionItem" }
+
+    ArticlePage:
+      allOf:
+        - $ref: "#/components/schemas/Paging"
+        - type: object
+          properties:
+            items:
+              type: array
+              items: { $ref: "#/components/schemas/ArticleSummary" }
+
+    ArticleSummary:
+      type: object
+      properties:
+        article_id:
+          type: string
+          description: 资讯在平台内的稳定 id
+        title: { type: string }
+        summary: { type: string, nullable: true }
+        category: { type: string, nullable: true }
+        published_at: { type: string, format: date-time, nullable: true }
+        source_name: { type: string, nullable: true }
+        source_url:
+          type: string
+          nullable: true
+          description: 原文链接（来源站人读页），客户端用它跳回来源站——G3「用户不被困在平台内」
+        cover_url:
+          type: string
+          nullable: true
+          description: 平台封面代理地址；`null` 时客户端不发请求，直接显示占位图
+        tags:
+          type: array
+          items: { type: string }
+
+    ArticleDetail:
+      allOf:
+        - $ref: "#/components/schemas/ArticleSummary"
+        - type: object
+          properties:
+            body:
+              type: string
+              description: 正文，只在详情给，列表不带
+            related_work_ids:
+              type: array
+              items: { type: string }
+              description: 来源站「关联作品」的站点作品 id 原文，不回填本地 work_id
+
+    ArticleCategory:
+      type: object
+      properties:
+        name: { type: string }
+        count: { type: integer, description: 该分类下的资讯条数 }
+
+    ArticleImportRequest:
+      type: object
+      required: [batch_id, source, items]
+      properties:
+        batch_id:
+          type: string
+          maxLength: 128
+          description: 幂等键，格式与 ImportBatchRequest 一致（`{source}-article-{日期}-{内容指纹}`）
+          example: otaku_site-article-20261023-4b8e21
+        source:
+          type: string
+          enum: [otaku_site]
+          description: 接入方唯一标识；资讯侧目前仅 Otaku 站点一个来源
+        fetched_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: 本次拉取时间，仅作排查参考
+        items:
+          type: array
+          maxItems: 500
+          items: { $ref: "#/components/schemas/ArticleImportItem" }
+
+    ArticleImportItem:
+      type: object
+      required: [source_id, title]
+      properties:
+        source_id:
+          type: string
+          description: 资讯在来源站的 id，与 source 共同构成唯一键
+        title: { type: string }
+        summary: { type: string, nullable: true }
+        body: { type: string, nullable: true }
+        category: { type: string, nullable: true }
+        published_at: { type: string, format: date-time, nullable: true }
+        source_name: { type: string, nullable: true }
+        source_url: { type: string, nullable: true }
+        cover_url: { type: string, nullable: true }
+        tags:
+          type: array
+          items: { type: string }
+        related_work_ids:
+          type: array
+          items: { type: string }
+          description: 来源站「关联作品」的站点作品 id 原文，透传不回填

@@ -4,7 +4,7 @@ import 'source_rating.dart';
 import 'work_summary.dart';
 import 'work_type.dart';
 
-/// 详情。契约 2.1：全部 11 个字段。
+/// 详情。契约 2.1：全部 12 个字段。
 @immutable
 class Work {
   const Work({

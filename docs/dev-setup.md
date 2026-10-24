@@ -6,15 +6,15 @@
 
 | 组件 | 位置 | 状态 |
 | --- | --- | --- |
-| Flutter SDK | `D:\dev\flutter` | ✅ 3.47.7 stable / Dart 3.13.5 / DevTools 2.60.0 |
-| pub 缓存 | `D:\dev\pub-cache` | ✅ 已重定向到 D 盘 |
-| VS Code | `D:\Microsoft VS Code` | ✅ 已装 Flutter、Dart、Error Lens、GitLens 四个扩展 |
-| Android SDK | `C:\Users\Administrator\AppData\Local\Android\Sdk` | ✅ platform 34/35/36、build-tools 34/35/36、NDK 28.2.13676358、cmdline-tools |
-| JDK | `C:\Program Files\Java\jdk-17` | ✅ 17.0.12，`JAVA_HOME` 已配 |
-| Gradle 缓存 | `C:\Users\Administrator\.gradle` | ✅ 保留（2.9GB，迁移会全部重下，不划算） |
-| 模拟器 | AVD `Pixel_5_API_35` | ✅ 可用 |
-| **VS Build Tools 2022** | `D:\Microsoft Visual Studio\2022\BuildTools` | ✅ 17.14.42，MSVC 14.44 + Win SDK 10.0.26100，vswhere 已能识别 |
-| VS Community 2022（残留） | `C:\Program Files\Microsoft Visual Studio\2022\Community` | ⚠️ 孤儿安装（文件在、注册丢失），已不使用，可择机清理 |
+| Flutter SDK | `D:\dev\flutter` | 3.47.7 stable / Dart 3.13.5 / DevTools 2.60.0 |
+| pub 缓存 | `D:\dev\pub-cache` | 已重定向到 D 盘 |
+| VS Code | `D:\Microsoft VS Code` | 已装 Flutter、Dart、Error Lens、GitLens 四个扩展 |
+| Android SDK | `C:\Users\Administrator\AppData\Local\Android\Sdk` | platform 34/35/36、build-tools 34/35/36、NDK 28.2.13676358、cmdline-tools |
+| JDK | `C:\Program Files\Java\jdk-17` | 17.0.12，`JAVA_HOME` 已配 |
+| Gradle 缓存 | `C:\Users\Administrator\.gradle` | 保留（2.9GB，迁移会全部重下，不划算） |
+| 模拟器 | AVD `Pixel_5_API_35` | 可用 |
+| VS Build Tools 2022 | `D:\Microsoft Visual Studio\2022\BuildTools` | 17.14.42，MSVC 14.44 + Win SDK 10.0.26100，vswhere 已能识别 |
+| VS Community 2022（残留） | `C:\Program Files\Microsoft Visual Studio\2022\Community` | 孤儿安装（文件在、注册丢失），已不使用，可择机清理 |
 
 > **注意：机器上有两套 Android SDK。** `C:\...\Local\Android\Sdk`（1.6GB+，含 system-images、AVD、NDK、build-tools 36）与 `D:\androidSDK`（1.6GB，只有 build-tools/platform-tools/platforms，没有系统镜像）。Flutter 当前使用前者，模拟器也依赖它。`D:\androidSDK` 很可能是 Android Studio 早期配置留下的，确认无用途后可删除以腾出 1.6GB，但**不要**用它作为 Flutter 的 SDK 路径，否则模拟器无法启动。
 
@@ -43,18 +43,18 @@ flutter build windows --debug → √ Built build\windows\x64\runner\Debug\otaku
 
 ## 4. 踩过的坑（换机器会重现）
 
-**① Flutter 3.47 强制要求 Android NDK。**
+① Flutter 3.47 强制要求 Android NDK。
 Gradle 插件里有 `forceNdkDownload`，会主动让 AGP 认为项目需要原生构建。本机原先没有 NDK，报：
 
 ```
 NDK not configured. Download it with SDK manager. Preferred NDK version is '28.2.13676358'.
 ```
 
-Flutter 想自动装 NDK，但自动安装依赖 `sdkmanager`，而 SDK 里没有 `cmdline-tools`，链条断掉 → 报错指向 `android/build.gradle.kts` 第 19 行，极具误导性。
+Flutter 想自动装 NDK，但自动安装依赖 `sdkmanager`，而 SDK 里没有 `cmdline-tools`，链条断掉。报错指向 `android/build.gradle.kts` 第 19 行，极具误导性。
 
 解决：装 `cmdline-tools` → 用新版 CLI 装 NDK。
 
-**② 新版 cmdline-tools 已弃用 `sdkmanager`。**
+② 新版 cmdline-tools 已弃用 `sdkmanager`。
 2026 年的 `cmdline-tools` 里 `sdkmanager` 只是壳，实际用 `android sdk`：
 
 ```bash
@@ -64,10 +64,10 @@ android sdk list --all          # 查看可安装包
 
 `sdkmanager --install "ndk;28.2.13676358"` 会直接报 "Package ndk not found"。
 
-**③ Flutter 3.47 的 compileSdk 是 36。**
+③ Flutter 3.47 的 compileSdk 是 36。
 只有 build-tools 34/35 时构建失败：`Failed to find Build Tools revision 36.0.0`。需补 `build-tools;36.0.0` 与 `platforms;android-36`。
 
-**④ 下载源。** 官方 `storage.googleapis.com` 实测约 2.3MB/s 且中途断连；`storage.flutter-io.cn` 约 4.8MB/s 且支持 Range 续传，启用镜像后一次通过。
+④ 下载源。官方 `storage.googleapis.com` 实测约 2.3MB/s 且中途断连；`storage.flutter-io.cn` 约 4.8MB/s 且支持 Range 续传，启用镜像后一次通过。
 
 ## 5. Windows 桌面端：VS 注册损坏的修复（已解决）
 
@@ -82,17 +82,17 @@ android sdk list --all          # 查看可安装包
 
 ### 真正的根因（三层，逐层剥开）
 
-**第一层：vswhere 返回空不是因为 VS 没装，而是因为它自己坏了。**
+第一层：vswhere 返回空不是因为 VS 没装，而是因为它自己坏了。
 
 `vswhere.exe` 是 32 位进程，内部通过 `CoCreateInstance` 调用 COM 组件 `Microsoft.VisualStudio.Setup.Configuration`，再由该组件枚举 `C:\ProgramData\Microsoft\VisualStudio\Packages\_Instances\*\state.json`。
 
-**第二层：COM 组件指向的 DLL 不存在。**
+第二层：COM 组件指向的 DLL 不存在。
 
 注册表 `HKLM\SOFTWARE\Classes\CLSID\{177F0C4A-1CD3-4DE7-A32C-71DBBB9FA36D}\InprocServer32` 指向
 `C:\ProgramData\Microsoft\VisualStudio\Setup\x64\Microsoft.VisualStudio.Setup.Configuration.Native.dll`，
 而 `C:\ProgramData\Microsoft\VisualStudio\Setup` 这个目录**整个不存在**。COM 激活返回 `0x80040154 REGDB_E_CLASSNOTREG`，vswhere 捕获后静默返回空数组——所以看起来像"VS 没装"，实际是"检测器坏了"。
 
-**第三层：为什么 DLL 会消失。**
+第三层：为什么 DLL 会消失。
 
 这个 DLL 由 MSI 包 `Microsoft.VisualStudio.Setup.Configuration`（v3.12.2140.44225）安装。包描述还留在
 `...\Packages\Microsoft.VisualStudio.Setup.Configuration,version=3.12.2140.44225\_package.json`，
@@ -100,15 +100,15 @@ android sdk list --all          # 查看可安装包
 
 ### 为什么不能直接重装
 
-- `msiexec /i` 该 MSI → 返回 **1619**，日志中 `Note: 1: 1402 ... Installer\Rollback\Scripts`，说明 MSI 子系统对注册表受保护区域的访问受限
+- `msiexec /i` 该 MSI → 返回 1619，日志中 `Note: 1: 1402 ... Installer\Rollback\Scripts`，说明 MSI 子系统对注册表受保护区域的访问受限
 - `msiexec /a`（管理安装解包）→ 同样 1619
-- `vs_BuildTools.exe` → `setup.exe` 以 `--finalizeInstall` 续接旧计划后返回 **87**（ERROR_INVALID_PARAMETER）
+- `vs_BuildTools.exe` → `setup.exe` 以 `--finalizeInstall` 续接旧计划后返回 87（ERROR_INVALID_PARAMETER）
 
 三者都卡在同一个缺失的组件上，形成循环依赖：**修复工具本身依赖被修复的东西**。
 
 ### 实际修复步骤
 
-**① 取包描述里的下载地址**（`_package.json` 内含官方 URL 与 SHA256）：
+① 取包描述里的下载地址（`_package.json` 内含官方 URL 与 SHA256）：
 
 ```text
 https://download.visualstudio.microsoft.com/download/pr/910a8983-18a1-4a8c-8ffe-57096e3592b4/098a8cffbc90d04c284f63039f90143be9d69502aeeeffaf37530381d0b14196/Microsoft.VisualStudio.Setup.Configuration.msi
@@ -116,9 +116,9 @@ https://download.visualstudio.microsoft.com/download/pr/910a8983-18a1-4a8c-8ffe-
 
 SHA256 应为 `098a8cffbc90d04c284f63039f90143be9d69502aeeeffaf37530381d0b14196`（1,323,008 字节）。
 
-**② 从 MSI 里抠出 DLL（关键坑）**
+② 从 MSI 里抠出 DLL（关键坑）
 
-MSI 是 OLE 复合文档，内部 CAB 流是 **LZX 压缩** 且扇区不连续。踩过的两个坑：
+MSI 是 OLE 复合文档，内部 CAB 流是 LZX 压缩 且扇区不连续。踩过的两个坑：
 
 - 按文件偏移直接截取 `MSCF` → CAB 数据错位，7-Zip 报 `Data Error`，输出全零文件
 - Python 标准库 `msilib` 在 3.13 已移除，无法读表
@@ -136,7 +136,7 @@ MSI 的流名是编码过的（`listdir()` 显示为乱码），**按大小匹�
 
 然后 `7za x sc_inner.cab -o<dir>` 解出三个文件：`F_Setup_Configuration_Native_{amd64,arm64ec,x86}`。
 
-**③ 部署并注册**
+③ 部署并注册
 
 ```text
 C:\ProgramData\Microsoft\VisualStudio\Setup\x64\Microsoft.VisualStudio.Setup.Configuration.Native.dll   ← amd64
@@ -152,7 +152,7 @@ lib.DllRegisterServer.restype = ctypes.c_long
 assert lib.DllRegisterServer() == 0   # S_OK
 ```
 
-这只会写 **64 位视图**。因为 vswhere 是 32 位进程，还必须补 32 位视图（`Registry32` 视图下写，系统自动重定向到 `WOW6432Node`）：
+这只会写 64 位视图。因为 vswhere 是 32 位进程，还必须补 32 位视图（`Registry32` 视图下写，系统自动重定向到 `WOW6432Node`）：
 
 ```powershell
 $lm = [Microsoft.Win32.RegistryKey]::OpenBaseKey('LocalMachine','Registry32')
@@ -161,7 +161,7 @@ $k.SetValue('', 'C:\ProgramData\Microsoft\VisualStudio\Setup\x86\Microsoft.Visua
 $k.SetValue('ThreadingModel', 'Both')
 ```
 
-**④ 补齐实例状态标记**
+④ 补齐实例状态标记
 
 `_Instances\f8c332e0\state.json` 缺 `isComplete` / `isLaunchable` / `isInstalled`，vswhere 默认只返回 complete 实例。补为 `true`（备份原文件后修改）。
 
@@ -203,10 +203,10 @@ Build process failed.
 
 | 位置 | ATL | Flutter 是否使用 |
 | --- | --- | --- |
-| `D:\Microsoft Visual Studio\2022\BuildTools` | ❌ 无 `atlmfc` | ✅ 在用（CMakeCache 的 `CMAKE_GENERATOR_INSTANCE` 指向它） |
-| `C:\Program Files\Microsoft Visual Studio\2022\Community` | ✅ 有完整 `atlmfc`（含 `atlstr.h`、`atls.lib`） | ❌ 孤儿安装，`vswhere` 不返回 |
+| `D:\Microsoft Visual Studio\2022\BuildTools` | 无 `atlmfc` | 在用（CMakeCache 的 `CMAKE_GENERATOR_INSTANCE` 指向它） |
+| `C:\Program Files\Microsoft Visual Studio\2022\Community` | 有完整 `atlmfc`（含 `atlstr.h`、`atls.lib`） | 孤儿安装，`vswhere` 不返回 |
 
-正规做法是在 VS Installer 勾选 **「C++ ATL for latest v143 build tools」**。本机执行失败：
+正规做法是在 VS Installer 勾选「C++ ATL for latest v143 build tools」。本机执行失败：
 
 ```text
 vs_installer.exe modify --installPath "D:\...\BuildTools" --add Microsoft.VisualStudio.Component.VC.ATL --quiet
@@ -224,7 +224,7 @@ cp -r "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.
       "D:/Microsoft Visual Studio/2022/BuildTools/VC/Tools/MSVC/14.44.35207/"
 ```
 
-- 只 **新增** `atlmfc` 目录，不覆盖 BuildTools 任何已有文件（它本来就没有这个目录）。
+- 只新增 `atlmfc` 目录，不覆盖 BuildTools 任何已有文件（它本来就没有这个目录）。
 - 8.6 MB，`include/` + `lib/` + `src/` 齐全；MSVC 的 `$(VC_IncludePath)` 默认就包含 `atlmfc\include`，无需改 CMake。
 - 验证：
 
@@ -237,7 +237,7 @@ flutter build windows --debug
 
 ### 注意事项
 
-- **这是孤儿安装的救急手段，不是标准做法。** 换机器请先用 VS Installer 正规勾选 ATL；只有 Installer 报「找不到已安装产品」时才用上面这条。
+- 这是孤儿安装的救急手段，不是标准做法。换机器请先用 VS Installer 正规勾选 ATL；只有 Installer 报「找不到已安装产品」时才用上面这条。
 - 两边 MSVC 版本号不一致时**不要复制**，头文件与链接库必须同版本，否则会出现更隐蔽的链接错误。
 - VS 更新后该目录可能被覆盖，届时重做一次；升级后记得重跑一次 `flutter build windows`。
 

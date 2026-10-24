@@ -2,7 +2,7 @@ import '../../core/network/api_exception.dart';
 import '../models/account_user.dart';
 import 'auth_data_source.dart';
 
-/// 阶段 2 契约未定稿前的假认证源。
+/// 开发 / 联调期的假认证源（`USE_MOCK=true` 时默认走它，真接口见 auth_remote_data_source.dart）。
 ///
 /// 只用来把登录流程、令牌持久化、退出登录的界面跑通，**不代表最终接口语义**：
 /// - 任意非空用户名 + 非空密码都能登录；密码是 `wrong` 时返回 401 `INVALID_CREDENTIALS`；

@@ -37,9 +37,9 @@ class AuthSession {
 
 /// 认证相关的服务端能力。
 ///
-/// 对应的接口形状见 `docs/stage2-account-collection-contract.md` §4.1–§4.3，
-/// **契约仍在评审（Issue #32）**，所以当前只有 Mock 实现。定稿后在这里补
-/// `RemoteAuthDataSource`，其余各层不需要改。
+/// 接口形状见 `docs/stage2-account-collection-contract.md` §4.1–§4.3（已定稿并实现）。
+/// 真接口走 [`auth_remote_data_source.dart`](auth_remote_data_source.dart)，
+/// Mock 走 [`auth_mock_data_source.dart`](auth_mock_data_source.dart)，由 `AppConfig.useMock` 切换。
 abstract class AuthDataSource {
   Future<AuthSession> login({
     required String username,
