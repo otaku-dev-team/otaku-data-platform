@@ -424,7 +424,7 @@ Java 侧 DTO 类名可自定，但 JSON 键名以本文为准。
 > URL 路径、DTO 命名、鉴权实现**由 Java 负责人决定**，本节只定语义、字段与响应形态。
 > [`openapi.yaml`](openapi.yaml) 是本节请求与响应形状的机器可读版本；两者冲突时以本节为准。
 
-**列表返回字段（固定）**：`work_id`、`work_type`、`title`、`release_year`、`cover_url`、`tags`、`main_rating`（共 7 个），另加分页字段 `total`、`page`、`page_size`、`total_pages`。**不返回** `summary`、`source`、`source_id`、`updated_at`、`source_url`——需要简介或回流入口请按 `work_id` 拉详情。
+**列表返回字段（固定）**：`work_id`、`work_type`、`title`、`release_year`、`cover_url`、`tags`、`main_rating`、`source`（共 8 个），另加分页字段 `total`、`page`、`page_size`、`total_pages`。**不返回** `summary`、`source_id`、`updated_at`、`source_url`——需要简介或回流入口请按 `work_id` 拉详情。
 
 **详情返回字段（固定）**：第 2.1 节全部字段（含 `summary`、`source`、`source_id`、`updated_at`、`source_url`、`release_year`）。
 
@@ -436,7 +436,9 @@ Java 侧 DTO 类名可自定，但 JSON 键名以本文为准。
 | --- | --- |
 | `type` | 可选，`anime`/`comic`/`game`/`novel`；不传 = 全部 |
 | `q` | 可选，标题关键词模糊搜索 |
+| `tag` | 可选，**标签精确匹配**（不模糊、不分词），可与 `type`/`q`/`sort` 组合；未知标签返回 `200` + 空数组而不是报错 |
 | `sort` | 可选，排序方式：**`id`（默认，入库顺序升序）/ `rating`（评分高→低）/ `year`（年份新→旧）**；非法取值返回 `400`。三种排序都以 `id` 作次级键，**保证分页稳定**（同一查询多次顺序一致） |
+| `min_rating` | 可选，榜单评分下限：只保留评分 **≥** 该值的作品，**无评分（`null`）一律排除**（`0` = 只要有过评分）。取值 `0`–`10`，非法值返回 `400`。与 `sort=rating` 的区别：`sort` 只把无评分沉底，`min_rating` 把它们移出结果集 |
 | `page` / `page_size` | 分页，`page_size` 建议**上限 50** |
 
 **响应**：

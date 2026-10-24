@@ -170,7 +170,7 @@ public class WorkRepository {
      * 代价是标签内跳深页仍受 OFFSET 影响，与主表一致。
      */
     public List<WorkRecord> findPage(String workType, String titlePattern, String tag, WorkSort sort,
-                                     int limit, int offset) {
+                                     BigDecimal minRating, int limit, int offset) {
         MapSqlParameterSource params = new MapSqlParameterSource()
                 .addValue("limit", limit)
                 .addValue("offset", offset);
@@ -179,7 +179,7 @@ public class WorkRepository {
         StringBuilder inner;
         if (tag == null) {
             inner = new StringBuilder("SELECT w.id AS id FROM work w WHERE 1 = 1");
-            appendConditions(inner, params, workType, titlePattern);
+            appendConditions(inner, params, workType, titlePattern, minRating);
             inner.append(" ORDER BY ").append(effective.orderBy("w"));
         } else {
             // 走关联表：标签条件的成本与标签基数成正比，而不是与全表成正比。
@@ -190,12 +190,18 @@ public class WorkRepository {
             if (titlePattern != null) {
                 inner = new StringBuilder("SELECT t.work_ref AS id FROM work_tag t"
                         + " JOIN work w ON w.id = t.work_ref WHERE t.tag = :tag");
-                appendConditions(inner, params, workType, titlePattern);
+                appendConditions(inner, params, workType, titlePattern, minRating);
             } else {
                 inner = new StringBuilder("SELECT t.work_ref AS id FROM work_tag t WHERE t.tag = :tag");
                 if (workType != null) {
                     inner.append(" AND t.work_type = :workType");
                     params.addValue("workType", workType);
+                }
+                if (minRating != null) {
+                    // 用冗余列而不是回表比 w.rating_value：(tag, rating_value, work_ref) 上
+                    // 一次范围扫描就够，还能顺带满足 sort=rating 的顺序。
+                    inner.append(" AND t.rating_value >= :minRating");
+                    params.addValue("minRating", minRating);
                 }
             }
             inner.append(" ORDER BY ").append(effective.orderByOnTagTable("t"));
@@ -229,24 +235,28 @@ public class WorkRepository {
                 .addValue("limit", limit), MAPPER);
     }
 
-    public long count(String workType, String titlePattern, String tag) {
+    public long count(String workType, String titlePattern, String tag, BigDecimal minRating) {
         MapSqlParameterSource params = new MapSqlParameterSource();
         StringBuilder sql;
         if (tag == null) {
             sql = new StringBuilder("SELECT COUNT(*) FROM work w WHERE 1 = 1");
-            appendConditions(sql, params, workType, titlePattern);
+            appendConditions(sql, params, workType, titlePattern, minRating);
         } else {
             params.addValue("tag", tag);
             // 同 findPage：标题必须回表；类型已冗余进 work_tag，不必 JOIN。
             if (titlePattern != null) {
                 sql = new StringBuilder("SELECT COUNT(*) FROM work_tag t"
                         + " JOIN work w ON w.id = t.work_ref WHERE t.tag = :tag");
-                appendConditions(sql, params, workType, titlePattern);
+                appendConditions(sql, params, workType, titlePattern, minRating);
             } else {
                 sql = new StringBuilder("SELECT COUNT(*) FROM work_tag t WHERE t.tag = :tag");
                 if (workType != null) {
                     sql.append(" AND t.work_type = :workType");
                     params.addValue("workType", workType);
+                }
+                if (minRating != null) {
+                    sql.append(" AND t.rating_value >= :minRating");
+                    params.addValue("minRating", minRating);
                 }
             }
         }
@@ -256,7 +266,7 @@ public class WorkRepository {
 
     /** 列表的公共过滤条件。列统一带 {@code w.} 前缀，因为按标签查时是 JOIN。 */
     private static void appendConditions(StringBuilder sql, MapSqlParameterSource params,
-                                         String workType, String titlePattern) {
+                                         String workType, String titlePattern, BigDecimal minRating) {
         if (workType != null) {
             sql.append(" AND w.work_type = :workType");
             params.addValue("workType", workType);
@@ -264,6 +274,12 @@ public class WorkRepository {
         if (titlePattern != null) {
             sql.append(" AND w.title LIKE :titlePattern ESCAPE '!'");
             params.addValue("titlePattern", titlePattern);
+        }
+        if (minRating != null) {
+            // 榜单语义：只要评分 ≥ 下限的作品。NULL 与任何数比较都不成立，
+            // 无评分作品因此被自然排除——不需要额外写 IS NOT NULL。
+            sql.append(" AND w.rating_value >= :minRating");
+            params.addValue("minRating", minRating);
         }
     }
 

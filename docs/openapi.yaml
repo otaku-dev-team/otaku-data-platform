@@ -114,6 +114,18 @@ paths:
             type: string
             enum: [id, rating, year]
             default: id
+        - name: min_rating
+          in: query
+          description: |
+            榜单评分下限：只返回评分 **≥** 该值的作品，**无评分（`null`）一律排除**。
+
+            与 `sort=rating` 的「无评分沉底」互补：沉底只是排在最后、作品仍在结果里；
+            榜单要的是「没有评分就不参与排名」，所以这里把它们移出结果集。
+            `min_rating=0` 的语义是「只要有过评分」。可与 `type` / `q` / `tag` / `sort` 任意组合。
+
+            尺度取 0–10（库内 `rating_scale` 当前均为 `0-10`）。非法值（非数字、负数、超上限）返回 `400`
+            （`BAD_REQUEST`），与「筛出来是空的」区分开。
+          schema: { type: number, minimum: 0, maximum: 10, example: 7.0 }
         - name: page
           in: query
           schema: { type: integer, minimum: 1, default: 1 }

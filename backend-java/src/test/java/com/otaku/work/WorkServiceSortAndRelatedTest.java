@@ -57,21 +57,21 @@ class WorkServiceSortAndRelatedTest {
     @Test
     @DisplayName("sort 透传到仓储，page_size 超限按 50 截断")
     void listPassesSortAndCapsPageSize() {
-        when(repository.count(null, null, null)).thenReturn(1L);
-        when(repository.findPage(any(), any(), any(), eq(WorkSort.RATING), eq(50), eq(0)))
+        when(repository.count(null, null, null, null)).thenReturn(1L);
+        when(repository.findPage(any(), any(), any(), eq(WorkSort.RATING), any(), eq(50), eq(0)))
                 .thenReturn(List.of(record(1L, "W-1", "[\"科幻\"]")));
 
-        var page = service.list(null, null, null, "rating", 1, 999);
+        var page = service.list(null, null, null, "rating", null, 1, 999);
 
         assertThat(page.items()).hasSize(1);
         assertThat(page.pageSize()).isEqualTo(50);
-        verify(repository).findPage(null, null, null, WorkSort.RATING, 50, 0);
+        verify(repository).findPage(null, null, null, WorkSort.RATING, null, 50, 0);
     }
 
     @Test
     @DisplayName("非法 sort 直接 400，且不碰数据库")
     void invalidSortFailsFast() {
-        assertThatThrownBy(() -> service.list(null, null, null, "popular", 1, 20))
+        assertThatThrownBy(() -> service.list(null, null, null, "popular", null, 1, 20))
                 .isInstanceOf(ApiException.class)
                 .satisfies(ex -> assertThat(((ApiException) ex).code()).isEqualTo(ErrorCode.BAD_REQUEST));
 
@@ -81,51 +81,104 @@ class WorkServiceSortAndRelatedTest {
     @Test
     @DisplayName("tag 去掉首尾空白后透传，计数与取页用同一个条件")
     void tagIsTrimmedAndPassedThrough() {
-        when(repository.count(null, null, "科幻")).thenReturn(1L);
-        when(repository.findPage(null, null, "科幻", WorkSort.ID, 20, 0))
+        when(repository.count(null, null, "科幻", null)).thenReturn(1L);
+        when(repository.findPage(null, null, "科幻", WorkSort.ID, null, 20, 0))
                 .thenReturn(List.of(record(1L, "W-1", "[\"科幻\"]")));
 
-        var page = service.list(null, null, "  科幻  ", null, 1, 20);
+        var page = service.list(null, null, "  科幻  ", null, null, 1, 20);
 
         assertThat(page.items()).hasSize(1);
-        verify(repository).count(null, null, "科幻");
-        verify(repository).findPage(null, null, "科幻", WorkSort.ID, 20, 0);
+        verify(repository).count(null, null, "科幻", null);
+        verify(repository).findPage(null, null, "科幻", WorkSort.ID, null, 20, 0);
     }
 
     @Test
     @DisplayName("空 tag 视为不过滤，不把空串塞进查询")
     void blankTagMeansNoFilter() {
-        when(repository.count(null, null, null)).thenReturn(0L);
+        when(repository.count(null, null, null, null)).thenReturn(0L);
 
-        service.list(null, null, "   ", null, 1, 20);
+        service.list(null, null, "   ", null, null, 1, 20);
 
-        verify(repository).count(null, null, null);
-        verify(repository, never()).findPage(any(), any(), any(), any(), anyInt(), anyInt());
+        verify(repository).count(null, null, null, null);
+        verify(repository, never()).findPage(any(), any(), any(), any(), any(), anyInt(), anyInt());
     }
 
     @Test
     @DisplayName("超长 tag 截到 64 字符，与列的宽度和回填脚本一致")
     void tagIsTruncatedToColumnWidth() {
         String longTag = "长".repeat(80);
-        when(repository.count(any(), any(), any())).thenReturn(0L);
+        when(repository.count(any(), any(), any(), any())).thenReturn(0L);
 
-        service.list(null, null, longTag, null, 1, 20);
+        service.list(null, null, longTag, null, null, 1, 20);
 
         ArgumentCaptor<String> captured = ArgumentCaptor.forClass(String.class);
-        verify(repository).count(any(), any(), captured.capture());
+        verify(repository).count(any(), any(), captured.capture(), any());
         assertThat(captured.getValue()).hasSize(64);
     }
 
     @Test
     @DisplayName("tag 与 type / q / sort 可组合，四个条件一起透传")
     void tagCombinesWithOtherFilters() {
-        when(repository.count("anime", "%魔法%", "科幻")).thenReturn(1L);
-        when(repository.findPage("anime", "%魔法%", "科幻", WorkSort.YEAR, 10, 0))
+        when(repository.count("anime", "%魔法%", "科幻", null)).thenReturn(1L);
+        when(repository.findPage("anime", "%魔法%", "科幻", WorkSort.YEAR, null, 10, 0))
                 .thenReturn(List.of(record(1L, "W-1", "[\"科幻\"]")));
 
-        service.list("anime", "魔法", "科幻", "year", 1, 10);
+        service.list("anime", "魔法", "科幻", "year", null, 1, 10);
 
-        verify(repository).findPage("anime", "%魔法%", "科幻", WorkSort.YEAR, 10, 0);
+        verify(repository).findPage("anime", "%魔法%", "科幻", WorkSort.YEAR, null, 10, 0);
+    }
+
+    // ------------------------------------------------------- 榜单 min_rating
+
+    @Test
+    @DisplayName("min_rating 解析后同时透传给计数与取页（两处条件必须一致）")
+    void minRatingIsPassedToBothCountAndPage() {
+        when(repository.count(null, null, null, new BigDecimal("7.0"))).thenReturn(1L);
+        when(repository.findPage(null, null, null, WorkSort.RATING, new BigDecimal("7.0"), 20, 0))
+                .thenReturn(List.of(record(1L, "W-1", "[\"科幻\"]")));
+
+        service.list(null, null, null, "rating", " 7.0 ", 1, 20);
+
+        verify(repository).count(null, null, null, new BigDecimal("7.0"));
+        verify(repository).findPage(null, null, null, WorkSort.RATING, new BigDecimal("7.0"), 20, 0);
+    }
+
+    @Test
+    @DisplayName("min_rating 省略或空串都表示不过滤，不往 SQL 里塞条件")
+    void blankMinRatingMeansNoFilter() {
+        when(repository.count(null, null, null, null)).thenReturn(0L);
+
+        service.list(null, null, null, null, null, 1, 20);
+        service.list(null, null, null, null, "   ", 1, 20);
+
+        verify(repository, org.mockito.Mockito.times(2)).count(null, null, null, null);
+    }
+
+    @Test
+    @DisplayName("边界值 0 与 10 合法：0 表示「只要有评分」，10 表示「满分」")
+    void minRatingAcceptsBoundaries() {
+        when(repository.count(null, null, null, BigDecimal.ZERO)).thenReturn(0L);
+        when(repository.count(null, null, null, BigDecimal.TEN)).thenReturn(0L);
+
+        service.list(null, null, null, "rating", "0", 1, 20);
+        service.list(null, null, null, "rating", "10", 1, 20);
+
+        verify(repository).count(null, null, null, new BigDecimal("0"));
+        verify(repository).count(null, null, null, new BigDecimal("10"));
+    }
+
+    @Test
+    @DisplayName("min_rating 非法（非数字 / 负数 / 超上限）一律 400，且不碰数据库")
+    void invalidMinRatingFailsFast() {
+        for (String bad : List.of("abc", "-0.1", "10.01", "NaN")) {
+            assertThatThrownBy(() -> service.list(null, null, null, "rating", bad, 1, 20))
+                    .as("min_rating=%s 应被拒绝", bad)
+                    .isInstanceOf(ApiException.class)
+                    .satisfies(ex -> assertThat(((ApiException) ex).code())
+                            .isEqualTo(ErrorCode.BAD_REQUEST));
+        }
+
+        verifyNoInteractions(repository);
     }
 
     @Test
