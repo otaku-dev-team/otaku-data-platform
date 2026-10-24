@@ -103,6 +103,24 @@ class WorkTagFilterIntegrationTest {
     }
 
     @Test
+    @DisplayName("标签传 null（不覆盖）但评分变了：冗余评分列仍要跟着更新，否则 min_rating 会筛错")
+    void ratingChangePropagatesWhenTagsAreNull() {
+        // 「null 不覆盖」只该保护标签本身，不该把评分一起冻住。
+        // 这条路径最容易漏：写入时若为了省一次重写而跳过 replaceTags，
+        // work_tag.rating_value 就会停在旧值，min_rating 走标签路径时结果是错的。
+        importBatch(item("it-tag-11", "标签不变评分变", List.of("悬疑"), "6.0"));
+        importBatch(item("it-tag-11", "标签不变评分变", null, "9.9"));
+
+        assertThat(tagOf("it-tag-11")).as("标签应保留原值").containsExactly("悬疑");
+        assertThat(tagRating("it-tag-11", "悬疑")).isEqualByComparingTo("9.90");
+
+        var hit = workService.list(null, null, "悬疑", "rating", "9", 1, 50);
+        assertThat(hit.items())
+                .extracting(com.otaku.work.dto.WorkSummaryDto::workId)
+                .contains(workIdOf("it-tag-11"));
+    }
+
+    @Test
     @DisplayName("按标签筛选：命中正确、可与类型组合、未知标签返回空而不是报错")
     void filterByTag() {
         importBatch(
