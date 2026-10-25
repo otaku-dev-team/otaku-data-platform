@@ -70,10 +70,17 @@ final scheduleSeasonProvider =
 
 /// 档期数据。季度变化时重新拉取；星期只是本地过滤，不重新请求
 /// （一个季度就几百条，一次拿全按天过滤比每天一次请求便宜）。
-final scheduleProvider = FutureProvider<SchedulePageData>((ref) {
-  final season = ref.watch(scheduleSeasonProvider);
-  return ref.watch(scheduleRepositoryProvider).fetchSchedule(season: season);
-});
+///
+/// 关掉自动重试：页面已经有 `hasError` 分支和手动重试按钮，但 Riverpod 3 的
+/// 默认重试会先退避 10 次（200ms→6400ms）才把错误透出来——那段时间用户看到的
+/// 是"一直转圈"，而档期页拿不到数据本来就该立刻说"加载失败，点这里重试"。
+final scheduleProvider = FutureProvider<SchedulePageData>(
+  (ref) {
+    final season = ref.watch(scheduleSeasonProvider);
+    return ref.watch(scheduleRepositoryProvider).fetchSchedule(season: season);
+  },
+  retry: (retryCount, error) => null,
+);
 
 /// 当前筛选下的条目。换天只是重新过滤这份数据，不重新请求。
 final visibleScheduleProvider = Provider<ScheduleGroup?>((ref) {

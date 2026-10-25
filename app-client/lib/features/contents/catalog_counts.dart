@@ -26,6 +26,10 @@ class CatalogCounts {
 ///
 /// 失败一律降级成"没有角标"（页面用 `valueOrNull` 取）——数量只是辅助信息，
 /// 不能因为它挂了就让整个列表报错。
+///
+/// 关掉自动重试：Riverpod 3 默认会重试 10 次（200ms→6400ms 退避），而这一项
+/// 每次要并发打 5 个请求。断网时那等于 50 次无效请求打自家后端，而且失败期间
+/// 页面会一直转圈——角标是辅助信息，失败就该立刻消失，不该拖着整个列表等它。
 final catalogCountsProvider = FutureProvider<CatalogCounts>((ref) async {
   final repository = ref.watch(workRepositoryProvider);
 
@@ -43,4 +47,4 @@ final catalogCountsProvider = FutureProvider<CatalogCounts>((ref) async {
         WorkType.selectable[i]: results[i + 1].value.total,
     },
   );
-});
+}, retry: (retryCount, error) => null);

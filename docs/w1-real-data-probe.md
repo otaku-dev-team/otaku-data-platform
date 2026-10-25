@@ -79,14 +79,19 @@ Flyway 校验不过。处理：
 
 按 §1 的命令起环境，然后逐条看：
 
-| # | 场景 | 怎么看 | 期望 |
-|---|---|---|---|
-| 1 | 长标题 | 打开 `W-hqhg0j51mv1trcg`（146 字符）或列表往下翻到长标题条目 | 卡片标题截断为两行左右，不溢出、不撑破网格 |
-| 2 | 无评分沉底 | 设置里把排序切成「评分」，看首屏之后 | 无评分条目沉底且有可解释标注，不像「坏了」 |
-| 3 | 封面占位 | 列表首屏（97% 无封面） | 三态区分：加载中 / 本来没有 / 加载失败，不裂图 |
-| 4 | 未知标签 | 手动构造 `?tag=xyz`（或用任意不存在标签） | 空状态文案说清「这个标签没有数据」，而不是「加载失败」 |
-| 5 | 档期页 | 侧栏「新番」 | 按周几分组、季度切换、`work_id` 为空白的条目只展示不跳转 |
-| 6 | 错误态 | 关掉后端再刷新 | 明确错误提示，不无限转圈，不把错误显示成空列表 |
+| # | 场景 | 怎么看 | 期望 | 自动化覆盖 |
+|---|---|---|---|---|
+| 1 | 长标题 | 打开 `W-hqhg0j51mv1trcg`（146 字符）或列表往下翻到长标题条目 | 卡片标题截断为两行左右，不溢出、不撑破网格 | ✅ 列表 + 详情页各一条 |
+| 2 | 无评分沉底 | 设置里把排序切成「评分」，看首屏之后 | 无评分条目沉底且有可解释标注，不像「坏了」 | ✅ 说明条与逐条标注（有评分时不出现） |
+| 3 | 封面占位 | 列表首屏（97% 无封面） | 三态区分：加载中 / 本来没有 / 加载失败，不裂图 | ⚠️ 只覆盖「本来没有」这一态 |
+| 4 | 未知标签 | 手动构造 `?tag=xyz`（或用任意不存在标签） | 空状态文案说清「这个标签没有数据」，而不是「加载失败」 | ✅ 空态文案 + 清除出口 |
+| 5 | 档期页 | 侧栏「新番」 | 按周几分组、季度切换、`work_id` 为空白的条目只展示不跳转 | ⚠️ 只覆盖按周几分组 |
+| 6 | 错误态 | 关掉后端再刷新 | 明确错误提示，不无限转圈，不把错误显示成空列表 | ✅ 错误提示 + 无骨架屏 + 无转圈 |
+
+**「✅」= 已有自动化断言钉住**（`app-client/test/real_data_render_test.dart`，
+数据是从真后端拉下来存下的响应原文，见 §7）。
+**「⚠️」= 只覆盖了一部分，剩下的仍要人看**：
+封面三态里的「加载中 / 加载失败」、档期页的季度切换与空 `work_id` 条目。
 
 跑完把结果追加到本文档 §6（谁、什么时候、看了哪几条、发现什么问题）——
 按章程 §4「完成时带着证据来」，这六条看过并记录，W1.4 的桌面侧才算收口；
@@ -97,3 +102,37 @@ Android 真机那半仍待设备。
 ## 6. 走查记录（待填）
 
 _（尚未有人跑过。第一条应该是本机 Windows 桌面 + 真实数据。）_
+
+---
+
+## 7. 自动化 fixture 从哪来（要重新生成时看这节）
+
+`app-client/test/fixtures/real_*.json` 是**真后端的响应原文**，不是手写的假对象。
+这样测的是「真实数据形状 → 模型解析 → 界面渲染」整条链，而不是「我认为数据长什么样」。
+
+起好 §1 的 ①② 之后，在 `app-client/` 下执行：
+
+```bash
+B=http://127.0.0.1:8082
+curl -s "$B/api/works?page_size=50"                     -o test/fixtures/real_works_default.json
+curl -s "$B/api/works?sort=rating&page_size=50"          -o test/fixtures/real_works_by_rating.json
+curl -s "$B/api/works?tag=zzz-not-exist-tag&page_size=5" -o test/fixtures/real_works_unknown_tag.json
+curl -s "$B/api/schedule"                               -o test/fixtures/real_schedule.json
+
+# 评分排序的「最后一条全无评分」那一页：先查总数再取末页
+#   （这一页是「无评分沉底」的断言依据）
+T=$(curl -s "$B/api/works?tag=游戏&page_size=1" | python -c "import sys,json;print(json.load(sys.stdin)['total'])")
+curl -s "$B/api/works?tag=游戏&sort=rating&page=$(( (T+49)/50 ))&page_size=50" \
+     -o test/fixtures/real_works_rating_tail.json
+
+# 最长标题那条（库里最长 146 字符）：先由 SQL 定位 id，再取列表与详情
+curl -s "$B/api/works?q=If%20Letters%20Had%20Pants&page_size=5" -o test/fixtures/real_works_long_title.json
+curl -s "$B/api/works/<那个 id>"                          -o test/fixtures/real_work_detail_long.json
+```
+
+⚠️ **fixture 与库强绑定**：库里的数据变了（比如标签改名、评分重灌），
+这些断言可能就不成立了。改了数据之后要重新生成并跑一遍
+`flutter test test/real_data_render_test.dart`。
+`real_work_detail_long.json` 里的标题长度 146 是当前库的最长值，
+库里若出现更长的标题，测试不会自动知道——那是新的边界，值得再补一条。
+
