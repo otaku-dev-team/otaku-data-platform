@@ -4,8 +4,11 @@
     <!-- 追番提醒（W1.3a）是提前两周排进系统闹钟的：重启后系统会清掉这些闹钟，
          没有这条权限，用户重启一次就再也收不到提醒，而且没有任何提示。 -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <!-- 应用名来自构建期品牌配置（dart-define 的 APP_NAME / Gradle 的 appName），
+         见 docs/site-branding.md。默认值在 build.gradle.kts 的 resValue 里。
+         注意：XML 注释里不能出现连续两个连字符，aapt 会直接构建失败。 -->
     <application
-        android:label="Otaku"
+        android:label="@string/app_name"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:networkSecurityConfig="@xml/network_security_config">

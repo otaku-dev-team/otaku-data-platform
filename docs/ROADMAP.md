@@ -376,6 +376,10 @@
 3. **#125 人物页 / 详情页富字段**、**#126 服务端推送**：提案待确认（分别取决于数据主来源与设备端点的拍板）。
 4. ~~**B1 客户端能力承载清单**~~：已完成并进 main（[`client-capability-list.md`](client-capability-list.md)，
    首站 otaku_site 一版 + 三条判定原则），候选答案挂在 [`open-decisions.md`](open-decisions.md) B1 待拍板。
+5. ~~**品牌资源按站配置**（定位 §7.2 要求 2，§8.7 第 5 项）~~：已完成。
+   应用名 / 归属方 / 站点标识走 `--dart-define`，Android 应用名与包名走 Gradle property，
+   桌面窗口标题与设置页「品牌归属」随之生效；方案与交付 checklist 见
+   [`site-branding.md`](site-branding.md)。图标与 Windows 包标识留待首次真实交付时手工替换（理由见该文档 §3）。
 
 ### 8.7 W4 进度（@pyxz0 维护）
 

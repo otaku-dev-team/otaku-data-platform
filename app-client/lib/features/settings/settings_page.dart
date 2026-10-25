@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/config/app_config.dart';
+import '../../core/config/site_branding.dart';
 import '../../core/platform_info.dart';
 import '../../core/storage/work_cache.dart';
 import '../../core/theme/app_layout.dart';
@@ -351,6 +352,15 @@ class _AboutSection extends StatelessWidget {
           Text(
             '作品与资讯来自来源站，平台只读同步，评分与简介保留来源站原值。'
             '「抓不到」不等于来源站已删除——同步失败只会让内容暂时看不到。',
+            style: soft,
+          ),
+          const SizedBox(height: 12),
+          Text('品牌归属', style: theme.textTheme.bodyLarge),
+          const SizedBox(height: 2),
+          Text(
+            // 应用名与图标可按站点区分（定位 §7.2 要求 2，见 docs/site-branding.md）；
+            // 这里显示当前这个客户端服务哪个站，私有化交付时站主能直接确认。
+            '本客户端服务 ${SiteBranding.siteId}，应用名与归属可在构建时按站点配置。',
             style: soft,
           ),
         ],

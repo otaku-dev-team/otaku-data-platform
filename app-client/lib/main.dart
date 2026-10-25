@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'app.dart';
+import 'core/config/site_branding.dart';
 import 'core/diagnostics/frame_stats.dart';
 import 'core/storage/collection_cache_provider.dart';
 import 'core/storage/local_prefs_provider.dart';
@@ -61,7 +62,9 @@ Future<void> _setupDesktopWindow() async {
         AppLayout.minWindowHeight,
       ),
       center: true,
-      title: 'Otaku',
+      // 标题来自品牌配置而不是写死：私有化交付时应用名归属站点，
+      // 多开几个站的客户端也要能从任务栏分清。
+      title: SiteBranding.windowTitle,
     ),
     () async {
       await windowManager.show();
