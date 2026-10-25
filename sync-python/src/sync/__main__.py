@@ -16,12 +16,16 @@ Java 后端就绪后再去掉 --dry-run 并配置 OTAKU_INTERNAL_TOKEN。
 from __future__ import annotations
 
 import argparse
+import glob
+import json
+import os
 import sys
 
 from .bangumi import BangumiArchiveSource, WORK_TYPE_LABELS
 from .config import VALID_SOURCES, SyncConfig
 from .health import format_results, run_health
 from .pipeline import run, run_articles, run_schedule, summarize
+from .source import FailedPage
 from .models import VALID_WORK_TYPES
 
 
@@ -98,11 +102,26 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="运维自检：检查来源站与 Java 后端是否可达、内部令牌是否已配置（不跑同步）",
     )
+    parser.add_argument(
+        "--retry-failed",
+        nargs="?",
+        const="latest",
+        default=None,
+        metavar="REPORT",
+        help="只补跑上次失败的页：默认取输出目录下最新一份 run-*.json，也可指定路径",
+    )
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.retry_failed and (args.articles or args.schedule):
+        print(
+            "错误：--retry-failed 目前只支持作品抓取，不与 --articles / --schedule 同用",
+            file=sys.stderr,
+        )
+        return 2
+
     if (args.batch_size or 0) > 500:
         print("错误：单批上限 500 条", file=sys.stderr)
         return 2
@@ -215,12 +234,47 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
 
+    retry_failed: list[FailedPage] | None = None
+    if args.retry_failed:
+        path = args.retry_failed
+        if path == "latest":
+            found = sorted(
+                glob.glob(os.path.join(args.out or config.output_dir, "run-*.json"))
+            )
+            if not found:
+                print(
+                    "错误：--retry-failed 没有找到任何运行报告（run-*.json）",
+                    file=sys.stderr,
+                )
+                return 2
+            path = found[-1]
+        try:
+            with open(path, encoding="utf-8") as handle:
+                data = json.load(handle)
+        except (OSError, ValueError) as exc:
+            print(f"错误：读取运行报告失败 {path}：{exc}", file=sys.stderr)
+            return 2
+        retry_failed = [
+            FailedPage(
+                str(fp.get("work_type", "")),
+                int(fp["page"]),
+                str(fp.get("reason", "")),
+            )
+            for fp in data.get("failed_pages", [])
+            if fp.get("work_type") and fp.get("page") is not None
+        ]
+        if not retry_failed:
+            print(f"报告 {path} 没有失败页，无需补跑。")
+            return 0
+        print(f"补跑 {len(retry_failed)} 个失败页（来自 {path}）")
+
     report = run(
         config,
         work_types=args.work_types,
         limit=args.limit,
         dry_run=args.dry_run,
         output_dir=args.out,
+        retry_failed=retry_failed,
     )
     print(summarize(report))
     for item in report.rejected_items[:20]:

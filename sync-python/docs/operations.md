@@ -65,7 +65,7 @@ python -m sync            # 等价于 --source otaku_site，默认同步四类
 |---|---|---|
 | `fetched` / `accepted` / `rejected` | 抓取数 / 通过校验数 / 被拒数 | 被拒看 `rejected_items` 原因 |
 | `batches[].delivered` | 每批是否送达后端 | 未送达需重跑该批 |
-| `failed_pages` | 重试到底仍失败的页 | **非空 = 本次不是全量**，重跑同一命令补齐（按 `(source, source_id)` 幂等，不重复入库） |
+| `failed_pages` | 重试到底仍失败的页 | **非空 = 本次不是全量**，用 `--retry-failed` 只补跑这些页（按 `(source, source_id)` 幂等，不重复入库）；整条命令重跑要几小时，补跑只要几分钟 |
 | `detail_failures` | 资讯详情页抓取失败的条目（**资讯链路专有**） | 这类条目**仍已入库**（标题/摘要/时间/封面齐，只缺正文与原文链接）；既非 `rejected` 也非整页失败 → 重跑只需补抓这几条详情 |
 | `server_error_items` | 被服务端故障拒绝的条目（如并发导入 `DuplicateKey`，Issue #81） | 数据本身没问题，用同一 `batch_id` 重跑补齐 |
 | `rejected_items` | 数据问题（`TITLE_REQUIRED` / `INVALID_RELEASE_YEAR` 等） | 重试无益，需查源数据 |
@@ -104,8 +104,9 @@ python -m sync            # 等价于 --source otaku_site，默认同步四类
 # 每周日 04:00 跑 Bangumi 档案全量（静态快照，幂等重跑安全）
 0 4 * * 0  flock -n /tmp/sync-archive.lock -c 'cd /path/to/sync-python && OTAKU_ARCHIVE_PATH=/data/dump.zip /usr/bin/python -m sync --source bangumi >> runs/cron.log 2>&1'
 
-# 每日 03:50 补跑：来源站全量常有断连页，隔 50 分钟再跑一次补齐 failed_pages（幂等，不会重复入库）
-50 3 * * *  flock -n /tmp/sync-site.lock -c 'cd /path/to/sync-python && /usr/bin/python -m sync --source otaku_site >> runs/cron.log 2>&1'
+# 每日 03:50 补跑失败页：只重抓本次 failed_pages，不再扫全量
+# （来源站约四成页会断连，失败是常态；补跑只花几分钟，全量要几小时）
+50 3 * * *  flock -n /tmp/sync-site.lock -c 'cd /path/to/sync-python && /usr/bin/python -m sync --retry-failed >> runs/cron.log 2>&1'
 ```
 
 > 来源站每天 ≤ 5 万请求口径，单次全量 1.8 万条远低于此；Bangumi 档案不请求来源站网络。
