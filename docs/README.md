@@ -32,6 +32,8 @@
 - [`docs/client-enhancement-plan.md`](client-enhancement-plan.md)：客户端体验增强计划（边界状态、发现体验等轨道）。
 - [`docs/generalization-proposal.md`](generalization-proposal.md)：**未来目标**（当前不实施）——通用化方向 `custom_fields` + `display_template`；新决策须兼容它。
 - [`docs/ironlaw-positioning-analysis.md`](ironlaw-positioning-analysis.md)：铁律与定位冲突的历史分析（已被 2026-10-24 定位修正取代，留作追溯）。
+- [`docs/w1.3-notification-proposal.md`](w1.3-notification-proposal.md)：**W1.3 通知触达方案草案**。拆「本地提醒（纯客户端）」与「服务端推送（需新增设备令牌端点，属红线）」两半；本地提醒那半已实现进 main，服务端推送待确认。
+- [`docs/w1-login-dual-entry.md`](w1-login-dual-entry.md)：**登录页双入口方案**（回应 #147 待确认第 3 项）。来源站账号走系统浏览器授权为主入口、平台账号表单退为次级；含 state 落盘、错误分支、401 静默重走、桌面端暂不呈现，以及给后端的三个输入。**尚未生效**，需三人确认。
 - [`docs/samples/stage0-sample.json`](samples/stage0-sample.json)：10 组取自真实数据的边界用例样本。
 
 ## 三、来源站核查
