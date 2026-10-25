@@ -18,15 +18,20 @@ public final class ArticleDtos {
     /**
      * 一页资讯。
      *
-     * @param total     过滤后的总条数
-     * @param page      当前页，从 1 起
-     * @param pageSize  每页条数
-     * @param items     当前页条目，按发布时间倒序
+     * <p>字段与 {@code PageResponse} 对齐（契约里 ArticlePage 是 allOf 了 Paging 的）。
+     * 早期实现漏了 {@code total_pages}，客户端照契约读会拿到空——契约守卫抓到的。
+     *
+     * @param total      过滤后的总条数
+     * @param page       当前页，从 1 起
+     * @param pageSize   每页条数
+     * @param totalPages 总页数，由 {@link com.otaku.common.PageResponse#totalPages} 统一计算
+     * @param items      当前页条目，按发布时间倒序
      */
     public record ArticlePage(
             long total,
             int page,
             int pageSize,
+            int totalPages,
             List<ArticleSummary> items
     ) {
     }
