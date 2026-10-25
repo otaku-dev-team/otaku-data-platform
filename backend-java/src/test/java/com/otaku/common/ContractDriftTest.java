@@ -107,7 +107,96 @@ class ContractDriftTest {
                 .containsExactlyInAnyOrderElementsOf(documented);
     }
 
+    @Test
+    @DisplayName("其余对外 schema 一次性全扫：任何一个字段集对不上都失败，且一次列出全部问题")
+    void everyResponseDtoMatchesContract() throws IOException {
+        Map<String, Object> api = openapi();
+
+        Map<String, Class<?>> targets = new java.util.LinkedHashMap<>();
+        targets.put("RelatedWorks", com.otaku.work.dto.RelatedWorksDto.class);
+        targets.put("ErrorResponse", ErrorResponse.class);
+        targets.put("User", com.otaku.auth.dto.UserDto.class);
+        targets.put("SessionResponse", com.otaku.auth.dto.SessionResponse.class);
+        targets.put("CollectionState", com.otaku.collection.dto.CollectionStateDto.class);
+        targets.put("CollectionItem", com.otaku.collection.dto.CollectionItemDto.class);
+        targets.put("ImportBatchResult", com.otaku.importer.dto.ImportBatchResult.class);
+        targets.put("ImportBatchRun", com.otaku.importer.dto.ImportBatchRunDto.class);
+        targets.put("ImportBatchDetail", com.otaku.importer.dto.ImportBatchDetail.class);
+        targets.put("ImportItemResult", com.otaku.importer.dto.ImportItemResult.class);
+        targets.put("Counts", com.otaku.importer.dto.Counts.class);
+        targets.put("SchedulePage", com.otaku.schedule.dto.ScheduleDtos.SchedulePage.class);
+        targets.put("ScheduleGroup", com.otaku.schedule.dto.ScheduleDtos.ScheduleGroup.class);
+        targets.put("ScheduleItem", com.otaku.schedule.dto.ScheduleDtos.ScheduleItem.class);
+
+        assertSameAcross(api, targets, false);
+    }
+
+    @Test
+    @DisplayName("请求体 DTO 的字段集 == 契约 schema（防止文档把入参写成 camelCase）")
+    void everyRequestDtoMatchesContract() throws IOException {
+        Map<String, Object> api = openapi();
+
+        Map<String, Class<?>> targets = new java.util.LinkedHashMap<>();
+        targets.put("LoginRequest", com.otaku.auth.dto.LoginRequest.class);
+        targets.put("CreateAccountRequest", com.otaku.account.dto.CreateAccountRequest.class);
+        targets.put("CollectionUpdateRequest", com.otaku.collection.dto.CollectionUpdateRequest.class);
+        targets.put("ImportBatchRequest", com.otaku.importer.dto.ImportBatchRequest.class);
+        targets.put("ImportItem", com.otaku.importer.dto.ImportBatchRequest.ImportItem.class);
+        targets.put("ScheduleImportRequest", com.otaku.schedule.dto.ScheduleImportRequest.class);
+        targets.put("ScheduleImportItem", com.otaku.schedule.dto.ScheduleImportRequest.ScheduleImportItem.class);
+
+        assertSameAcross(api, targets, true);
+    }
+
     // ---------------------------------------------------------------- helpers
+
+    /** 统一比对逻辑：collect 全部差异后一次性报出来，避免「修一个跑一次」。 */
+    private void assertSameAcross(Map<String, Object> api, Map<String, Class<?>> targets, boolean requestSide) {
+        List<String> problems = new ArrayList<>();
+        for (Map.Entry<String, Class<?>> entry : targets.entrySet()) {
+            String schema = entry.getKey();
+            Set<String> documented = schemaProperties(api, schema);
+            Set<String> implemented = requestSide
+                    ? deserializedFieldNames(entry.getValue())
+                    : serializedFieldNames(entry.getValue());
+
+            Set<String> onlyInCode = new LinkedHashSet<>(implemented);
+            onlyInCode.removeAll(documented);
+            Set<String> onlyInContract = new LinkedHashSet<>(documented);
+            onlyInContract.removeAll(implemented);
+
+            if (!onlyInCode.isEmpty()) {
+                problems.add(schema + "：实现有、契约没有 → " + onlyInCode);
+            }
+            if (!onlyInContract.isEmpty()) {
+                problems.add(schema + "：契约有、实现没有 → " + onlyInContract);
+            }
+        }
+        assertThat(problems).as("契约与实现的字段集必须一致").isEmpty();
+    }
+
+    /** 反序列化视角的属性名：Python 侧按这个名字提交才会被绑定上。 */
+    private Set<String> deserializedFieldNames(Class<?> type) {
+        return objectMapper.getDeserializationConfig()
+                .introspect(objectMapper.constructType(type))
+                .findProperties()
+                .stream()
+                .map(com.fasterxml.jackson.databind.introspect.BeanPropertyDefinition::getName)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+    }
+
+    /**
+     * 用 Jackson 内省拿**序列化后**的属性名（已应用 SNAKE_CASE 与 @JsonProperty），不需要构造实例。
+     * 这样能一次覆盖所有 DTO，而不是给每个 DTO 手写一个构造。
+     */
+    private Set<String> serializedFieldNames(Class<?> type) {
+        return objectMapper.getSerializationConfig()
+                .introspect(objectMapper.constructType(type))
+                .findProperties()
+                .stream()
+                .map(com.fasterxml.jackson.databind.introspect.BeanPropertyDefinition::getName)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+    }
 
     /** Controller 里 {@code list} 方法实际接收的 query 参数名（取自 @RequestParam）。 */
     private static Set<String> listQueryParamNames() {
