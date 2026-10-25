@@ -926,42 +926,42 @@ components:
     ScheduleItem:
       type: object
       description: 一条档期。
-      required: [scheduleId, seasonCode]
+      required: [schedule_id, season_code]
       properties:
-        scheduleId:
+        schedule_id:
           type: string
           description: 档期记录主键（来源站侧），不透明
           example: "sch-202504-12345"
-        seasonCode: { type: string, pattern: "^[0-9]{6}$", example: "202504" }
-        titleMain: { type: string, description: 主标题（来源站语言）, example: 葬送的芙莉莲 }
-        titleCn: { type: string, nullable: true, description: 中文译名；无则 null }
-        titleJp: { type: string, nullable: true, description: 日文原名；无则 null }
+        season_code: { type: string, pattern: "^[0-9]{6}$", example: "202504" }
+        title_main: { type: string, description: 主标题（来源站语言）, example: 葬送的芙莉莲 }
+        title_cn: { type: string, nullable: true, description: 中文译名；无则 null }
+        title_jp: { type: string, nullable: true, description: 日文原名；无则 null }
         weekday:
           type: integer
           nullable: true
           minimum: 1
           maximum: 7
           description: 播出星期（1=周一…7=周日）；null=待定
-        broadcastTime:
+        broadcast_time:
           type: string
           nullable: true
           description: 播出时间（来源站原格式，如「23:30」）；无则 null
-        broadcastNote:
+        broadcast_note:
           type: string
           nullable: true
           description: 播出备注（如「每周五 深夜」）；无则 null
-        workType:
+        work_type:
           type: string
           nullable: true
           enum: [anime, comic, game, novel]
           description: 类型；来源未给则 null
-        workTags:
+        work_tags:
           type: array
           nullable: true
           description: 标签；null=来源未提供
           items: { type: string }
           example: ["奇幻", "冒险"]
-        imageUrl:
+        image_url:
           type: string
           nullable: true
           description: 封面图地址（来源站原图）；无则 null，客户端显示占位图
@@ -970,11 +970,11 @@ components:
           nullable: true
           description: 播放平台列表；无则 null
           items: { $ref: "#/components/schemas/SchedulePlatform" }
-        sourceUrl:
+        source_url:
           type: string
           nullable: true
           description: 来源站人读原页；null 时不渲染回流入口（同契约 source_url 规则）
-        workId:
+        work_id:
           type: string
           nullable: true
           description: 命中本地作品时为其 work_id，客户端据此跳转本地详情；null 时只展示、不给死链
@@ -1012,37 +1012,37 @@ components:
     ScheduleImportItem:
       type: object
       description: 档期提交项。字段命名与站点 GET /api/schedule 对齐（snake_case）。
-      required: [sourceId, seasonCode, titleMain]
+      required: [source_id, season_code, title_main]
       properties:
-        sourceId: { type: string, minLength: 1, description: 来源站档期 ID }
-        seasonCode: { type: string, pattern: "^[0-9]{6}$", example: "202504" }
-        titleMain: { type: string, minLength: 1, maxLength: 500, description: 主标题 }
-        titleCn: { type: string, nullable: true, maxLength: 500 }
-        titleJp: { type: string, nullable: true, maxLength: 500 }
+        source_id: { type: string, minLength: 1, description: 来源站档期 ID }
+        season_code: { type: string, pattern: "^[0-9]{6}$", example: "202504" }
+        title_main: { type: string, minLength: 1, maxLength: 500, description: 主标题 }
+        title_cn: { type: string, nullable: true, maxLength: 500 }
+        title_jp: { type: string, nullable: true, maxLength: 500 }
         weekday: { type: integer, nullable: true, minimum: 1, maximum: 7 }
-        broadcastTime: { type: string, nullable: true }
-        broadcastNote: { type: string, nullable: true }
-        workType: { type: string, nullable: true, enum: [anime, comic, game, novel] }
-        workTags:
+        broadcast_time: { type: string, nullable: true }
+        broadcast_note: { type: string, nullable: true }
+        work_type: { type: string, nullable: true, enum: [anime, comic, game, novel] }
+        work_tags:
           type: array
           nullable: true
           description: 站点给斜杠字符串（如「奇幻/冒险」），同步侧拆成数组后提交；null=未提供
           items: { type: string }
-        imageUrl: { type: string, nullable: true, description: 封面图地址；空串在同步侧转 null }
+        image_url: { type: string, nullable: true, description: 封面图地址；空串在同步侧转 null }
         platforms:
           type: array
           nullable: true
           items: { $ref: "#/components/schemas/SchedulePlatform" }
-        sourceUrl:
+        source_url:
           type: string
           nullable: true
           maxLength: 1024
           description: 来源站人读原页；只接受 http/https
-        contentId:
+        content_id:
           type: string
           nullable: true
           description: 原样透传的来源站内容 ID；关联本地作品由后端按 (source, source_id) 尽力匹配
-        sourceUpdatedAt:
+        source_updated_at:
           type: string
           format: date-time
           nullable: true
