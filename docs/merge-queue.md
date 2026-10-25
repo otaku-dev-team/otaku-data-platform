@@ -100,6 +100,10 @@ filter-links (#130)        ⊃ client-home (#121)
 
 ## 5. 验证基线（main @ `ac51dbd`）
 
+> 下表是**当时的运行口径快照**，不是实时值。要拿当前数字跑
+> `python scripts/devtest.py --inventory`（测试项数）或 `python scripts/devtest.py --all`
+> （真实通过数）。源码里的 `@Test` 数量会随开发增长，与下表不等是正常的。
+
 | 区块 | 结果 |
 |---|---|
 | `backend-java` | `mvnw test` 111 通过 / 0 失败 / 8 跳过 |
