@@ -152,6 +152,7 @@ def _iter_items(
     started: str,
     limit: int | None,
     failed_pages: list[FailedPage] | None = None,
+    only_pages: dict[str, list[int]] | None = None,
 ) -> Iterator[WorkItem]:
     """按配置的来源逐条产出 WorkItem（流式，不整体载入内存）。
 
@@ -180,6 +181,16 @@ def _iter_items(
         max_attempts=config.max_attempts,
         backoff_seconds=config.backoff_seconds,
     ) as source:
+        # 补跑模式：只抓上次失败的那些页，不再从第 1 页扫到尾。
+        if only_pages:
+            for work_type, pages in only_pages.items():
+                for items in source.iter_raw_pages(work_type, pages):
+                    for raw in items:
+                        yield source.to_work_item(raw, started)
+            if failed_pages is not None:
+                failed_pages.extend(source.failed_pages)
+            return
+
         emitted = 0
         for work_type in types:
             for item in source.iter_work_items(work_type, started):
@@ -199,13 +210,25 @@ def run(
     limit: int | None = None,
     dry_run: bool = False,
     output_dir: str | None = None,
+    retry_failed: Sequence[FailedPage] | None = None,
 ) -> RunReport:
     """执行一次同步。dry_run=True 时不联系 Java，只落盘将要发送的载荷。
 
     流式处理：来源逐条产出作品，边校验边攒批，攒满 batch_size 立即提交，
     内存只保留当前批次。因此全量 55.6 万条也不会整体载入。
+
+    传入 `retry_failed`（上次 RunReport 的 failed_pages）时只补抓那些页，
+    不再从第 1 页扫到尾：来源站实测约四成页会断连，失败是常态，而全量
+    重跑一次要几小时，补跑只要几分钟。
     """
-    types = list(work_types or config.work_types)
+    if retry_failed:
+        types = sorted({fp.work_type for fp in retry_failed})
+        only_pages: dict[str, list[int]] | None = {}
+        for fp in retry_failed:
+            only_pages.setdefault(fp.work_type, []).append(fp.page)
+    else:
+        types = list(work_types or config.work_types)
+        only_pages = None
     started = utc_now()
     out_dir = output_dir or config.output_dir
 
@@ -302,7 +325,7 @@ def run(
     )
     failed_pages: list[FailedPage] = []
     try:
-        for item in _iter_items(config, types, started, limit, failed_pages):
+        for item in _iter_items(config, types, started, limit, failed_pages, only_pages):
             report.fetched += 1
             problems = validate(item)
             if problems:

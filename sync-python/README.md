@@ -203,6 +203,20 @@ python scripts/check_run_report.py --help   # 查看参数与阈值
 | `1` | 发现需要处置的问题（未全量 / 服务端故障 / 资讯详情缺失 / 被拒占比过高） |
 | `2` | 没找到报告，或报告无法解析 |
 
+### 只补跑失败的页（`--retry-failed`）
+
+来源站实测约四成页会断连，失败是常态：`failed_pages` 非空表示本次没拿到全量。以前只能整条命令重跑一遍（几小时），现在只补那几页：
+
+```bash
+python -m sync --retry-failed              # 取 runs/ 下最新一份报告，补跑其中的 failed_pages
+python -m sync --retry-failed runs/run-2026-10-26T03-00-00.json   # 指定报告
+```
+
+- 报告里没有失败页时直接提示"无需补跑"并退出 0，不会白跑；
+- 补跑中再失败的页仍会记账，下一轮可以继续补；
+- 按 `(source, source_id)` 幂等，不重复入库；
+- 只支持作品抓取，与 `--articles` / `--schedule` 同用会明确报错。
+
 判定与退出码均有测试覆盖：`pytest tests/test_check_run_report.py`。
 
 ### 跑同步前先自检（`--health`）

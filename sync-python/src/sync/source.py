@@ -31,7 +31,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from typing import Any, Iterable, Iterator
+from typing import Any, Iterable, Iterator, Sequence
 
 import httpx
 
@@ -228,6 +228,30 @@ class OtakuSiteSource:
                 break
         return collected
 
+    def _fetch_page_recorded(
+        self, work_type: str, page: int
+    ) -> dict[str, Any] | None:
+        """抓一页；可恢复的失败记账并返回 None，请求本身不对则直接抛。
+
+        与 `iter_raw` 的 try/except 原本是同一段，抽出来是为了让"补跑指定页"
+        复用同一套记账规则 —— 两处规则一旦漂移，补跑就会漏记或误判。
+        """
+        try:
+            return self.fetch_page(work_type, page)
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code not in RETRYABLE_STATUS:
+                raise
+            self.failed_pages.append(
+                FailedPage(work_type, page, f"HTTP {exc.response.status_code}")
+            )
+            return None
+        except httpx.TransportError as exc:
+            self.failed_pages.append(
+                FailedPage(work_type, page, f"{type(exc).__name__}: {exc}")
+            )
+            # 跳过这一页继续。丢 200 条可以重跑补，丢整批则前功尽弃。
+            return None
+
     def iter_raw(self, work_type: str) -> Iterator[list[dict[str, Any]]]:
         """逐页产出，单页彻底失败时跳过并记账。
 
@@ -243,20 +267,8 @@ class OtakuSiteSource:
         又退回到那个错误语义。
         """
         for page in range(1, self.max_pages + 1):
-            try:
-                payload = self.fetch_page(work_type, page)
-            except httpx.HTTPStatusError as exc:
-                if exc.response.status_code not in RETRYABLE_STATUS:
-                    raise
-                self.failed_pages.append(
-                    FailedPage(work_type, page, f"HTTP {exc.response.status_code}")
-                )
-                continue
-            except httpx.TransportError as exc:
-                self.failed_pages.append(
-                    FailedPage(work_type, page, f"{type(exc).__name__}: {exc}")
-                )
-                # 跳过这一页继续。丢 200 条可以重跑补，丢整批则前功尽弃。
+            payload = self._fetch_page_recorded(work_type, page)
+            if payload is None:
                 continue
 
             items = unwrap(payload)
@@ -269,6 +281,24 @@ class OtakuSiteSource:
                 break
             if len(items) < self.page_size:
                 break
+
+    def iter_raw_pages(
+        self, work_type: str, pages: Sequence[int]
+    ) -> Iterator[list[dict[str, Any]]]:
+        """只抓指定页码 —— 补跑上次失败的页。
+
+        为什么不复用 `iter_raw`：它从第 1 页顺序扫到尾，而补跑只要那几页，
+        重扫一遍等于把全量又跑一次（几小时）。记账规则与 `iter_raw` 完全相同
+        （可恢复的失败记账跳过、请求本身不对直接抛），因为两者共用
+        `_fetch_page_recorded`。
+        """
+        for page in pages:
+            payload = self._fetch_page_recorded(work_type, page)
+            if payload is None:
+                continue
+            items = unwrap(payload)
+            if items:
+                yield items
 
     def fetch_tags(self, work_type: str, limit: int = 500) -> list[dict[str, Any]]:
         """来源标签词表。返回 [{name, count}]，按 count 降序。
