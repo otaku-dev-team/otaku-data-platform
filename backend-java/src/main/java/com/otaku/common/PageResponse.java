@@ -15,7 +15,11 @@ public record PageResponse<T>(
 ) {
 
     public static <T> PageResponse<T> of(int page, int pageSize, long total, List<T> items) {
-        int totalPages = pageSize <= 0 ? 0 : (int) ((total + pageSize - 1) / pageSize);
-        return new PageResponse<>(page, pageSize, total, totalPages, items);
+        return new PageResponse<>(page, pageSize, total, totalPages(total, pageSize), items);
+    }
+
+    /** 总页数。分页信封的唯一定义处——别在别处再算一遍（算错就是差一页）。 */
+    public static int totalPages(long total, int pageSize) {
+        return pageSize <= 0 ? 0 : (int) ((total + pageSize - 1) / pageSize);
     }
 }

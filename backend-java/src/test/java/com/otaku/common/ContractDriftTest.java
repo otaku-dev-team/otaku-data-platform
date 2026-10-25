@@ -127,6 +127,10 @@ class ContractDriftTest {
         targets.put("SchedulePage", com.otaku.schedule.dto.ScheduleDtos.SchedulePage.class);
         targets.put("ScheduleGroup", com.otaku.schedule.dto.ScheduleDtos.ScheduleGroup.class);
         targets.put("ScheduleItem", com.otaku.schedule.dto.ScheduleDtos.ScheduleItem.class);
+        targets.put("ArticlePage", com.otaku.article.dto.ArticleDtos.ArticlePage.class);
+        targets.put("ArticleSummary", com.otaku.article.dto.ArticleDtos.ArticleSummary.class);
+        targets.put("ArticleDetail", com.otaku.article.dto.ArticleDtos.ArticleDetail.class);
+        targets.put("ArticleCategory", com.otaku.article.dto.ArticleDtos.Category.class);
 
         assertSameAcross(api, targets, false);
     }
@@ -144,6 +148,8 @@ class ContractDriftTest {
         targets.put("ImportItem", com.otaku.importer.dto.ImportBatchRequest.ImportItem.class);
         targets.put("ScheduleImportRequest", com.otaku.schedule.dto.ScheduleImportRequest.class);
         targets.put("ScheduleImportItem", com.otaku.schedule.dto.ScheduleImportRequest.ScheduleImportItem.class);
+        targets.put("ArticleImportRequest", com.otaku.article.dto.ArticleImportRequest.class);
+        targets.put("ArticleImportItem", com.otaku.article.dto.ArticleImportRequest.ArticleImportItem.class);
 
         assertSameAcross(api, targets, true);
     }
@@ -242,9 +248,33 @@ class ContractDriftTest {
     @SuppressWarnings("unchecked")
     private static Set<String> schemaProperties(Map<String, Object> api, String schemaName) {
         Map<String, Object> components = asMap(api.get("components"));
-        Map<String, Object> schema = asMap(asMap(components.get("schemas")).get(schemaName));
+        Map<String, Object> schemas = asMap(components.get("schemas"));
+        Set<String> collected = new LinkedHashSet<>();
+        collectProperties(schemas, schemaName, collected);
+        assertThat(collected).as("契约里没有 schema %s", schemaName).isNotEmpty();
+        return collected;
+    }
+
+    /** 展开 {@code allOf}：详情/分页这类 schema 是「公共部分 + 自己那几项」拼出来的。 */
+    private static void collectProperties(Map<String, Object> schemas, String schemaName, Set<String> acc) {
+        Map<String, Object> schema = asMap(schemas.get(schemaName));
         assertThat(schema).as("契约里没有 schema %s", schemaName).isNotNull();
-        return new LinkedHashSet<>(asMap(schema.get("properties")).keySet());
+
+        Object allOf = schema.get("allOf");
+        if (allOf instanceof List<?> parts) {
+            for (Object part : parts) {
+                Map<String, Object> piece = asMap(part);
+                Object ref = piece.get("$ref");
+                if (ref instanceof String refText) {
+                    collectProperties(schemas, refText.substring(refText.lastIndexOf('/') + 1), acc);
+                } else if (piece.get("properties") != null) {
+                    acc.addAll(asMap(piece.get("properties")).keySet());
+                }
+            }
+        }
+        if (schema.get("properties") != null) {
+            acc.addAll(asMap(schema.get("properties")).keySet());
+        }
     }
 
     private static List<Object> listGetParameters(Map<String, Object> api) {

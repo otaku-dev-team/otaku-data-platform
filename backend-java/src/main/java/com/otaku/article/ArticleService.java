@@ -6,6 +6,7 @@ import com.otaku.article.dto.ArticleDtos.ArticleDetail;
 import com.otaku.article.dto.ArticleDtos.ArticlePage;
 import com.otaku.article.dto.ArticleDtos.ArticleSummary;
 import com.otaku.article.dto.ArticleDtos.Category;
+import com.otaku.common.PageResponse;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -55,7 +56,8 @@ public class ArticleService {
         for (ArticleRecord record : records) {
             items.add(toSummary(record));
         }
-        return new ArticlePage(total, page, pageSize, items);
+        return new ArticlePage(total, page, pageSize,
+                PageResponse.totalPages(total, pageSize), items);
     }
 
     /** 详情。不存在返回 {@code null}，由控制器转 404。 */
