@@ -16,10 +16,17 @@ python scripts/devtest.py --collect   # 只列清单和原因，不动手（先�
 python scripts/devtest.py --json      # 机器可读，适合脚本/智能体接手
 python scripts/devtest.py --all       # 明确全量，慎用
 python scripts/devtest.py --inventory # 三栈测试实时清点（文档里的数字会过期，这个不会）
+python scripts/devtest.py --gate      # 测试 + 契约校验，≈ 本地过一遍 CI
+python scripts/devtest.py --rerun-failed  # 只重跑上次失败的用例（精确到方法，通常 <2s）
+python -m devkit serve --port 8787    # 本地看板（失败卡片、慢用例、历史）
 ```
 
-读输出只要看最后两行：`结论：全部通过。可以提交。` 或哪一栈失败。
-失败时默认只打一行断言；要完整堆栈加 `--verbose-tb`，或者 `--stack java` 单独重跑那一栈。
+失败时会直接给**卡片**：测试名 + 文件:行 + 断言消息 + 前后各 3 行源码，
+并标注「新增失败 / 上次也失败」。**不要为了找断言位置去读整个测试文件**，卡片里已经有了。
+实现与设计取舍见 `devkit/README.md`；`scripts/devtest.py` 只是转发壳。
+
+读输出只要看结论那行：`结论：全部通过。可以提交。` 或哪一栈失败、哪几项是新增失败。
+**「跳过」不等于「通过」**（工具链缺失时会明说并让退出码变 2）。
 
 ## 三栈各自的原始命令（devtest 内部用的就是这些）
 
