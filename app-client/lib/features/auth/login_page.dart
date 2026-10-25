@@ -7,9 +7,18 @@ import '../../core/config/app_config.dart';
 import '../../core/router/route_paths.dart';
 import 'auth_controller.dart';
 
-/// 登录页。
+/// 登录页：**双入口**。
 ///
-/// 只做一件事：把用户名密码交给 [AuthController]，成功就返回来源页。
+/// - 主入口「用 Otaku 账号登录」：走系统浏览器授权（RFC 8252），回来即登录。
+///   这是目标形态——平台账号只是过渡/兜底（`product-positioning.md` §4）。
+/// - 次级入口「使用平台账号登录」：现有的用户名密码表单，收在次级按钮后面。
+///
+/// 为什么不是两个一样大的按钮：两个入口**不是对等关系**。让用户每次登录都先
+/// 判断「我是哪种人」，是把产品的身份认知成本转嫁给用户。
+///
+/// 桌面端这一轮**不显示**站点入口（loopback 回调端口未进站点白名单，
+/// 见 `docs/w1-login-dual-entry.md` §2.6）：隐藏而不是置灰，不给点了没反应的按钮。
+///
 /// 表单校验故意很松（非空即可），真正的规则在服务端，客户端重复一遍只会
 /// 出现「客户端说可以、服务端说不行」的分裂。
 class LoginPage extends ConsumerStatefulWidget {
@@ -24,6 +33,9 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   final TextEditingController _password = TextEditingController();
   final FocusNode _passwordFocus = FocusNode();
 
+  /// 平台账号表单是否展开。默认收起：主路径是站点授权。
+  bool _platformExpanded = false;
+
   @override
   void dispose() {
     _username.dispose();
@@ -32,7 +44,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     super.dispose();
   }
 
-  Future<void> _submit() async {
+  Future<void> _submitPlatform() async {
     final auth = ref.read(authControllerProvider);
     if (auth.submitting) return;
 
@@ -41,7 +53,16 @@ class _LoginPageState extends ConsumerState<LoginPage> {
         .login(_username.text, _password.text);
     if (!mounted || !ok) return;
 
-    // 从收藏页跳来的就回收藏页；直接打开登录页（深链接/冷启动）则去收藏页。
+    _leave();
+  }
+
+  Future<void> _beginSiteLogin() async {
+    await ref.read(authControllerProvider.notifier).beginSiteLogin();
+    // 之后等回跳：成功由 SiteAuthBootstrap 处理，这里不跳转。
+  }
+
+  /// 登录成功后的落点：从收藏页跳来的就回去；直接打开登录页则去收藏页。
+  void _leave() {
     if (context.canPop()) {
       context.pop();
     } else {
@@ -54,6 +75,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     final theme = Theme.of(context);
     final auth = ref.watch(authControllerProvider);
     final error = auth.error;
+    final siteAuthSupported = ref.watch(siteAuthLauncherProvider).supported;
 
     return Scaffold(
       appBar: AppBar(title: const Text('登录')),
@@ -80,54 +102,56 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                   ),
                 ),
                 const SizedBox(height: 24),
-                TextField(
-                  controller: _username,
-                  autofocus: true,
-                  enabled: !auth.submitting,
-                  textInputAction: TextInputAction.next,
-                  autocorrect: false,
-                  decoration: const InputDecoration(
-                    labelText: '账号',
-                    border: OutlineInputBorder(),
+                if (siteAuthSupported) ...[
+                  _SiteLoginButton(
+                    submitting: auth.submitting,
+                    onPressed: _beginSiteLogin,
                   ),
-                  onSubmitted: (_) => _passwordFocus.requestFocus(),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _password,
-                  focusNode: _passwordFocus,
-                  enabled: !auth.submitting,
-                  obscureText: true,
-                  textInputAction: TextInputAction.done,
-                  decoration: const InputDecoration(
-                    labelText: '密码',
-                    border: OutlineInputBorder(),
+                  const SizedBox(height: 6),
+                  Text(
+                    '会打开网站授权页，密码只在网站输入',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
                   ),
-                  onSubmitted: (_) => _submit(),
-                ),
+                  const SizedBox(height: 16),
+                  if (!_platformExpanded)
+                    TextButton(
+                      onPressed: auth.submitting
+                          ? null
+                          : () => setState(() => _platformExpanded = true),
+                      child: const Text('使用平台账号登录'),
+                    )
+                  else
+                    _PlatformForm(
+                      username: _username,
+                      password: _password,
+                      passwordFocus: _passwordFocus,
+                      submitting: auth.submitting,
+                      onSubmit: _submitPlatform,
+                    ),
+                ] else
+                  // 桌面端：这一轮只有平台账号一条路（见类注释）。
+                  _PlatformForm(
+                    username: _username,
+                    password: _password,
+                    passwordFocus: _passwordFocus,
+                    submitting: auth.submitting,
+                    onSubmit: _submitPlatform,
+                  ),
                 // 失败必须显式呈现（C7）：不静默、不把界面留在「好像成功了」的状态。
                 if (error != null) ...[
                   const SizedBox(height: 12),
                   _ErrorBanner(message: error.userMessage),
                 ],
-                const SizedBox(height: 20),
-                FilledButton(
-                  onPressed: auth.submitting ? null : _submit,
-                  child: auth.submitting
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('登录'),
-                ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 12),
                 TextButton(
                   onPressed: auth.submitting
                       ? null
                       : () => context.canPop()
-                            ? context.pop()
-                            : context.go(RoutePaths.contents),
+                      ? context.pop()
+                      : context.go(RoutePaths.contents),
                   child: const Text('先不登录'),
                 ),
                 if (kDebugMode) ...[
@@ -149,6 +173,90 @@ class _LoginPageState extends ConsumerState<LoginPage> {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// 站点授权主按钮。
+class _SiteLoginButton extends StatelessWidget {
+  const _SiteLoginButton({required this.submitting, required this.onPressed});
+
+  final bool submitting;
+  final Future<void> Function() onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return FilledButton(
+      onPressed: submitting ? null : onPressed,
+      child: submitting
+          ? const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : const Text('用 Otaku 账号登录'),
+    );
+  }
+}
+
+/// 平台账号表单（次级入口）。
+class _PlatformForm extends StatelessWidget {
+  const _PlatformForm({
+    required this.username,
+    required this.password,
+    required this.passwordFocus,
+    required this.submitting,
+    required this.onSubmit,
+  });
+
+  final TextEditingController username;
+  final TextEditingController password;
+  final FocusNode passwordFocus;
+  final bool submitting;
+  final Future<void> Function() onSubmit;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TextField(
+          controller: username,
+          autofocus: true,
+          enabled: !submitting,
+          textInputAction: TextInputAction.next,
+          autocorrect: false,
+          decoration: const InputDecoration(
+            labelText: '账号',
+            border: OutlineInputBorder(),
+          ),
+          onSubmitted: (_) => passwordFocus.requestFocus(),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: password,
+          focusNode: passwordFocus,
+          enabled: !submitting,
+          obscureText: true,
+          textInputAction: TextInputAction.done,
+          decoration: const InputDecoration(
+            labelText: '密码',
+            border: OutlineInputBorder(),
+          ),
+          onSubmitted: (_) => onSubmit(),
+        ),
+        const SizedBox(height: 20),
+        FilledButton(
+          onPressed: submitting ? null : onSubmit,
+          child: submitting
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('登录'),
+        ),
+      ],
     );
   }
 }
