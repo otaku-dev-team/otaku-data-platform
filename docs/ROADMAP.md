@@ -277,7 +277,7 @@
 | W1 | 客户端体验纵深（原生 / 离线 / 发现接入 / 呈现适配 / 通知） | @riceyu02 | @pyxz0（W1.3） | 进行中（Issue #95） | [`client-enhancement-plan.md`](client-enhancement-plan.md) |
 | W2 | 跨源视图与发现增强（同名归并 / 榜单 / 搜索 / 推荐） | @pyxz0 | @riceyu02、zm | 进行中（Issue #96，见 §8.4） | 主责方自定 |
 | W3 | 数据完整度（封面 / 评分 / 简介覆盖） | zm | @pyxz0 | 进行中（Issue #97，计划见 [data-completeness-plan.md](data-completeness-plan.md)） | [data-completeness-plan.md](data-completeness-plan.md) |
-| W4 | 第二个来源站接入落地 | @pyxz0 | zm | 未启动（Issue #96） | 主责方自定 |
+| W4 | 第二个来源站接入落地 | @pyxz0 | zm | 已验证（VNDB 实测，见 §8.7）；产品化落地暂缓，随跨源视图一并重启（Issue #96） | 主责方自定 |
 | W5 | 平台能力开放（供来源站复用） | @pyxz0 | @riceyu02 | 未启动（Issue #96） | 主责方自定 |
 | W6 | 生产化与可运维 | @pyxz0 | 团队（服务器资源） | ⏸ 按 Issue #78 挂起 | [`deploy-production.md`](deploy-production.md) |
 
@@ -325,7 +325,7 @@
 | 同标签推荐 `GET /api/works/{id}/related` | 已合并（#86），去重修复 #92 | 55.6 万：6.5ms |
 | 标签筛选 `tag=`（+ `V7` 反查表） | 已合并（后端 #104 / 客户端接入 #107） | 55.6 万：20–31ms；组合类型 18–34ms；`tag+q` 约 720ms（LIKE 求交集的固有成本） |
 | 跨源同名可辨识（列表透出 `source`） | 已合并（#143，W1.5 D3） | 客户端按 `source` 渲染来源角标；只做可辨识，不做归并 |
-| 榜单 `min_rating=`（无评分不参与排名） | 分支 `feat/min-rating-ranking`，待三人确认 | 方案见 [`ranking-proposal.md`](ranking-proposal.md)；2 条查询路径均有集成测试；55.6 万性能未测 |
+| 榜单 `min_rating=`（无评分不参与排名） | 已合并（#153） | 方案见 [`ranking-proposal.md`](ranking-proposal.md)；`min_rating=0` = 「只要有过评分」，无评分一律排除，非法值 400；全站 / 标签两条查询路径均有集成测试 |
 | 搜索扩面（ngram 全文） | 已评估，本轮不做 | ngram 实测会漏召回（`LIKE '%ab%'` 3 条 vs `MATCH('ab')` 0 条），不能当预过滤；保语义的唯一路是 bigram 倒排，成本约 1,000 万行，需单独立项。见 [`search-scaling-evaluation.md`](search-scaling-evaluation.md) |
 
 已知限制：`LIMIT/OFFSET` 深页仍是 O(OFFSET)（默认排序第 11000 页约 490ms），根治要键集分页，需动契约；
