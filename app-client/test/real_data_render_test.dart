@@ -21,6 +21,7 @@ import 'package:otaku_app/data/models/work_type.dart';
 import 'package:otaku_app/data/models/work_summary.dart';
 import 'package:otaku_app/data/repositories/schedule_repository.dart';
 import 'package:otaku_app/data/repositories/work_repository.dart';
+import 'package:otaku_app/shared/widgets/cover_image.dart';
 import 'package:otaku_app/shared/widgets/skeleton_list.dart';
 import 'package:otaku_app/features/contents/catalog_counts.dart';
 import 'package:otaku_app/features/contents/contents_controller.dart';
@@ -114,6 +115,33 @@ class _CountingScheduleSource implements ScheduleDataSource {
   Future<SchedulePageData> fetchSchedule({String? season}) async {
     onCall();
     throw const ApiException(code: ApiErrorCode.network, message: '网络不可达');
+  }
+}
+
+/// 按季度返回不同数据的档期源，用来验证「切季度真的换了内容」。
+class _SeasonalScheduleSource implements ScheduleDataSource {
+  _SeasonalScheduleSource(this.bySeason, {this.defaultPage});
+
+  /// 键是季度码（如 `202610`）；值为该季度的响应。
+  final Map<String, SchedulePageData> bySeason;
+
+  /// 未指定季度时返回哪个（一般是最新季）。
+  final SchedulePageData? defaultPage;
+
+  /// 记录每次被请求的季度，用来断言「切换确实重新拉了」。
+  final List<String?> requested = <String?>[];
+
+  @override
+  Future<SchedulePageData> fetchSchedule({String? season}) async {
+    requested.add(season);
+    final page = season == null ? defaultPage : bySeason[season];
+    if (page == null) {
+      throw const ApiException(
+        code: ApiErrorCode.workNotFound,
+        message: '该季度没有档期',
+      );
+    }
+    return page;
   }
 }
 
@@ -283,6 +311,138 @@ void main() {
       expect(find.text('PSYREN 决战游戏'), findsWidgets);
       expect(tester.takeException(), isNull);
     });
+
+    testWidgets('切季度：重新拉该季度的数据，标题与季度标签都换掉', (tester) async {
+      final source = _SeasonalScheduleSource(
+        {
+          '202610': _loadSchedule('real_schedule'),
+          '202607': _loadSchedule('real_schedule_prev_season'),
+        },
+        defaultPage: _loadSchedule('real_schedule'),
+      );
+      final container = ProviderContainer(
+        overrides: [
+          ...authOverrides(),
+          appInitialLocationProvider.overrideWithValue(RoutePaths.schedule),
+          scheduleDataSourceProvider.overrideWithValue(source),
+        ],
+      );
+      addTearDown(container.dispose);
+      container.read(scheduleSeasonProvider.notifier).select(null);
+      await pumpApp(tester, container);
+
+      // 默认是最新季 202610。
+      expect(find.text('2026 年 10 月'), findsWidgets);
+      expect(find.text('PSYREN 决战游戏'), findsWidgets);
+
+      // 打开季度下拉，选 202607。
+      await tester.tap(find.byTooltip('切换季度'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.text('2026 年 7 月'), findsWidgets,
+          reason: '下拉里要列出可选季度');
+      await tester.tap(find.text('2026 年 7 月').last);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      // 内容换成了那一季的：旧标题消失，新标题出现。
+      expect(find.text('与奔跑在透明之夜的你 谈一场看不见的恋爱'), findsWidgets);
+      expect(find.text('PSYREN 决战游戏'), findsNothing,
+          reason: '切了季度还留着上一季的条目，说明筛选没生效');
+      // 季度标签也跟着换。
+      expect(find.text('2026 年 7 月'), findsWidgets);
+      // 并且确实重新请求了那个季度，而不是只换了本地显示。
+      expect(source.requested, contains('202607'));
+    });
+
+    testWidgets('未收录的条目：只展示不跳转，并说明原因', (tester) async {
+      final page = _loadSchedule('real_schedule');
+      // 真实数据里确实有 5 条没有 work_id（本站未收录）。
+      final orphan = page.groups
+          .expand((g) => g.items)
+          .where((e) => e.workId == null || e.workId!.isEmpty)
+          .toList();
+      expect(orphan, isNotEmpty, reason: '真实档期里应当有未收录的条目');
+
+      final container = ProviderContainer(
+        overrides: [
+          ...authOverrides(),
+          appInitialLocationProvider.overrideWithValue(RoutePaths.schedule),
+          scheduleDataSourceProvider.overrideWithValue(
+            _FixtureScheduleSource(page),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      container.read(scheduleSeasonProvider.notifier).select(null);
+      await pumpApp(tester, container);
+
+      // 切到那条未收录条目所在的星期，让它在首屏。
+      // （ListView 惰性构建，靠滚动找会 flaky；而星期筛选本身就是被测行为之一。）
+      final weekday = orphan.first.weekday;
+      expect(weekday, isNotNull);
+      container.read(scheduleWeekdayProvider.notifier).select(
+        ScheduleWeekday.values.firstWhere(
+          (w) => w.backendValue == weekday && w != ScheduleWeekday.all,
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+
+      // 展示出来了，并写明「仅展示档期信息」。
+      // 它在周六组的第 16 位，超出测试视口，所以要滚。
+      // ⚠️ `scrollUntilVisible` 的 scrollable 参数要 `Scrollable` widget 本身，
+      // 不是 `ListView`（传 ListView 会 TypeError）。而直接用
+      // `find.byType(Scrollable).first` 会命中星期 chips 那条
+      // SingleChildScrollView（排在前面），滚错地方报 Bad state: No element。
+      // 用 descendant 精确锁定到条目列表内部的 Scrollable。
+      final tile = find.text(orphan.first.title);
+      await tester.scrollUntilVisible(
+        tile,
+        150,
+        scrollable: find.descendant(
+          of: find.byType(ListView),
+          matching: find.byType(Scrollable),
+        ),
+      );
+      await tester.pump();
+      expect(tile, findsWidgets, reason: '未收录的条目也要展示');
+      expect(find.text('本站未收录，仅展示档期信息'), findsWidgets,
+          reason: '不可点的条目要说明原因，否则用户以为界面坏了');
+
+      // 关键：点了不跳转。
+      await tester.tap(tile.first);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.text('详情'), findsNothing,
+          reason: '没有 work_id 就跳不到详情页');
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('只有一个季度时不显示切换下拉', (tester) async {
+      final page = _loadSchedule('real_schedule');
+      // 造一个「只有单季度」的响应：保留数据，但 seasons 只留一个。
+      final single = SchedulePageData(
+        season: page.season,
+        seasons: [if (page.season != null) page.season!],
+        groups: page.groups,
+      );
+      final container = ProviderContainer(
+        overrides: [
+          ...authOverrides(),
+          appInitialLocationProvider.overrideWithValue(RoutePaths.schedule),
+          scheduleDataSourceProvider.overrideWithValue(
+            _FixtureScheduleSource(single),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      container.read(scheduleSeasonProvider.notifier).select(null);
+      await pumpApp(tester, container);
+
+      expect(find.byTooltip('切换季度'), findsNothing,
+          reason: '孤零零的下拉箭头会让人以为还有别的季度可看');
+    });
   });
 
   group('详情页（真实长标题条目）', () {
@@ -313,6 +473,150 @@ void main() {
       expect(find.textContaining('If Letters Had Pants'), findsWidgets);
       expect(find.text('0.0'), findsNothing,
           reason: '契约 6.3：没有评分不能显示 0.0');
+    });
+  });
+
+  group('封面三态（契约 6.3）', () {
+    // 三态的区别是可观察的，不必靠人眼：
+    // - 加载中   → 纯色块（`surfaceContainerHighest`），**无渐变、无文字**；
+    // - 没有封面 → 品牌色渐变 + 作品首字；
+    // - 加载失败 → 与「没有封面」同款（契约不允许出现破图）。
+    // 「加载中」必须和「本来就没有」区分开，否则用户会以为作品缺图。
+    //
+    // ⚠️ 为什么直接测 `CoverImage.loadingFallback` / `CoverImage.errorFallback`
+    // 而不是等图片真的加载/失败：
+    // `cached_network_image` 走 `flutter_cache_manager` 自己的 HTTP 栈，
+    // 不受 flutter_test 的 400 拦截影响；真实请求在 fake async 下不推进，
+    // 错误回调永远不来（实测挂 12 秒仍停在加载态；连非法 URL 也一样）。
+    // 换句话说「加载中」「加载失败」在 widget test 里都**不可自然触发**。
+    // 所以把这两个回调提成公开方法，直接测它们渲染出什么——
+    // 测的仍是我们的代码（回调内容是产品决定的），而不是插件的时序。
+
+    Widget wrap(Widget child) => MaterialApp(
+          home: Scaffold(body: Center(child: child)),
+        );
+
+    /// 指定 widget 区域里有没有渐变（品牌色占位层才有）。
+    ///
+    /// [root] 传 `null` 表示整棵树——`CoverImage.loadingFallback` 这类
+    /// 单独渲染时，树里并没有 [CoverImage] 本身，用它当根会匹配不到。
+    bool hasGradient(WidgetTester tester, [Finder? root]) {
+      final boxes = tester
+          .widgetList<DecoratedBox>(
+            root == null
+                ? find.byType(DecoratedBox)
+                : find.descendant(of: root, matching: find.byType(DecoratedBox)),
+          )
+          .toList();
+      return boxes.any(
+        (b) => b.decoration is BoxDecoration &&
+            (b.decoration as BoxDecoration).gradient != null,
+      );
+    }
+
+    testWidgets('没有封面（url 为 null）：渐变 + 首字占位', (tester) async {
+      await tester.pumpWidget(
+        wrap(const CoverImage(url: null, placeholderLabel: '异')),
+      );
+
+      expect(find.text('异'), findsOneWidget, reason: '要显示作品首字');
+      expect(
+        hasGradient(tester, find.byType(CoverImage)),
+        isTrue,
+        reason: '占位层要有品牌色渐变',
+      );
+    });
+
+    testWidgets('加载中：纯骨架，没有渐变也没有文字', (tester) async {
+      await tester.pumpWidget(
+        wrap(CoverImage.loadingFallback(width: 64, height: 88)),
+      );
+
+      expect(find.text('异'), findsNothing, reason: '加载中没有首字');
+      expect(
+        hasGradient(tester),
+        isFalse,
+        reason: '加载中只画骨架，不画渐变',
+      );
+      // 骨架是纯色块：没有任何文字，也没有任何图片。
+      expect(find.byType(Text), findsNothing);
+      expect(find.byType(Image), findsNothing);
+    });
+
+    testWidgets('加载失败：回落到占位图（不出现破图）', (tester) async {
+      await tester.pumpWidget(
+        wrap(
+          CoverImage.errorFallback(
+            width: 64,
+            height: 88,
+            label: '异',
+          ),
+        ),
+      );
+
+      expect(find.text('异'), findsOneWidget,
+          reason: '加载失败要回落到占位图（契约 6.3：不得显示报错图）');
+      // 破图的表现是图片组件还在树上但解码失败——这里不该有裸 Image。
+      expect(find.byType(Image), findsNothing);
+      expect(
+        hasGradient(tester),
+        isTrue,
+        reason: '失败态与无封面态同款，也是品牌色占位层',
+      );
+    });
+
+    testWidgets('加载中与「没有封面」长得不一样（这是三态的意义）', (tester) async {
+      // 先取「没有封面」那态。
+      await tester.pumpWidget(
+        wrap(const CoverImage(url: null, placeholderLabel: '异')),
+      );
+      final noCoverHasGradient = hasGradient(tester, find.byType(CoverImage));
+      final noCoverHasLabel = find.text('异').evaluate().isNotEmpty;
+
+      // 再取「加载中」那态。
+      await tester.pumpWidget(
+        wrap(CoverImage.loadingFallback(width: 64, height: 88)),
+      );
+      final loadingHasGradient = hasGradient(tester);
+      final loadingHasLabel = find.text('异').evaluate().isNotEmpty;
+
+      expect(noCoverHasGradient, isTrue);
+      expect(noCoverHasLabel, isTrue);
+      expect(loadingHasGradient, isFalse,
+          reason: '两态必须能区分，否则「正在加载」会被误读成「没有封面」');
+      expect(loadingHasLabel, isFalse,
+          reason: '两态必须能区分，否则「正在加载」会被误读成「没有封面」');
+    });
+
+    testWidgets('加载失败与「没有封面」走同一条渲染路径（契约 6.3 不许破图）', (tester) async {
+      // 这两态在实现上是同一段代码：
+      //   没有封面 → errorFallback(label: placeholderLabel)
+      //   加载失败 → errorWidget → errorFallback(label: placeholderLabel)
+      // 所以「失败时显示占位图而不是破图」这条契约，由「没有封面」那条守住；
+      // 这里断言的是**两者渲染出的 widget 树一致**——
+      // 万一有人把 errorWidget 改成别的（比如直接返回 Image），这条会红。
+      await tester.pumpWidget(
+        wrap(const CoverImage(url: null, placeholderLabel: '异')),
+      );
+      final noCoverTree = tester
+          .widgetList(find.byType(Text))
+          .map((t) => (t as Text).data)
+          .toList();
+
+      await tester.pumpWidget(
+        wrap(
+          CoverImage.errorFallback(width: 64, height: 88, label: '异'),
+        ),
+      );
+      final failedLikeTree = tester
+          .widgetList(find.byType(Text))
+          .map((t) => (t as Text).data)
+          .toList();
+
+      expect(noCoverTree, failedLikeTree,
+          reason: '加载失败态必须与无封面态渲染同样的内容（契约 6.3：不得显示破图）');
+      expect(noCoverTree, contains('异'),
+          reason: '占位层显示作品首字');
     });
   });
 
