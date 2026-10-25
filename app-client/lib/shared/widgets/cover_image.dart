@@ -38,6 +38,37 @@ class CoverImage extends StatelessWidget {
   /// 只有跨源同名这条理由，够了才显示；`null` 表示来源没标注（含旧缓存）→ 不渲染。
   final String? source;
 
+  /// 「正在加载」的占位：纯骨架，**无渐变、无文字**。
+  ///
+  /// 抽成公开方法是为了能直接测它——加载中这一态在 widget test 里
+  /// 无法自然触发（见 [errorFallback] 的说明），但它恰恰是最容易被误改的一态：
+  /// 一旦在这里画上渐变或首字，「正在加载」就会被误读成「本来就没有封面」。
+  @visibleForTesting
+  static Widget loadingFallback({
+    required double width,
+    required double height,
+  }) =>
+      _CoverFallback(width: width, height: height, loading: true);
+
+  /// 「加载失败」与「本来就没有封面」的占位：**同一款**。
+  ///
+  /// 契约 6.3 不允许出现破图，所以加载失败不能显示报错图，只能回落到占位层。
+  /// 「失败」与「本来就没有」在视觉上不分——这不是偷懒，而是契约的选择：
+  /// 用户看到「一张带首字的占位图」，无论背后是没有封面还是图没下下来，
+  /// 该做的动作（换一个封面、或者不管）是一样的。
+  ///
+  /// 为什么失败态在 widget test 里测不到：`cached_network_image` 走
+  /// `flutter_cache_manager` 自己的 HTTP 栈，不受 flutter_test 的 400 拦截影响，
+  /// 真实请求在 fake async 下不推进，错误回调永远不来（实测挂 12 秒仍停在
+  /// 加载态）。所以把回调内容提成方法，直接测它渲染出什么。
+  @visibleForTesting
+  static Widget errorFallback({
+    required double width,
+    required double height,
+    String? label,
+  }) =>
+      _CoverFallback(width: width, height: height, loading: false, label: label);
+
   @override
   Widget build(BuildContext context) {
     final imageUrl = url;
@@ -51,19 +82,19 @@ class CoverImage extends StatelessWidget {
               height: height,
               fit: BoxFit.cover,
               fadeInDuration: const Duration(milliseconds: 160),
-              placeholder: (context, url) =>
-                  _CoverFallback(width: width, height: height, loading: true),
-              errorWidget: (context, url, error) => _CoverFallback(
+              placeholder: (context, url) => loadingFallback(
                 width: width,
                 height: height,
-                loading: false,
+              ),
+              errorWidget: (context, url, error) => errorFallback(
+                width: width,
+                height: height,
                 label: placeholderLabel,
               ),
             )
-          : _CoverFallback(
+          : errorFallback(
               width: width,
               height: height,
-              loading: false,
               label: placeholderLabel,
             );
 

@@ -83,15 +83,28 @@ Flyway 校验不过。处理：
 |---|---|---|---|---|
 | 1 | 长标题 | 打开 `W-hqhg0j51mv1trcg`（146 字符）或列表往下翻到长标题条目 | 卡片标题截断为两行左右，不溢出、不撑破网格 | ✅ 列表 + 详情页各一条 |
 | 2 | 无评分沉底 | 设置里把排序切成「评分」，看首屏之后 | 无评分条目沉底且有可解释标注，不像「坏了」 | ✅ 说明条与逐条标注（有评分时不出现） |
-| 3 | 封面占位 | 列表首屏（97% 无封面） | 三态区分：加载中 / 本来没有 / 加载失败，不裂图 | ⚠️ 只覆盖「本来没有」这一态 |
+| 3 | 封面占位 | 列表首屏（97% 无封面） | 三态区分：加载中 / 本来没有 / 加载失败，不裂图 | ✅ 三态各有断言（见下方说明） |
 | 4 | 未知标签 | 手动构造 `?tag=xyz`（或用任意不存在标签） | 空状态文案说清「这个标签没有数据」，而不是「加载失败」 | ✅ 空态文案 + 清除出口 |
-| 5 | 档期页 | 侧栏「新番」 | 按周几分组、季度切换、`work_id` 为空白的条目只展示不跳转 | ⚠️ 只覆盖按周几分组 |
+| 5 | 档期页 | 侧栏「新番」 | 按周几分组、季度切换、`work_id` 为空白的条目只展示不跳转 | ✅ 三条各有断言 |
 | 6 | 错误态 | 关掉后端再刷新 | 明确错误提示，不无限转圈，不把错误显示成空列表 | ✅ 错误提示 + 无骨架屏 + 无转圈 |
 
 **「✅」= 已有自动化断言钉住**（`app-client/test/real_data_render_test.dart`，
 数据是从真后端拉下来存下的响应原文，见 §7）。
-**「⚠️」= 只覆盖了一部分，剩下的仍要人看**：
-封面三态里的「加载中 / 加载失败」、档期页的季度切换与空 `work_id` 条目。
+
+关于第 3 条「封面三态」：三态在 widget test 里**无法自然触发**——
+`cached_network_image` 走 `flutter_cache_manager` 自己的 HTTP 栈，
+不受 flutter_test 的 400 拦截影响，真实请求在 fake async 下不推进，
+错误回调永远不来（实测挂 12 秒仍停在加载态，连非法 URL 也一样）。
+所以把 `placeholder` / `errorWidget` 两个回调提成
+`CoverImage.loadingFallback` / `CoverImage.errorFallback` 公开方法，
+直接断言它们渲染出什么：加载中 = 纯骨架无渐变无文字；
+没有封面 = 渐变 + 首字；加载失败 = 与「没有封面」同款（契约 6.3 不许破图）；
+并额外断言「加载中 ≠ 没有封面」——这是三态存在的意义。
+
+关于第 5 条「档期页」：季度切换验证了「重新拉该季度的数据、标题与季度标签都换掉、
+旧条目消失」，另有一条「只有一个季度时不显示切换下拉」（孤零零的下拉箭头
+会让人以为还有别的季度可看）；空 `work_id` 条目验证了「只展示、点了不跳转、
+并写明『本站未收录，仅展示档期信息』」。
 
 跑完把结果追加到本文档 §6（谁、什么时候、看了哪几条、发现什么问题）——
 按章程 §4「完成时带着证据来」，这六条看过并记录，W1.4 的桌面侧才算收口；
@@ -119,6 +132,10 @@ curl -s "$B/api/works?sort=rating&page_size=50"          -o test/fixtures/real_w
 curl -s "$B/api/works?tag=zzz-not-exist-tag&page_size=5" -o test/fixtures/real_works_unknown_tag.json
 curl -s "$B/api/schedule"                               -o test/fixtures/real_schedule.json
 
+# 档期的**上一个季度**：用来验证「切季度真的换了内容」
+#   （两个季度各有 60+ 条、标题完全不同，切换后旧标题必须消失）
+curl -s "$B/api/schedule?season=202607"                 -o test/fixtures/real_schedule_prev_season.json
+
 # 评分排序的「最后一条全无评分」那一页：先查总数再取末页
 #   （这一页是「无评分沉底」的断言依据）
 T=$(curl -s "$B/api/works?tag=游戏&page_size=1" | python -c "import sys,json;print(json.load(sys.stdin)['total'])")
@@ -135,4 +152,9 @@ curl -s "$B/api/works/<那个 id>"                          -o test/fixtures/rea
 `flutter test test/real_data_render_test.dart`。
 `real_work_detail_long.json` 里的标题长度 146 是当前库的最长值，
 库里若出现更长的标题，测试不会自动知道——那是新的边界，值得再补一条。
+
+⚠️ **`real_schedule_prev_season.json` 的季度码会过期**：写的是 `202607`，
+库里若滚过了这个季度（新增了 `202610` 之后的季度），它就不再是「上一个季度」，
+但测试仍会通过（它只断言两个季度的内容不同）。要保持「相邻两季」，
+按当前 `real_schedule.json` 里的 `seasons[1]` 替换那个季度码。
 
