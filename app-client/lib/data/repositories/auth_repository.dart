@@ -48,6 +48,17 @@ class AuthRepository {
     return session.user;
   }
 
+  /// 站点授权登录：票据换平台会话。
+  ///
+  /// 与 [login] 的差别只在「凭据是什么」——拿到会话之后存令牌、返回用户，
+  /// 两条路完全同构。**不缓存票据**：一次性、120 秒，落盘只会留下一个
+  /// 已经不能用的秘密。
+  Future<AccountUser> siteLogin(String ticket) async {
+    final session = await _dataSource.siteLogin(ticket);
+    await _tokenStore.write(session.token);
+    return session.user;
+  }
+
   /// 只清本地会话，不打服务端。
   ///
   /// 用于「令牌已被服务端判定无效」的场景：这时再去调 logout 只会再拿一个 401。

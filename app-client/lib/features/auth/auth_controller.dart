@@ -1,11 +1,17 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/network/api_exception.dart';
 import '../../core/network/session_expiry.dart';
+import '../../core/config/app_config.dart';
 import '../../core/storage/collection_cache_provider.dart';
+import '../../core/storage/local_prefs_provider.dart';
 import '../../data/models/account_user.dart';
 import '../../data/repositories/auth_repository.dart';
+import 'site_auth_launcher.dart';
+import 'site_auth_state.dart';
 
 enum AuthStatus {
   /// 还在读本地令牌。此时既不能显示「已登录」，也不该闪一下登录页。
@@ -58,6 +64,14 @@ class AuthState {
 /// 三态而不是「user 可空」：`checking` 必须能和「确定未登录」区分开，
 /// 否则冷启动时会先闪一下登录页再跳回列表。
 class AuthController extends Notifier<AuthState> {
+  /// 会话恢复（读本地令牌 + 校验）完成信号。
+  ///
+  /// 为什么需要它：`build()` 里的恢复是异步的，而登录/授权随时可能发生。
+  /// 不等它，恢复完成时会把 `signedOut` 整个盖掉正在进行的登录状态——
+  /// 表现是「按钮转完圈却没登上」，而且只在冷启动后立刻登录时出现，
+  /// 复测十次未必碰得到一次。
+  final Completer<void> _restored = Completer<void>();
+
   @override
   AuthState build() {
     // 401 的统一落点：网络层只发信号，清会话在这里做（C6/C7）。
@@ -67,7 +81,13 @@ class AuthController extends Notifier<AuthState> {
     });
 
     // Notifier.build 不能是 async，先给出 checking，再在微任务里恢复会话。
-    Future<void>.microtask(_restore);
+    Future<void>.microtask(() async {
+      try {
+        await _restore();
+      } finally {
+        if (!_restored.isCompleted) _restored.complete();
+      }
+    });
     return const AuthState(status: AuthStatus.checking);
   }
 
@@ -92,10 +112,32 @@ class AuthController extends Notifier<AuthState> {
 
   Future<void> _handleSessionExpired() async {
     if (state.status == AuthStatus.signedOut) return;
+    // 站点身份账号先尝试静默重走一次授权（契约 §5：authorize 对已登录用户
+    // 幂等、无同意页）。平台账号不重走——它的 401 是会话/密码问题，
+    // 重走授权解决不了，只会让用户多等一轮。
+    if (state.user?.isSiteIdentity == true && _canSilentReauth()) {
+      _lastSilentReauthAt = DateTime.now();
+      await beginSiteLogin();
+      // 浏览器已经打开，授权成功与否由回跳那条路决定（见 SiteAuthBootstrap）；
+      // 这里不清会话——用户看起来只是「浏览器闪了一下」。
+      if (ref.mounted) return;
+    }
     await _clearCollectionCache();
     await ref.read(authRepositoryProvider).clearSession();
     if (!ref.mounted) return;
     state = const AuthState(status: AuthStatus.signedOut);
+  }
+
+  /// 静默重走的冷却：60 秒内不重复。
+  ///
+  /// 没有它，一次批量请求里的多个 401 会把用户反复弹去浏览器——那既是
+  /// 骚扰，也说明链路有问题，该停下来让人看，而不是继续试。
+  DateTime? _lastSilentReauthAt;
+
+  bool _canSilentReauth() {
+    final last = _lastSilentReauthAt;
+    if (last == null) return true;
+    return DateTime.now().difference(last) > const Duration(seconds: 60);
   }
 
   Future<void> _restore() async {
@@ -117,6 +159,7 @@ class AuthController extends Notifier<AuthState> {
   /// 失败**不抛异常**：登录失败是正常分支，页面读 [AuthState.error] 展示即可，
   /// 抛出去会让调用方多写一层 try/await 判断。
   Future<bool> login(String username, String password) async {
+    await _restored.future;
     if (state.submitting) return false;
 
     state = state.copyWith(submitting: true, clearError: true);
@@ -148,8 +191,159 @@ class AuthController extends Notifier<AuthState> {
     if (!ref.mounted) return;
     state = const AuthState(status: AuthStatus.signedOut);
   }
+
+  // ---- 站点授权登录（W1 账号绑定，方案见 docs/w1-login-dual-entry.md）----
+
+  /// 开始授权：生成 state、落盘、打开系统浏览器。
+  ///
+  /// state 先落盘再开浏览器：浏览器回来时进程可能已被回收，那时再生成
+  /// 就对不上了。
+  Future<void> beginSiteLogin() async {
+    await _restored.future;
+    final launcher = ref.read(siteAuthLauncherProvider);
+    if (!launcher.supported) return;
+
+    state = state.copyWith(submitting: true, clearError: true);
+    final store = ref.read(siteAuthStateStoreProvider);
+    final attempt = SiteAuthAttempt(
+      state: SiteAuthState.generate(),
+      startedAt: DateTime.now().toUtc(),
+    );
+    await store.save(attempt);
+
+    final opened = await launcher.openAuthorize(state: attempt.state);
+    if (!ref.mounted) return;
+    if (!opened) {
+      // 打不开浏览器（没有可处理的 Activity 等）要说出来，别让用户
+      // 盯着一个没反应的按钮猜。
+      await store.clear();
+      state = state.copyWith(
+        submitting: false,
+        error: const ApiException(
+          code: ApiErrorCode.unknown,
+          message: '打不开授权页面，请检查是否安装了浏览器',
+        ),
+      );
+    }
+  }
+
+  /// 处理站点回跳：`com.otaku.app:/oauth2redirect?ticket=…&state=…`。
+  ///
+  /// 返回是否登录成功，供调用方决定跳转。
+  ///
+  /// 三个守卫按顺序做，**每一个失败都要说清是哪种失败**——「过期」和
+  /// 「校验失败」的用户动作不同（前者重走一次就行，后者要重新点登录），
+  // 合成一句「授权失败」会让用户反复重试同一个坏票据。
+  Future<bool> handleSiteRedirect(Uri uri) async {
+    await _restored.future;
+    final store = ref.read(siteAuthStateStoreProvider);
+    final attempt = store.read();
+    // 不管成败，这一次尝试到此为止：票据一次性，留着只会让下一次误判。
+    await store.clear();
+
+    if (attempt == null) {
+      // 没有进行中的授权。可能是别的 App 拿同一个 scheme 试探，
+      // 也可能是用户清理过数据——不弹错误，安静结束。
+      return false;
+    }
+    if (!attempt.matches(uri.queryParameters['state'])) {
+      state = state.copyWith(
+        submitting: false,
+        error: const ApiException(
+          code: ApiErrorCode.unknown,
+          message: '登录状态校验失败，请重新登录',
+        ),
+      );
+      return false;
+    }
+    if (attempt.isExpired(DateTime.now())) {
+      state = state.copyWith(
+        submitting: false,
+        error: const ApiException(
+          code: ApiErrorCode.unknown,
+          message: '授权已过期，请重新授权',
+        ),
+      );
+      return false;
+    }
+
+    final ticket = uri.queryParameters['ticket'];
+    if (ticket == null || ticket.isEmpty) {
+      state = state.copyWith(
+        submitting: false,
+        error: const ApiException(
+          code: ApiErrorCode.unknown,
+          message: '授权没有返回票据，请重试',
+        ),
+      );
+      return false;
+    }
+
+    // 直接走内部完成步骤：submitting 在 beginSiteLogin 里已经置上了，
+    // 再走 siteLogin() 的「正在提交」检查会把这次回跳当成重复点击挡掉。
+    return _completeSiteLogin(ticket);
+  }
+
+  /// 票据换会话。失败统一呈现为「授权失败，请重试」。
+  ///
+  /// 不区分过期/被用过/secret 错：那三者的用户动作完全一样，而区分需要
+  /// 平台后端细分错误码（#147 待确认，见方案 §5）。
+  Future<bool> siteLogin(String ticket) async {
+    await _restored.future;
+    if (state.submitting) return false;
+    return _completeSiteLogin(ticket);
+  }
+
+  Future<bool> _completeSiteLogin(String ticket) async {
+    state = state.copyWith(submitting: true, clearError: true);
+    try {
+      final user = await ref.read(authRepositoryProvider).siteLogin(ticket);
+      if (!ref.mounted) return false;
+      state = AuthState(status: AuthStatus.signedIn, user: user);
+      return true;
+    } on Object catch (raw) {
+      if (!ref.mounted) return false;
+      state = AuthState(
+        status: AuthStatus.signedOut,
+        error: ApiException.fromAny(_siteLoginError(raw)),
+      );
+      return false;
+    }
+  }
+
+  /// 票据类 401 改文案。
+  ///
+  /// `UNAUTHORIZED` 的默认文案是「登录已过期，请重新登录」——那是**会话失效**的
+  /// 语义。而这里的 401 是站点票据的问题（过期 / 被用过 / 平台侧 secret 错），
+  /// 用户可能压根还没登录过，告诉他「登录已过期」只会让人去找一个不存在的问题。
+  static Object _siteLoginError(Object raw) {
+    if (raw is ApiException && raw.code == ApiErrorCode.unauthorized) {
+      return const ApiException(
+        code: ApiErrorCode.unknown,
+        message: '授权失败，请重试',
+      );
+    }
+    return raw;
+  }
 }
 
 final authControllerProvider = NotifierProvider<AuthController, AuthState>(
   AuthController.new,
 );
+
+/// 站点授权的「打开浏览器」能力。
+///
+/// - Mock：假实现，不真开浏览器，桌面走查与测试能跑通整条授权链；
+/// - 生产：Android 深链尚未落地（方案 §4 步 3），先给 [UnsupportedSiteAuthLauncher]，
+///   登录页据此**隐藏**入口而不是置灰。落地后换真实现即可，上层不用改。
+final siteAuthLauncherProvider = Provider<SiteAuthLauncher>((ref) {
+  if (AppConfig.useMock) return MockSiteAuthLauncher();
+  return const UnsupportedSiteAuthLauncher();
+});
+
+/// 「这一次授权尝试」的本机存储。
+///
+/// 必须落在盘上：从系统浏览器回来时进程可能已被回收（方案 §2.2）。
+final siteAuthStateStoreProvider = Provider<SiteAuthStateStore>((ref) {
+  return SiteAuthStateStore(ref.watch(localPrefsProvider));
+});

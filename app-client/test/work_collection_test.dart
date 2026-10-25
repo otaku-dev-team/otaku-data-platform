@@ -314,6 +314,11 @@ void main() {
       await tester.tap(find.text('登录后收藏'));
       await settle(tester);
 
+      // 登录页默认只露出站点授权主按钮，平台账号表单要先展开
+      //（双入口方案：主路径是授权，表单是次级）。
+      await tester.tap(find.text('使用平台账号登录'));
+      await settle(tester);
+
       // 登录页：两个输入框 + 提交按钮。
       await tester.enterText(find.byType(TextField).at(0), 'alice');
       await tester.enterText(find.byType(TextField).at(1), 'secret');

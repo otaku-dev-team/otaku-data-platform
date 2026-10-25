@@ -13,6 +13,7 @@ class RemoteAuthDataSource implements AuthDataSource {
   static const String _loginPath = '/api/auth/login';
   static const String _mePath = '/api/auth/me';
   static const String _logoutPath = '/api/auth/logout';
+  static const String _siteLoginPath = '/api/auth/site-login';
 
   @override
   Future<AuthSession> login({
@@ -51,6 +52,22 @@ class RemoteAuthDataSource implements AuthDataSource {
         options: Options(headers: <String, dynamic>{'Authorization': 'Bearer $token'}),
       ),
     );
+  }
+
+  /// 站点授权票据换平台会话（#147 §2 的 `POST /api/auth/site-login`）。
+  ///
+  /// **客户端只发票据，不带任何站点凭据**——secret 与令牌交换都在平台后端
+  /// （契约 §2：secret「永不进浏览器/App」）。这也是整套授权链路的前提：
+  /// App 侧接触不到的东西，就不存在泄露。
+  @override
+  Future<AuthSession> siteLogin(String ticket) async {
+    final response = await _call(
+      () => _dio.post<Map<String, dynamic>>(
+        _siteLoginPath,
+        data: <String, dynamic>{'ticket': ticket},
+      ),
+    );
+    return AuthSession.fromJson(_body(response));
   }
 
   static Map<String, dynamic> _body(Response<Map<String, dynamic>> response) {

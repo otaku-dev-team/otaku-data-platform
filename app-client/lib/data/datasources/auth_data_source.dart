@@ -49,6 +49,13 @@ abstract class AuthDataSource {
   /// 校验令牌并取当前用户。令牌无效/过期必须抛 [ApiErrorCode.unauthorized]。
   Future<AccountUser> me(String token);
 
+  /// 用站点授权票据换平台会话（#147 §2：`POST /api/auth/site-login`）。
+  ///
+  /// 票据一次性、120 秒。平台后端归一站点错误码后返回 401——客户端只按
+  /// 「授权失败，请重试」呈现，不区分是过期、被用过还是 secret 错：
+  /// 那三者的用户动作完全一样（重走一次授权），分开展示只会多三句废话。
+  Future<AuthSession> siteLogin(String ticket);
+
   /// 撤销当前令牌。其他端的会话不受影响（C9）。
   Future<void> logout(String token);
 }
