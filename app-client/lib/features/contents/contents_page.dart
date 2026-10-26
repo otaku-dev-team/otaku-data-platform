@@ -221,6 +221,15 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
       child: DesktopShortcuts(
         onRefresh: () =>
             ref.read(contentsControllerProvider.notifier).refresh(),
+        // 桌面端按 `/` 直接聚焦搜索框：这一页最常用的动作不该要求用户先去点一下。
+        onSearch: _searchFocus.requestFocus,
+        // 搜索框有焦点时 Esc 先「退出输入」；否则会把整个作品库页弹掉——
+        // 用户想关掉输入法/光标，结果整页没了。
+        onEscape: () {
+          if (!_searchFocus.hasFocus) return false;
+          _searchFocus.unfocus();
+          return true;
+        },
         child: Scaffold(
           appBar: AppBar(
             title: const Text('作品库'),

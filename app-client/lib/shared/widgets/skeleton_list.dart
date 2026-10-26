@@ -27,14 +27,22 @@ class _SkeletonListState extends State<SkeletonList>
 
   @override
   Widget build(BuildContext context) {
-    return ListView.separated(
-      physics: const NeverScrollableScrollPhysics(),
-      padding: const EdgeInsets.all(AppLayout.pagePadding),
-      itemCount: widget.itemCount,
-      separatorBuilder: (context, index) => const SizedBox(height: 12),
-      itemBuilder: (context, index) => _Pulse(
-        animation: _controller,
-        child: const _SkeletonRow(),
+    // 读屏用户看不到「灰色方块在呼吸」，只该听到一句「加载中」。
+    // 不加这一层时这一幕是完全静默的，容易被当成页面没反应。
+    return Semantics(
+      container: true,
+      label: '加载中',
+      child: ExcludeSemantics(
+        child: ListView.separated(
+          physics: const NeverScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(AppLayout.pagePadding),
+          itemCount: widget.itemCount,
+          separatorBuilder: (context, index) => const SizedBox(height: 12),
+          itemBuilder: (context, index) => _Pulse(
+            animation: _controller,
+            child: const _SkeletonRow(),
+          ),
+        ),
       ),
     );
   }

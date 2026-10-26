@@ -19,10 +19,29 @@ import 'work_cache.dart';
 /// **失败即视为无缓存**：读缓存时任何异常都返回 `null`。
 /// 缓存坏了最多是「离线时看不到内容」，不该让整个 App 起不来。
 class HiveWorkCache implements WorkCache {
-  HiveWorkCache(this._box);
+  HiveWorkCache(
+    this._box, {
+    this.maxEntries = defaultMaxEntries,
+    this.maxBytes = defaultMaxBytes,
+  });
 
   /// 打开的 Hive 盒。
   final Box<String> _box;
+
+  /// 条目上限与字节上限。
+  ///
+  /// **为什么必须有上限**：列表键里带 `type / query / tag / sort / page / pageSize`，
+  /// 用户每搜一个词、每翻一页、每换一次筛选就是一条新缓存。此前只有设置页的
+  /// 手动「清除」——用户不点，它就无限长。离线缓存是「尽力而为」，
+  /// 不该成为磁盘占用不可控的东西。
+  static const int defaultMaxEntries = 400;
+  static const int defaultMaxBytes = 8 * 1024 * 1024;
+
+  final int maxEntries;
+  final int maxBytes;
+
+  /// 淘汰到上限的这个比例就停手：留出余量，避免「刚清完又立刻超限」反复扫描。
+  static const double _lowWater = 0.8;
 
   /// 盒的名字。改名字等于换一份空缓存（老盒子留在磁盘上）。
   static const String boxName = 'otaku_work_cache';
@@ -30,7 +49,11 @@ class HiveWorkCache implements WorkCache {
   /// 打开缓存盒。调用方负责在 `main()` 里 `Hive.initFlutter()` 之后调用。
   static Future<HiveWorkCache> open() async {
     final box = await Hive.openBox<String>(boxName);
-    return HiveWorkCache(box);
+    final cache = HiveWorkCache(box);
+    // 老版本没有上限：升级后第一次启动可能面对一个膨胀的盒子。
+    // 在这里收一次，别拖到第一次写入时才淘汰——那一次会落在用户的浏览路径上。
+    await cache.enforceLimits();
+    return cache;
   }
 
   @override
@@ -195,6 +218,88 @@ class HiveWorkCache implements WorkCache {
       await _box.put(storageKey, envelope);
     } catch (_) {
       // 写失败（磁盘满）不影响在线浏览，缓存本来就是尽力而为。
+      return;
+    }
+    await enforceLimits(keep: storageKey);
+  }
+
+  /// 把缓存收敛到上限以内：按**写入时间**淘汰最旧的，直到回落到低水位。
+  ///
+  /// 注意这不是 LRU：`cached_at` 是**数据新鲜度**的语义（离线时要显示「上次同步」），
+  /// 读一次就改它会把那个语义弄坏。真做 LRU 得再加一个 `last_access` 字段，
+  /// 收益不值——缓存本来就是「浏览过的页面」，写入顺序与访问顺序高度重合。
+  ///
+  /// [keep] 是刚写入的键，无论如何不淘汰它（否则一次大响应可能把自己挤掉，
+  /// 表现为「刚看完的详情页离线打不开」）。
+  Future<void> enforceLimits({String? keep}) async {
+    try {
+      final entries = <_CacheEntryInfo>[];
+      final broken = <String>[];
+
+      for (final rawKey in _box.keys) {
+        final key = '$rawKey';
+        final value = _box.get(rawKey);
+        if (value is! String) {
+          broken.add(key);
+          continue;
+        }
+        final cachedAt = _readCachedAt(value);
+        if (cachedAt == null) {
+          // 解不开的记录读的时候也是 null，留着只占地方。
+          broken.add(key);
+          continue;
+        }
+        entries.add(
+          _CacheEntryInfo(
+            key,
+            cachedAt,
+            utf8.encode(key).length + utf8.encode(value).length,
+          ),
+        );
+      }
+      if (broken.isNotEmpty) await _box.deleteAll(broken);
+
+      var count = entries.length;
+      var bytes = entries.fold<int>(0, (sum, entry) => sum + entry.bytes);
+      if (count <= maxEntries && bytes <= maxBytes) return;
+
+      entries.sort((a, b) => a.cachedAt.compareTo(b.cachedAt));
+      final targetCount = (maxEntries * _lowWater).floor();
+      final targetBytes = (maxBytes * _lowWater).floor();
+
+      final doomed = <String>[];
+      for (final entry in entries) {
+        if (count <= targetCount && bytes <= targetBytes) break;
+        if (entry.key == keep) continue;
+        doomed.add(entry.key);
+        count--;
+        bytes -= entry.bytes;
+      }
+      if (doomed.isNotEmpty) await _box.deleteAll(doomed);
+    } catch (_) {
+      // 清理失败最多是占点磁盘；缓存不能因为它把浏览路径搞崩。
     }
   }
+
+  /// 从信封里取写入时刻。解不开就返回 null（视为坏记录）。
+  static DateTime? _readCachedAt(String raw) {
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return null;
+      final cachedAt = decoded['cached_at'];
+      if (cachedAt is! String) return null;
+      return DateTime.tryParse(cachedAt);
+    } catch (_) {
+      return null;
+    }
+  }
+}
+
+/// 淘汰时用的一条记录：键、写入时刻、占用字节。
+class _CacheEntryInfo {
+  const _CacheEntryInfo(this.key, this.cachedAt, this.bytes);
+
+  final String key;
+  final DateTime cachedAt;
+  final int bytes;
 }
