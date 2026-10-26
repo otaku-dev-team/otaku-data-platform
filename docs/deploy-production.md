@@ -1,9 +1,50 @@
 # 生产部署（Linux 轻量应用服务器）
 
-> **状态：服务器尚未到位。** 本文是把步骤先定下来，机器一到照着执行。
+> **状态：服务器已就位（2026-10-26），按本文执行。**
 > **进度与待决策事项见 [Issue #78](https://github.com/otaku-dev-team/otaku-data-platform/issues/78)。**
 > **主责**：@pyxz0（`ROADMAP.md` §2.1 T3「生产化：部署方式、DB 迁移、鉴权/限流、健康检查与告警」）。
 > 本文只是执行清单，不新增任何接口或字段约定。
+
+---
+
+## 0. 服务器准备清单（开机器的人照着买 / 配）
+
+| # | 项 | 要求 | 不满足会怎样 |
+|---|---|---|---|
+| 1 | 系统 | Ubuntu 22.04 / 24.04（或直接选「Docker 镜像」） | 换发行版要改安装命令 |
+| 2 | 规格 | **2 核 2 GB** 起，**40 GB 盘**；1 GB 内存不要试 | JVM + MySQL 抢内存，容器反复重启 |
+| 3 | 公网 IP | 固定公网 IPv4 | 外网客户端连不上（内网穿透是另一套，见 §8） |
+| 4 | 登录 | SSH **密钥** + sudo 用户，关掉密码登录 | 公网机器一天会被扫几千次 |
+| 5 | 安全组 / 防火墙 | 只开 **22 / 80 / 443**；**不要**开 3306、8080 | 数据库或后端直接暴露在公网 |
+| 6 | 软件 | Docker Engine + Compose **v2**（`docker compose version` 有输出） | `docker-compose` v1 语法不同，命令跑不起来 |
+| 7 | 域名（要 HTTPS 才需要） | A 记录指向该 IP；**大陆服务器还要 ICP 备案**，否则 80/443 会被拦 | Android release 包连不上（它只认 HTTPS） |
+| 8 | 数据通道 | 本机能 `scp` 到服务器；服务器 `/tmp` 至少 **2 GB** 空闲 | 452 MB 的 dump 传不上去 / 导入失败 |
+| 9 | 备份落点 | 本机 `/var/backups` + **一份异地**（对象存储或另一台机器） | 整机挂了，备份跟着一起没 |
+| 10 | 观测 | 云监控告警：**磁盘 > 80%**、内存、实例存活；留一个能收到告警的号 | 封面缓存把盘写满，没人知道 |
+| 11 | 谁运维 | 指定一个人：看告警、清磁盘、定期做恢复演练 | 出事没人管（§8 这条一直没定） |
+
+**上线前还要三个人点一次头**：对外服务属章程 §3.2 红线 4，公开前需 @zhengmin486 知情。
+同时建议评估把封面防盗链打开（`otaku.cover.allowed-referers`，默认留空＝不限制，见 #189）——
+否则我们的封面代理会被别站当成免费图床。
+
+### 0.1 机器到手先跑这段自检
+
+```bash
+# 系统与规格
+head -2 /etc/os-release; nproc; free -h | head -2; df -h /
+
+# Docker（要 Compose v2：`docker compose`，不是 `docker-compose`）
+docker --version && docker compose version
+
+# 监听端口（理想情况只有 sshd；装了 Docker 后可能多几个 docker-proxy）
+ss -lntp | head
+
+# 出网与时间
+curl -fsS -o /dev/null -w "outbound %{http_code}\n" https://www.baidu.com
+timedatectl | head -3
+```
+
+这四组都对（系统、Docker v2、只开必要端口、能出网），就可以进 §3 了。
 
 ---
 
@@ -25,9 +66,9 @@
                                      └── 封面缓存（持久卷）
 ```
 
-数据量参考：现有 15,445 条的**业务数据只有 15.5 MB**（`work` 表，含索引约 20 MB）。
-数据目录整体 285 MB，但其中大部分是 binlog、undo 与系统文件，不是业务数据。
-全量 55.6 万条按同比例推算约 **560–700 MB**。一台 40 GB 系统盘的轻量服务器绰绰有余。
+数据量参考：现有 **571,660 条**（bangumi 556,342 + otaku_site 15,318），迁移 dump
+**452 MB**（`otaku-full-20261022.sql`）。服务端磁盘给「库 + 导入中转的同一份 dump」留
+**2–3 GB** 即可，40 GB 系统盘绰绰有余——真正会持续增长的是封面缓存（挂卷，按访问量涨）。
 
 ---
 
@@ -116,15 +157,23 @@ openssl rand -base64 32   # 内部令牌
 
 > `.env` 已在 `.gitignore` 里，不会误提交。**别把它贴到群里或 Issue 里。**
 
-### 4.3 起服务
+### 4.3 起服务（首次上线：**先只起 MySQL**）
 
 ```bash
-docker compose -f compose.prod.yaml up -d --build
-docker compose -f compose.prod.yaml ps        # 等两个都 healthy
-docker compose -f compose.prod.yaml logs -f backend
+# 首次上线：先只起 MySQL，把 backend 留到 §4.4 数据导入之后再起
+docker compose -f compose.prod.yaml up -d mysql
+docker compose -f compose.prod.yaml ps          # 等 mysql healthy
+
+# 数据导入并核对完成后（§4.4 ④），再起后端
+# docker compose -f compose.prod.yaml up -d --build backend
 ```
 
-首次启动会跑 Flyway 迁移建表，`start_period` 给了 60 秒。
+**为什么首次要这个顺序**：迁移 dump 里的 `flyway_schema_history` 只到 **V6**，库里没有
+`work_tag` / `schedule` / `article` 三张表——它们由 **V7–V9** 在后端首次启动时建，
+其中 V7 还要从 `work` 回填约 222 万行标签（2C2G 机器上**一两分钟**，别当成卡死）。
+先起后端再导数据的话，历史会被 dump 回退到 V6，V7–V9 白跑一遍。
+
+之后的重启与升级就正常 `up -d --build` 即可。
 
 ### 4.4 迁移数据
 
@@ -166,26 +215,27 @@ MYSQL=/d/mysql/bin/mysql.exe MYSQLDUMP=/d/mysql/bin/mysqldump.exe \
 
 用 `--result-file=` 而不是 shell 的 `>`：Git Bash 下重定向会参与换行/编码转换。
 
-**导出体积约 16 MB**，不是几百 MB——285 MB 那个数字是 MySQL **数据目录**（含 binlog、
-undo 与系统文件），业务数据只有 `work` 表的 15.5 MB。服务器磁盘按全量 55.6 万条留 700 MB 就够。
+**导出体积 452 MB**（571,660 条）。旧文档里那个「16 MB / 15,445 条」是 8 月小库时代的数字，
+全量灌入后已作废——拿它核对会以为少导了 55 万条。服务器磁盘按 2–3 GB 留余量（库 + 中转的 dump）。
 
-**2026-10-22 实测记录**（这份 dump 已经过验证，可直接用）：
+**2026-10-22 实测记录**（这份 dump 已用 `scripts/dump-db.sh --verify` 恢复校验，可直接用）：
 
 | 项 | 值 |
 |---|---|
-| 文件大小 | 15,645,897 字节（15.6 MB） |
-| 表数量 | 7 |
-| 导入耗时 | 1.4 秒 |
-| `work` | 15,445 行，内容指纹 `32930461272111`，原库与恢复库一致 |
-| `collection` / `app_user` / `import_batch` / `import_batch_run` | 均一致 |
-| `flyway_schema_history` | V1–V5，5 行 |
-| 中文 | 正常；144 条标题本身带问号（如「凭你也想讨伐魔王？」），两侧数量一致 |
-| 有 `release_year` / 有 `source_url` | 13,656 / 13,918，两侧一致 |
+| 文件 | `otaku-full-20261022.sql`，473,802,286 字节（452 MB） |
+| SHA256 | `744cf46d2b9b0676cc08c81f9800452755fe6401e0eefc7832cf30869acbeaea` |
+| 表数量 | 7：`work` / `app_user` / `user_session` / `collection` / `import_batch` / `import_batch_run` / `flyway_schema_history` |
+| `work` | **571,660** 行（bangumi 556,342 + otaku_site 15,318），逐行 CRC32 指纹 `1227192616237647` |
+| `flyway_schema_history` | **只到 V6**——dump 里没有 V7 的 `work_tag`，也没有 V8/V9 的档期与资讯表 |
+| 恢复验证 | 导入临时库后逐表行数 + 逐行内容指纹一致 |
+
+> ⚠️ 正因为 dump 停在 V6，**导完数据再起 backend**（见 §4.3）：V7–V9 会在后端首次启动时补跑，
+> V7 的标签回填约 222 万行，2C2G 机器上一两分钟，属于正常。
 
 **② 传上去**：
 
 ```bash
-scp otaku-20261022.sql user@<服务器IP>:/tmp/
+scp otaku-full-20261022.sql user@<服务器IP>:/tmp/
 ```
 
 **③ 在服务器导入**：
@@ -199,14 +249,15 @@ docker compose -f compose.prod.yaml exec mysql \
 
 # 导入
 docker compose -f compose.prod.yaml exec -T mysql \
-  mysql -uroot -p"$DB_ROOT_PASSWORD" otaku < /tmp/otaku-20261022.sql
+  mysql -uroot -p"$DB_ROOT_PASSWORD" otaku < /tmp/otaku-full-20261022.sql
 ```
 
-> 用 `-T` 关掉 TTY，否则管道数据进不去。
+> 用 `-T` 关掉 TTY，否则管道数据进不去。452 MB 在 2C2G 上大约 **1–3 分钟**。
 >
-> 这份 dump **包含 `flyway_schema_history`**，所以导入后 Flyway 认为已迁移到最新版本，
-> 启动时不会重复建表。如果只想迁数据、让服务器自己建表，改用 `--no-create-info`
-> 并且**不要**导 `flyway_schema_history`——两种方式别混。
+> 这份 dump **包含 `flyway_schema_history`，但只到 V6**。所以导完数据、起 backend 时，
+> Flyway 会补跑 V7（`work_tag` 回填）/ V8（档期）/ V9（资讯）——**这是预期行为**，不是重复建表。
+> 反过来，如果你只想迁数据、让服务器自己建全部表，就改用 `--no-create-info` 且
+> **不要导** `flyway_schema_history`——两种方式别混（混了会出现「表在、历史没有」）。
 
 **④ 核对**：
 
@@ -218,13 +269,13 @@ SELECT COUNT(*) FROM work WHERE release_year IS NOT NULL;
 "
 ```
 
-应当与开发机一致（当前：`otaku_site` 15,318 + `bangumi` 127 = **15,445**，其中有年份 13,656）。
+应当与开发机一致：`otaku_site` 15,318 + `bangumi` **556,342** = **571,660**，其中有年份 **520,152**（91%）。
 
 ### 4.5 把导出文件删掉
 
 ```bash
-rm /tmp/otaku-20261022.sql    # 服务器上
-rm otaku-20261022.sql         # 开发机上
+rm /tmp/otaku-full-20261022.sql    # 服务器上
+rm otaku-full-20261022.sql         # 开发机上
 ```
 
 里面是全量作品数据，别留在磁盘上。
