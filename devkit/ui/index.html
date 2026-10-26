@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>devkit · 测试看板</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header>
+  <div class="title">
+    <h1>devkit</h1>
+    <span class="sub">本地测试看板</span>
+  </div>
+  <div class="meta" id="meta">正在读取上一次结果…</div>
+  <div class="actions">
+    <button data-action="select">跑选跑</button>
+    <button data-action="gate">门禁（含契约）</button>
+    <button data-action="rerun">重跑失败</button>
+    <button data-action="all" class="danger">三栈全量</button>
+    <button id="toggle-log" class="ghost">运行日志</button>
+  </div>
+</header>
+
+<main>
+  <section id="stacks" class="grid"></section>
+  <section id="failure-wrap" hidden>
+    <h2>失败 <span class="count" id="fail-count"></span></h2>
+    <div id="failures"></div>
+  </section>
+  <section id="select-wrap" hidden>
+    <h2>这次跑的是哪些</h2>
+    <div id="selection"></div>
+  </section>
+  <section id="history-wrap" hidden>
+    <h2>最近运行</h2>
+    <div id="history"></div>
+  </section>
+  <section id="logbox" hidden>
+    <h2>运行日志 <span class="count" id="log-status"></span></h2>
+    <pre id="log"></pre>
+  </section>
+</main>
+
+<p class="foot">
+  只绑 127.0.0.1，只接受预设动作。缓存与历史在 <code>devkit/.state/</code>（不入库）。
+</p>
+
+<script src="/app.js"></script>
+</body>
+</html>

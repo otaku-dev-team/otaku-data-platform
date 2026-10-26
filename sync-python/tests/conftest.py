@@ -7,7 +7,10 @@
 from __future__ import annotations
 
 import json
+import os
+import socket
 import threading
+import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import parse_qs, quote, urlparse
@@ -556,3 +559,77 @@ SAMPLE_ARTICLES: list[dict[str, Any]] = [
         "related_work_ids": None,
     },
 ]
+
+
+# ---------------------------------------------------------------------------
+# 全局断网守卫
+# ---------------------------------------------------------------------------
+
+_LOOPBACK = {"127.0.0.1", "::1", "localhost", ""}
+
+
+def _is_loopback(address: Any) -> bool:
+    host = address[0] if isinstance(address, tuple) and address else address
+    return isinstance(host, str) and host in _LOOPBACK
+
+
+@pytest.fixture(autouse=True)
+def _no_real_network(monkeypatch):
+    """测试一律不许连真站。
+
+    为什么要有这一层：桩服务（`stub` 夹具）本来就在 127.0.0.1，靠的是每个人自己
+    记得用它。一旦某条新测试忘了注入 stub、或者直接 `httpx.get(BASE_URL)`，就会真的
+    打到线上站——对抓取频率敏感的站点，这是最不该发生的流量，而且它是静默的：
+    测试可能还「通过」了，只是打出去了一次没人知道的请求。
+
+    所以这里做硬隔离：除回环地址外的连接一律抛错，报错信息直接给出正确用法。
+    确需联网的测试用环境变量 `OTAKU_TEST_ALLOW_NETWORK=1` 显式豁免，
+    不给「悄悄放过」的默认值。
+
+    代理环境变量必须先清掉。本机常见 `HTTP_PROXY=127.0.0.1:xxxx`：
+    那种情况下 socket 的目标是**回环地址**（代理自己），守卫放行，
+    代理再把请求转出去——看起来像没拦住，其实是被代理绕过了。
+    """
+    if os.getenv("OTAKU_TEST_ALLOW_NETWORK") == "1":
+        return
+
+    for name in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY",
+                 "http_proxy", "https_proxy", "all_proxy"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("NO_PROXY", "localhost,127.0.0.1,::1")
+
+    real_connect = socket.socket.connect
+    real_connect_ex = socket.socket.connect_ex
+
+    def _reject(address: Any) -> None:
+        raise RuntimeError(
+            f"测试不允许访问外部地址：{address!r}\n"
+            "  正确做法：用 tests/conftest.py 的 `stub` 夹具（本地桩服务），"
+            "不要打真站。\n"
+            "  确实需要联网时，显式设 OTAKU_TEST_ALLOW_NETWORK=1。"
+        )
+
+    def guarded_connect(self, address):
+        if not _is_loopback(address):
+            _reject(address)
+        return real_connect(self, address)
+
+    def guarded_connect_ex(self, address):
+        if not _is_loopback(address):
+            _reject(address)
+        return real_connect_ex(self, address)
+
+    monkeypatch.setattr(socket.socket, "connect", guarded_connect, raising=True)
+    monkeypatch.setattr(socket.socket, "connect_ex", guarded_connect_ex, raising=True)
+
+    # 环境变量里如果指了真站，先在这里拦掉——比等到某条测试打到线上再发现好。
+    for name in ("OTAKU_SOURCE_BASE_URL", "OTAKU_JAVA_BASE_URL"):
+        value = os.getenv(name)
+        if not value:
+            continue
+        host = urllib.parse.urlparse(value).hostname or ""
+        if host not in _LOOPBACK:
+            raise RuntimeError(
+                f"{name}={value} 指向了外部主机 {host}，测试会被它带出去。\n"
+                "  跑测试前 unset 掉，或用 OTAKU_TEST_ALLOW_NETWORK=1 显式豁免。"
+            )

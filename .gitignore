@@ -33,5 +33,11 @@ venv/
 # 同步作业产物（载荷与运行报告，含来源原始数据）
 sync-python/runs/
 
+# 接口快照的运行历史（每次跑都追加，只用于回溯，不入库；基线本身是要入库的）
+scripts/smoke-history/
+
+# devkit 的运行状态：结果缓存、上次失败基线、运行历史（本机数据，不入库）
+devkit/.state/
+
 # AI 会话记忆目录（非项目代码，不应提交）
 .workbuddy/

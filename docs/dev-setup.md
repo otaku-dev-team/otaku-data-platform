@@ -256,3 +256,72 @@ flutter build windows --debug
 - 统一 `dart format .`（lineLength 100），提交前跑一次 `flutter analyze`（应零告警）。
 - `.gitignore` 追加 `key.properties`、`*.jks`、`*.keystore`。
 - 下载的安装包留在 `D:\dev\_download`（约 2GB），确认无需重装后可删除。
+
+## 8. 改完代码跑什么
+
+三个栈各有自己的测试命令，本地没有 CI 那套 `paths` 过滤，于是经常出现两种浪费：
+改后端却跑了 Flutter，或者干脆三栈全跑再读几百行输出。用一条命令代替判断：
+
+```bash
+python scripts/devtest.py              # 自动看改动 → 选跑相关测试 → 只回结论
+python scripts/devtest.py --collect    # 只列清单和原因，不执行
+python scripts/devtest.py --json       # 机器可读（脚本/智能体消费）
+python scripts/devtest.py --all        # 明确全量
+```
+
+选跑是**宁可多选**的：静态分析看不准的地方（反射、同类名、Spring 代理）直接退化成整栈全量并说明原因，不会静默漏跑。改动集合以 `merge-base HEAD origin/main` 为起点，包含已提交未推送的部分，和 CI 判断改动的语义一致。
+
+各栈原始命令如下，devtest 内部调用的就是它们：
+
+| 栈 | 目录 | 命令 |
+| --- | --- | --- |
+| Java | `backend-java/` | `./mvnw -B test` |
+| Python | `sync-python/` | `python -m pytest -q` |
+| Dart | `app-client/` | `flutter test` |
+
+两点本地环境相关的注意事项：
+
+- **Java 集成测试**（`ImportConcurrencyIntegrationTest`、`SecondSourceIntegrationTest`、`WorkTagFilterIntegrationTest`）靠 `IT_DB_PORT` 守门，本机不设就整类跳过。devtest 会在选中它们时明确提示，不会让人误以为跑过了。
+- **Python 测试禁止联网**：`sync-python/tests/conftest.py` 有全局守卫，除回环地址外的连接一律抛错，并且会清掉 `HTTP_PROXY` 一类环境变量（本机代理指向 `127.0.0.1` 时，socket 目标是代理自己，不清就会被绕出去）。确需联网用 `OTAKU_TEST_ALLOW_NETWORK=1` 显式豁免。
+
+### 8.1 失败卡片、门禁与看板
+
+`devtest.py` 现在会读三个栈各自的**机器可读测试报告**（surefire XML / pytest `--junitxml` /
+`flutter test --reporter json`），所以失败时给的是卡片而不是日志尾巴：
+
+```
+[FAIL] tests/test_importer.py::test_release_year_out_of_range
+    sync-python/tests/test_importer.py:88
+    AssertionError: 越界应整条 rejected
+       86 |     item = build(release_year=2101)
+     > 88 |     assert result.status == "rejected"
+       新增失败
+```
+
+卡片里的行号与前后文可以直接动手改，**不用再去打开测试文件**。另有三条配套命令：
+
+```bash
+python scripts/devtest.py --rerun-failed   # 只重跑上次失败的用例（精确到方法）
+python scripts/devtest.py --gate           # 测试 + 契约校验，≈ 本地过一遍 CI
+python scripts/devtest.py --retry 1        # 失败复跑一次，复跑通过标记「疑似不稳定」（仍算失败）
+```
+
+多栈会并行跑；同一状态跑第二遍会命中缓存（输出会明确标「缓存命中」，不会伪装成跑过）。
+运行数据在 `devkit/.state/`，已 gitignore。设计与限制见 `devkit/README.md`。
+
+`--gate` 里包含契约校验，所以改过 `docs/openapi.yaml` 时不用再单独跑一遍
+`check-contract.py`。工具链缺失（例如没配 `JAVA_HOME`）时会明说原因并让退出码变 2——
+**「跳过」不等于「通过」**。
+
+### 8.2 部署后回归
+
+还有一道只读接口快照对比，见 `scripts/smoke.py --help`（端点清单取自 `docs/openapi.yaml`，不另维护）：
+
+```bash
+python scripts/smoke.py --base-url http://127.0.0.1:8088 --save   # 建基线（入库，PR 里能看见对外字段变化）
+python scripts/smoke.py --base-url https://api.example.com         # 部署后对比，退出码 0/1/2
+```
+
+每次跑都会往 `scripts/smoke-history/` 追加快照（保留最近 20 份，已 gitignore，不入库），
+所以有回归时它会直接告诉你**从哪一次开始坏**、上一次正常是哪一次（带当时的 commit）。
+不需要了用 `--no-history` 关掉。注意基线受鉴权状态影响：匿名跑的 401 基线不能拿去比带令牌的 200。
