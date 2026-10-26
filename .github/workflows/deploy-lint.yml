@@ -211,3 +211,144 @@ jobs:
           for f in backend-java/deploy/*.sh; do
             [ -x "$f" ] || { echo "::error::$f 没有可执行位（cron 会跑不起来）"; exit 1; }
           done
+
+  # 部署预演：把整套生产栈真起一遍。
+  #
+  # 为什么需要它：`config` 那个 job 只证明「配置能被读懂」。而部署日最容易出事的是
+  # 编排本身——MySQL 起不来、Flyway 在空库上迁移失败、健康检查顺序不对、
+  # nginx 找不到 backend、端口绑不上。这些**只有 up 的时候才会暴露**，
+  # 而目前这条路径一次都没跑过。
+  #
+  # 代价是几分钟和一次镜像构建；换来的是「部署日不再是第一次运行」。
+  stack:
+    runs-on: ubuntu-latest
+    needs: config
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: 准备 CI 用的 .env
+        working-directory: backend-java
+        run: |
+          set -euo pipefail
+          cp .env.production.example .env
+          sed -i \
+            -e "s|^DOMAIN=.*|DOMAIN=${CI_DOMAIN}|" \
+            -e "s|^OTAKU_PUBLIC_BASE_URL=.*|OTAKU_PUBLIC_BASE_URL=https://${CI_DOMAIN}|" \
+            -e "s|^DB_PASSWORD=.*|DB_PASSWORD=smoke-pass|" \
+            -e "s|^DB_ROOT_PASSWORD=.*|DB_ROOT_PASSWORD=smoke-root|" \
+            -e "s|^OTAKU_INTERNAL_TOKEN=.*|OTAKU_INTERNAL_TOKEN=smoke-token|" \
+            .env
+          # 用高位端口：runner 上的 80/443 不一定空着，而这里要验的是编排不是端口。
+          printf 'NGINX_HTTP_PORT=18080\nNGINX_HTTPS_PORT=18443\nBACKEND_PORT=18081\n' >> .env
+          grep -E '^(DOMAIN|BACKEND_PORT|NGINX_)' .env
+
+      # 模拟 init-letsencrypt.sh 的引导步骤：先塞一张自签证书，
+      # 否则 Nginx 因为读不到证书根本起不来（compose 会一直 restart）。
+      - name: 放一张自签证书（引导步骤）
+        working-directory: backend-java
+        run: |
+          set -euo pipefail
+          docker compose -f compose.prod.yaml run --rm --entrypoint sh certbot -c "
+          set -e
+          mkdir -p /etc/letsencrypt/live/${CI_DOMAIN} /etc/letsencrypt/archive/${CI_DOMAIN}
+          openssl req -x509 -nodes -newkey rsa:2048 -days 1 \
+            -keyout /etc/letsencrypt/archive/${CI_DOMAIN}/privkey1.pem \
+            -out    /etc/letsencrypt/archive/${CI_DOMAIN}/fullchain1.pem \
+            -subj   '/CN=${CI_DOMAIN}' >/dev/null 2>&1
+          ln -sf /etc/letsencrypt/archive/${CI_DOMAIN}/privkey1.pem   /etc/letsencrypt/live/${CI_DOMAIN}/privkey.pem
+          ln -sf /etc/letsencrypt/archive/${CI_DOMAIN}/fullchain1.pem /etc/letsencrypt/live/${CI_DOMAIN}/fullchain.pem
+          "
+          echo "证书已就位"
+
+      - name: 起整套生产栈（含构建后端镜像）
+        working-directory: backend-java
+        run: |
+          set -euo pipefail
+          docker compose -f compose.prod.yaml up -d --build
+          docker compose -f compose.prod.yaml ps
+
+      # 后端首次启动要跑 Flyway（9 个迁移，含 V7 的标签回填），空库上几十秒都正常。
+      # 轮询走 Nginx，顺便验证「nginx 依赖 backend healthy」这条链路是通的。
+      - name: 等后端 healthy
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 60); do
+            if curl -kfsS --max-time 3 "https://127.0.0.1:18443/actuator/health" >/dev/null 2>&1; then
+              echo "第 ${i} 次探测：UP"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::5 分钟内后端仍未 healthy"
+          exit 1
+
+      # 对应 docs/deploy-production.md §6 的验收清单，一条条自动化。
+      - name: 上线验收（§6 的六条 + 两条补充）
+        run: |
+          set -euo pipefail
+          B=https://127.0.0.1:18443
+          fail() { echo "::error::$1"; exit 1; }
+
+          echo "1) 健康检查"
+          body=$(curl -kfsS --max-time 5 "$B/actuator/health")
+          echo "   $body"
+          printf '%s' "$body" | grep -q '"status":"UP"' || fail "health 不是 UP：$body"
+
+          echo "2) 列表（空库 → 200 且 total=0）"
+          json=$(curl -kfsS --max-time 10 "$B/api/works?page=1&page_size=2")
+          echo "   ${json:0:160}"
+          printf '%s' "$json" | grep -q '"total":0' || fail "空库 total 不是 0"
+          # total_pages 是 #177 补的字段，这里顺手钉住，防再次漂移
+          printf '%s' "$json" | grep -q '"total_pages"' || fail "列表缺 total_pages"
+
+          echo "3) 不存在的作品详情 → 404"
+          code=$(curl -ks -o /dev/null -w '%{http_code}' "$B/api/works/W-not-exist")
+          echo "   $code"
+          [ "$code" = "404" ] || fail "期望 404，实际 $code"
+
+          echo "4) 不存在的封面 → 404"
+          code=$(curl -ks -o /dev/null -w '%{http_code}' "$B/api/covers/W-not-exist")
+          echo "   $code"
+          [ "$code" = "404" ] || fail "期望 404，实际 $code"
+
+          echo "5) /internal 走公网入口 → 404（Nginx 收口）"
+          code=$(curl -ks -o /dev/null -w '%{http_code}' -X POST "$B/internal/import/batches" \
+                   -H 'Content-Type: application/json' -d '{"batch_id":"x","source":"x","items":[]}')
+          echo "   $code"
+          [ "$code" = "404" ] || fail "期望 404，实际 $code"
+
+          echo "6) /internal 绕过 Nginx 直连后端 → 401（token 校验仍在）"
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "http://127.0.0.1:18081/internal/import/batches" \
+                   -H 'Content-Type: application/json' -d '{"batch_id":"x","source":"x","items":[]}')
+          echo "   $code"
+          [ "$code" = "401" ] || fail "期望 401，实际 $code"
+
+          echo "7) HTTP 入口 → 301 到 HTTPS"
+          code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:18080/api/works")
+          echo "   $code"
+          [ "$code" = "301" ] || fail "期望 301，实际 $code"
+
+          echo "8) 其余 actuator 端点不对外 → 404"
+          code=$(curl -ks -o /dev/null -w '%{http_code}' "$B/actuator/env")
+          echo "   $code"
+          [ "$code" = "404" ] || fail "期望 404，实际 $code"
+
+          echo "验收全部通过"
+
+      - name: 失败时打印日志
+        if: failure()
+        working-directory: backend-java
+        run: |
+          docker compose -f compose.prod.yaml ps || true
+          echo '--- backend ---'
+          docker compose -f compose.prod.yaml logs --tail 120 backend || true
+          echo '--- nginx ---'
+          docker compose -f compose.prod.yaml logs --tail 40 nginx || true
+          echo '--- mysql ---'
+          docker compose -f compose.prod.yaml logs --tail 40 mysql || true
+
+      - name: 清理（含数据卷）
+        if: always()
+        working-directory: backend-java
+        run: docker compose -f compose.prod.yaml down -v --remove-orphans || true
