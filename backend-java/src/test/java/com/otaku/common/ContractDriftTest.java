@@ -112,26 +112,8 @@ class ContractDriftTest {
     void everyResponseDtoMatchesContract() throws IOException {
         Map<String, Object> api = openapi();
 
-        Map<String, Class<?>> targets = new java.util.LinkedHashMap<>();
-        targets.put("RelatedWorks", com.otaku.work.dto.RelatedWorksDto.class);
-        targets.put("ErrorResponse", ErrorResponse.class);
-        targets.put("User", com.otaku.auth.dto.UserDto.class);
-        targets.put("SessionResponse", com.otaku.auth.dto.SessionResponse.class);
-        targets.put("CollectionState", com.otaku.collection.dto.CollectionStateDto.class);
-        targets.put("CollectionItem", com.otaku.collection.dto.CollectionItemDto.class);
-        targets.put("ImportBatchResult", com.otaku.importer.dto.ImportBatchResult.class);
-        targets.put("ImportBatchRun", com.otaku.importer.dto.ImportBatchRunDto.class);
-        targets.put("ImportBatchDetail", com.otaku.importer.dto.ImportBatchDetail.class);
-        targets.put("ImportItemResult", com.otaku.importer.dto.ImportItemResult.class);
-        targets.put("Counts", com.otaku.importer.dto.Counts.class);
-        targets.put("SchedulePage", com.otaku.schedule.dto.ScheduleDtos.SchedulePage.class);
-        targets.put("ScheduleGroup", com.otaku.schedule.dto.ScheduleDtos.ScheduleGroup.class);
-        targets.put("ScheduleItem", com.otaku.schedule.dto.ScheduleDtos.ScheduleItem.class);
-        targets.put("ArticlePage", com.otaku.article.dto.ArticleDtos.ArticlePage.class);
-        targets.put("ArticleSummary", com.otaku.article.dto.ArticleDtos.ArticleSummary.class);
-        targets.put("ArticleDetail", com.otaku.article.dto.ArticleDtos.ArticleDetail.class);
-        targets.put("ArticleCategory", com.otaku.article.dto.ArticleDtos.Category.class);
-
+        Map<String, Class<?>> targets = responseTargets();
+        
         assertSameAcross(api, targets, false);
     }
 
@@ -140,6 +122,60 @@ class ContractDriftTest {
     void everyRequestDtoMatchesContract() throws IOException {
         Map<String, Object> api = openapi();
 
+        Map<String, Class<?>> targets = requestTargets();
+        
+        assertSameAcross(api, targets, true);
+    }
+
+    @Test
+    @DisplayName("契约里每个 schema 都必须有守卫，新增 schema 不能悄悄漏掉")
+    void everySchemaHasAGuard() throws IOException {
+        Set<String> declared = new LinkedHashSet<>(asMap(asMap(openapi().get("components")).get("schemas")).keySet());
+
+        Set<String> guarded = new LinkedHashSet<>(responseTargets().keySet());
+        guarded.addAll(requestTargets().keySet());
+        guarded.addAll(INSTANCE_COVERED);
+
+        Set<String> missing = new LinkedHashSet<>(declared);
+        missing.removeAll(guarded);
+
+        assertThat(missing)
+                .as("这些 schema 在契约里存在但守卫没覆盖——新接口合进来时最容易漏（#127 的资讯就是这样）")
+                .isEmpty();
+    }
+
+    /** 前四个在本类里用「构造实例」的方式验证（顺便断言取值），不在批量表里。 */
+    private static final Set<String> INSTANCE_COVERED =
+            Set.of("WorkSummary", "Work", "SourceRating", "Paging");
+
+    /** 响应 DTO ↔ 契约 schema。新增 schema 时必须在这里登记，否则 everySchemaHasAGuard 会红。 */
+    private static Map<String, Class<?>> responseTargets() {
+        Map<String, Class<?>> targets = new java.util.LinkedHashMap<>();
+        targets.put("RelatedWorks", com.otaku.work.dto.RelatedWorksDto.class);
+        targets.put("ErrorResponse", ErrorResponse.class);
+        targets.put("User", com.otaku.auth.dto.UserDto.class);
+        targets.put("SessionResponse", com.otaku.auth.dto.SessionResponse.class);
+        targets.put("CollectionState", com.otaku.collection.dto.CollectionStateDto.class);
+        targets.put("CollectionItem", com.otaku.collection.dto.CollectionItemDto.class);
+        targets.put("CollectionPage", PageResponse.class);
+        targets.put("ImportBatchResult", com.otaku.importer.dto.ImportBatchResult.class);
+        targets.put("ImportBatchRun", com.otaku.importer.dto.ImportBatchRunDto.class);
+        targets.put("ImportBatchDetail", com.otaku.importer.dto.ImportBatchDetail.class);
+        targets.put("ImportItemResult", com.otaku.importer.dto.ImportItemResult.class);
+        targets.put("Counts", com.otaku.importer.dto.Counts.class);
+        targets.put("SchedulePage", com.otaku.schedule.dto.ScheduleDtos.SchedulePage.class);
+        targets.put("ScheduleGroup", com.otaku.schedule.dto.ScheduleDtos.ScheduleGroup.class);
+        targets.put("ScheduleItem", com.otaku.schedule.dto.ScheduleDtos.ScheduleItem.class);
+        targets.put("SchedulePlatform", com.otaku.schedule.dto.ScheduleDtos.Platform.class);
+        targets.put("ArticlePage", com.otaku.article.dto.ArticleDtos.ArticlePage.class);
+        targets.put("ArticleSummary", com.otaku.article.dto.ArticleDtos.ArticleSummary.class);
+        targets.put("ArticleDetail", com.otaku.article.dto.ArticleDtos.ArticleDetail.class);
+        targets.put("ArticleCategory", com.otaku.article.dto.ArticleDtos.Category.class);
+        return targets;
+    }
+
+    /** 请求体 DTO ↔ 契约 schema。 */
+    private static Map<String, Class<?>> requestTargets() {
         Map<String, Class<?>> targets = new java.util.LinkedHashMap<>();
         targets.put("LoginRequest", com.otaku.auth.dto.LoginRequest.class);
         targets.put("CreateAccountRequest", com.otaku.account.dto.CreateAccountRequest.class);
@@ -150,8 +186,7 @@ class ContractDriftTest {
         targets.put("ScheduleImportItem", com.otaku.schedule.dto.ScheduleImportRequest.ScheduleImportItem.class);
         targets.put("ArticleImportRequest", com.otaku.article.dto.ArticleImportRequest.class);
         targets.put("ArticleImportItem", com.otaku.article.dto.ArticleImportRequest.ArticleImportItem.class);
-
-        assertSameAcross(api, targets, true);
+        return targets;
     }
 
     // ---------------------------------------------------------------- helpers
