@@ -405,10 +405,22 @@ jobs:
           set -euo pipefail
           # runner 的系统盘常年 ~80% 占用（预装一堆 SDK），不代表生产环境。
           # 所以这条只验「健康时全绿、且磁盘检查能通过」，阈值本身交给下一条。
-          if ! DISK_PATH=/ DISK_MAX_PCT=100 ./deploy/monitor.sh 2>&1 | tee /tmp/mon1.out; then
-            echo "::error::monitor.sh 在一套健康的栈上判了失败（见上）"
+          if ! DISK_PATH=/ DISK_MAX_PCT=100 ./deploy/monitor.sh > /tmp/mon1.out 2>&1; then
+            echo "::group::monitor 完整输出"
+            cat /tmp/mon1.out
+            echo "::endgroup::"
+            # CI 日志接口不一定拿得到，所以把关键行塞进注解（上限 10 条，够用）
+            n=0
+            while IFS= read -r line; do
+              case "$line" in
+                \[FAIL\]*|\[WARN\]*) echo "::error::mon: $line"; n=$((n+1)) ;;
+              esac
+              [ "$n" -ge 8 ] && break
+            done < /tmp/mon1.out
+            if [ "$n" -eq 0 ]; then tail -5 /tmp/mon1.out | sed 's/^/::error::mon: /'; fi
             exit 1
           fi
+          cat /tmp/mon1.out
           grep -q '巡检通过' /tmp/mon1.out || { echo "::error::没打出「巡检通过」"; exit 1; }
 
       # 只验「健康时不报错」是不够的——阈值如果永远不触发，那条检查等于没有。
