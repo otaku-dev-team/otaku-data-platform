@@ -1,22 +1,22 @@
 # 合并队列与合并后动作清单
 
 > **现用清单。** 每次合并后更新这一份，不再另写。
-> 更新于 2026-10-24 03:50，基准 `main = 1f602e4`（#141/#142 拍板记录、#148 档期页侧栏修复都已合入；Issue #132 三个判据已收口关闭），开放 PR **5 个**（见 §6）。
-> 合并权条例如期生效：**CI 全绿 + 不碰红线 + 说清楚，谁都能合**（[`project-charter.md`](project-charter.md) §3.5）。
+> 更新于 2026-10-26 22:40，基准 `main = 1026560`（#189 封面防盗链已合入）。
+> 开放 PR **1 个**（#190，draft，见 §6）；远端分支从 60 余条清到 **7 条**（判据与记录见 §3.1）。
+> 合并权条例仍按 [`project-charter.md`](project-charter.md) §3.5：**CI 全绿 + 不碰红线 + 说清楚，谁都能合（含自合）**。
 
 ## 0. 一句话
 
-前三批（共 11 个功能 PR）已经全部进 main，**客户端那条主链没有内容卡在 PR 里了**；
-W1.5 的最后一格 D3 也已落地（#143，列表透出 `source` 让跨源同名记录可分辨）。
-剩下的悬而未决项都是**文档 / 待决策**：#125 人物页方案、#126 通知方案、#127 资讯契约、
-#133 站点特色功能、#135 授权端点问需、#141 / #142 zm 的定位与待决清单记账。
+**功能面没有在飞的东西，也没有卡在 PR 里的内容。** 唯一开放的是 #190——
+W1.3b 设备令牌端点的**实现**，挂成 draft 等三位确认红线，确认前别合。
 
-**查 PR 先看评论区**：D3 卡了一整天，最后发现 @zhengmin486 早在前一天就在 #120 的评论里放行了。
-「待三人确认」这个标签不一定反映最新的讨论进度。
+W1 这条线剩下的两格都不在代码里：**主观观感走查**（动效/配色，要人 + 屏幕）与
+**Android 真机走查**（要设备）。服务端推送要不要真做，卡在 #126 的两条待确认上。
 
-**如果还要合功能 PR**：先看 §1 的栈关系是否还存在——现在 main 上只剩 docs 类 PR 互相独立，直接合即可。
+**查 PR 先看评论区**：D3 卡过一整天，最后发现 @zhengmin486 早在 #120 的评论里放行了。
+「待三人确认」这个标签不一定反映最新讨论进度。
 
-## 1. 栈关系（`merge-base --is-ancestor` 实测，已全部落库）
+## 1. 栈关系（历史，已全部落库，现无在飞栈）
 
 ```
 article-sync (#110)        ⊃ schedule-sync (#105)
@@ -27,107 +27,116 @@ reminders (#128)           ⊃ search-and-settings (#123)
 filter-links (#130)        ⊃ client-home (#121)
 ```
 
-三种「叠」的后果完全不同：
+三种「叠」的后果不同，别再踩：
 
-- **合栈顶、关底座** → 零冲突（推荐）；
+- **合栈顶、关底座** → 零冲突（当时的选择）；
 - **先合底座、再合栈顶** → 重复应用，实测 `#105 → #110` 产生 **18 处冲突、7 个文件**；
-- **合了底座却不合栈顶** → 功能进去了，但 PR 列表里那个栈顶会一直显示「冲突」。
+- **合了底座却不合栈顶** → 功能进去了，但 PR 里那个栈顶会一直显示「冲突」。
 
-## 1.5 合并方式会改变顺序策略（先看这一节）
+## 1.5 合并方式会改变顺序策略
 
 `main` 上两种合并方式并存：
 
-- **squash**：单亲提交、标题带 `(#NNN)`，占多数（#119 / #118 / #117 / #115 / #113 …）；
-- **merge commit**：`Merge pull request #NNN from …`，最近的有 **#129 / #134 / #136 / #137**（功能整合批一律用它，保留被整合分支的提交历史）。
-
-这决定了栈内 PR 该怎么合：
+- **squash**：单亲提交、标题带 `(#NNN)`，占多数；
+- **merge commit**：`Merge pull request #NNN from …`，功能整合批（#134/#136/#137）用它保留被整合分支的历史。
 
 | 合并方式 | 先合底座（#105 → #110） | 说明 |
 |---|---|---|
-| **squash** | 冲突（实测 18 处 / 7 文件） | squash 产生**新提交**，底座的提交并未进入 main 的祖先链，上层的 diff 仍包含底座改动 → 重复应用 |
-| **merge commit** | 安全 | 底座的提交成为 main 的祖先，`merge-base` 自动前移，上层 diff 只剩自己的改动 |
+| **squash** | 冲突（实测 18 处 / 7 文件） | squash 产生**新提交**，底座的提交不进 main 祖先链，上层 diff 仍含底座改动 → 重复应用 |
+| **merge commit** | 安全 | 底座成为 main 祖先，`merge-base` 自动前移，上层只剩自己的改动 |
 
-**结论（已实测验证）**：前三批都用 merge commit 入 main，因此第二批、第三批的栈顶（`client-home` 及其上层）**不需要 squash 式 rebase**，
-但因为它们原本发源于「演练分支 / 已消失的功能分支」，仍需 `git rebase --onto main <旧 base> <分支>` 把发起点搬到 main ——这只是搬起点，冲突极小（第三批整批只有 1 处）。
+> ⚠️ 由此带来一个判断陷阱：**squash 合过的分支，`git merge-base --is-ancestor` 会说「没进 main」**，
+> 但内容其实在。判断「进没进」只能看代码/提交，不能只看祖先关系或 PR 的 merged 标记
+> （zm 会直接关掉栈上 PR 而不是合并，#121/#123/#128 都这样）。
 
-> 合并权限：2026-10-24 起 **三人平等、可自合**（[`project-charter.md`](project-charter.md) §3.5），不再需要互相指派 reviewer。
-> 门槛只有三条：CI 全绿 / 不碰 §3.2 红线 / PR 里写清改了什么与怎么回滚。
+## 2. 合并进度
 
-## 2. 合并进度（4 批，**已全部完成**）
+| 批 | 整合 PR / 提交 | 含原 PR | 结果 |
+|---|---|---|---|
+| 第 1 批 · 后端与同步 | #134（`ad07012`） | #102 / #109 / #110（含 #105） | backend 111 / pytest 110 |
+| 第 2 批 · 客户端主链 | #136（`a1f4d1c`） | #116（含 #107 / #103）/ #106 / #112 / #114 | flutter 193 |
+| 第 3 批 · 客户端栈顶 | #137（`ac51dbd`） | #121（含 #122）/ #123 / #128 / #130 | flutter 252 |
+| 第 4 批 · 文档与呈现适配 | #143 / #111 / #120 / #145 | 列表 `source` / W1 看板 / D3 决策 / 能力清单 | backend 111 / flutter 258 |
+| 第 5 批 · 拍板落账与验收 | #141 / #142 / #148 / #168 / #169 / #171 | 授权形态、C1/D1 记账、档期页侧栏、渲染边界 | flutter **305** |
+| 之后（他人主导） | #127 / #147 / #151 / #162 / #163 / #174–#189 | 资讯契约、账号绑定草案、状态追认、契约守卫、封面防盗链等 | 各 PR 自身 CI 绿；本轮未重跑全量 |
 
-| 批 | 整合 PR | 合入提交 | 含原 PR | 结果 |
-|---|---|---|---|---|
-| 第 1 批 · 后端与同步 | [#134](https://github.com/otaku-dev-team/otaku-data-platform/pull/134)（`ci/batch1`） | `ad07012` | #102 / #109 / #110（含 #105） | `mvnw test` 111 / `pytest` 110 通过 |
-| 第 2 批 · 客户端主链 | [#136](https://github.com/otaku-dev-team/otaku-data-platform/pull/136)（`ci/batch2`） | `a1f4d1c` | #116（含 #107 / #103）/ #106 / #112 / #114 | `flutter test` **193 passed** |
-| 第 3 批 · 客户端栈顶 | [#137](https://github.com/otaku-dev-team/otaku-data-platform/pull/137)（`ci/batch3`） | `ac51dbd` | #121（含 #122）/ #123 / #128 / #130 | `flutter test` **252 passed** |
-| 随时 · 文档 | — | `f7f4be9` | #131（本清单）、#138（章程 §3.5 合并权）、#139 / #140（清单收尾） | 文档，不触发 CI |
-| 第 4 批 · 文档与呈现适配 | — | `a378772` / `fd1dbeb` / `8bcfe34` / `f534b92` | #143（列表 `source`，含契约同步）/ #111（W1 看板）/ #120（D3 转决策记录）/ #145（客户端能力承载清单） | backend 111 / flutter 258 / pytest 110 |
-| 第 5 批 · 拍板落账与验收 | — | `0e80df4` / `15a13a9` / `1f602e4` | #141（授权形态由站点决定）/ #142（C1/D1 记账）/ #148（档期页补侧栏，含 W1.4 桌面走查记录） | flutter 260 / backend 111 / pytest 110 |
-
-每批整合 PR 合入后，**源 PR 已逐条关闭**并在里面留了「已随 #NNN 合入」的说明。
+每批整合 PR 合入后，**源 PR 已逐条关闭**并留了「已随 #NNN 合入」的说明。
 
 ## 3. 合并后动作
 
 ### 已完成
 
-- [x] #105 / #103 / #107 / #102 / #109 / #110 / #116 / #106 / #112 / #114 / #121 / #123 / #128 / #130 全部关闭（内容在各批整合 PR 里）
-- [x] #121 / #123 / #128 / #130 改基到 main（`rebase --onto`，仅 `desktop_nav_shell.dart` 一处冲突）
-- [x] **W1.5 D3 实现**（#143）：列表透出 `source` + 封面来源角标；W1 看板 §8.6 同步（#111）
-- [x] `flutter analyze` 干净、`flutter test` **258 passed**、`mvnw test` 111 passed、`pytest` 110 passed
+- [x] 前三批源 PR 全部关闭（内容在各批整合 PR 里）
+- [x] W1.5 D3 实现（#143）：列表透出 `source` + 封面来源角标
+- [x] W1.4 渲染边界自动化（#168 / #169）：封面三态、档期季度切换、未收录条目
+- [x] **远端分支清理**（2026-10-26，判据与记录见 §3.1）
+- [x] **main 上后端全量校验**：`mvnw test` 167 通过 / 0 失败 / 24 跳过
+      （跳过的是连库集成测试——本地没起 MySQL，CI 注入 `IT_DB_PORT=3306` 真跑）
 
 ### 待办
 
-- [ ] **删掉已完成使命的功能分支**：`feat/schedule-backend`、`feat/article-backend`、`feat/article-sync`、`feat/schedule-sync`、
-      `feat/client-offline-cache`、`feat/client-tag-filter`、`feat/client-collection-offline`、`feat/schedule-client`、`feat/article-client`、
-      `feat/rating-sort-clarity`、`feat/client-home`、`feat/client-search-and-settings`、`feat/client-filter-links`、`feat/client-reminders`、
-      `ci/batch1` / `ci/batch2` / `ci/batch3`。
-      按 ROADMAP §8.1：**涉及别人分支的一律开 PR 交原作者判断**；只有「内容 100% 在 main 的零差异分支」可直接清理并留痕。
-- [ ] **`ci/merge-train-2026-10-23` 删掉**：演练完成即废弃，留着会让人以为还有一条在飞。
-- [ ] **W1.4 真机走查**：自动化双端一致性已过（记录见 `stage2-acceptance.md`），真机未覆盖——按章程 §4 这条还不算收口
-- [ ] **main 上跑一次完整校验**：`flutter analyze` → `flutter test` → `flutter build apk --debug`；`mvnw test`；`pytest`（本地已跑过前三批的组合，CI 上由各批 PR 分别验证）。
+- [ ] **W1.3b 拍板**（#126 两条）：token 跨账号转移这个隐私判断；现在做还是只冻结契约。
+      实现已写好挂在 #190（draft），拍板后要么去掉 draft 合、要么直接关。
+- [ ] **W1.4 主观观感走查**：动效与配色，要人和屏幕；自动化能覆盖的六条已全绿
+      （见 [`w1-real-data-probe.md`](w1-real-data-probe.md) §5）。
+- [ ] **Android 真机走查**：桌面实机走查已完成（[`stage2-acceptance.md`](stage2-acceptance.md)），
+      按章程 §4 还不算收口。
+- [ ] **客户端全量校验**：`flutter analyze` → `flutter test` → `build apk --debug`；
+      最近一次记录是 305 通过（2026-10-25），本轮只改后端与文档，未重跑。
+
+## 3.1 分支清理记录（2026-10-26）
+
+**判据**（两条任一成立即可，且不碰有开放 PR 的分支）：
+
+1. `git merge-base origin/main origin/<b>` 存在，且 `git diff --name-only <base>..origin/<b>` 为空
+   → 分支是 main 的祖先，内容 100% 在 main（merge commit 合入的那一类）；
+2. 否则取该分支自 merge-base 起改动过的文件集，`git diff --quiet origin/main origin/<b> -- <files>`
+   为空 → 分支版本与 main 逐字节一致（squash 合入的那一类，祖先关系查不出来）。
+
+清掉的是四类：已合入的 `feat/*` 与 `fix/*`（含 #102/#109/#110/#116/#121/#123/#128/#130/#168/#177 等）、
+已合入的 `docs/*` 索引与方案分支、三批整合分支 `ci/batch1/2/3`、演练与临时分支
+`ci/merge-train-2026-10-23` / `ci/train-recheck-1024`。
+
+**保留 5 条**（不是漏了）：
+
+| 分支 | 原因 |
+|---|---|
+| `chore/android-dev-network` | 安卓真机联调用（#98 关闭未合），等真机走查一起处理 |
+| `docs/identity-auth-endpoint-playbook` | #135 关闭未合，内容部分被 #141 取代；**zm 的分支，留给他判断** |
+| `docs/ironlaw-align-reality` | #150 关闭未合，状态被 #163 重写覆盖；zm 的分支 |
+| `docs/release-year-contract-sync` | #99 / #63 关闭未合；zm 的分支 |
+| `docs/site-feature-adaptation` | #133 关闭未合；zm 的分支 |
 
 ## 4. 会踩到的四个坑
 
 1. **squash 合并会让 stacked PR 的 base 悬空**：#122 被 squash 进 `feat/client-home` 后，
-   原分支 `feat/client-recent-views` 不再前进 —— #123 当时就卡在这儿（已修）。
-2. **`#107` 给 `WorkDataSource.fetchWorks` 加了 `String? tag`**：#106 / #114 的测试桩必须同时带上这个形参，
-   否则单 PR 绿、合起来 `flutter analyze` 报 `invalid_override`（两处已在各自分支补好）。
+   原分支 `feat/client-recent-views` 不再前进 —— #123 当时就卡在这儿。
+2. **`#107` 给 `WorkDataSource.fetchWorks` 加了 `String? tag`**：测试桩必须同时带上这个形参，
+   否则单 PR 绿、合起来 `flutter analyze` 报 `invalid_override`。
 3. **`#116` 分支里重复带了 #111 的两份内容**（ROADMAP 的 W1 节、`sort_related_parity_test.dart`）：
-   合并时 ROADMAP 取 8.6 新版、测试取带 `tag` 的那版。
-4. **桌面侧栏的序号是三处共管**（第三批实测）：`#121` 要加「首页」，
-   `selectedIndex` / `onDestinationSelected` 的 switch / `destinations` 必须**一起改**，
-   否则会出现「点了侧栏跳错页」但编译和测试都不报错的情况。
+   合并时要人工取较新的一版。
+4. **桌面侧栏的序号是三处共管**：`selectedIndex` / `onDestinationSelected` 的 switch / `destinations`
+   必须一起改，否则「点侧栏跳错页」而编译与测试全绿。
 
-## 5. 验证基线（main @ `ac51dbd`）
+## 5. 验证基线
 
-> 下表是**当时的运行口径快照**，不是实时值。要拿当前数字跑
-> `python scripts/devtest.py --inventory`（测试项数）或 `python scripts/devtest.py --all`
-> （真实通过数）。源码里的 `@Test` 数量会随开发增长，与下表不等是正常的。
+| 区块 | 结果 | 时间 / 提交 |
+|---|---|---|
+| `backend-java` | `mvnw test` **167 通过 / 0 失败 / 24 跳过** | 2026-10-26 @ `5afec00` |
+| `app-client` | `flutter test` **305 通过**；analyze 干净 | 2026-10-25 @ `7a9e507` |
+| `sync-python` | `pytest` **110 passed** | 2026-10-25 |
+| 契约 | `ContractDriftTest` 全绿（33 个 schema 全覆盖 + 新 schema 必须有守卫） | 2026-10-26 |
+| 迁移 | `V1…V9` 已在库中；`V10__user_device.sql` 只在 #190 分支 | — |
 
-| 区块 | 结果 |
-|---|---|
-| `backend-java` | `mvnw test` 111 通过 / 0 失败 / 8 跳过 |
-| `sync-python` | `pytest` 110 passed |
-| `app-client` | `flutter analyze` 干净；`flutter test` **258 passed**；滚动基准 p50=18.21ms / p95=48.91ms |
-| 迁移 | `V1…V9` 逐字节一致，空库跑通 |
-
-## 6. 剩余开放 PR（全部 docs 类，互不冲突）
+## 6. 剩余开放 PR
 
 | PR | 主题 | 状态 |
 |---|---|---|
-| #125 | 人物页 / 制作公司页 / 详情页富字段的数据链路 | 待确认（数据主来源已定＝齐平原则，可推进讨论） |
-| #126 | W1.3 通知：拆本地提醒 / 服务端推送 | 待确认（服务端推送要新端点＝红线） |
-| #127 | 资讯接口⑥契约 | 待合（契约变更，走红线流程） |
-| #133 | 站点特色功能适配方案（齐平原则） | 待决策 |
-| #135 | 身份授权端点问需说明 | 待决策 |
+| #190 | W1.3b 设备令牌端点（3 个 `/api/me/devices` 端点 + `user_device` 表 + 契约） | **draft，红线 1 待三人确认，确认前别合** |
 
 **已收口**：Issue #132（三个判据）——授权端点＝站主定稿标准 OAuth 授权码（#141）、
-归属＝站点观点优先（#141）、数据主来源＝齐平原则（#133 §8）。结论已写在 Issue 里并关闭。
+归属＝站点观点优先（#141）、数据主来源＝齐平原则（#133 §8）。
 
-**待拍板的两个新条目**（来自 [`client-capability-list.md`](client-capability-list.md) §5）：
-① 站点有我们没有的三个筛选（标签词表 / 年份 / 多标签）是否并入 #133 的齐平原则一起落地；
-② 服务端推送（#126）现在要不要做。
-
-**W1 侧仍然开着的验收缺口**：W1.4 的 **Android 真机走查**（桌面实机走查已完成，见
-`stage2-acceptance.md`「W1.4 桌面实机走查」），以及**真实数据下的桌面渲染走查**
-（本轮全程 USE_MOCK 演示数据，要带 `--dart-define=USE_MOCK=false` 连后端再走一遍）。
+**两条别再忘的判断**：
+① 方案进 main ≠ 契约生效（#125 / #126 都是「留档待确认」）；
+② 契约里新增 schema 必须同时登记进 `ContractDriftTest` 的两张目标表，否则 CI 红（#183 起）。
