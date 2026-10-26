@@ -1,0 +1,60 @@
+name: site-isolation
+
+# 为什么要有这个：项目约定「一台机器 = 一个站点」，客户端与适配包按站烘焙。
+# 而「核心代码里不写死某个站」这件事，靠人记是会退化的——首站开发时最自然的事
+# 就是直接写 "otaku_site"。等真的要接第二站才发现这些值散在 9 个文件里时，
+# 改动面已经不是「加一份配置」而是「翻一遍核心代码」。
+#
+# 这个工作流只做两件事：
+#   1. 跑脚本自检（证明这道检查会失败，不是永远绿的摆设）
+#   2. 扫核心代码，出现未登记的站点标识就红
+#
+# 不检查产物（--artifact）：构建链目前还没有按 sites/{site} 产出单站产物。
+# 等产物有了，在这里加一步 `python scripts/check-site-isolation.py --artifact <dir> --site <key>`
+# —— 脚本里这部分逻辑已经写好并自测过，不需要再开发。
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend-java/src/main/**"
+      - "app-client/lib/**"
+      - "sync-python/src/**"
+      - "scripts/check-site-isolation.py"
+      - "scripts/site-registry.json"
+      - "scripts/site-isolation-allowlist.txt"
+      - ".github/workflows/site-isolation.yml"
+  pull_request:
+    paths:
+      - "backend-java/src/main/**"
+      - "app-client/lib/**"
+      - "sync-python/src/**"
+      - "scripts/check-site-isolation.py"
+      - "scripts/site-registry.json"
+      - "scripts/site-isolation-allowlist.txt"
+      - ".github/workflows/site-isolation.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: site-isolation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # 纯标准库，不装任何依赖。用 3.12：与开发机的 3.13 同代，f-string 等语法一致。
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 自检（确认这道检查真的会失败）
+        run: python scripts/check-site-isolation.py --self-test
+
+      - name: 核心代码零硬编码站名
+        run: python scripts/check-site-isolation.py

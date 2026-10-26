@@ -1,0 +1,37 @@
+# 单站隔离校验的**存量**登记表。
+#
+# 格式：<相对仓库根的路径>::<站点标记>   # 理由
+#
+# 规则（由 scripts/check-site-isolation.py 强制执行）：
+#   1. 这里只允许**存量**。新增硬编码会让 CI 直接红——要加在这里，必须在 PR 里说明为什么。
+#   2. 条目一旦被清理掉（文件里再也找不到那个标记），校验也会红，提示删掉这一行。
+#      这条是为了防止名单腐烂成"历史垃圾场"。
+#   3. 清理干净后，CI 可以改跑 `--strict`，那时这里应该是空文件。
+#
+# 现状：9 处，全部是「首站 Otaku 的具体取值写进了核心代码」。
+# 它们不影响现在跑，但接第二站时必须处理——否则第二站要么继承首站的取值，要么改代码。
+
+# ── 后端：导入的默认 source ────────────────────────────────────────
+# 契约 §2.1 说 source 取值不限，但这里给了默认值。接第二站时应该是
+# 「导入请求必须带 source」或「source 从部署配置读」，而不是再改一个常量。
+backend-java/src/main/java/com/otaku/article/ArticleImportService.java::otaku_site   # 资讯导入默认 source，接第二站时改为必填/配置
+backend-java/src/main/java/com/otaku/schedule/ScheduleImportService.java::otaku_site  # 档期导入默认 source，同上
+
+# ── 后端：封面回源白名单 ──────────────────────────────────────────
+# 这是部署级配置，写的是首站的地址。它本来就该由部署环境覆盖
+# （application.yml 是默认值，生产应通过 APP_COVER_ALLOWED_HOSTS 注入）。
+backend-java/src/main/resources/application.yml::154.8.194.198   # 首站回源地址，生产用环境变量覆盖
+
+# ── 客户端：站点键的构建期默认值 ──────────────────────────────────
+# 客户端是「构建期烘焙单站」的形态（定位「产品要求 1」），所以这里出现站名
+# 本身是设计的一部分；要改的是取值来源（--dart-define），不是删掉这个字段。
+app-client/lib/core/config/app_config.dart::otaku_site              # siteKey 的 dart-define 默认值
+app-client/lib/data/datasources/auth_mock_data_source.dart::otaku_site  # mock 数据源，仅本地/演示用
+
+# ── 同步：首站专用的抓取配置 ──────────────────────────────────────
+# 同步作业目前就是为这一个站写的（资讯 / 档期只有站点自己有），
+# 所以这里更像"适配器还没有独立目录"，等 sites/{site}/ 落地后迁过去。
+sync-python/src/sync/config.py::otaku_site          # SOURCE_NAME 常量
+sync-python/src/sync/config.py::154.8.194.198       # 站点基址默认值
+sync-python/src/sync/article_html.py::154.8.194.198 # 资讯抓取的站点基址默认值
+sync-python/src/sync/__main__.py::otaku_site        # CLI 帮助文本与 --articles/--schedule 的来源守卫

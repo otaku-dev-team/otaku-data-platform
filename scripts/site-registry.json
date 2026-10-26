@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "_why": "单站隔离校验的站点登记表。核心代码里出现这里任何 markers，就会被 scripts/check-site-isolation.py 判为越界（除非在 site-isolation-allowlist.txt 登记为存量）。",
+  "_rules": [
+    "新增站点时在这里加一条，markers 要足够具体——不要写 'otaku' 这种会命中 Java 包名 com.otaku.* 的词",
+    "markers 只放「标识该站点」的值：站点键、来源标识、该站专属域名/IP",
+    "不要放产品名、通用词、第三方数据源名（bangumi 是数据源不是站点，不该进这里）"
+  ],
+  "sites": {
+    "otaku": {
+      "display_name": "Otaku",
+      "markers": [
+        "otaku_site",
+        "otaku-site",
+        "154.8.194.198"
+      ],
+      "note": "首站。otaku_site 是导入的默认 source；154.8.194.198 是该站当前的回源地址。"
+    }
+  }
+}
