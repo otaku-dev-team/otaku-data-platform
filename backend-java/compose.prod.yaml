@@ -117,8 +117,11 @@ services:
       DOMAIN: ${DOMAIN:?必须设置 DOMAIN（证书路径与 server_name 都用它）}
       BACKEND_UPSTREAM: ${BACKEND_UPSTREAM:-backend:8080}
     ports:
-      - "80:80"
-      - "443:443"
+      # 端口可覆盖的理由：CI 里要避开 runner 上可能已被占用的 80/443，
+      # 私有化交付时也可能要让客户已有的反代先占 80/443、我们退到高位端口。
+      # 默认值仍是标准端口，正常部署不用管这两个变量。
+      - "${NGINX_HTTP_PORT:-80}:80"
+      - "${NGINX_HTTPS_PORT:-443}:443"
     volumes:
       # 官方镜像自带的主配置没有 gzip / server_tokens off，而这两项必须写在 http{}，
       # 没法从 conf.d 里的 server 块补 —— 所以整份替换。
