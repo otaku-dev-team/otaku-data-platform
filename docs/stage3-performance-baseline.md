@@ -5,6 +5,16 @@
 > 复现方式见第 6 节，脚本在 `app-client/tool/perf_seed.py` 与
 > `app-client/test/list_scroll_benchmark_test.dart`。
 
+## 0. 2026-10-26 补记：建议的前半句已落地
+
+- **`pageSize` 已从 20 提到 50**（`AppConfig.pageSize = maxPageSize`，即契约上限）。
+  §1 那句「先把 pageSize 从 20 提到 50」已执行：看完 1 万条的请求数 **500 → 200**。
+- 同日复跑 widget 基准（`list_scroll_benchmark_test.dart`，Dart VM + 软件渲染）：
+  滚动 600 步 / 1 万条，**p50=15.11ms、p95=48.32ms、max=90.03ms**，在树卡片恒为 **8** 张。
+  绝对耗时**不能当帧率看**（软件渲染比真实引擎慢），只用于回归对比；jank 与真实帧率仍以 §2 的 Windows profile 为准。
+- **「跳页」仍未做**：50 条一页仍要 200 次串行请求，翻到第 5000 条依旧靠连续加载。
+  §1 后半句（要不要做跳页）仍然开着——目前没有数据能证明它比连续加载更值。
+
 ## 1. 结论
 
 **渲染不是瓶颈，分页才是。**
