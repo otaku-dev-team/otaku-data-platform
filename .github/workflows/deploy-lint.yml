@@ -283,6 +283,30 @@ jobs:
           echo "::error::5 分钟内后端仍未 healthy"
           exit 1
 
+      # nginx 的健康检查 interval 是 30s：容器刚起来时状态是 "starting"，
+      # 而我们的验收链跑得比这还快，后面 monitor.sh 会看到 "starting" 并判失败。
+      # 这一步既消掉那个时序噪声，也顺手断言「nginx 的健康检查真的能过」——
+      # 健康检查写错的话，compose ps 永远显示 unhealthy，监控会一直叫。
+      - name: 等所有容器 healthy
+        run: |
+          set -euo pipefail
+          bad=""
+          for i in $(seq 1 30); do
+            bad=""
+            for c in otaku-mysql otaku-backend otaku-nginx; do
+              st=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$c" 2>/dev/null || echo missing)
+              [ "$st" = "healthy" ] || bad="$bad $c=$st"
+            done
+            if [ -z "$bad" ]; then echo "全部 healthy（第 ${i} 次探测）"; exit 0; fi
+            sleep 5
+          done
+          echo "::error::容器仍未 healthy:$bad"
+          for c in otaku-mysql otaku-backend otaku-nginx; do
+            echo "--- $c ---"
+            docker inspect -f '{{json .State.Health}}' "$c" 2>/dev/null | head -c 700; echo
+          done
+          exit 1
+
       # 对应 docs/deploy-production.md §6 的验收清单，一条条自动化。
       - name: 上线验收（§6 的六条 + 两条补充）
         run: |
