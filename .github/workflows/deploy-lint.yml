@@ -283,6 +283,30 @@ jobs:
           echo "::error::5 分钟内后端仍未 healthy"
           exit 1
 
+      # nginx 的健康检查 interval 是 30s：容器刚起来时状态是 "starting"，
+      # 而我们的验收链跑得比这还快，后面 monitor.sh 会看到 "starting" 并判失败。
+      # 这一步既消掉那个时序噪声，也顺手断言「nginx 的健康检查真的能过」——
+      # 健康检查写错的话，compose ps 永远显示 unhealthy，监控会一直叫。
+      - name: 等所有容器 healthy
+        run: |
+          set -euo pipefail
+          bad=""
+          for i in $(seq 1 30); do
+            bad=""
+            for c in otaku-mysql otaku-backend otaku-nginx; do
+              st=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$c" 2>/dev/null || echo missing)
+              [ "$st" = "healthy" ] || bad="$bad $c=$st"
+            done
+            if [ -z "$bad" ]; then echo "全部 healthy（第 ${i} 次探测）"; exit 0; fi
+            sleep 5
+          done
+          echo "::error::容器仍未 healthy:$bad"
+          for c in otaku-mysql otaku-backend otaku-nginx; do
+            echo "--- $c ---"
+            docker inspect -f '{{json .State.Health}}' "$c" 2>/dev/null | head -c 700; echo
+          done
+          exit 1
+
       # 对应 docs/deploy-production.md §6 的验收清单，一条条自动化。
       - name: 上线验收（§6 的六条 + 两条补充）
         run: |
@@ -335,6 +359,113 @@ jobs:
           [ "$code" = "404" ] || fail "期望 404，实际 $code"
 
           echo "验收全部通过"
+
+      # 有数据之后才谈得上验备份。走内部导入接口顺带证明：
+      # token 通路是通的、Flyway 建的表能接住真实载荷。
+      - name: 造一点数据（走内部导入接口）
+        run: |
+          set -euo pipefail
+          cat > /tmp/batch.json <<'JSON'
+          {"batch_id":"ci-smoke-1","source":"ci_smoke","fetched_at":"2026-01-01T00:00:00Z",
+           "items":[
+             {"source_id":"1","work_type":"anime","title":"冒烟测试作品 A","summary":null,
+              "cover_url":null,"release_year":2020,"tags":["测试"],
+              "main_rating":{"value":8.5,"scale":"0-10","source":"ci"},"source_url":null},
+             {"source_id":"2","work_type":"anime","title":"冒烟测试作品 B","summary":null,
+              "cover_url":null,"release_year":2021,"tags":null,"main_rating":null,"source_url":null}
+           ]}
+          JSON
+          resp=$(curl -fsS -X POST "http://127.0.0.1:18081/internal/import/batches" \
+                   -H "Content-Type: application/json" -H "X-Internal-Token: smoke-token" \
+                   --data-binary @/tmp/batch.json)
+          echo "$resp"
+          printf '%s' "$resp" | grep -q '"inserted":2' || { echo "::error::导入没有插入 2 条"; exit 1; }
+          echo "--- 列表应能看到 2 条 ---"
+          curl -kfsS "https://127.0.0.1:18443/api/works?page_size=5" | head -c 200; echo
+
+      # 「备份没验证过等于没备份」——这句话在文档里写了两遍，但一直没被执行过。
+      # 这里真的 dump 一次，再恢复到一个**独立库**，比对行数。
+      - name: 备份 → 恢复到独立库（证明备份真的能用）
+        working-directory: backend-java
+        env:
+          BACKUP_DIR: ${{ runner.temp }}/backups
+          # 生产的 1 MB 下限是为了挡住「dump 失败但没报错、只落了个空文件」。
+          # 空库的 dump 只有几 KB，会撞上这个下限——这里显式调低，并把下限逻辑
+          # 本身留给「有数据的真库」去守（那是它存在的意义）。
+          MIN_SIZE_KB: "1"
+        run: |
+          set -euo pipefail
+          DB=$(grep -E '^DB_NAME=' .env | cut -d= -f2)
+          mkdir -p "$BACKUP_DIR"
+
+          ./deploy/backup.sh
+          dump=$(ls -1 "$BACKUP_DIR"/*.sql.gz | tail -1)
+          echo "dump: $(basename "$dump") / $(du -k "$dump" | cut -f1) KB"
+
+          docker compose -f compose.prod.yaml exec -T mysql sh -c \
+            'exec mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -e "DROP DATABASE IF EXISTS restore_check; CREATE DATABASE restore_check"'
+          gunzip -c "$dump" | docker compose -f compose.prod.yaml exec -T mysql sh -c \
+            'exec mysql -uroot -p"$MYSQL_ROOT_PASSWORD" restore_check'
+          echo "恢复完成"
+
+          src=$(docker compose -f compose.prod.yaml exec -T mysql sh -c \
+                  "exec mysql -N -B -uroot -p\"\$MYSQL_ROOT_PASSWORD\" -e 'SELECT COUNT(*) FROM $DB.work'" | tr -d '\r')
+          dst=$(docker compose -f compose.prod.yaml exec -T mysql sh -c \
+                  'exec mysql -N -B -uroot -p"$MYSQL_ROOT_PASSWORD" -e "SELECT COUNT(*) FROM restore_check.work"' | tr -d '\r')
+          echo "源库 work=$src ｜ 恢复库 work=$dst"
+          [ "$src" = "$dst" ] || { echo "::error::恢复后行数不一致：$src vs $dst"; exit 1; }
+          [ "$src" -ge 2 ] || { echo "::error::源库只有 ${src} 行，导入没生效"; exit 1; }
+          echo "行数一致，备份可用"
+
+      # 巡检脚本此前只在桩环境里验过分支。这里让它面对一套**真的在跑**的栈：
+      # 健康、三容器、磁盘、备份新鲜度都应该 OK；证书那项会因为用不上真实域名而 WARN
+      # （WARN 不计失败），这正好验证「证书检查不会挂住整个巡检」。
+      - name: 巡检脚本对真实栈的判断（健康时不该报错）
+        working-directory: backend-java
+        env:
+          BACKUP_DIR: ${{ runner.temp }}/backups
+          HEALTH_URL: http://127.0.0.1:18081/actuator/health
+        run: |
+          set -euo pipefail
+          # runner 的系统盘常年 ~80% 占用（预装一堆 SDK），不代表生产环境。
+          # 所以这条只验「健康时全绿、且磁盘检查能通过」，阈值本身交给下一条。
+          if ! DISK_PATH=/ DISK_MAX_PCT=100 ./deploy/monitor.sh > /tmp/mon1.out 2>&1; then
+            echo "::group::monitor 完整输出"
+            cat /tmp/mon1.out
+            echo "::endgroup::"
+            # CI 日志接口不一定拿得到，所以把关键行塞进注解（上限 10 条，够用）
+            n=0
+            while IFS= read -r line; do
+              case "$line" in
+                \[FAIL\]*|\[WARN\]*) echo "::error::mon: $line"; n=$((n+1)) ;;
+              esac
+              [ "$n" -ge 8 ] && break
+            done < /tmp/mon1.out
+            if [ "$n" -eq 0 ]; then tail -5 /tmp/mon1.out | sed 's/^/::error::mon: /'; fi
+            exit 1
+          fi
+          cat /tmp/mon1.out
+          grep -q '巡检通过' /tmp/mon1.out || { echo "::error::没打出「巡检通过」"; exit 1; }
+
+      # 只验「健康时不报错」是不够的——阈值如果永远不触发，那条检查等于没有。
+      # 把阈值压到 1%，它必须失败，而且失败原因必须是磁盘。
+      - name: 阈值确实会触发（否则「通过」没有意义）
+        working-directory: backend-java
+        env:
+          BACKUP_DIR: ${{ runner.temp }}/backups
+          HEALTH_URL: http://127.0.0.1:18081/actuator/health
+        run: |
+          set -euo pipefail
+          if DISK_PATH=/ DISK_MAX_PCT=1 ./deploy/monitor.sh > /tmp/mon2.out 2>&1; then
+            echo "::error::磁盘阈值压到 1% 仍然判通过——磁盘检查没有生效"
+            exit 1
+          fi
+          grep -q 'FAIL.*磁盘' /tmp/mon2.out || {
+            echo "::error::失败原因不是磁盘，说明是别的地方红了"
+            tail -5 /tmp/mon2.out
+            exit 1
+          }
+          echo "符合预期：$(grep 'FAIL.*磁盘' /tmp/mon2.out | head -1)"
 
       - name: 失败时打印日志
         if: failure()

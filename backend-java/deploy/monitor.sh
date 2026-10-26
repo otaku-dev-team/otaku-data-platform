@@ -120,7 +120,12 @@ if [ -z "$DOMAIN" ]; then
 elif ! command -v openssl >/dev/null 2>&1; then
     skip "证书到期（没有 openssl）"
 else
-    END=$(printf '' | openssl s_client -connect "${DOMAIN}:443" -servername "$DOMAIN" 2>/dev/null \
+    # 必须加超时：`openssl s_client` 默认会一直等，遇到「TCP 通但对端不说话」
+    # （防火墙丢包、TLS 握手卡住）就会把整个巡检挂死——而 cron 里挂死等于没有巡检。
+    # 没有 timeout 命令时退化为直接调，但至少给出可诊断的 WARN。
+    TO=()
+    command -v timeout >/dev/null 2>&1 && TO=(timeout 8)
+    END=$(printf '' | "${TO[@]}" openssl s_client -connect "${DOMAIN}:443" -servername "$DOMAIN" 2>/dev/null \
             | openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2)
     if [ -z "$END" ]; then
         warn "取不到 $DOMAIN 的证书（Nginx 没起 / 443 不通？）"
