@@ -114,7 +114,7 @@ class WorkTagFilterIntegrationTest {
         assertThat(tagOf("it-tag-11")).as("标签应保留原值").containsExactly("悬疑");
         assertThat(tagRating("it-tag-11", "悬疑")).isEqualByComparingTo("9.90");
 
-        var hit = workService.list(null, null, "悬疑", "rating", "9", 1, 50);
+        var hit = workService.list(null, null, "悬疑", null, "rating", "9", null, 1, 50);
         assertThat(hit.items())
                 .extracting(com.otaku.work.dto.WorkSummaryDto::workId)
                 .contains(workIdOf("it-tag-11"));
@@ -128,16 +128,16 @@ class WorkTagFilterIntegrationTest {
                 item("it-tag-6", "科幻漫画", List.of("科幻"), "7.5"),
                 item("it-tag-7", "纯日常动画", List.of("日常"), "7.0"));
 
-        var scifi = workService.list(null, null, "科幻", null, null, 1, 50);
+        var scifi = workService.list(null, null, "科幻", null, null, null, null, 1, 50);
         assertThat(scifi.total()).isEqualTo(2);
         assertThat(scifi.items())
                 .extracting(com.otaku.work.dto.WorkSummaryDto::workId)
                 .doesNotContain(workIdOf("it-tag-7"));
 
-        var scifiAnime = workService.list("anime", null, "科幻", null, null, 1, 50);
+        var scifiAnime = workService.list("anime", null, "科幻", null, null, null, null, 1, 50);
         assertThat(scifiAnime.total()).isEqualTo(2);
 
-        var unknown = workService.list(null, null, "不存在的标签", null, null, 1, 50);
+        var unknown = workService.list(null, null, "不存在的标签", null, null, null, null, 1, 50);
         assertThat(unknown.total()).isZero();
         assertThat(unknown.items()).isEmpty();
     }
@@ -155,18 +155,18 @@ class WorkTagFilterIntegrationTest {
         Long ratedAnime = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM work WHERE work_type = 'anime' AND rating_value IS NOT NULL",
                 Long.class);
-        var allRated = workService.list("anime", null, null, "rating", "0", 1, 1);
+        var allRated = workService.list("anime", null, null, null, "rating", "0", null, 1, 1);
         assertThat(allRated.total()).isEqualTo(ratedAnime);
 
         // 标签路径（条件落在 work_tag.rating_value 冗余列上）
-        var tagged = workService.list(null, null, "榜单样本", "rating", "7", 1, 50);
+        var tagged = workService.list(null, null, "榜单样本", null, "rating", "7", null, 1, 50);
         assertThat(tagged.total()).isEqualTo(1);
         assertThat(tagged.items())
                 .extracting(com.otaku.work.dto.WorkSummaryDto::workId)
                 .containsExactly(workIdOf("it-tag-8"));
 
         // 下限不影响「有评分」之外的语义：不过滤时三条都在
-        assertThat(workService.list(null, null, "榜单样本", null, null, 1, 50).total()).isEqualTo(3);
+        assertThat(workService.list(null, null, "榜单样本", null, null, null, null, 1, 50).total()).isEqualTo(3);
     }
 
     // ---------------------------------------------------------------- helpers

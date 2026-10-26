@@ -57,15 +57,15 @@ class WorkServiceSortAndRelatedTest {
     @Test
     @DisplayName("sort 透传到仓储，page_size 超限按 50 截断")
     void listPassesSortAndCapsPageSize() {
-        when(repository.count(null, null, null, null)).thenReturn(1L);
-        when(repository.findPage(any(), any(), any(), eq(WorkSort.RATING), any(), eq(50), eq(0)))
+        when(repository.count(null, null, null, null, null)).thenReturn(1L);
+        when(repository.findPage(any(), any(), any(), eq(WorkSort.RATING), any(), any(), eq(50), eq(0)))
                 .thenReturn(List.of(record(1L, "W-1", "[\"科幻\"]")));
 
         var page = service.list(null, null, null, "rating", null, 1, 999);
 
         assertThat(page.items()).hasSize(1);
         assertThat(page.pageSize()).isEqualTo(50);
-        verify(repository).findPage(null, null, null, WorkSort.RATING, null, 50, 0);
+        verify(repository).findPage(null, null, null, WorkSort.RATING, null, null, 50, 0);
     }
 
     @Test
@@ -81,39 +81,39 @@ class WorkServiceSortAndRelatedTest {
     @Test
     @DisplayName("tag 去掉首尾空白后透传，计数与取页用同一个条件")
     void tagIsTrimmedAndPassedThrough() {
-        when(repository.count(null, null, List.of("科幻"), null)).thenReturn(1L);
-        when(repository.findPage(null, null, List.of("科幻"), WorkSort.ID, null, 20, 0))
+        when(repository.count(null, null, List.of("科幻"), null, null)).thenReturn(1L);
+        when(repository.findPage(null, null, List.of("科幻"), WorkSort.ID, null, null, 20, 0))
                 .thenReturn(List.of(record(1L, "W-1", "[\"科幻\"]")));
 
         var page = service.list(null, null, "  科幻  ", null, null, 1, 20);
 
         assertThat(page.items()).hasSize(1);
-        verify(repository).count(null, null, List.of("科幻"), null);
-        verify(repository).findPage(null, null, List.of("科幻"), WorkSort.ID, null, 20, 0);
+        verify(repository).count(null, null, List.of("科幻"), null, null);
+        verify(repository).findPage(null, null, List.of("科幻"), WorkSort.ID, null, null, 20, 0);
     }
 
     @Test
     @DisplayName("空 tag 视为不过滤，不把空串塞进查询")
     void blankTagMeansNoFilter() {
-        when(repository.count(null, null, null, null)).thenReturn(0L);
+        when(repository.count(null, null, null, null, null)).thenReturn(0L);
 
         service.list(null, null, "   ", null, null, 1, 20);
 
-        verify(repository).count(null, null, null, null);
-        verify(repository, never()).findPage(any(), any(), any(), any(), any(), anyInt(), anyInt());
+        verify(repository).count(null, null, null, null, null);
+        verify(repository, never()).findPage(any(), any(), any(), any(), any(), any(), anyInt(), anyInt());
     }
 
     @Test
     @DisplayName("超长 tag 截到 64 字符，与列的宽度和回填脚本一致")
     void tagIsTruncatedToColumnWidth() {
         String longTag = "长".repeat(80);
-        when(repository.count(any(), any(), any(), any())).thenReturn(0L);
+        when(repository.count(any(), any(), any(), any(), any())).thenReturn(0L);
 
         service.list(null, null, longTag, null, null, 1, 20);
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<List<String>> captured = ArgumentCaptor.forClass(List.class);
-        verify(repository).count(any(), any(), captured.capture(), any());
+        verify(repository).count(any(), any(), captured.capture(), any(), any());
         assertThat(captured.getValue()).hasSize(1);
         assertThat(captured.getValue().get(0)).hasSize(64);
     }
@@ -121,13 +121,13 @@ class WorkServiceSortAndRelatedTest {
     @Test
     @DisplayName("tag 与 type / q / sort 可组合，四个条件一起透传")
     void tagCombinesWithOtherFilters() {
-        when(repository.count("anime", "%魔法%", List.of("科幻"), null)).thenReturn(1L);
-        when(repository.findPage("anime", "%魔法%", List.of("科幻"), WorkSort.YEAR, null, 10, 0))
+        when(repository.count("anime", "%魔法%", List.of("科幻"), null, null)).thenReturn(1L);
+        when(repository.findPage("anime", "%魔法%", List.of("科幻"), WorkSort.YEAR, null, null, 10, 0))
                 .thenReturn(List.of(record(1L, "W-1", "[\"科幻\"]")));
 
         service.list("anime", "魔法", "科幻", "year", null, 1, 10);
 
-        verify(repository).findPage("anime", "%魔法%", List.of("科幻"), WorkSort.YEAR, null, 10, 0);
+        verify(repository).findPage("anime", "%魔法%", List.of("科幻"), WorkSort.YEAR, null, null, 10, 0);
     }
 
     // ------------------------------------------------------- 榜单 min_rating
@@ -135,42 +135,42 @@ class WorkServiceSortAndRelatedTest {
     @Test
     @DisplayName("min_rating 解析后同时透传给计数与取页（两处条件必须一致）")
     void minRatingIsPassedToBothCountAndPage() {
-        when(repository.count(null, null, null, new BigDecimal("7.0"))).thenReturn(1L);
-        when(repository.findPage(null, null, null, WorkSort.RATING, new BigDecimal("7.0"), 20, 0))
+        when(repository.count(null, null, null, new BigDecimal("7.0"), null)).thenReturn(1L);
+        when(repository.findPage(null, null, null, WorkSort.RATING, new BigDecimal("7.0"), null, 20, 0))
                 .thenReturn(List.of(record(1L, "W-1", "[\"科幻\"]")));
 
         service.list(null, null, null, "rating", " 7.0 ", 1, 20);
 
-        verify(repository).count(null, null, null, new BigDecimal("7.0"));
-        verify(repository).findPage(null, null, null, WorkSort.RATING, new BigDecimal("7.0"), 20, 0);
+        verify(repository).count(null, null, null, new BigDecimal("7.0"), null);
+        verify(repository).findPage(null, null, null, WorkSort.RATING, new BigDecimal("7.0"), null, 20, 0);
     }
 
     @Test
     @DisplayName("min_rating 省略或空串都表示不过滤，不往 SQL 里塞条件")
     void blankMinRatingMeansNoFilter() {
-        when(repository.count(null, null, null, null)).thenReturn(0L);
+        when(repository.count(null, null, null, null, null)).thenReturn(0L);
 
         service.list(null, null, null, null, null, 1, 20);
         service.list(null, null, null, null, "   ", 1, 20);
 
         // 两种写法归一化后是**同一组**筛选条件 → 同一个缓存键 → 只查一次库。
         // 若归一化坏了，两次的键不同，这里就会变成 2 次。
-        verify(repository, org.mockito.Mockito.times(1)).count(any(), any(), any(), any());
+        verify(repository, org.mockito.Mockito.times(1)).count(any(), any(), any(), any(), any());
         // 且查的时候不带任何过滤条件（不是把空串塞进 SQL）
-        verify(repository).count(null, null, null, null);
+        verify(repository).count(null, null, null, null, null);
     }
 
     @Test
     @DisplayName("边界值 0 与 10 合法：0 表示「只要有评分」，10 表示「满分」")
     void minRatingAcceptsBoundaries() {
-        when(repository.count(null, null, null, BigDecimal.ZERO)).thenReturn(0L);
-        when(repository.count(null, null, null, BigDecimal.TEN)).thenReturn(0L);
+        when(repository.count(null, null, null, BigDecimal.ZERO, null)).thenReturn(0L);
+        when(repository.count(null, null, null, BigDecimal.TEN, null)).thenReturn(0L);
 
         service.list(null, null, null, "rating", "0", 1, 20);
         service.list(null, null, null, "rating", "10", 1, 20);
 
-        verify(repository).count(null, null, null, new BigDecimal("0"));
-        verify(repository).count(null, null, null, new BigDecimal("10"));
+        verify(repository).count(null, null, null, new BigDecimal("0"), null);
+        verify(repository).count(null, null, null, new BigDecimal("10"), null);
     }
 
     @Test
