@@ -280,6 +280,38 @@ rm otaku-full-20261022.sql         # 开发机上
 
 里面是全量作品数据，别留在磁盘上。
 
+### 4.6 起 Nginx 并申请证书
+
+首次上线按这个顺序（**第 2 步别跳**）：
+
+```bash
+# 1) 确认域名已解析到本机，80/443 在安全组与本机防火墙都放通（§0 第 5 条）
+dig +short otaku.example.com            # 应返回本机公网 IP
+curl -I http://otaku.example.com/.well-known/acme-challenge/x   # 应 404，不是超时
+
+# 2) 先只起 Nginx：此时用一张 1 天有效的自签证书顶着，只为让 :80 能应答 ACME
+docker compose -f compose.prod.yaml up -d nginx
+docker compose -f compose.prod.yaml exec nginx nginx -t   # 配置语法，第一次务必跑
+
+# 3) 签证书：先 staging 验证配置，再签正式
+./deploy/init-letsencrypt.sh --staging
+./deploy/init-letsencrypt.sh            # 会在检测到 staging 证书后自动换成正式
+
+# 4) 起全套
+docker compose -f compose.prod.yaml up -d
+```
+
+**为什么不能直接 `up -d`**：`ssl_certificate` 指向的文件不存在时 Nginx 起不来，
+而签发证书又需要 Nginx 在 `:80` 应答验证。`init-letsencrypt.sh` 先放自签证书、
+签完再 reload 换掉；细节与排查见 `backend-java/nginx/README.md`。
+
+**为什么先 staging**：Let's Encrypt 对同一域名有每周 5 次失败上限（重复申请也计入）。
+配置写错时在 staging 上试，别烧正式额度。
+
+**关于 8080**：`compose.prod.yaml` 默认把后端绑在 `127.0.0.1`，公网只有 443 一个入口
+（与 §0 第 5 条一致）。要在别的机器上直连调试，在 `.env` 里设 `BACKEND_BIND=0.0.0.0`
+并限制来源 IP；调完改回来，否则等于绕过 Nginx 的全部加固。
+
 ---
 
 ## 5. 客户端指向线上
@@ -330,9 +362,15 @@ curl -s "https://otaku.example.com/api/works/<某个work_id>" | grep -o '"source
 # 4. 封面能出图（不是 502/404）
 curl -sI "https://otaku.example.com/api/covers/<某个work_id>" | head -3
 
-# 5. 内部接口对外必须 401
+# 5. 内部接口对外必须不可用（Nginx 收口 → 404，请求根本没到后端）
 curl -s -o /dev/null -w "%{http_code}\n" -X POST \
   https://otaku.example.com/internal/import/batches \
+  -H "Content-Type: application/json" -d '{"batch_id":"x","source":"x","items":[]}'
+# 期望 404
+
+# 5b. token 校验本身仍在：在服务器本机绕过 Nginx 直连后端
+curl -s -o /dev/null -w "%{http_code}\n" -X POST \
+  http://127.0.0.1:8080/internal/import/batches \
   -H "Content-Type: application/json" -d '{"batch_id":"x","source":"x","items":[]}'
 # 期望 401
 
@@ -346,24 +384,39 @@ nc -zv <服务器IP> 3306
 
 ## 7. 运维
 
-### 备份（最重要，别忘了）
+### 备份
 
-```bash
-# 每天 3 点备份，保留 14 天
-cat > /etc/cron.daily/otaku-backup <<'EOF'
-#!/bin/sh
-set -e
-cd /path/to/otaku-data-platform/backend-java
-STAMP=$(date +%Y%m%d)
-docker compose -f compose.prod.yaml exec -T mysql \
-  mysqldump -uroot -p"$DB_ROOT_PASSWORD" --single-transaction --set-gtid-purged=OFF otaku \
-  | gzip > /var/backups/otaku-$STAMP.sql.gz
-find /var/backups -name 'otaku-*.sql.gz' -mtime +14 -delete
-EOF
-chmod +x /etc/cron.daily/otaku-backup
+```cron
+# 每天 03:10 备份（root 的 crontab）
+10 3 * * * cd /path/to/otaku-data-platform/backend-java && ./deploy/backup.sh 2>&1 | logger -t otaku-backup
 ```
 
+`deploy/backup.sh` 里有四个不是"顺手加的"设计：
+
+| 做法 | 为什么 |
+|---|---|
+| 流式 gzip，不落中间文件 | 2C2G 机器上，先 dump 到磁盘再压会让磁盘与内存峰值叠加 |
+| 先写 `.part` 再 `mv` | 进程被 OOM kill 时不会留下一个**看起来正常、实际截断**的 .sql.gz |
+| `gzip -t` + 大小下限 | 损坏的备份等于没有备份，宁可这次失败 |
+| 按 `${SITE_KEY}-*.sql.gz` 保留 14 天 | 只删自己前缀，不碰同目录里别的文件 |
+
+口令不出容器：`mysqldump` 在 mysql 容器里跑，读容器自己的 `$MYSQL_ROOT_PASSWORD`，
+宿主机不需要、也不应该再存一份。
+
 备份**没验证过等于没备份**：至少手动恢复一次到临时库，确认能起来。
+
+### 巡检与证书续期
+
+```cron
+# 每天 04:17 巡检 + 04:19 续期证书
+17 4 * * * cd /path/to/otaku-data-platform/backend-java && ./deploy/monitor.sh --quiet 2>&1 | logger -t otaku-monitor
+19 4 * * * cd /path/to/otaku-data-platform/backend-java && ./deploy/renew-letsencrypt.sh 2>&1 | logger -t otaku-tls
+```
+
+`deploy/monitor.sh` 查五件事：后端健康、三个容器状态、磁盘阈值、**备份新鲜度（< 26h）**、
+证书剩余天数（< 14 天开始 WARN）。任一失败退出码非 0，cron 会因此发邮件。
+
+用 `--quiet`：它只在出问题时说话。每天一封"一切正常"的邮件，等于把所有告警都训练成噪音。
 
 ### 日志与磁盘
 
@@ -381,7 +434,7 @@ df -h
 
 | 项 | 现状 | 影响 |
 |---|---|---|
-| **HTTPS** | 没有 | 需要 Nginx/Caddy + 证书；没有的话 Android release 包连不上 |
+| **HTTPS** | 已提供（`backend-java/nginx/` + `deploy/init-letsencrypt.sh`） | 仍需域名解析到位、80/443 放通；步骤见 §4.6 与 `nginx/README.md` |
 | **限流** | `LoginThrottle` 是内存实现 | **只能单实例**。多副本部署时各自计数，等于限流失效，要换 Redis |
 | **封面缓存** | 本地磁盘卷 | 多实例会各存一份，切实例可能重新回源 |
 | **只有内网 / IPv6** | 外网客户端连不上 | 需要公网 IP，或用 frp / Cloudflare Tunnel 之类的内网穿透——但那要求某台机器常开 |

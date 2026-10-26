@@ -1,0 +1,3 @@
+# 这个目录是空的，挂到容器 /etc/nginx/conf.d 上，
+# 用来盖住官方镜像自带的 default.conf（它会把 Nginx 欢迎页作为默认站点暴露）。
+# 容器启动时 entrypoint 会把 ../templates/default.conf.template 渲染成这里的 default.conf。

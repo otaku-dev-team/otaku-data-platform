@@ -1,12 +1,19 @@
-# 生产部署：MySQL + 后端，一条命令起。
+# 生产部署：MySQL + 后端 + Nginx，一条命令起。
 #
 # 与本地 compose.yaml 的区别（别混用）：
 #   compose.yaml        只起 MySQL，端口 3307，弱口令，给本地开发用
-#   compose.prod.yaml   起 MySQL + 后端，MySQL 不对外暴露，口令从 .env 读
+#   compose.prod.yaml   起 MySQL + 后端 + Nginx，MySQL 不对外暴露，口令从 .env 读
+#
+# 网络拓扑（**只有 nginx 面对公网**）：
+#
+#   公网 :80/:443 ──▶ nginx ──▶ backend:8080 ──▶ mysql:3306
+#                       │                        （expose，不 publish）
+#                       └── certbot 走 webroot 验证
 #
 # 用法：
 #   cp .env.production.example .env     # 然后填进去，别提交 .env
 #   docker compose -f compose.prod.yaml up -d --build
+#   ./deploy/init-letsencrypt.sh        # 首次申请证书（见 nginx/README.md）
 #   docker compose -f compose.prod.yaml logs -f backend
 #
 # 数据迁移见 docs/deploy-production.md §4。
@@ -67,14 +74,23 @@ services:
       #    留空会按请求 host 推导，前面有 Nginx 时推导出来的封面地址可能是 localhost
       OTAKU_PUBLIC_BASE_URL: ${OTAKU_PUBLIC_BASE_URL:-}
       OTAKU_COVER_CACHE_DIR: /app/data/covers
+      # 让 Spring 认 X-Forwarded-Proto / -Host / -For（Nginx 会带过来）。
+      # 不设的话 request.getScheme() 永远是 http，即使外面是 https——
+      # 目前封面地址由 OTAKU_PUBLIC_BASE_URL 显式给，所以这条是**兜底**：
+      # 以后任何按请求推导 URL 的地方（重定向、回调、分页链接）都会因此正确。
+      SERVER_FORWARD_HEADERS_STRATEGY: ${FORWARD_HEADERS_STRATEGY:-framework}
       # application.yml 里开发默认是 DEBUG 且 health 暴露全部细节，生产都收掉。
       # 用环境变量覆盖，不必为了上线去改代码里的默认值。
       LOGGING_LEVEL_COM_OTAKU: ${LOG_LEVEL_APP:-INFO}
       LOGGING_LEVEL_ROOT: ${LOG_LEVEL_ROOT:-INFO}
       MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS: never
       TZ: ${TZ:-Asia/Shanghai}
+    # 只绑回环：公网流量一律经 Nginx。
+    # 容器之间走 compose 网络（backend:8080），不依赖这条 ports——
+    # 所以收紧它不影响反代，只是把「后端 8080 直接暴露在公网」这件事关掉。
+    # 需要在别的机器上直连 :8080 调试，就把 BACKEND_BIND 改成 0.0.0.0 并限制防火墙。
     ports:
-      - "${BACKEND_PORT:-8080}:8080"
+      - "${BACKEND_BIND:-127.0.0.1}:${BACKEND_PORT:-8080}:8080"
     volumes:
       # 封面缓存必须持久化：不挂卷的话每次重启都要回源重抓，
       # 而来源站 42% 的页会断连，用户侧会看到大量糊图。
@@ -86,6 +102,55 @@ services:
       retries: 3
       start_period: 60s
 
+  nginx:
+    image: ${NGINX_IMAGE:-nginx:1.27-alpine}
+    container_name: otaku-nginx
+    restart: unless-stopped
+    depends_on:
+      backend:
+        # healthy 而不是 started：后端启动要跑 Flyway，十几秒内 502 是常态。
+        # 等 healthy 再起 nginx，第一次请求就不会撞上空窗。
+        condition: service_healthy
+    environment:
+      # 这两个由官方镜像的 entrypoint 用 envsubst 注入
+      # nginx/templates/default.conf.template → conf.d/default.conf
+      DOMAIN: ${DOMAIN:?必须设置 DOMAIN（证书路径与 server_name 都用它）}
+      BACKEND_UPSTREAM: ${BACKEND_UPSTREAM:-backend:8080}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # 官方镜像自带的主配置没有 gzip / server_tokens off，而这两项必须写在 http{}，
+      # 没法从 conf.d 里的 server 块补 —— 所以整份替换。
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/templates:/etc/nginx/templates:ro
+      # 挂一个空目录盖住镜像自带的 conf.d：里面有个 default.conf 会监听 :80 并
+      # 变成"未匹配 Host 的默认站点"，等于把 Nginx 欢迎页暴露在公网。
+      # 生成出来的 default.conf（来自 templates）会写进这个目录。
+      - ./nginx/conf.d:/etc/nginx/conf.d
+      # 证书由 certbot 写，nginx 只读挂载：即使 nginx 被攻破也改不了证书。
+      - letsencrypt:/etc/letsencrypt:ro
+      - certbot-www:/var/www/certbot:ro
+    healthcheck:
+      # /healthz 在 :80、跳转之前，专门给健康检查用（不受证书状态影响）。
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/healthz | grep -q ok"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  # 证书签发 / 续期。profiles: tools → 平时不跟着 up 起来。
+  # 只在 `docker compose run --rm certbot ...` 时按需启动（deploy/*.sh 就是这么调的）。
+  certbot:
+    image: ${CERTBOT_IMAGE:-certbot/certbot:latest}
+    profiles: ["tools"]
+    volumes:
+      - letsencrypt:/etc/letsencrypt
+      - certbot-www:/var/www/certbot
+    entrypoint: certbot
+
 volumes:
   mysql-data:
   cover-cache:
+  letsencrypt:
+  certbot-www:
