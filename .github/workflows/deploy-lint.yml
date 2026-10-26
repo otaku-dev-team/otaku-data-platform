@@ -396,15 +396,40 @@ jobs:
       # 巡检脚本此前只在桩环境里验过分支。这里让它面对一套**真的在跑**的栈：
       # 健康、三容器、磁盘、备份新鲜度都应该 OK；证书那项会因为用不上真实域名而 WARN
       # （WARN 不计失败），这正好验证「证书检查不会挂住整个巡检」。
-      - name: 巡检脚本对真实栈的判断
+      - name: 巡检脚本对真实栈的判断（健康时不该报错）
         working-directory: backend-java
         env:
           BACKUP_DIR: ${{ runner.temp }}/backups
           HEALTH_URL: http://127.0.0.1:18081/actuator/health
-          DISK_PATH: /
         run: |
           set -euo pipefail
-          ./deploy/monitor.sh
+          # runner 的系统盘常年 ~80% 占用（预装一堆 SDK），不代表生产环境。
+          # 所以这条只验「健康时全绿、且磁盘检查能通过」，阈值本身交给下一条。
+          if ! DISK_PATH=/ DISK_MAX_PCT=100 ./deploy/monitor.sh 2>&1 | tee /tmp/mon1.out; then
+            echo "::error::monitor.sh 在一套健康的栈上判了失败（见上）"
+            exit 1
+          fi
+          grep -q '巡检通过' /tmp/mon1.out || { echo "::error::没打出「巡检通过」"; exit 1; }
+
+      # 只验「健康时不报错」是不够的——阈值如果永远不触发，那条检查等于没有。
+      # 把阈值压到 1%，它必须失败，而且失败原因必须是磁盘。
+      - name: 阈值确实会触发（否则「通过」没有意义）
+        working-directory: backend-java
+        env:
+          BACKUP_DIR: ${{ runner.temp }}/backups
+          HEALTH_URL: http://127.0.0.1:18081/actuator/health
+        run: |
+          set -euo pipefail
+          if DISK_PATH=/ DISK_MAX_PCT=1 ./deploy/monitor.sh > /tmp/mon2.out 2>&1; then
+            echo "::error::磁盘阈值压到 1% 仍然判通过——磁盘检查没有生效"
+            exit 1
+          fi
+          grep -q 'FAIL.*磁盘' /tmp/mon2.out || {
+            echo "::error::失败原因不是磁盘，说明是别的地方红了"
+            tail -5 /tmp/mon2.out
+            exit 1
+          }
+          echo "符合预期：$(grep 'FAIL.*磁盘' /tmp/mon2.out | head -1)"
 
       - name: 失败时打印日志
         if: failure()
