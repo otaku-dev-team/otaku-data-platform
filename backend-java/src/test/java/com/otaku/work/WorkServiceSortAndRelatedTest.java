@@ -51,7 +51,7 @@ class WorkServiceSortAndRelatedTest {
 
     @BeforeEach
     void setUp() {
-        service = new WorkService(repository, publicUrlResolver, new ObjectMapper());
+        service = new WorkService(repository, publicUrlResolver, new ObjectMapper(), new CountCache());
     }
 
     @Test
@@ -151,7 +151,11 @@ class WorkServiceSortAndRelatedTest {
         service.list(null, null, null, null, null, 1, 20);
         service.list(null, null, null, null, "   ", 1, 20);
 
-        verify(repository, org.mockito.Mockito.times(2)).count(null, null, null, null);
+        // 两种写法归一化后是**同一组**筛选条件 → 同一个缓存键 → 只查一次库。
+        // 若归一化坏了，两次的键不同，这里就会变成 2 次。
+        verify(repository, org.mockito.Mockito.times(1)).count(any(), any(), any(), any());
+        // 且查的时候不带任何过滤条件（不是把空串塞进 SQL）
+        verify(repository).count(null, null, null, null);
     }
 
     @Test

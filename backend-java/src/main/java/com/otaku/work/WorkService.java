@@ -48,12 +48,14 @@ public class WorkService {
     private final WorkRepository repository;
     private final PublicUrlResolver publicUrlResolver;
     private final ObjectMapper objectMapper;
+    private final CountCache countCache;
 
     public WorkService(WorkRepository repository, PublicUrlResolver publicUrlResolver,
-                       ObjectMapper objectMapper) {
+                       ObjectMapper objectMapper, CountCache countCache) {
         this.repository = repository;
         this.publicUrlResolver = publicUrlResolver;
         this.objectMapper = objectMapper;
+        this.countCache = countCache;
     }
 
     public PageResponse<WorkSummaryDto> list(String typeParam, String qParam, String tagParam,
@@ -69,7 +71,17 @@ public class WorkService {
         int safeSize = pageSize <= 0 ? DEFAULT_PAGE_SIZE : Math.min(pageSize, MAX_PAGE_SIZE);
         String pattern = keyword == null ? null : LikePattern.contains(keyword);
 
-        long total = repository.count(workType, pattern, tag, minRating);
+        // COUNT(*) 是 76–126 ms，取一页只要 0.4 ms（docs/list-pagination-perf.md）。
+        // 同一组筛选只有第一次真查库，导入结束时整体失效——不是靠 TTL 容忍过期。
+        String countKey = CountCache.key(workType, pattern, tag, minRating);
+        Long cachedTotal = countCache.get(countKey);
+        long total;
+        if (cachedTotal != null) {
+            total = cachedTotal;
+        } else {
+            total = repository.count(workType, pattern, tag, minRating);
+            countCache.put(countKey, total);
+        }
         List<WorkSummaryDto> items = total == 0
                 ? List.of()
                 : repository.findPage(workType, pattern, tag, sort, minRating,
