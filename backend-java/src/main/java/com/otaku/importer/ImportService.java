@@ -11,6 +11,7 @@ import com.otaku.importer.dto.ImportBatchRequest.ImportItem;
 import com.otaku.importer.dto.ImportBatchDetail;
 import com.otaku.importer.dto.ImportBatchResult;
 import com.otaku.importer.dto.ImportItemResult;
+import com.otaku.work.CountCache;
 import com.otaku.work.WorkRecord;
 import com.otaku.work.WorkRepository;
 import org.slf4j.Logger;
@@ -62,17 +63,20 @@ public class ImportService {
     private final PublicIdGenerator idGenerator;
     private final TransactionTemplate transactionTemplate;
     private final ObjectMapper objectMapper;
+    private final CountCache countCache;
 
     public ImportService(WorkRepository workRepository,
                          ImportBatchRepository batchRepository,
                          PublicIdGenerator idGenerator,
                          TransactionTemplate transactionTemplate,
-                         ObjectMapper objectMapper) {
+                         ObjectMapper objectMapper,
+                         CountCache countCache) {
         this.workRepository = workRepository;
         this.batchRepository = batchRepository;
         this.idGenerator = idGenerator;
         this.transactionTemplate = transactionTemplate;
         this.objectMapper = objectMapper;
+        this.countCache = countCache;
     }
 
     public ImportBatchResult importBatch(ImportBatchRequest request) {
@@ -141,6 +145,11 @@ public class ImportService {
         }
 
         OffsetDateTime finishedAt = OffsetDateTime.now(ZoneOffset.UTC);
+        // 行数变了 → 列表总数缓存整体失效。unchanged/rejected 不影响行数，不必失效。
+        if (inserted > 0 || updated > 0) {
+            countCache.invalidateAll();
+        }
+
         ImportBatchResult result = new ImportBatchResult(
                 batchId, new Counts(inserted, updated, unchanged, rejected), startedAt, finishedAt, errors);
 
