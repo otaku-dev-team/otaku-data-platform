@@ -289,21 +289,24 @@ rm otaku-full-20261022.sql         # 开发机上
 dig +short otaku.example.com            # 应返回本机公网 IP
 curl -I http://otaku.example.com/.well-known/acme-challenge/x   # 应 404，不是超时
 
-# 2) 先只起 Nginx：此时用一张 1 天有效的自签证书顶着，只为让 :80 能应答 ACME
-docker compose -f compose.prod.yaml up -d nginx
-docker compose -f compose.prod.yaml exec nginx nginx -t   # 配置语法，第一次务必跑
-
-# 3) 签证书：先 staging 验证配置，再签正式
+# 2) 签证书（先 staging）。这一步会自己完成引导：
+#    放一张 1 天自签证书 → 起 nginx（--no-deps）→ 申请 → reload
 ./deploy/init-letsencrypt.sh --staging
-./deploy/init-letsencrypt.sh            # 会在检测到 staging 证书后自动换成正式
 
-# 4) 起全套
+# 3) 确认渲染后的配置真的合法（第一次务必跑）
+docker compose -f compose.prod.yaml exec nginx nginx -t
+
+# 4) 换正式证书：脚本检测到 staging 证书会自动删除并重新签发
+./deploy/init-letsencrypt.sh
+
+# 5) 起全套
 docker compose -f compose.prod.yaml up -d
 ```
 
-**为什么不能直接 `up -d`**：`ssl_certificate` 指向的文件不存在时 Nginx 起不来，
-而签发证书又需要 Nginx 在 `:80` 应答验证。`init-letsencrypt.sh` 先放自签证书、
-签完再 reload 换掉；细节与排查见 `backend-java/nginx/README.md`。
+**为什么不先手动 `up -d nginx`**：`ssl_certificate` 指向的文件不存在时 Nginx 起不来，
+会一直 restart；而签发证书又需要 Nginx 在 `:80` 应答 ACME，鸡生蛋。
+`init-letsencrypt.sh` 先放一张自签证书把这一圈解开——**所以第 2 步不能跳过，
+也不能用 `up -d nginx` 替代**。细节与排查见 `backend-java/nginx/README.md`。
 
 **为什么先 staging**：Let's Encrypt 对同一域名有每周 5 次失败上限（重复申请也计入）。
 配置写错时在 staging 上试，别烧正式额度。
@@ -347,7 +350,9 @@ Android 9+ 默认禁明文 HTTP。现在的放行配置在
 
 ## 6. 上线验收
 
-在**外网**（手机流量，不是办公室 WiFi）逐条验，别只在服务器本机 curl：
+在**外网**（手机流量，不是办公室 WiFi）逐条验，别只在服务器本机 curl。
+下面这批断言在 CI 的 `deploy-lint` / `stack` 作业里已经自动化（每次改部署配置都会跑），
+这里保留手工版是为了**在外网真实链路上**再验一次——CI 验的是本机回环。
 
 ```bash
 # 1. 健康检查
