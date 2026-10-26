@@ -113,6 +113,38 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    testWidgets('按 / 触发 onSearch（聚焦搜索框）', (tester) async {
+      var searchCount = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: DesktopShortcuts(
+            onSearch: () => searchCount++,
+            child: const Scaffold(body: Text('页面')),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.slash);
+      await tester.pump();
+
+      expect(searchCount, 1);
+    });
+
+    testWidgets('没有 onSearch 时按 / 不报错', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: DesktopShortcuts(child: Scaffold(body: Text('详情'))),
+        ),
+      );
+      await tester.pump();
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.slash);
+      await tester.pump();
+
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('Esc 在可返回时 pop 一层', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
@@ -143,6 +175,71 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('详情页'), findsNothing);
+    });
+
+    testWidgets('onEscape 返回 true 时不 pop（页面自己消费了 Esc）', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: Center(
+                child: FilledButton(
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => DesktopShortcuts(
+                        onEscape: () => true,
+                        child: const Scaffold(body: Text('搜索中的页面')),
+                      ),
+                    ),
+                  ),
+                  child: const Text('进页面'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('进页面'));
+      await tester.pumpAndSettle();
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+
+      // 页面自己处理了 Esc（例如让搜索框失焦），不该连带把页面弹掉。
+      expect(find.text('搜索中的页面'), findsOneWidget);
+    });
+
+    testWidgets('onEscape 返回 false 时照常 pop', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: Center(
+                child: FilledButton(
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => DesktopShortcuts(
+                        onEscape: () => false,
+                        child: const Scaffold(body: Text('没处理 Esc 的页面')),
+                      ),
+                    ),
+                  ),
+                  child: const Text('进页面'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('进页面'));
+      await tester.pumpAndSettle();
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+
+      expect(find.text('没处理 Esc 的页面'), findsNothing);
     });
   });
 }
