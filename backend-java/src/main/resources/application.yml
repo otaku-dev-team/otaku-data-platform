@@ -42,6 +42,11 @@ app:
     # 接新的来源站时，把它的 host:port 加在这里即可，不需要改代码。
     allowed-hosts:
       - 154.8.194.198:8000
+    # 封面防盗链：允许**跨域引用**封面的来源页（origin 形式，如 http://example.com:8080）。
+    # **留空 = 不限制**（历史行为）。开启后：不带 Referer 的请求（Flutter 客户端 / curl / 服务端）
+    # 仍然放行，只有「浏览器带着别站页面地址来取图」才拒（返回 404，契约里既有的码）。
+    # 开启前先确认 Flutter Web 的调试端口，否则 Web 端封面会被拦。
+    allowed-referers: []
 
 management:
   endpoints:
