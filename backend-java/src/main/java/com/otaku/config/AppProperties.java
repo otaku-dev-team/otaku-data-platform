@@ -66,6 +66,19 @@ public class AppProperties {
          */
         private List<String> allowedHosts = new ArrayList<>();
 
+        /**
+         * 允许**跨域引用**封面的来源页（Referer 白名单，形如 {@code http://host:port}）。
+         *
+         * <p>为什么需要：{@code /api/**} 的 CORS 对任意源开放且 ACAO 回显 Origin
+         * （实测见 Issue #188），于是任何网页都能把封面代理当自家图床——回源与带宽成本落在我们这边。
+         *
+         * <p><b>没带 Referer 的一律放行</b>：Flutter 客户端、curl、服务端调用都不发 Referer，
+         * 拦掉会把 App 的封面打空。只有「浏览器带着别人的来源页来取图」才拒。
+         *
+         * <p>为空表示不限制（保持历史行为）。收紧与否由配置决定，不改代码。
+         */
+        private List<String> allowedReferers = new ArrayList<>();
+
         public String getCacheDir() {
             return cacheDir;
         }
@@ -112,6 +125,14 @@ public class AppProperties {
 
         public void setAllowedHosts(List<String> allowedHosts) {
             this.allowedHosts = allowedHosts == null ? new ArrayList<>() : allowedHosts;
+        }
+
+        public List<String> getAllowedReferers() {
+            return allowedReferers;
+        }
+
+        public void setAllowedReferers(List<String> allowedReferers) {
+            this.allowedReferers = allowedReferers == null ? new ArrayList<>() : allowedReferers;
         }
     }
 }
