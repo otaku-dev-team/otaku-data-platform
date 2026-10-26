@@ -66,4 +66,5 @@ python scripts/smoke.py --base-url <地址>          # 对比，退出码 0 无�
 | 待决事项 | `docs/open-decisions.md` |
 | 测试工具为什么长这样 | `docs/test-tooling-plan.md` |
 
+| 并行开发 · 阻塞处理（不停车） | `docs/collaboration-protocol.md` |
 还没定的商务细节一律 `[待定]`，不要编数字。
