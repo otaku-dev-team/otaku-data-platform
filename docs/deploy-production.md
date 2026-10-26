@@ -354,13 +354,22 @@ cat > /etc/cron.daily/otaku-backup <<'EOF'
 #!/bin/sh
 set -e
 cd /path/to/otaku-data-platform/backend-java
+# cron 不继承登录环境：不加载 .env 的话 $DB_ROOT_PASSWORD 是空，
+# mysqldump 会以「空密码」失败，而 cron 的报错只发本地邮件——等于静默失败。
+set -a; . ./.env; set +a
+mkdir -p /var/backups
 STAMP=$(date +%Y%m%d)
 docker compose -f compose.prod.yaml exec -T mysql \
   mysqldump -uroot -p"$DB_ROOT_PASSWORD" --single-transaction --set-gtid-purged=OFF otaku \
   | gzip > /var/backups/otaku-$STAMP.sql.gz
+# 空文件最像「成功」：至少卡住 1 KB，让失败真的失败。
+test "$(stat -c%s /var/backups/otaku-$STAMP.sql.gz)" -gt 1024
 find /var/backups -name 'otaku-*.sql.gz' -mtime +14 -delete
 EOF
 chmod +x /etc/cron.daily/otaku-backup
+
+# 配完先手动跑一次，确认真的生成了非空文件（别等出事那天才发现它一直是空的）
+/etc/cron.daily/otaku-backup && ls -lh /var/backups
 ```
 
 备份**没验证过等于没备份**：至少手动恢复一次到临时库，确认能起来。
