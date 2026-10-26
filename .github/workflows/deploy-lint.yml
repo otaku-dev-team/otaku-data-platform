@@ -1,0 +1,213 @@
+name: deploy-lint
+
+# 为什么要有这个：`backend-java` 工作流只跑 mvn test，部署产物（compose / nginx /
+# 运维脚本）此前**一次都没被验证过**——第一个发现配置写错的人会是在服务器上敲
+# `up -d` 的那个人。
+#
+# 这不是理论风险：#199 加完 nginx 之后，`nginx -t` 从来没有跑过（开发机没有 nginx
+# 二进制、Docker 引擎也没起）。而 GitHub runner 上有 Docker，能真跑：
+#
+#   1. compose 能不能解析（缺必填项会立刻失败，而不是在服务器上才发现）
+#   2. 模板渲染后 nginx -t 过不过（指令名拼错、http2 与版本不匹配，都在这层抓）
+#   3. 真起一个 nginx，验证 :80 的 /healthz 与「/ → 301 https」确实生效
+#   4. 运维脚本语法（bash -n）
+#
+# 不验证：真实证书签发（需要域名）、备份是否真能 dump（需要 MySQL）、
+# 多站产物（构建链还没有）。
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend-java/nginx/**"
+      - "backend-java/deploy/**"
+      - "backend-java/compose.yaml"
+      - "backend-java/compose.prod.yaml"
+      - "backend-java/.env.production.example"
+      - ".github/workflows/deploy-lint.yml"
+  pull_request:
+    paths:
+      - "backend-java/nginx/**"
+      - "backend-java/deploy/**"
+      - "backend-java/compose.yaml"
+      - "backend-java/compose.prod.yaml"
+      - "backend-java/.env.production.example"
+      - ".github/workflows/deploy-lint.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-lint-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # 用一个不会和真实域名冲突的名字；证书也只在这个名字下生成。
+  CI_DOMAIN: example.test
+  NGINX_IMAGE: nginx:1.27-alpine
+
+jobs:
+  config:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # 构造一份「能解析」的 .env：只填必填项，值是明显的假值。
+      # 目的是让 `compose config` 走到变量替换那一步，而不是停在缺值报错。
+      # 注意：这里验证的是**结构**，不是安全（假口令不进任何真实环境）。
+      - name: 准备 CI 用的 .env
+        working-directory: backend-java
+        run: |
+          set -euo pipefail
+          cp .env.production.example .env
+          sed -i \
+            -e "s|^DOMAIN=.*|DOMAIN=${CI_DOMAIN}|" \
+            -e "s|^OTAKU_PUBLIC_BASE_URL=.*|OTAKU_PUBLIC_BASE_URL=https://${CI_DOMAIN}|" \
+            -e "s|^DB_PASSWORD=.*|DB_PASSWORD=ci-not-a-real-password|" \
+            -e "s|^DB_ROOT_PASSWORD=.*|DB_ROOT_PASSWORD=ci-not-a-real-password|" \
+            -e "s|^OTAKU_INTERNAL_TOKEN=.*|OTAKU_INTERNAL_TOKEN=ci-not-a-real-token|" \
+            .env
+          echo "--- 生效的必填项（值已打码）---"
+          grep -E '^(DOMAIN|BACKEND_BIND|BACKEND_PORT)=' .env
+
+      # 两个文件都要过：compose.yaml 是本地开发用的，compose.prod.yaml 是部署用的。
+      # 后者更容易坏——它依赖 .env 里的必填项，少一个就整份起不来。
+      - name: compose 能解析（开发 + 生产）
+        working-directory: backend-java
+        run: |
+          set -euo pipefail
+          docker compose -f compose.yaml config --quiet
+          echo "compose.yaml OK"
+          docker compose -f compose.prod.yaml config --quiet
+          echo "compose.prod.yaml OK"
+          # certbot 在 tools profile 里：确认它存在且能被单独调起（deploy/*.sh 依赖这点）
+          docker compose -f compose.prod.yaml --profile tools config --services | sort
+
+      # 缺 DOMAIN 时必须**立刻失败**，而不是起一个 server_name 是空值的 nginx。
+      # 这条是在验证「快速失败」本身，很容易在重构 env 示例时被弄丢。
+      - name: 缺 DOMAIN 必须快速失败
+        working-directory: backend-java
+        run: |
+          set -euo pipefail
+          if DOMAIN= docker compose -f compose.prod.yaml config --quiet 2>/tmp/err.txt; then
+            echo "::error::DOMAIN 为空时 compose 仍然解析成功——必填校验丢了"
+            exit 1
+          fi
+          echo "符合预期：$(head -1 /tmp/err.txt)"
+
+      # nginx -t 会**真的读证书文件**，所以得先有一张。用 1 天自签即可——
+      # 这一步只验证配置语法，不验证证书链。
+      - name: 生成临时自签证书
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/tls"
+          openssl req -x509 -nodes -newkey rsa:2048 -days 1 \
+            -keyout "$RUNNER_TEMP/tls/privkey.pem" \
+            -out    "$RUNNER_TEMP/tls/fullchain.pem" \
+            -subj   "/CN=${CI_DOMAIN}" >/dev/null 2>&1
+          openssl x509 -in "$RUNNER_TEMP/tls/fullchain.pem" -noout -subject
+
+      # 先单独拉镜像：否则 `docker run` 的拉取进度会混进 nginx 的输出，
+      # 真正那句 `[emerg] ...` 会被冲掉（我第一次就是这么丢了报错）。
+      - name: 拉取 nginx 镜像
+        run: docker pull "$NGINX_IMAGE"
+
+      # 关键一步：容器启动时 entrypoint 会先把 templates/*.template 用 envsubst
+      # 渲染成 conf.d/default.conf，然后才执行 `nginx -t`。所以这里验证的是
+      # **渲染后**的配置，而不是模板原样——占位符写错会在这里暴露。
+      #
+      # 失败时的诊断顺序：原始输出 → 渲染后的配置。后者能直接看出
+      # 「占位符有没有被替换」，比只看 emerg 行更快。
+      - name: nginx -t（模板渲染后）
+        run: |
+          set -euo pipefail
+          run_nginx() {
+            docker run --rm \
+              --add-host backend:127.0.0.1 \
+              -v "$PWD/backend-java/nginx/nginx.conf:/etc/nginx/nginx.conf:ro" \
+              -v "$PWD/backend-java/nginx/templates:/etc/nginx/templates:ro" \
+              -v "$PWD/backend-java/nginx/conf.d:/etc/nginx/conf.d" \
+              -v "$RUNNER_TEMP/tls:/etc/letsencrypt/live/${CI_DOMAIN}:ro" \
+              -e "DOMAIN=${CI_DOMAIN}" \
+              -e "BACKEND_UPSTREAM=backend:8080" \
+              "$NGINX_IMAGE" "$@"
+          }
+
+          if ! out=$(run_nginx nginx -t 2>&1); then
+            echo "::group::nginx -t 原始输出"
+            printf '%s\n' "$out"
+            echo "::endgroup::"
+            echo "::group::渲染后的 server 配置"
+            run_nginx sh -c 'sed -n "1,50p" /etc/nginx/conf.d/default.conf' 2>&1 || true
+            echo "::endgroup::"
+            err=$(printf '%s\n' "$out" | grep -Ei 'emerg|error|cannot|unknown|permission' | tail -1)
+            echo "::error::nginx -t 失败：${err:-见上方 group 输出}"
+            exit 1
+          fi
+          printf '%s\n' "$out"
+
+      # `nginx -t` 只说明配置合法，不说明它**真的能服务**。
+      # 这一步把它跑起来，验两件用户可见的事：
+      #   /healthz → 200（容器健康检查依赖它，写错会导致容器永远 unhealthy）
+      #   /api/works → 301（HTTP 必须跳到 HTTPS，否则等于明文服务）
+      # 之所以能在没有后端的情况下验 /api/works：它在 location / 里，只做跳转，不反代。
+      - name: 真起一次，验证 /healthz 与 301 跳转
+        run: |
+          set -euo pipefail
+          # --add-host：`proxy_pass http://backend:8080` 里的 host 在**加载配置时**解析，
+          # CI 里没有 compose 的 DNS，不补这条 nginx 会直接 [emerg] host not found。
+          # 这条只补测试环境，生产配置不动——生产里 backend 由 compose 网络提供。
+          docker run -d --name nginx-ci -p 18080:80 \
+            --add-host backend:127.0.0.1 \
+            -v "$PWD/backend-java/nginx/nginx.conf:/etc/nginx/nginx.conf:ro" \
+            -v "$PWD/backend-java/nginx/templates:/etc/nginx/templates:ro" \
+            -v "$PWD/backend-java/nginx/conf.d:/etc/nginx/conf.d" \
+            -v "$RUNNER_TEMP/tls:/etc/letsencrypt/live/${CI_DOMAIN}:ro" \
+            -e "DOMAIN=${CI_DOMAIN}" \
+            -e "BACKEND_UPSTREAM=backend:8080" \
+            "$NGINX_IMAGE"
+
+          cleanup() { docker rm -f nginx-ci >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+
+          for i in $(seq 1 20); do
+            if curl -fsS --max-time 2 http://127.0.0.1:18080/healthz >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+
+          echo "--- /healthz ---"
+          body=$(curl -fsS --max-time 5 http://127.0.0.1:18080/healthz)
+          echo "body=$body"
+          [ "$body" = "ok" ] || { echo "::error::/healthz 返回 '$body'，期望 'ok'"; exit 1; }
+
+          echo "--- 未匹配 Host 的请求不该落到 Nginx 欢迎页（conf.d 覆盖是否生效）---"
+          root=$(curl -s --max-time 5 http://127.0.0.1:18080/)
+          if printf '%s' "$root" | grep -qi "welcome to nginx"; then
+            echo "::error::镜像自带的 default.conf 没被盖掉，欢迎页暴露了"
+            exit 1
+          fi
+
+          echo "--- /api/works 应 301 到 https ---"
+          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 -H "Host: ${CI_DOMAIN}" http://127.0.0.1:18080/api/works)
+          loc=$(curl -s -o /dev/null -D - --max-time 5 -H "Host: ${CI_DOMAIN}" http://127.0.0.1:18080/api/works | tr -d '\r' | awk -F': ' 'tolower($1)=="location"{print $2}')
+          echo "status=$code location=$loc"
+          [ "$code" = "301" ] || { echo "::error::期望 301，实际 $code"; exit 1; }
+          case "$loc" in
+            https://*) ;;
+            *) echo "::error::Location 不是 https：$loc"; exit 1 ;;
+          esac
+
+      # 脚本语法。`bash -n` 只查语法，不查逻辑——但它能挡住「少一个 fi / done」
+      # 这类在 cron 里静默失败的错。
+      - name: 运维脚本语法
+        run: |
+          set -euo pipefail
+          for f in backend-java/deploy/*.sh; do
+            bash -n "$f"
+            echo "OK $f"
+          done
+          # 可执行位丢了的话，cron 里 `./deploy/backup.sh` 会 permission denied
+          for f in backend-java/deploy/*.sh; do
+            [ -x "$f" ] || { echo "::error::$f 没有可执行位（cron 会跑不起来）"; exit 1; }
+          done
