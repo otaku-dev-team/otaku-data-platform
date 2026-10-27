@@ -10,7 +10,7 @@
 ```bash
 python scripts/devtest.py                  # 自动看改动 → 选跑 → 只回结论
 python scripts/devtest.py --collect        # 只看选跑计划，不执行
-python scripts/devtest.py --gate           # 跑测试 + 契约校验（≈ 本地过一遍 CI）
+python scripts/devtest.py --gate           # 跑测试 + 本机可跑的 CI 守卫（契约、站点隔离）
 python scripts/devtest.py --rerun-failed   # 只重跑上次失败的用例（精确到方法）
 python scripts/devtest.py --retry 1        # 失败用例复跑一次，复跑通过则标「疑似不稳定」
 python scripts/devtest.py --slow 5         # 顺便列最慢的 5 个用例
