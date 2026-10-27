@@ -12,7 +12,7 @@ class TagChips extends StatelessWidget {
     required this.tags,
     this.maxVisible = 4,
     this.onTag,
-    this.selectedTag,
+    this.selectedTags = const <String>{},
   });
 
   final List<String>? tags;
@@ -23,9 +23,12 @@ class TagChips extends StatelessWidget {
   /// 点了某个标签就回调它；`null` 表示纯展示。
   final ValueChanged<String>? onTag;
 
-  /// 当前正在筛选的标签。传了会把它标出来——否则筛完之后卡片上的标签
-  /// 和没筛时长得一样，用户不知道自己处在筛选状态。
-  final String? selectedTag;
+  /// 当前参与筛选的标签集合。传了会把命中的标签标出来——否则筛完之后
+  /// 卡片上的标签和没筛时长得一样，用户不知道自己处在筛选状态。
+  ///
+  /// 是集合而不是单个：多标签 AND 筛选时，一张卡片上可能有多个标签同时生效，
+  /// 只标一个会让用户以为另一个没起作用。
+  final Set<String> selectedTags;
 
   @override
   Widget build(BuildContext context) {
@@ -45,7 +48,7 @@ class TagChips extends StatelessWidget {
             label: tag,
             textStyle: textTheme.labelSmall,
             scheme: scheme,
-            selected: tag == selectedTag,
+            selected: selectedTags.contains(tag),
             onTap: onTag,
           ),
       ],

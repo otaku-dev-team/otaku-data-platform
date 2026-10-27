@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/network/api_exception.dart';
+import '../../core/util/tag_filter.dart';
 import '../../data/models/work_sort.dart';
 import '../../data/models/work_summary.dart';
 import '../../data/models/work_type.dart';
@@ -14,18 +15,21 @@ class ContentsFilter {
     this.type,
     this.query = '',
     this.sort = WorkSort.id,
-    this.tag,
+    this.tags = const [],
     this.year,
   });
 
   final WorkType? type;
   final String query;
 
-  /// 标签筛选（契约 `tag=`）。`null` 表示不过滤。
+  /// 多标签筛选（契约 `tags=a,b`，**AND**，最多 10 个）。空列表表示不过滤。
   ///
   /// 与 [type] / [query] / [sort] 是同一层的条件：变了就得重新查第一页，
   /// 只筛本地列表是错的——服务端手里才有全量数据。
-  final String? tag;
+  ///
+  /// 保持**选择顺序**（界面上 chip 按点的先后排），但缓存键会排序，
+  /// 所以「先科幻后机战」与反过来命中同一条缓存。
+  final List<String> tags;
 
   /// 年份筛选（契约 `year=`，等值）。`null` 表示不限年份。
   ///
@@ -42,11 +46,12 @@ class ContentsFilter {
       other.type == type &&
       other.query == query &&
       other.sort == sort &&
-      other.tag == tag &&
+      listEquals(other.tags, tags) &&
       other.year == year;
 
   @override
-  int get hashCode => Object.hash(type, query, sort, tag, year);
+  int get hashCode =>
+      Object.hash(type, query, sort, Object.hashAll(tags), year);
 
   /// 只改一个条件、其余原样带走。
   ///
@@ -57,8 +62,7 @@ class ContentsFilter {
     bool clearType = false,
     String? query,
     WorkSort? sort,
-    String? tag,
-    bool clearTag = false,
+    List<String>? tags,
     int? year,
     bool clearYear = false,
   }) {
@@ -66,7 +70,7 @@ class ContentsFilter {
       type: clearType ? null : (type ?? this.type),
       query: query ?? this.query,
       sort: sort ?? this.sort,
-      tag: clearTag ? null : (tag ?? this.tag),
+      tags: tags == null ? this.tags : normalizeTags(tags),
       year: clearYear ? null : (year ?? this.year),
     );
   }
@@ -112,7 +116,7 @@ class ContentsFilterController extends Notifier<ContentsFilter> {
   void showType(WorkType? type) {
     if (state.type == type &&
         state.query.isEmpty &&
-        state.tag == null &&
+        state.tags.isEmpty &&
         state.year == null &&
         state.sort == WorkSort.id) {
       return;
@@ -125,19 +129,44 @@ class ContentsFilterController extends Notifier<ContentsFilter> {
     if (state.sort == WorkSort.rating &&
         state.type == null &&
         state.query.isEmpty &&
-        state.tag == null &&
+        state.tags.isEmpty &&
         state.year == null) {
       return;
     }
     state = const ContentsFilter(sort: WorkSort.rating);
   }
 
-  /// 按标签筛选。传 `null` 或空串表示取消筛选（点已选中的标签、或点清除）。
+  /// 整体替换标签条件（面板里点「应用」走这条）。
+  ///
+  /// 传空列表表示取消标签筛选；超过 10 个会被 [normalizeTags] 截断，
+  /// 面板那边会先把上限提示出来，不靠这里静默吞掉。
+  void selectTags(List<String> tags) {
+    final next = normalizeTags(tags);
+    if (listEquals(next, state.tags)) return;
+    state = state.copyWith(tags: next);
+  }
+
+  /// 单选切换：点一个标签加入/移出当前条件。
+  ///
+  /// 详情页的标签与卡片上的标签走这条——它们只有单标签语义，
+  /// 但**不应该把用户已经选好的其它标签清掉**（那是我上一版的行为，
+  /// 用户从列表筛了两个标签、点详情再点第三个，回来只剩一个）。
+  void toggleTag(String tag) {
+    final name = tag.trim();
+    if (name.isEmpty) return;
+
+    final next = List<String>.of(state.tags);
+    if (!next.remove(name)) {
+      if (next.length >= maxFilterTags) return;
+      next.add(name);
+    }
+    state = state.copyWith(tags: next);
+  }
+
+  /// 兼容单标签语义的调用方：`null` / 空串表示取消。
   void selectTag(String? tag) {
     final trimmed = tag?.trim();
-    final next = (trimmed == null || trimmed.isEmpty) ? null : trimmed;
-    if (next == state.tag) return;
-    state = state.copyWith(tag: next, clearTag: next == null);
+    selectTags(trimmed == null || trimmed.isEmpty ? const [] : [trimmed]);
   }
 
   /// 从详情页点标签进来：**只保留标签**，清掉类型 / 搜索 / 年份 / 排序。
@@ -149,14 +178,14 @@ class ContentsFilterController extends Notifier<ContentsFilter> {
   void showTag(String tag) {
     final trimmed = tag.trim();
     if (trimmed.isEmpty) return;
-    if (state.tag == trimmed &&
+    if (listEquals(state.tags, [trimmed]) &&
         state.type == null &&
         state.query.isEmpty &&
         state.year == null &&
         state.sort == WorkSort.id) {
       return;
     }
-    state = ContentsFilter(tag: trimmed);
+    state = ContentsFilter(tags: [trimmed]);
   }
 
   /// 清掉全部筛选条件（类型 / 关键词 / 标签 / 年份），**保留排序**。
@@ -166,7 +195,7 @@ class ContentsFilterController extends Notifier<ContentsFilter> {
   void clearFilters() {
     if (state.type == null &&
         state.query.isEmpty &&
-        state.tag == null &&
+        state.tags.isEmpty &&
         state.year == null) {
       return;
     }
@@ -257,7 +286,7 @@ class ContentsController extends AsyncNotifier<ContentsData> {
       query: filter.query,
       sort: filter.sort,
       page: 1,
-      tag: filter.tag,
+      tags: filter.tags,
       year: filter.year,
     );
     final result = fetched.value;
@@ -290,7 +319,7 @@ class ContentsController extends AsyncNotifier<ContentsData> {
         // 第 1 页接不上（重复或漏条）。
         sort: filter.sort,
         page: current.page + 1,
-        tag: filter.tag,
+        tags: filter.tags,
         year: filter.year,
       );
       final next = fetched.value;

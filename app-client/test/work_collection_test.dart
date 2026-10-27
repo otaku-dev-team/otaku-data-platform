@@ -38,7 +38,7 @@ class _FakeWorkSource implements WorkDataSource {
     WorkSort sort = WorkSort.id,
     int page = 1,
     int pageSize = 20,
-    String? tag,
+    List<String>? tags,
   
     int? year,}) async {
     return PagedResult<WorkSummary>(

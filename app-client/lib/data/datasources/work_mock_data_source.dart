@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../../core/config/app_config.dart';
 import '../../core/network/api_exception.dart';
+import '../../core/util/tag_filter.dart';
 import '../models/paged_result.dart';
 import '../models/related_works.dart';
 import '../models/work.dart';
@@ -68,15 +69,14 @@ class MockWorkDataSource implements WorkDataSource {
     WorkSort sort = WorkSort.id,
     int page = 1,
     int pageSize = AppConfig.pageSize,
-    String? tag,
+    List<String>? tags,
     int? year,
   }) async {
     if (latency > Duration.zero) await Future<void>.delayed(latency);
 
     final catalog = await _loadCatalog();
     final keyword = query?.trim().toLowerCase() ?? '';
-    // 标签归一：不 trim 不比大小写之外的东西，契约就是「精确匹配整个标签」。
-    final wantedTag = tag?.trim() ?? '';
+    final wantedTags = normalizeTags(tags);
     final filtered = catalog.where((work) {
       if (type != null && type != WorkType.unknown && work.workType != type) {
         return false;
@@ -85,11 +85,12 @@ class MockWorkDataSource implements WorkDataSource {
       if (keyword.isNotEmpty && !work.title.toLowerCase().contains(keyword)) {
         return false;
       }
-      // 契约：`tag` 精确匹配**整个**标签——`科幻` 不命中 `科幻机甲`。
-      // 未知标签返回空数组而不是报错，与服务端同语义。
-      if (wantedTag.isNotEmpty) {
-        final tags = work.tags;
-        if (tags == null || !tags.contains(wantedTag)) return false;
+      // 多标签是 **AND**：每个选中的标签都必须命中（与服务端同语义）。
+      // 标签是整个匹配——`科幻` 不命中 `科幻机甲`。
+      if (wantedTags.isNotEmpty) {
+        final workTags = work.tags;
+        if (workTags == null) return false;
+        if (!wantedTags.every(workTags.contains)) return false;
       }
       // 年份是等值筛选，`null`（不知道哪一年）会被排除——与服务端一致。
       if (year != null && work.releaseYear != year) return false;

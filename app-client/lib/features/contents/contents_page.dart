@@ -21,6 +21,7 @@ import '../../shared/widgets/offline_notice.dart';
 import '../../shared/widgets/skeleton_list.dart';
 import 'catalog_counts.dart';
 import 'contents_controller.dart';
+import 'tag_picker.dart';
 import 'search_history_controller.dart';
 import 'work_card.dart';
 import 'work_list_tile.dart';
@@ -333,6 +334,8 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
                         .selectType(type),
                     onViewChanged: (next) =>
                         ref.read(catalogViewProvider.notifier).select(next),
+                    tags: filter.tags,
+                    onTagsPressed: () => _openTagPicker(filter),
                   ),
                   // 当前筛选状态 + 逐项清除入口。
                   //
@@ -340,7 +343,7 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
                   // 一屏 50 张卡里只看一张时，用户很容易不知道自己筛过标签，
                   // 也不知道为什么结果变少了。空结果时尤其重要——
                   // 「按『科幻』筛出 0 部」和「库里没有科幻」是两回事。
-                  if (filter.tag != null || filter.year != null)
+                  if (filter.tags.isNotEmpty || filter.year != null)
                     _ActiveFiltersBar(
                       filter: filter,
                       // `tag` 与 `q` 同用约 720ms（后端实测：LIKE '%kw%' 与
@@ -417,22 +420,35 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
   Widget _buildEmpty(ContentsFilter filter) {
     final searching = filter.query.isNotEmpty;
     final hasType = filter.type != null;
-    final tag = filter.tag;
+    final tags = filter.tags;
+    final year = filter.year;
 
     // 按标签筛出 0 条与「库里没有东西」是两回事，文案必须分开：
     // 契约里未知标签返 `200 + 空数组`（不是 404），所以这一屏是**筛太窄**，
     // 不是**没数据**。说成「这里还没有作品」会让用户以为同步没跑完。
-    final filtering = searching || hasType || tag != null;
+    final filtering =
+        searching || hasType || tags.isNotEmpty || year != null;
     final (title, message) = switch (null) {
-      _ when tag != null && searching => (
+      // 多标签是 AND：选的越多越窄，空结果时最该解释的就是这层关系，
+      // 否则用户会以为是「标签库里没数据」。
+      _ when tags.length > 1 => (
+        '这几个标签没有同时命中的作品',
+        '标签之间是「并且」关系——「${tags.join('」「')}」得同时命中。'
+            '去掉一个标签再看看',
+      ),
+      _ when tags.length == 1 && searching => (
         '这个标签下没有匹配的作品',
-        '「$tag」与关键词「${filter.query}」同时筛选超出了当前检索能力，'
+        '「${tags.first}」与关键词「${filter.query}」同时筛选超出了当前检索能力，'
             '去掉一个条件试试',
       ),
-      _ when tag != null => (
+      _ when tags.length == 1 => (
         '没有这个标签的作品',
-        '「$tag」是精确匹配——「科幻」不会包含「科幻机甲」。'
+        '「${tags.first}」是精确匹配——「科幻」不会包含「科幻机甲」。'
             '换个标签或清除筛选看看',
+      ),
+      _ when year != null => (
+        '$year 年没有作品',
+        '年份是精确匹配；换一年，或清除筛选看看全部内容',
       ),
       _ when searching => (
         '没有匹配的作品',
@@ -467,6 +483,13 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
         ],
       ),
     );
+  }
+
+  /// 打开标签面板；用户点了「应用」才替换条件（取消不动）。
+  Future<void> _openTagPicker(ContentsFilter filter) async {
+    final picked = await showTagPicker(context, selected: filter.tags);
+    if (picked == null || !mounted) return;
+    ref.read(contentsFilterProvider.notifier).selectTags(picked);
   }
 
   /// 清空筛选条件，并把搜索框的可见文本一起清掉。
@@ -671,13 +694,13 @@ class _ActiveFiltersBar extends ConsumerWidget {
         runSpacing: 2,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          if (filter.tag != null)
+          for (final tag in filter.tags)
             InputChip(
               avatar: const Icon(Icons.sell_outlined, size: 14),
-              label: Text('标签：${filter.tag}'),
+              label: Text('标签：$tag'),
               visualDensity: VisualDensity.compact,
-              deleteButtonTooltipMessage: '取消标签筛选',
-              onDeleted: () => controller.selectTag(null),
+              deleteButtonTooltipMessage: '取消「$tag」',
+              onDeleted: () => controller.toggleTag(tag),
             ),
           if (filter.year != null)
             InputChip(
@@ -687,7 +710,7 @@ class _ActiveFiltersBar extends ConsumerWidget {
               deleteButtonTooltipMessage: '取消年份筛选',
               onDeleted: () => controller.selectYear(null),
             ),
-          if (filter.tag != null && searchBlocked)
+          if (filter.tags.isNotEmpty && searchBlocked)
             Text(
               '标签与关键词同时筛选较慢',
               style: theme.textTheme.bodySmall?.copyWith(
@@ -790,6 +813,8 @@ class _FilterRow extends StatelessWidget {
     required this.view,
     required this.onSelected,
     required this.onViewChanged,
+    required this.tags,
+    required this.onTagsPressed,
   });
 
   final WorkType? selected;
@@ -798,6 +823,10 @@ class _FilterRow extends StatelessWidget {
   final CatalogView view;
   final ValueChanged<WorkType?> onSelected;
   final ValueChanged<CatalogView> onViewChanged;
+
+  /// 当前选中的标签（决定入口上的计数与高亮）。
+  final List<String> tags;
+  final VoidCallback onTagsPressed;
 
   @override
   Widget build(BuildContext context) {
@@ -820,6 +849,26 @@ class _FilterRow extends StatelessWidget {
                     _chip(context, label: '全部', type: null),
                     for (final type in WorkType.selectable)
                       _chip(context, label: type.label, type: type),
+                    // 标签入口放在 chips 末尾而不是 AppBar：AppBar 已经挤了
+                    // 刷新 / 资讯 / 收藏 / 新番 / 年份 / 排序 / 账号七个动作，
+                    // 在 800px 宽的窗口下会溢出（实测 6px）。
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: ActionChip(
+                        avatar: Icon(
+                          Icons.sell_outlined,
+                          size: 16,
+                          color: tags.isEmpty
+                              ? null
+                              : Theme.of(context).colorScheme.primary,
+                        ),
+                        label: Text(
+                          tags.isEmpty ? '标签' : '标签 ${tags.length}',
+                        ),
+                        visualDensity: VisualDensity.compact,
+                        onPressed: onTagsPressed,
+                      ),
+                    ),
                   ],
                 ),
               ),
