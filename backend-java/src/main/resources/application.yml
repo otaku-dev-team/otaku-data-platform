@@ -46,7 +46,7 @@ app:
     # 作品/标签/档期/资讯等公共读：每分钟每 IP
     public-per-minute: ${OTAKU_RATE_LIMIT_PUBLIC_PER_MINUTE:600}
     # 封面更严：它会回源并缓存，被当图床的代价是带宽 + 回源
-    cover-per-minute: ${OTAKU_RATE_LIMIT_COVER_PER_MINUTE:120}
+    cover-per-minute: ${OTAKU_RATE_LIMIT_COVER_PER_MINUTE:240}
     # 上 Nginx / 反代之后必须打开，否则所有请求都会算到反代 IP 上（限流退化成全局限流）
     trust-forwarded-for: ${OTAKU_TRUST_FORWARDED_FOR:false}
   cover:

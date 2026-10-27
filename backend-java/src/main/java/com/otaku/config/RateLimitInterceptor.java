@@ -34,8 +34,16 @@ import java.nio.charset.StandardCharsets;
 public class RateLimitInterceptor implements HandlerInterceptor {
 
     private static final String COVER_PREFIX = "/api/covers/";
-    /** 桶容量 = 每分钟额度 / 4（约 15 秒的突发），至少 1。 */
-    private static final int BURST_DIVISOR = 4;
+    /**
+     * 桶容量除数：公共读 1/4（约 15 秒突发），封面 1/2。
+     *
+     * <p>封面为什么放宽：正常首屏就是 20 个封面，滚动时会连续取图；
+     * 实测按 1/4（120/min → 突发 30）时，一次 130 张的连续请求里有 101 张被 429，
+     * 正常浏览会被误伤。放宽到 1/2 后仍然是"每分钟 240 张"的硬上限，
+     * 挡滥用靠的是持续速率，不是把正常请求卡死。
+     */
+    private static final int PUBLIC_BURST_DIVISOR = 4;
+    private static final int COVER_BURST_DIVISOR = 2;
 
     private final IpRateLimiter limiter;
     private final ObjectMapper objectMapper;
@@ -66,7 +74,7 @@ public class RateLimitInterceptor implements HandlerInterceptor {
         }
         boolean cover = request.getRequestURI().startsWith(COVER_PREFIX);
         int perMinute = cover ? coverPerMinute : publicPerMinute;
-        int burst = Math.max(1, perMinute / BURST_DIVISOR);
+        int burst = Math.max(1, perMinute / (cover ? COVER_BURST_DIVISOR : PUBLIC_BURST_DIVISOR));
         String bucket = cover ? "cover" : "public";
         String key = clientIp(request) + "|" + bucket;
 
