@@ -14,6 +14,17 @@ from .exporter import (
     export_dataset,
     read_meta,
 )
+from .manifest import (
+    MANIFEST_VERSION,
+    DiffReport,
+    KindDiff,
+    Manifest,
+    build_manifest,
+    diff_manifests,
+    is_compatible,
+    load_manifest,
+    save_manifest,
+)
 from .mapping import DatasetMapping, MappingError, probe_sqlite, resolve
 from .publisher import CHUNK_LIMIT, PublishReport, make_batch_id, publish_dataset
 from .schema import DATASET_TABLES, DATASET_VERSION, EXPORTER_VERSION
@@ -24,15 +35,24 @@ __all__ = [
     "DATASET_TABLES",
     "DATASET_VERSION",
     "DatasetMapping",
+    "DiffReport",
     "EXPORTER_VERSION",
     "ExportReport",
+    "KindDiff",
+    "MANIFEST_VERSION",
+    "Manifest",
     "MappingError",
     "PublishReport",
     "assert_compatible",
+    "build_manifest",
+    "diff_manifests",
     "export_dataset",
+    "is_compatible",
+    "load_manifest",
     "make_batch_id",
     "probe_sqlite",
     "publish_dataset",
     "read_meta",
     "resolve",
+    "save_manifest",
 ]

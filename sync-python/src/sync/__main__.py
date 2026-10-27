@@ -124,6 +124,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="越过破坏性结构变更继续导出（仅在确认映射已同步更新后使用）",
     )
     parser.add_argument(
+        "--manifest",
+        default=None,
+        help="上次快照的指纹文件，用于算出新增/改动/删除；默认 <数据集>.manifest.db",
+    )
+    parser.add_argument(
+        "--no-manifest",
+        action="store_true",
+        help="不生成也不比对指纹（跳过变更感知，回到「每次都当全新」）",
+    )
+    parser.add_argument(
         "--no-snapshot",
         action="store_true",
         help="不建一致性快照，直接读源库（仅在源库静止时使用）",
@@ -216,7 +226,88 @@ def _run_dataset_export(args) -> int:
         print("拒绝: " + "; ".join(f"{k}={v}" for k, v in report.rejected.items()))
     if report.warnings:
         print(f"警告 {len(report.warnings)} 条，详见 {report_path}")
+    _report_changes(args, report, out)
     return 0
+
+
+def _report_changes(args, report, dataset_path: str) -> None:
+    """把本轮数据集和上一轮比一遍：打印差集，再写入本轮指纹。
+
+    顺序不能反：先读旧、再算新、最后覆盖。反了就成了「拿自己比自己」，
+    永远输出「无变更」——这种静默错误最难发现。
+    """
+    if getattr(args, "no_manifest", False):
+        return
+
+    from .dataset import (
+        build_manifest,
+        diff_manifests,
+        is_compatible,
+        load_manifest,
+        save_manifest,
+    )
+
+    manifest_path = args.manifest or f"{dataset_path}.manifest.db"
+    try:
+        previous = load_manifest(manifest_path)
+        first_run = not previous.entries
+        if not first_run and not is_compatible(manifest_path):
+            print("提示：旧指纹格式版本不同，本轮按首次处理（不硬比，避免误报全量变更）")
+            previous = previous.__class__()
+            first_run = True
+        current = build_manifest(dataset_path)
+        diff = diff_manifests(previous, current)
+        save_manifest(
+            manifest_path,
+            current,
+            source_id=report.source_id,
+            dataset_path=dataset_path,
+            dataset_fingerprint=report.source_fingerprint,
+            generated_at=report.generated_at,
+        )
+    except Exception as exc:  # 变更感知失败不该让一次成功的导出变成失败
+        print(f"警告：变更感知跳过（{type(exc).__name__}: {exc}）", file=sys.stderr)
+        return
+
+    if current.orphans:
+        detail = "; ".join(f"{k}={v}" for k, v in sorted(current.orphans.items()))
+        print(f"警告：有子表行找不到所属作品（映射 join 可能写漏）：{detail}")
+
+    if first_run:
+        print(
+            f"变更感知: 首次生成指纹（{current.total} 个实体），"
+            "下次运行起会显示新增/改动/删除"
+        )
+        return
+
+    if diff.is_empty:
+        print("变更: 无（与上次快照完全一致）")
+        return
+
+    print(
+        f"变更: 新增 {diff.added}  改动 {diff.changed}  删除 {diff.deleted}"
+        "（相对上次快照）"
+    )
+    for kind, kind_diff in sorted(diff.kinds.items()):
+        if kind_diff.is_empty:
+            continue
+        print(
+            f"  {kind}: +{len(kind_diff.added)} ~{len(kind_diff.changed)} "
+            f"-{len(kind_diff.deleted)}"
+        )
+    diff_path = f"{dataset_path}.diff.json"
+    payload = diff.to_dict()
+    payload["kinds"] = {
+        kind: {
+            "added": list(kind_diff.added),
+            "changed": list(kind_diff.changed),
+            "deleted": list(kind_diff.deleted),
+        }
+        for kind, kind_diff in sorted(diff.kinds.items())
+    }
+    with open(diff_path, "w", encoding="utf-8") as fh:
+        json.dump(payload, fh, ensure_ascii=False, indent=2)
+    print(f"差集已落盘: {diff_path}")
 
 
 def _run_dataset_publish(args) -> int:
