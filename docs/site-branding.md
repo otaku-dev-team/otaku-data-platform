@@ -23,6 +23,11 @@ label 与图标——运行时改它们，下次启动系统就认不出自己�
 
 ## 1. 现状（实现后）
 
+**这些值不要手敲。** [`build_site.sh`](../app-client/build_site.sh) / [`build_site.ps1`](../app-client/build_site.ps1)
+读 [`sites/<site>/site.conf`](../app-client/sites/otaku/site.conf)，一次把下表全部注入；手敲时漏一个
+不会报错，只会静默出错（漏 `API_BASE_URL` 是连错站，漏 `APP_ID` 是两个站互相覆盖）。
+下表用来说明「每个值落在哪」，排查时对照。
+
 | 品牌项 | 位置 | 注入方式 | 默认值 |
 |---|---|---|---|
 | 应用名（Dart 侧） | `lib/core/config/site_branding.dart` | `--dart-define=APP_NAME=…` | `Otaku` |
@@ -33,34 +38,44 @@ label 与图标——运行时改它们，下次启动系统就认不出自己�
 | Android 应用名 | `AndroidManifest.xml` 的 `@string/app_name`，值来自 `build.gradle.kts` 的 `resValue` | `-PappName=…` | `Otaku` |
 | Android 包名 | `build.gradle.kts` 的 `applicationId` | `-PappId=…` | `com.otaku.app` |
 | 图标（Android mipmap / Windows ico） | 资源文件 | **手工替换**（见 §3） | 首站图标 |
+| 以上全部（一把出包） | `build_site.sh` / `build_site.ps1` | `sites/<site>/site.conf` | 日常 `flutter run` 不受影响 |
 
 **默认不传任何参数时，行为与实现前完全一致**——`test/site_branding_test.dart` 钉住了这一点。
 日常开发不需要关心这套机制，它是交付时才用的。
 
 ---
 
-## 2. 换一个站要动什么（私有化交付 checklist）
+## 2. 换一个站要做什么（私有化交付 checklist）
 
-以「给站点 Acme 交付」为例：
-
-```bash
-# Android：应用名 + 包名 + 站点标识一起换
-flutter build apk --release \
-  --dart-define=APP_NAME='Acme 动漫' \
-  --dart-define=SITE_ID=acme_site \
-  --dart-define=API_BASE_URL=https://api.acme.example \
-  -PappName='Acme 动漫' \
-  -PappId=com.acme.otaku
-```
+### 2.1 建配置
 
 ```bash
-# 桌面：应用名 + 站点标识（包标识与公司名见 §3）
-flutter build windows --release \
-  --dart-define=APP_NAME='Acme 动漫' \
-  --dart-define=SITE_ID=acme_site
+cd app-client
+cp -r sites/otaku sites/acme
+$EDITOR sites/acme/site.conf      # 改 5 个值
 ```
 
-**必须一起换的三样**，少一个就会出现「装得上但连错站」：
+加完到 `scripts/site-registry.json` 登记该站的标记，否则产物隔离校验认不出它
+（规则见 [`sites/README.md`](../app-client/sites/README.md)）。
+
+### 2.2 出包
+
+```bash
+./build_site.sh --site acme --build-mode debug      # 联调包
+./build_site.sh --site acme                         # release，默认 Windows
+./build_site.sh --site acme --target apk --build-mode debug
+./build_site.sh --site acme --dry-run               # 只看将要执行的命令
+```
+
+Windows 上等价写法：`.\build_site.ps1 -Site acme`（参数同名，读同一份 `site.conf`）。
+
+脚本会打印注入了什么、产物落在哪，并对产物做一次品牌自检——在 `kernel_blob.bin`（debug）
+或 `app.so`（release）里找应用名。**找不到只警告不判失败**：AOT 可能把字符串优化掉，
+拿它当硬门槛会造出假红。
+
+### 2.3 脚本替你保证的三件事
+
+`APP_NAME` + `-PappName`、`SITE_ID`、`API_BASE_URL` 必须一起换，少一个的后果：
 
 1. `APP_NAME` + `-PappName`（Dart 侧标题与 Android Launcher 名）；
 2. `SITE_ID`（设置页与日志里这个客户端服务谁）；
@@ -96,11 +111,20 @@ flutter build windows --release \
 
 ## 5. 验证
 
+已验（2026-10-27）：
+
 - `flutter analyze` 干净；
 - `test/site_branding_test.dart` 5 项：默认应用名 / 站点标识同源 / 归属方 /
   窗口标题格式 / 版权行；
-- `flutter build apk --debug` 通过（验证 `resValue` 与 `@string/app_name` 真的能构建）；
-- `flutter build windows --debug` 通过。
+- **默认路径**：`./build_site.sh --site otaku` 与 `--build-mode debug` 都真跑过，
+  产物在 `build/windows/x64/runner/{Debug,Release}/otaku_app.exe`；
+  debug 的品牌自检命中 `kernel_blob.bin`、release 命中 `app.so`；
+- **覆盖路径**：临时站点 `sites/probe`（`APP_NAME="Acme Probe"` / `SITE_ID=acme_probe` /
+  `BRAND_COMPANY=com.acme`）构建后，三个值在产物里各命中 1 次。这一步是反证——
+  如果脚本没把值传进去，grep 会一个都找不到。验完已删除该临时站点，未入库。
 
-**未验**：换参数后的构建（`-PappName` / `-PappId` 覆盖）没有真跑一遍交付命令——
-默认路径验证过了，覆盖路径留待第一次真实交付时连同图标一起走查。
+仍未验（交付时补）：
+
+- **`-PappName` / `-PappId`（Android 系统级身份）**：脚本已按 `-P` 透传写好，
+  但本轮按要求先不动安卓，首次真机构建时确认一次透传是否生效；
+- 图标与 Windows 包标识：仍是人工替换（见 §3）。
