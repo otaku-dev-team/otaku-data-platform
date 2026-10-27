@@ -29,6 +29,6 @@ public class InternalAccountController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public UserDto create(@RequestBody CreateAccountRequest request) {
-        return authService.createAccount(request.username(), request.password());
+        return authService.createAccount(request.username(), request.password(), request.siteKey());
     }
 }

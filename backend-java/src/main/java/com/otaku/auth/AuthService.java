@@ -11,6 +11,7 @@ import com.otaku.session.SessionRecord;
 import com.otaku.session.SessionRepository;
 import com.otaku.user.UserRecord;
 import com.otaku.user.UserRepository;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -58,8 +59,22 @@ public class AuthService {
 
     /** 内部建号（POST /internal/accounts）：不返回会话，账号由负责人创建。 */
     public UserDto createAccount(String usernameRaw, String passwordRaw) {
+        return createAccount(usernameRaw, passwordRaw, null);
+    }
+
+    /**
+     * 内部建号，并指定归属站点（站主后台按它划范围）。
+     *
+     * <p>{@code siteKey} 为空 = 未归属站点：账号能登录客户端，但**任何站主后台都看不到、也禁不了**。
+     * 这是刻意的 fail-closed：宁可某个账号暂时没人管，也不能让它落到"猜出来的默认站"里。
+     *
+     * <p>站点是否存在交由外键兜底（{@code fk_user_site}），不在这里先查一遍——
+     * 先查后插之间仍有窗口，而且业务层多一次往返只为把错误信息写得更漂亮，不值得。
+     */
+    public UserDto createAccount(String usernameRaw, String passwordRaw, String siteKey) {
         String username = validateUsername(usernameRaw);
         String password = validatePassword(passwordRaw);
+        String site = StringUtils.hasText(siteKey) ? siteKey.trim() : null;
 
         if (userRepository.existsByUsername(username)) {
             throw new ApiException(ErrorCode.USERNAME_TAKEN, "用户名已被占用");
@@ -67,9 +82,11 @@ public class AuthService {
         LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
         try {
             userRepository.insert(new UserRecord(null, idGenerator.nextUserId(), username,
-                    passwordEncoder.encode(password), now, now));
+                    passwordEncoder.encode(password), site, UserRecord.STATUS_ACTIVE, null, now, now));
         } catch (DuplicateKeyException ex) {
             throw new ApiException(ErrorCode.USERNAME_TAKEN, "用户名已被占用");
+        } catch (DataIntegrityViolationException ex) {
+            throw ApiException.badRequest("站点不存在：" + site);
         }
         UserRecord saved = userRepository.findByUsername(username)
                 .orElseThrow(() -> new ApiException(ErrorCode.INTERNAL, "建号后读取用户失败"));
@@ -89,6 +106,11 @@ public class AuthService {
             throw new ApiException(ErrorCode.INVALID_CREDENTIALS, "账号或密码不正确");
         }
         loginThrottle.clear(username);
+        // 口令已经对上，才谈"被禁用"。顺序很重要：先判状态会让攻击者用错误口令探出账号是否存在/被封。
+        if (!found.get().active()) {
+            throw new ApiException(ErrorCode.USER_DISABLED,
+                    "该账号已被站点管理员禁用，无法登录客户端");
+        }
         return startSession(found.get(), request.deviceLabel());
     }
 
@@ -103,7 +125,8 @@ public class AuthService {
             return Optional.empty();
         }
         Optional<UserRecord> user = userRepository.findById(session.get().userPk());
-        if (user.isEmpty()) {
+        if (user.isEmpty() || !user.get().active()) {
+            // 被禁用后即使会话还没被撤销，也不能再放行（禁用时会撤销会话，这里是第二道）
             return Optional.empty();
         }
         SessionRecord record = session.get();

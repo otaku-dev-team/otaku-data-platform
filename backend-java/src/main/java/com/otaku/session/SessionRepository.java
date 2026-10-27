@@ -78,6 +78,23 @@ public class SessionRepository {
     }
 
     /**
+     * 撤销某个用户的**全部**会话；返回受影响行数。
+     *
+     * <p>只有一个调用点：站主后台禁用用户（Issue #144）。禁用必须当场生效——
+     * 只改 {@code app_user.status} 而不撤会话的话，已经登录的设备还能继续用 30 天，
+     * 站主会以为"禁用没生效"。
+     */
+    public int revokeAllForUser(long userPk, LocalDateTime now) {
+        return jdbc.update("""
+                        UPDATE user_session SET revoked_at = :now
+                         WHERE user_id = :userId AND revoked_at IS NULL
+                        """,
+                new MapSqlParameterSource()
+                        .addValue("userId", userPk)
+                        .addValue("now", now));
+    }
+
+    /**
      * 清理已过期或已撤销超过保留期的会话行。
      * 判定用"过期/撤销时间 < 截止点"，避免把刚过期但还在排查中的记录立刻删掉。
      */

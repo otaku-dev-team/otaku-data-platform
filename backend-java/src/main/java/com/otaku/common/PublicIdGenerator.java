@@ -47,6 +47,14 @@ public class PublicIdGenerator {
         return next("A-");
     }
 
+    /**
+     * 站主标识（G- = governor）。用独立前缀而不是复用 U-：站主不是 App 用户，
+     * 日志里 `G-…` 与 `U-…` 一眼可分，排查越权时不用先去查"这个 id 在哪张表"。
+     */
+    public String nextAdminId() {
+        return next("G-");
+    }
+
     public String next(String prefix) {
         byte[] bytes = new byte[RANDOM_BYTES];
         random.nextBytes(bytes);

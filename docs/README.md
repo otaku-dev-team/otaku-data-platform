@@ -29,6 +29,8 @@
 - [`docs/stage3-reliability-record.md`](stage3-reliability-record.md)：阶段 3 可靠性实测记录。
 - [`docs/identity-auth-endpoint-playbook.md`](identity-auth-endpoint-playbook.md)：站点授权端点预案与联调手册——标准 OAuth 授权码四端点、三点安全调整、self-revoke 三态、联调配置（凭据存环境变量，不入库）。
 - 平台侧令牌交换代理联调契约草案（PR #147，待三人确认）：用户表加列、账号映射与收藏迁移设计。
+- [`docs/site-owner-console-proposal.md`](site-owner-console-proposal.md)：**站主运营后台立项草案**（#144）——范围、权限模型、「禁用 ≠ 封网站账号」的边界，以及六项拍板结论；实现已落地，见下一行。
+- [`docs/site-owner-console.md`](site-owner-console.md)：**站主后台使用说明（首版）**——站主能做什么/不能做什么、数据隔离怎么保证、平台运维怎么开通站主、禁用到底禁了什么、已知未做。
 - [`docs/data-completeness-plan.md`](data-completeness-plan.md)：数据缺口体检与补齐路径（封面 / 评分 / 简介三线，结论：封面走 C+A）。
 - [`docs/client-enhancement-plan.md`](client-enhancement-plan.md)：客户端体验增强计划（边界状态、发现体验等轨道）。
 - [`docs/generalization-proposal.md`](generalization-proposal.md)：**未来目标**（当前不实施）——通用化方向 `custom_fields` + `display_template`；新决策须兼容它。
