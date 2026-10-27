@@ -81,8 +81,8 @@ void main() {
       expect(state.type, isNull);
       expect(state.query, isEmpty);
       // 从详情页跳过来是「看这个标签都有什么」，残留的排序会让首屏顺序
-      // 与「按标签浏览」的直觉不一致，所以一起复位。
-      expect(state.sort, WorkSort.id);
+      // 与「按标签浏览」的直觉不一致，所以一起复位到默认的年份排序。
+      expect(state.sort, WorkSort.year);
     });
 
     test('showTag 传空串不动现状', () {

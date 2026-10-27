@@ -165,7 +165,7 @@ void main() {
     child: MaterialApp(home: WorkDetailPage(workId: 'W-1')),
   );
 
-  testWidgets('列表默认按入库顺序请求，切到「评分最高」后带 sort=rating', (
+  testWidgets('列表默认按年份排序请求，切到「评分最高」后带 sort=rating', (
     tester,
   ) async {
     final source = _RecordingWorkSource();
@@ -174,9 +174,11 @@ void main() {
 
     // 不断言请求次数：`pumpAndSettle` 会跑很多帧，框架重 build 的次数与
     // 生产无关。要验的是"发出去的值"。
-    expect(source.sorts.first, WorkSort.id);
+    // 默认是 year：服务端的 id 升序等于「最早入库优先」，
+    // 生产库第一屏会是最早导入的那批，看起来像数据很旧。
+    expect(source.sorts.first, WorkSort.year);
 
-    await tester.tap(find.byTooltip('排序（当前：入库顺序）'));
+    await tester.tap(find.byTooltip('排序（当前：年份最新）'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('评分最高'));
     await tester.pumpAndSettle();

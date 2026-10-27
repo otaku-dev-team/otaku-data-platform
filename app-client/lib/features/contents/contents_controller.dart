@@ -9,12 +9,17 @@ import '../../data/models/work_type.dart';
 import '../../data/repositories/work_repository.dart';
 
 /// 列表的查询条件。类型、关键词、排序都放在这里，控制器通过 watch 它来重新加载。
+///
+/// **默认排序是 `year` 而不是契约的 `id`**：服务端的 `id` 是自增主键，升序等于
+/// 「最早入库优先」——生产库里第一屏永远是第一批灌进来的老数据，看起来像
+/// 「数据很旧」。`year` 有 91% 覆盖率（评分只有 36%），第一屏是近年作品，
+/// 更像一个作品库该有的样子。用户仍可在排序菜单里切回「入库顺序」。
 @immutable
 class ContentsFilter {
   const ContentsFilter({
     this.type,
     this.query = '',
-    this.sort = WorkSort.id,
+    this.sort = WorkSort.year,
     this.tags = const [],
     this.year,
   });
@@ -118,7 +123,7 @@ class ContentsFilterController extends Notifier<ContentsFilter> {
         state.query.isEmpty &&
         state.tags.isEmpty &&
         state.year == null &&
-        state.sort == WorkSort.id) {
+        state.sort == WorkSort.year) {
       return;
     }
     state = ContentsFilter(type: type);
@@ -182,7 +187,7 @@ class ContentsFilterController extends Notifier<ContentsFilter> {
         state.type == null &&
         state.query.isEmpty &&
         state.year == null &&
-        state.sort == WorkSort.id) {
+        state.sort == WorkSort.year) {
       return;
     }
     state = ContentsFilter(tags: [trimmed]);

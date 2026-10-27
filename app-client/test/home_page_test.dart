@@ -312,7 +312,8 @@ void main() {
       expect(filter.type, WorkType.anime);
       expect(filter.tags, isEmpty);
       expect(filter.query, isEmpty);
-      expect(filter.sort, WorkSort.id);
+      // 默认排序是年份（不是契约的 id）：id 升序等于最早入库优先。
+      expect(filter.sort, WorkSort.year);
     });
 
     test('showTopRated 只保留排序', () {
