@@ -5,14 +5,14 @@
 公开只读、无需鉴权（铁律 1）；字段能直接映射进现有 `WorkItem`；视觉小说
 落在现有 `work_type` 的 `game` 里，不需要为了验证去动枚举（红线）。W4 探针
 30 条一次导入 `rejected=0`。本次把那 40 行一次性脚本落成生产适配器，**复用**
-`OtakuSiteSource` 的限流、退避重试与失败记账，而不是另写一套。
+`FetchClient` 的限流、退避重试与失败记账，而不是另写一套。
 
 ## 接口形态
 
 VNDB 公开 API 是 **kana**（POST `https://api.vndb.org/kana/vn`，JSON 请求体）。
 与 Otaku 站点的 GET 分页不同，这里用 POST + 请求体里的 `page` / `results`，
 响应形如 `{"results":[...], "more": bool}`。翻页终止条件：本页为空或 `more`
-为 false（最后一页）——与 `_iter_raw` 的「空页 / 不满页」语义一致。
+为 false（最后一页）——与首站的「空页 / 不满页」语义一致。
 
 ## 封面白名单（接新站必做）
 
@@ -60,12 +60,8 @@ from ..config import (
     DEFAULT_PAGE_SIZE,
     DEFAULT_REQUEST_INTERVAL_SECONDS,
 )
+from ..fetching import FailedPage, FetchClient
 from ..models import SourceRecord, WorkItem
-from ..source import (
-    RETRYABLE_STATUS,
-    FailedPage,
-    OtakuSiteSource,
-)
 
 # kana API 基础地址。封面走单独的 `t.vndb.org`（见模块 docstring）。
 DEFAULT_VNDB_API_BASE_URL = "https://api.vndb.org/kana"
@@ -101,15 +97,17 @@ def _strip_bbcode(text: str | None) -> str | None:
     return clean_summary(_BBCODE_RE.sub("", text))
 
 
-class VndbSource(OtakuSiteSource):
+class VndbSource:
     """从 VNDB kana API 读取视觉小说并映射成 `WorkItem`。
 
-    完整复用父类的限流（`_throttle`）、退避重试（`_request`）与失败记账
-    （`failed_pages`）：只覆写「怎么发请求 / 怎么翻页 / 怎么映射」，抓取骨架
-    不动。这样接新站 = 一份映射 + 一个白名单条目（W4 结论），不用重写轮子。
+    抓取骨架是**组合**来的（`FetchClient`），不继承首站适配器：首站那 30 多个
+    方法里本类只用得上「发请求 + 失败记账」两件事，继承会把作品、档期、资讯
+    三套首站映射一并背上，改首站时还得担心波及这里。组合之后，接新站的成本
+    就是「一个 `FetchClient` + 一份映射 + 一个封面白名单条目」，
+    见 `sync/fetching.py`。
 
-    唯一的网络差异是 VNDB 用 POST 而不是 GET——这正是指定 `_request` 而不是
-    `_get` 的原因：父类把 GET 与 POST 收在同一个带重试的方法里，子类照用即可。
+    唯一的网络差异是 VNDB 用 POST 而不是 GET——`FetchClient` 把两种方法收在
+    同一套限流与重试里，这里直接 `post` 即可。
     """
 
     def __init__(
@@ -124,21 +122,39 @@ class VndbSource(OtakuSiteSource):
         max_attempts: int = 4,
         backoff_seconds: float = 2.0,
     ) -> None:
-        # 父类只认 base_url 当站点根；VNDB 这里就是 kana API 根。
         # page_size 在这里就截到 kana 的上限：超限是「请求本身不对」，
-        # 会让整批拉取直接失败（父类的 4xx 不重试、直接抛），所以必须在
+        # 会让整批拉取直接失败（抓取骨架对 4xx 不重试、直接抛），所以必须在
         # 发请求前就压好，不能等 API 报错才发现。
-        super().__init__(
-            base_url=base_url,
+        self.page_size = min(max(1, page_size), VNDB_MAX_RESULTS_PER_PAGE)
+        self.max_pages = max(1, max_pages)
+        # base_url 就是 kana API 根，不是站点根。
+        self.fetcher = FetchClient(
+            base_url,
             client=client,
             timeout=timeout,
             user_agent=user_agent,
-            page_size=min(page_size, VNDB_MAX_RESULTS_PER_PAGE),
             request_interval_seconds=request_interval_seconds,
-            max_pages=max_pages,
             max_attempts=max_attempts,
             backoff_seconds=backoff_seconds,
         )
+
+    @property
+    def base_url(self) -> str:
+        return self.fetcher.base_url
+
+    @property
+    def failed_pages(self) -> list[FailedPage]:
+        """`close()` 之后依然可读——`pipeline` 在 `with` 块外汇总报告。"""
+        return self.fetcher.failed_pages
+
+    def close(self) -> None:
+        self.fetcher.close()
+
+    def __enter__(self) -> "VndbSource":
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        self.close()
 
     # ------------------------------------------------------------------
     # 抓取：POST /vn + 分页
@@ -158,31 +174,23 @@ class VndbSource(OtakuSiteSource):
             "page": page,
             "results": page_size,
         }
-        resp = self._request("POST", VN_ENDPOINT, json=body)
+        resp = self.fetcher.post(VN_ENDPOINT, json=body)
         payload = resp.json()
         return payload if isinstance(payload, dict) else {"results": payload}
 
     def iter_raw(self) -> Iterator[list[dict[str, Any]]]:
-        """逐页产出 VNDB 记录，单页彻底失败时跳过并记账（复用父类口径）。
+        """逐页产出 VNDB 记录，单页彻底失败时跳过并记账（与首站同一套规则）。
 
         终止条件：本页为空、或响应 `more` 为 false、或本页不满一页。`max_pages`
-        只是安全阀。错误分类与父类 `iter_raw` 完全一致——可恢复的（5xx/429/
-        断连）记进 `failed_pages` 继续，不可恢复的（4xx 请求本身不对）直接抛。
+        只是安全阀。错误分类由 `FetchClient.attempt` 统一判定——可恢复的
+        （5xx/429/断连）记进 `failed_pages` 继续，不可恢复的（4xx 请求本身
+        不对）直接抛。
         """
         for page in range(1, self.max_pages + 1):
-            try:
-                payload = self._post_vn(page, self.page_size)
-            except httpx.HTTPStatusError as exc:
-                if exc.response.status_code not in RETRYABLE_STATUS:
-                    raise
-                self.failed_pages.append(
-                    FailedPage(VNDB_WORK_TYPE, page, f"HTTP {exc.response.status_code}")
-                )
-                continue
-            except httpx.TransportError as exc:
-                self.failed_pages.append(
-                    FailedPage(VNDB_WORK_TYPE, page, f"{type(exc).__name__}: {exc}")
-                )
+            payload = self.fetcher.attempt(
+                VNDB_WORK_TYPE, page, lambda: self._post_vn(page, self.page_size)
+            )
+            if payload is None:
                 continue
 
             results = payload.get("results") or []
