@@ -25,12 +25,13 @@
 
 错误信封：站点是 FastAPI 默认 `{"detail": ...}`，与本项目第 7 节的 `{error:{...}}` 不同，
 本模块只依赖 HTTP 状态码判定，不解析对方错误体。
+
+限流、退避重试与失败页记账**不在本模块实现**：那套规则与来源无关，已抽到
+`sync/fetching.py`（`FetchClient`），本模块只负责首站的翻页与字段映射。
 """
 
 from __future__ import annotations
 
-import time
-from dataclasses import dataclass
 from typing import Any, Iterable, Iterator, Sequence
 
 import httpx
@@ -55,6 +56,7 @@ from .config import (
     DEFAULT_PAGE_SIZE,
     DEFAULT_REQUEST_INTERVAL_SECONDS,
 )
+from .fetching import FailedPage, FetchClient
 from .models import ArticleItem, ScheduleItem, SourceRecord, WorkItem
 
 # 站点人读作品详情页。2026-10-21 实测：首页 HTML 里站点自己生成的卡片链接即此形态，
@@ -88,24 +90,6 @@ def unwrap(payload: Any) -> list[dict[str, Any]]:
     return list(payload or [])
 
 
-# 可以安全重试的状态码：408 超时、429 限流、5xx 服务端临时故障。
-# 4xx 里的 400/404/422 是"请求本身不对"，重试一万次也是同样的结果。
-RETRYABLE_STATUS = frozenset({408, 425, 429, 500, 502, 503, 504})
-
-# 网络层的瞬时故障。`TransportError` 盖住超时、连接失败与 RemoteProtocolError；
-# 最后一种尤其常见——来源站偶发直接断连，不做重试的话一次抖动就能让整批全量抓取白跑。
-RETRYABLE_TRANSPORT = httpx.TransportError
-
-
-@dataclass(frozen=True)
-class FailedPage:
-    """重试到底仍失败的页。记下来供重跑，别让它悄悄变成"少了几百条"。"""
-
-    work_type: str
-    page: int
-    reason: str
-
-
 class OtakuSiteSource:
     """读取现有网站的作品列表。"""
 
@@ -122,28 +106,37 @@ class OtakuSiteSource:
         max_attempts: int = 4,
         backoff_seconds: float = 2.0,
     ) -> None:
-        self.base_url = base_url.rstrip("/")
         self.page_size = max(1, page_size)
         # 档期有自己的 page_size（站点上限 100），与作品的分开存。
         # 请求与终止条件必须读同一个值：终止条件写死常量的话，
         # 测试里注不进小页码，分页逻辑就没法用少量样本验证。
         self.schedule_page_size = max(1, schedule_page_size)
-        self.request_interval_seconds = max(0.0, request_interval_seconds)
         self.max_pages = max(1, max_pages)
-        self.max_attempts = max(1, max_attempts)
-        self.backoff_seconds = max(0.0, backoff_seconds)
-        self._client = client or httpx.Client(
-            timeout=timeout, headers={"User-Agent": user_agent}
+        # 限流、重试、失败记账都归 FetchClient：那是来源无关的抓取骨架，
+        # 首站只提供「抓哪一页、怎么映射」。
+        self.fetcher = FetchClient(
+            base_url,
+            client=client,
+            timeout=timeout,
+            user_agent=user_agent,
+            request_interval_seconds=request_interval_seconds,
+            max_attempts=max_attempts,
+            backoff_seconds=backoff_seconds,
         )
-        self._owns_client = client is None
-        self._last_request_at = 0.0
-        # 重试到底也没拿到的页。不静默丢弃：调用方必须把它写进运行报告，
-        # 否则"跑完没报错"会让人误以为数据齐了。
-        self.failed_pages: list[FailedPage] = []
+
+    @property
+    def base_url(self) -> str:
+        """站点根地址（已去尾斜杠），拼接字段时到处要用。"""
+        return self.fetcher.base_url
+
+    @property
+    def failed_pages(self) -> list[FailedPage]:
+        """重试到底仍失败的页。**`close()` 之后依然可读**——调用方在
+        `with` 块外汇总报告，这是既有行为，别改成关闭即清空。"""
+        return self.fetcher.failed_pages
 
     def close(self) -> None:
-        if self._owns_client:
-            self._client.close()
+        self.fetcher.close()
 
     def __enter__(self) -> "OtakuSiteSource":
         return self
@@ -151,69 +144,11 @@ class OtakuSiteSource:
     def __exit__(self, *_: object) -> None:
         self.close()
 
-    def _throttle(self) -> None:
-        """把请求速率压在来源方要求的 1-2 req/s 区间内。"""
-        if self.request_interval_seconds <= 0:
-            return
-        elapsed = time.monotonic() - self._last_request_at
-        remaining = self.request_interval_seconds - elapsed
-        if remaining > 0:
-            time.sleep(remaining)
-        self._last_request_at = time.monotonic()
-
-    def _request(
-        self,
-        method: str,
-        path: str,
-        params: dict[str, Any] | None = None,
-        json: dict[str, Any] | None = None,
-    ) -> httpx.Response:
-        """带退避重试的请求（GET / POST 通用）。
-
-        来源站是公网服务：个别页要 30 秒以上（DB 慢查询）、偶发直接断连，
-        这两种都是**瞬时**的，下一次往往就好了。抓取层原先没有任何重试，
-        一次抖动就让整批全量抓取白跑——全量 90 页里碰上任意一页不稳定的概率
-        接近 1。重试只针对可恢复的错误，400/404/422 这类立刻抛出。
-
-        抽成 `_request` 是为了让 POST 也能用同一套重试：第二站 VNDB 的
-        kana API 是 POST + 请求体分页，与首站的 GET 分页形态不同，
-        但「限流 + 退避 + 只重试可恢复错误」的规则应当完全一致，
-        不该为 POST 再写一套。
-        """
-        last_exc: Exception | None = None
-        for attempt in range(1, self.max_attempts + 1):
-            self._throttle()
-            try:
-                resp = self._client.request(
-                    method, f"{self.base_url}{path}", params=params, json=json
-                )
-            except RETRYABLE_TRANSPORT as exc:
-                last_exc = exc
-            else:
-                if resp.status_code not in RETRYABLE_STATUS:
-                    resp.raise_for_status()
-                    return resp
-                last_exc = httpx.HTTPStatusError(
-                    f"{resp.status_code} from {path}",
-                    request=resp.request,
-                    response=resp,
-                )
-            if attempt < self.max_attempts:
-                # 指数退避：2s / 4s / 8s。限流口径按 1-2 req/s 算，
-                # 退避期间的等待本身就是额外的让路，不需要再叠加节流。
-                time.sleep(self.backoff_seconds * (2 ** (attempt - 1)))
-        assert last_exc is not None
-        raise last_exc
-
-    def _get(self, path: str, params: dict[str, Any] | None = None) -> httpx.Response:
-        """带退避重试的 GET。语义见 `_request`。"""
-        return self._request("GET", path, params=params)
-
     def fetch_page(
         self, work_type: str, page: int, page_size: int | None = None
     ) -> dict[str, Any]:
         """拉取单页。返回原始响应体，保留 total / total_pages 供调用方判断终止。"""
-        resp = self._get(
+        resp = self.fetcher.get(
             "/api/contents",
             {
                 "type": work_type,
@@ -250,24 +185,12 @@ class OtakuSiteSource:
     ) -> dict[str, Any] | None:
         """抓一页；可恢复的失败记账并返回 None，请求本身不对则直接抛。
 
-        与 `iter_raw` 的 try/except 原本是同一段，抽出来是为了让"补跑指定页"
-        复用同一套记账规则 —— 两处规则一旦漂移，补跑就会漏记或误判。
+        判定规则只有一份（`FetchClient.attempt`）：补跑指定页与顺序扫全量
+        必须走同一条规则，两处规则一旦漂移，补跑就会漏记或误判。
         """
-        try:
-            return self.fetch_page(work_type, page)
-        except httpx.HTTPStatusError as exc:
-            if exc.response.status_code not in RETRYABLE_STATUS:
-                raise
-            self.failed_pages.append(
-                FailedPage(work_type, page, f"HTTP {exc.response.status_code}")
-            )
-            return None
-        except httpx.TransportError as exc:
-            self.failed_pages.append(
-                FailedPage(work_type, page, f"{type(exc).__name__}: {exc}")
-            )
-            # 跳过这一页继续。丢 200 条可以重跑补，丢整批则前功尽弃。
-            return None
+        return self.fetcher.attempt(
+            work_type, page, lambda: self.fetch_page(work_type, page)
+        )
 
     def iter_raw(self, work_type: str) -> Iterator[list[dict[str, Any]]]:
         """逐页产出，单页彻底失败时跳过并记账。
@@ -323,7 +246,7 @@ class OtakuSiteSource:
         注意来源返回的是 {type, total, items:[...]} 结构，不是裸数组。
         top 里混有 TV / 剧场版 / 漫画改 这类形式词，使用时要自行过滤。
         """
-        resp = self._get("/api/tags", {"type": work_type, "limit": limit})
+        resp = self.fetcher.get("/api/tags", {"type": work_type, "limit": limit})
         payload = resp.json()
         if isinstance(payload, dict):
             return list(payload.get("items") or [])
@@ -331,7 +254,7 @@ class OtakuSiteSource:
 
     def search_raw(self, keyword: str, page: int = 1, page_size: int = 20) -> dict[str, Any]:
         """搜索接口，支持真正的分页。当前同步流程未使用，保留给后续增量同步。"""
-        resp = self._get(
+        resp = self.fetcher.get(
             "/api/contents/search",
             {"q": keyword, "page": page, "page_size": page_size},
         )
@@ -398,7 +321,7 @@ class OtakuSiteSource:
         self, page: int, page_size: int | None = None
     ) -> dict[str, Any]:
         """拉取一页档期。保留 total / total_pages 供调用方判断终止。"""
-        resp = self._get(
+        resp = self.fetcher.get(
             SCHEDULE_PAGE_PATH,
             {
                 "page": page,
@@ -422,19 +345,10 @@ class OtakuSiteSource:
         请求与判断读同一个属性，改一处不会只改一半。
         """
         for page in range(1, self.max_pages + 1):
-            try:
-                payload = self.fetch_schedule_page(page)
-            except httpx.HTTPStatusError as exc:
-                if exc.response.status_code not in RETRYABLE_STATUS:
-                    raise
-                self.failed_pages.append(
-                    FailedPage("schedule", page, f"HTTP {exc.response.status_code}")
-                )
-                continue
-            except httpx.TransportError as exc:
-                self.failed_pages.append(
-                    FailedPage("schedule", page, f"{type(exc).__name__}: {exc}")
-                )
+            payload = self.fetcher.attempt(
+                "schedule", page, lambda: self.fetch_schedule_page(page)
+            )
+            if payload is None:
                 continue
 
             items = unwrap(payload)
@@ -506,12 +420,12 @@ class OtakuSiteSource:
 
     def fetch_articles_page(self, page: int) -> str:
         """拉一页资讯列表的 HTML。失败由 _get 的重试与调用方的记账处理。"""
-        resp = self._get(ARTICLES_PAGE_PATH, {"page": page})
+        resp = self.fetcher.get(ARTICLES_PAGE_PATH, {"page": page})
         return resp.text
 
     def fetch_article_detail_html(self, article_id: str) -> str:
         """拉一篇资讯详情页的 HTML。"""
-        resp = self._get(ARTICLE_DETAIL_PATH.format(article_id=article_id))
+        resp = self.fetcher.get(ARTICLE_DETAIL_PATH.format(article_id=article_id))
         return resp.text
 
     def iter_articles_raw(
@@ -527,19 +441,10 @@ class OtakuSiteSource:
         """
         produced = 0
         for page in range(1, self.max_pages + 1):
-            try:
-                html_text = self.fetch_articles_page(page)
-            except httpx.HTTPStatusError as exc:
-                if exc.response.status_code not in RETRYABLE_STATUS:
-                    raise
-                self.failed_pages.append(
-                    FailedPage("articles", page, f"HTTP {exc.response.status_code}")
-                )
-                continue
-            except httpx.TransportError as exc:
-                self.failed_pages.append(
-                    FailedPage("articles", page, f"{type(exc).__name__}: {exc}")
-                )
+            html_text = self.fetcher.attempt(
+                "articles", page, lambda: self.fetch_articles_page(page)
+            )
+            if html_text is None:
                 continue
 
             entries = parse_articles_page(html_text)

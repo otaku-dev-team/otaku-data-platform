@@ -35,7 +35,8 @@ from .models import (
 )
 import httpx
 
-from .source import FailedPage, OtakuSiteSource
+from .fetching import FailedPage
+from .source import OtakuSiteSource
 from .cleaning import validate, validate_article, validate_schedule
 from .sources.vndb import VndbSource
 
