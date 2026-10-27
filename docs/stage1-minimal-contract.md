@@ -76,6 +76,10 @@
 | `source_id` | string | 是 | Python 提交 | 原站作品 id，字符串存储避免数值歧义 |
 | `updated_at` | datetime | 是 | **Java 维护** | 记录最后更新时间 |
 | `source_url` | string \| null | **可空** | **Python 来源适配器** | 对应来源站的作品原始页面地址，供客户端关联、展示或打开原页 |
+| `title_original` | string \| null | **可空** | Python 提交 | 原名。实测非空 **81.3%**（2026-10-28，首站 18,828 条）。`null` = 来源没有，**不得用 `title` 回填**——两者相同来源本就会给同值，回填会让「有没有原名」失去信号 |
+| `aliases` | string[] \| null | **可空** | Python 提交 | 别名/译名。**三态与 `tags` 一致**：`null` = 未提供（不覆盖）、`[]` = 明确没有、非空 = 有。实测 **99.5%** 记录至少一个别名，是富字段里填充最好的一项 |
+| `media` | string \| null | **可空** | Python 提交 | 媒介形态，**来源原值原样入库**（`TV`/`剧场版`/`OVA`/`Web`/`游戏`/`漫画`/`小说`，中英混杂）。**不做跨源枚举归一**：各站词表不同，归一等于替来源定义它自己的分类。实测非空 **93.4%** |
+| `episodes` | int \| null | **可空** | Python 提交 | 话数/集数。`null` = 未提供（**不是 0 话**，也不代表完结）。区间 `1–10000`，越界整条 `rejected`（`INVALID_EPISODES`）。实测非空 **61.6%**，取值 1–1960 |
 
 **`source_url` 补充规则**
 
@@ -99,17 +103,32 @@
 | 接口 | 返回字段 |
 | --- | --- |
 | ③ 列表 | `work_id`、`work_type`、`title`、`release_year`、`cover_url`、`tags`、`main_rating`（**7 个，不含 `summary`**） |
-| ④ 详情 | 全部 12 个（含 `summary`、`source`、`source_id`、`updated_at`、`source_url`、`release_year`） |
+| ④ 详情 | 全部 16 个（含 `summary`、`source`、`source_id`、`updated_at`、`source_url`、`release_year`，以及 4 个富字段 `title_original` / `aliases` / `media` / `episodes`） |
+
+> **列表为什么不跟着扩**：列表是高频、大数量的响应，加 4 个富字段会让每页体积涨一半以上，
+> 而列表卡片根本放不下原名与话数。**富字段只在详情返回**，需要就在详情补。
 
 ### 2.2 第一阶段明确不纳入
 
 | 字段 / 能力 | 不纳入的原因 |
 | --- | --- |
-| 系列 `series_id`、别名 `aliases`、原名 `title_original` | 来源库里有，但 **JSON API 未出口**。已向站主争取，争取到再纳入 |
-| 话数 `episodes`、媒介 `media`、原作载体 `source_material` | 同上，且填充率未确认 |
+| 系列 `series_id` / 系列名 | 源库里只有 12.5% 有值（2026-10-28 实测），且**单给 id 客户端没法展示**——要连 `series` 表带出系列名才有意义。等「系列聚合」单独成题再做，不跟着富字段混进来 |
+| 原作载体 `source_material` | 实测非空仅 **20.1%**，且与 `media` 语义重叠（`media` 已有 93.4%），收益低 |
+| 评分人数 `rating_count` | 实测非空 **30.7%** 且**仍在被来源站自己的任务持续填充**（导出后 10 小时内新增 5,438 条）。不完整的计数比没有更危险：会诱导「按人气排序」这类依赖，而分母缺失一半以上 |
 | 多来源评分合并 | 第一阶段只有一个来源 |
 | ~~封面下载到自有存储~~ | **已改为主张**：封面由 Java 代理 + 本地缓存（第 2.1 节），客户端不直连来源站 |
 | 账号、收藏、观看状态 | 第二阶段范围，不在本契约 |
+
+> **富字段 4 项移出本清单（2026-10-28）**：此前不纳入的理由是「来源库里有，但 JSON API 未出口」。
+> 这个前提**已经不成立**——数据入口从「读站点 JSON 接口」扩到了「直读客户数据库」（`sync-dataset`），
+> 这些字段本来就在库里，不需要站主再开口子。所以按「展示价值明确 + 客户端不需要额外 join」
+> 的标准挑了 4 个进入契约：原名 / 别名 / 媒介 / 话数。
+>
+> 口径说明：
+> - 四项**全部可省略**，省略 = 保留库中原值（与 `release_year` 同一条规则），旧版同步器不改也能继续工作；
+> - `aliases` 保留三态，和 `tags` 一样用 `null` / `[]` 区分「没拿到」与「明确没有」；
+> - `media` **不做枚举归一**，见 2.1 表内说明；
+> - 空值率是**实测值不是估计**，测量口径：首站源库 `contents` 全表 18,828 条，2026-10-28。
 
 > **`release_year` 已移出本清单（2026-10-22）**：此前依据「约 98.5% 为空」判定不纳入，该统计**经复核是错的**——
 > 实测 anime 均匀抽样 800 条非空 **95.9%**（另有独立抽查：page 1 非空 99.5%、page 30 非空 100%）。
@@ -426,7 +445,7 @@ Java 侧 DTO 类名可自定，但 JSON 键名以本文为准。
 
 **列表返回字段（固定）**：`work_id`、`work_type`、`title`、`release_year`、`cover_url`、`tags`、`main_rating`、`source`（共 8 个），另加分页字段 `total`、`page`、`page_size`、`total_pages`。**不返回** `summary`、`source_id`、`updated_at`、`source_url`——需要简介或回流入口请按 `work_id` 拉详情。
 
-**详情返回字段（固定）**：第 2.1 节全部字段（含 `summary`、`source`、`source_id`、`updated_at`、`source_url`、`release_year`）。
+**详情返回字段（固定）**：第 2.1 节全部字段（含 `summary`、`source`、`source_id`、`updated_at`、`source_url`、`release_year`，以及 2026-10-28 扩入的 `title_original` / `aliases` / `media` / `episodes`）。
 
 ### 6.1 作品列表
 

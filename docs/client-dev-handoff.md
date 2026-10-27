@@ -24,7 +24,7 @@ Base URL: http://154.8.194.198:8080
 | 接口 | 状态 | 实测 |
 | --- | --- | --- |
 | `GET /api/works` 列表 | 可用 | 200，约 0.1s |
-| `GET /api/works/{work_id}` 详情 | 可用 | 200，12 字段；`summary`/`tags`/`release_year` 均可能为 `null` |
+| `GET /api/works/{work_id}` 详情 | 可用 | 200，12 字段；`summary`/`tags`/`release_year` 均可能为 `null`。**契约已于 2026-10-28 扩到 16 字段**（+`title_original`/`aliases`/`media`/`episodes`），线上仍是 12，待后端实现后按本文矩阵复测 |
 | `GET /api/works/{work_id}/related` 同标签推荐 | 可用 | 200，约 0.15s，返回 `basis_tags` |
 | `GET /api/tags` 标签词表 | 可用 | 200，2,000 个标签带 `count`，支持 `type` 过滤；约 0.4s |
 | `GET /api/schedule` 新番档期 | 端点通、**无数据** | 200，但八个 weekday 组全空、`seasons: []` |

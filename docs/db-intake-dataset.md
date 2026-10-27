@@ -101,7 +101,8 @@ MySQL 可以 `GRANT SELECT` 到某几张表；**SQLite 没有账号与授权体�
 | Singer / Meltano | 高 | 比 dlt 更重 |
 
 **没有能直接用的**，原因很实在：它们的目标端都是数据仓库（Snowflake/BigQuery/DuckDB），
-而我们的目标端是**自家 REST 后端 + 9 字段契约**。它们追求「全量原样入仓」，
+而我们的目标端是**自家 REST 后端 + 9 字段契约**（2026-10-28 已按档 A 扩到 13 字段，见
+[`stage1-minimal-contract.md`](stage1-minimal-contract.md) §2.1）。它们追求「全量原样入仓」，
 不负责「把 90 个字段收敛成 9 个」——那层契约收敛只有我们自己能写。
 
 抄的是三样东西：Airbyte 的四档处置、dlt 的 `SchemaEvolutionError`（破坏性变更要抛错
