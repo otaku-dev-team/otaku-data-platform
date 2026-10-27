@@ -91,6 +91,10 @@ services:
       OTAKU_TRUST_FORWARDED_FOR: ${OTAKU_TRUST_FORWARDED_FOR:-false}
       # 封面防盗链白名单（origin，逗号分隔）；留空 = 不限制（#189 的开关）
       APP_COVER_ALLOWED_REFERERS: ${OTAKU_COVER_ALLOWED_REFERERS:-}
+      # 封面回源白名单（host:port，逗号分隔）。fail-closed：不在表里 = 全部 404。
+      # 接新来源站时把它的 host:port 加进 .env 的 OTAKU_COVER_ALLOWED_HOSTS；
+      # Bangumi 镜像 = bgmimg.anibt.net:443（封面回填 #222 写入的 URL 来自它）。
+      OTAKU_COVER_ALLOWED_HOSTS: ${OTAKU_COVER_ALLOWED_HOSTS:-154.8.194.198:8000,bgmimg.anibt.net:443}
       # 让 Spring 认 X-Forwarded-Proto / -Host / -For（Nginx 会带过来）。
       # 不设的话 request.getScheme() 永远是 http，即使外面是 https——
       # 目前封面地址由 OTAKU_PUBLIC_BASE_URL 显式给，所以这条是**兜底**：
