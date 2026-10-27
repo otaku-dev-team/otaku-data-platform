@@ -80,6 +80,9 @@
 | `aliases` | string[] \| null | **可空** | Python 提交 | 别名/译名。**三态与 `tags` 一致**：`null` = 未提供（不覆盖）、`[]` = 明确没有、非空 = 有。实测 **99.5%** 记录至少一个别名，是富字段里填充最好的一项 |
 | `media` | string \| null | **可空** | Python 提交 | 媒介形态，**来源原值原样入库**（`TV`/`剧场版`/`OVA`/`Web`/`游戏`/`漫画`/`小说`，中英混杂）。**不做跨源枚举归一**：各站词表不同，归一等于替来源定义它自己的分类。实测非空 **93.4%** |
 | `episodes` | int \| null | **可空** | Python 提交 | 话数/集数。`null` = 未提供（**不是 0 话**，也不代表完结）。区间 `1–10000`，越界整条 `rejected`（`INVALID_EPISODES`）。实测非空 **61.6%**，取值 1–1960 |
+| `staff` | object[] \| null | **可空** | Python 提交 | 制作人员，元素 `{role, name, person_id?}`。**三态**：`null`/省略 = 未提供（**不动已有记录**）、`[]` = 明确没有、非空 = **整体替换**该作品全部 Staff（不是追加——追加语义在来源删人时永远删不掉）。实测覆盖 **8,945 部（47.5%）**、共 183,356 条、平均 20.5 条/部。只收白名单职位，原画等工序流水不入库（[`rich-fields-tier-b-plan.md`](rich-fields-tier-b-plan.md) §3） |
+| `characters` | object[] \| null | **可空** | Python 提交 | 角色与声优，元素 `{name, actor, character_type?, person_id?}`。三态与整体替换语义同 `staff`。覆盖 **8,015 部（42.6%）**、共 75,742 条、平均 9.5 条/部。`character_type` 实测 **84% 为空**（来源未区分主配角），`null` 是常态 |
+| `studios` | string[] \| null | **可空** | Python 提交 | 制作公司名称，来源原值、不做别名合并。三态与整体替换语义同 `staff`。覆盖 **3,644 部（19.4%）**、共 4,270 条 |
 
 **`source_url` 补充规则**
 
@@ -103,7 +106,7 @@
 | 接口 | 返回字段 |
 | --- | --- |
 | ③ 列表 | `work_id`、`work_type`、`title`、`release_year`、`cover_url`、`tags`、`main_rating`（**7 个，不含 `summary`**） |
-| ④ 详情 | 全部 16 个（含 `summary`、`source`、`source_id`、`updated_at`、`source_url`、`release_year`，以及 4 个富字段 `title_original` / `aliases` / `media` / `episodes`） |
+| ④ 详情 | 全部 19 个（含 `summary`、`source`、`source_id`、`updated_at`、`source_url`、`release_year`，4 个富字段 `title_original` / `aliases` / `media` / `episodes`，以及 3 个关联数组 `staff` / `characters` / `studios`） |
 
 > **列表为什么不跟着扩**：列表是高频、大数量的响应，加 4 个富字段会让每页体积涨一半以上，
 > 而列表卡片根本放不下原名与话数。**富字段只在详情返回**，需要就在详情补。
@@ -445,7 +448,7 @@ Java 侧 DTO 类名可自定，但 JSON 键名以本文为准。
 
 **列表返回字段（固定）**：`work_id`、`work_type`、`title`、`release_year`、`cover_url`、`tags`、`main_rating`、`source`（共 8 个），另加分页字段 `total`、`page`、`page_size`、`total_pages`。**不返回** `summary`、`source_id`、`updated_at`、`source_url`——需要简介或回流入口请按 `work_id` 拉详情。
 
-**详情返回字段（固定）**：第 2.1 节全部字段（含 `summary`、`source`、`source_id`、`updated_at`、`source_url`、`release_year`，以及 2026-10-28 扩入的 `title_original` / `aliases` / `media` / `episodes`）。
+**详情返回字段（固定）**：第 2.1 节全部字段（含 `summary`、`source`、`source_id`、`updated_at`、`source_url`、`release_year`，2026-10-28 扩入的 `title_original` / `aliases` / `media` / `episodes`，以及 `staff` / `characters` / `studios` 三个关联数组）。
 
 ### 6.1 作品列表
 

@@ -201,7 +201,7 @@ paths:
       summary: 作品详情（接口④）
       operationId: getWork
       description: |
-        按 `work_id` 取全部 16 个字段。
+        按 `work_id` 取全部 19 个字段。
 
         `work_id` 一律当作**不透明字符串**：不解析其结构，不做数值比较。
         不存在与格式非法**都返回 404**，不用错误码区分"是否存在"。
@@ -1747,10 +1747,11 @@ components:
     Work:
       type: object
       description: |
-        详情。**全部 16 个字段**（含本阶段新增的可空 `source_url` 与 `release_year`，
-        以及 2026-10-28 扩入的 4 个富字段 `title_original` / `aliases` / `media` / `episodes`）。
+        详情。**全部 19 个字段**（含本阶段新增的可空 `source_url` 与 `release_year`，
+        2026-10-28 扩入的 4 个富字段 `title_original` / `aliases` / `media` / `episodes`，
+        以及 3 个关联数组 `staff` / `characters` / `studios`）。
         列表项是 7 字段（含 `release_year`），不含
-        `summary` / `source` / `source_id` / `source_url` / `updated_at` 与 4 个富字段。
+        `summary` / `source` / `source_id` / `source_url` / `updated_at`、4 个富字段与 3 个关联数组。
       required: [work_id, work_type, title, source, source_id, updated_at]
       properties:
         work_id:
@@ -1817,6 +1818,37 @@ components:
           nullable: true
           items: { type: string }
         main_rating: { $ref: "#/components/schemas/SourceRating" }
+        staff:
+          type: array
+          nullable: true
+          description: |
+            制作人员（导演 / 脚本 / 音乐 / 作画监督 …），按来源侧排序值升序。
+
+            **三态**：`null` = 该来源通道未提供（例如只走 REST 的作品），
+            `[]` = 明确没有，非空数组 = 有。客户端展示上可以把前两者都显示「暂无」，
+            但**不要**据此判断数据完整性——47.5% 的作品有 Staff 是数据事实，不是缺陷。
+
+            实测（2026-10-28，首站 18,828 部）：8,945 部有数据，共 183,356 条，平均 20.5 条/部。
+            只收观众关心的职位；原画这类工序流水（16.6 万条）**不入库**，白名单见
+            `rich-fields-tier-b-plan.md` §3。
+          items: { $ref: "#/components/schemas/WorkStaff" }
+        characters:
+          type: array
+          nullable: true
+          description: |
+            角色与声优，按来源侧排序值升序。三态语义同 `staff`。
+
+            实测：8,015 部（42.6%）有数据，共 75,742 条，平均 9.5 条/部。
+            声优名是来源原值文本，不做跨源归一。
+          items: { $ref: "#/components/schemas/WorkCharacter" }
+        studios:
+          type: array
+          nullable: true
+          description: |
+            制作公司名称列表（来源原值，不做归一、不做别名合并）。三态语义同 `staff`。
+            实测覆盖 3,644 部（19.4%）。
+          items: { type: string, maxLength: 200 }
+          example: ["J.C.STAFF"]
         source:
           type: string
           description: 接入方唯一标识。已知取值 otaku_site（站点 API）、bangumi（Bangumi 档案）
@@ -1842,6 +1874,63 @@ components:
           type: string
           format: date-time
           description: 该记录最后一次变更时间，由 Java 维护，RFC 3339
+
+    WorkStaff:
+      type: object
+      description: |
+        一条制作人员记录。`role` 是来源原值，平台不做职位归一
+        （「总作画监督」不会合并成「作画监督」）——合并会丢掉信息，由客户端决定怎么展示。
+      required: [role, name]
+      properties:
+        role:
+          type: string
+          maxLength: 64
+          description: 职位（导演 / 脚本 / 音乐 / 作画监督 …），来源原值
+          example: 脚本
+        name:
+          type: string
+          maxLength: 200
+          description: 人名，来源原值
+          example: 伊藤和典
+        person_id:
+          type: string
+          nullable: true
+          description: |
+            人物实体标识。`null` = 该条来自纯文本解析、没有实体（实测 Staff 侧 **0%** 有值）。
+
+            **人物页落地前一律 null**，客户端不得依赖它做跳转，也不得因它为 null 就隐藏该条记录。
+            字段先占位是为了让客户端提前布局，不是「马上就会填满」的承诺。
+
+    WorkCharacter:
+      type: object
+      description: |
+        一条角色与声优记录。角色名与声优名都是来源原值文本。
+      required: [name, actor]
+      properties:
+        name:
+          type: string
+          maxLength: 200
+          description: 角色名
+          example: 艾妲拉姆·葛蘭特
+        actor:
+          type: string
+          maxLength: 200
+          description: 声优名（来源原值，含日文原文）
+          example: 長谷川育美
+        character_type:
+          type: string
+          nullable: true
+          maxLength: 16
+          description: |
+            角色类型原值：主角 / 配角 / 客串 / 闲角 / 旁白。
+            实测 **84% 为空**（来源没有区分主角配角），`null` 是常态而不是异常——客户端不要显示「未知类型」。
+          example: 配角
+        person_id:
+          type: string
+          nullable: true
+          description: |
+            声优的人物实体标识。与 `WorkStaff.person_id` 不同，这一侧实测 **100% 有值**，
+            但人物页端点落地前客户端仍不得跳转。
 
     SchedulePage:
       type: object
@@ -2041,7 +2130,7 @@ components:
     ImportItem:
       type: object
       description: |
-        提交项 13 个字段。`work_id` 由 Java 生成、`updated_at` 由 Java 维护、`source` 在批次级，
+        提交项 16 个字段。`work_id` 由 Java 生成、`updated_at` 由 Java 维护、`source` 在批次级，
         因此都不出现在条目里。
 
         `source_url` 与 `release_year` 都是**可选**字段：适配器能可靠确定时提供，
@@ -2050,6 +2139,14 @@ components:
         2026-10-28 扩入 4 个富字段（`title_original` / `aliases` / `media` / `episodes`）：
         它们全部**可省略**，省略 = 保留库中原值（与 `release_year` 同一语义）；
         传 `null` 同样不清空已有值。这样旧版同步器不改也能继续工作。
+
+        2026-10-28 再扩入 3 个关联数组（`staff` / `characters` / `studios`），同样是三态语义
+        且可省略。**省略与 `null` 都不动库中已有数据**——这条是硬要求：REST 通道的作品
+        拿不到这些字段，若把「没提供」当成「清空」，一次普通同步就会把数据集通道好不容易
+        导进来的 Staff 全抹掉。
+
+        数组是**整体替换**语义：非空数组 = 用这批值替换该作品的全部记录
+        （不是追加，也不是按条 upsert）。重跑幂等，且能自然表达「Staff 减少了几个人」。
       required: [source_id, work_type, title]
       properties:
         source_id:
@@ -2132,6 +2229,26 @@ components:
             越界（0 或 > 10000）整条拒收，错误码 `INVALID_EPISODES`——不静默置 null，
             因为 `0 话` 与「未提供」在展示上含义完全不同。
           example: 26
+        staff:
+          type: array
+          nullable: true
+          description: |
+            制作人员。**三态**：省略或 `null` = 本次没拿到（**不动库中已有记录**）；
+            `[]` = 明确没有（清空）；非空数组 = 整体替换该作品的全部 Staff。
+
+            批次级颗粒度是「作品」：一次提交里同一 `source_id` 的所有 Staff 都在这个数组里，
+            不做增量追加——追加语义在来源侧删人时就永远删不掉。
+          items: { $ref: "#/components/schemas/WorkStaff" }
+        characters:
+          type: array
+          nullable: true
+          description: 角色与声优。三态与整体替换语义同 `staff`。
+          items: { $ref: "#/components/schemas/WorkCharacter" }
+        studios:
+          type: array
+          nullable: true
+          description: 制作公司名称列表。三态与整体替换语义同 `staff`。
+          items: { type: string, maxLength: 200 }
 
     ImportBatchResult:
       type: object
