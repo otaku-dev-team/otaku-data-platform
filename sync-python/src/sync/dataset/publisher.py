@@ -5,8 +5,8 @@
 ## 一、`backend_source` 决定「更新」还是「新增」
 
 后端唯一键是 `(source, source_id)`。数据集里的 `meta.source_id`（例如 `otaku`）
-是我们给**数据集**起的标签，不是后端行上的 `source`；首站后端现存行的
-`source` 是 `otaku_site`。两者只要不一致，同一批作品就会被当成**新作品插入一遍**
+是我们给**数据集**起的标签，不是后端行上的 `source`；后端现存行用的是站点自身的
+来源标识（`SOURCE_NAME`）。两者只要不一致，同一批作品就会被当成**新作品插入一遍**
 ——1.8 万条目录变 3.6 万条，而且列表页看不出来是重复，只看到"两个一样的"。
 
 所以这里不用 `meta.source_id` 当 `source`，而是显式要一个 `backend_source`，
@@ -369,8 +369,8 @@ def publish_dataset(
             f"数据集标识 source_id={dataset_source_id!r} 与写入后端的 "
             f"backend_source={backend_source!r} 不同。后端唯一键是 "
             f"(source, source_id)，两者不一致会被当成新作品插入，目录会翻倍。"
-            f"同一站换了命名的（首站即如此：数据集标 otaku，后端 source 是 "
-            f"otaku_site）可忽略；否则先确认再提交。"
+            f"同一站换了命名的（两边确属同一站、只是标签不同）可忽略；"
+            f"否则先确认再提交。"
         )
 
     if apply and importer is None:
@@ -434,7 +434,7 @@ def publish_dataset(
         report.warnings.append(
             f"{report.covers_dropped} 条封面是站内相对路径且没有可用的站点地址，"
             f"已按 null 发送（不覆盖后端已有封面）。要补上请传 --source-base-url"
-            f"（或设 OTAKU_SOURCE_BASE_URL），例如 http://154.8.194.198:8000。"
+            f"（或设 OTAKU_SOURCE_BASE_URL）指向站点根地址。"
         )
 
     if sample_path is not None and not apply:

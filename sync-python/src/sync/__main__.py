@@ -143,7 +143,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--backend-source",
         default=None,
         help="写入后端时用的来源标识（决定 (source, source_id) 唯一键），"
-        "默认 otaku_site；换站必须显式指定，否则会被当成新作品重复插入",
+        "默认取 SOURCE_NAME；换站必须显式指定，否则会被当成新作品重复插入",
     )
     parser.add_argument(
         "--apply",
