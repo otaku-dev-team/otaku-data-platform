@@ -24,8 +24,15 @@
 | 11 | 谁运维 | 指定一个人：看告警、清磁盘、定期做恢复演练 | 出事没人管（§8 这条一直没定） |
 
 **上线前还要三个人点一次头**：对外服务属章程 §3.2 红线 4，公开前需 @zhengmin486 知情。
-同时建议评估把封面防盗链打开（`otaku.cover.allowed-referers`，默认留空＝不限制，见 #189）——
-否则我们的封面代理会被别站当成免费图床。
+**对外暴露的三项必须一起配，否则会出现「代码有、线上没生效」**（Issue #188，zm 已拍板 A）：
+
+| 配置 | 变量 | 不配的后果 |
+|---|---|---|
+| CORS 白名单 | `OTAKU_CORS_ALLOWED_ORIGINS` | 站点页面跨域读接口一律 403；留空只放行 localhost |
+| 公共读限流 | `OTAKU_RATE_LIMIT_PUBLIC_PER_MINUTE` / `OTAKU_RATE_LIMIT_COVER_PER_MINUTE` | 被人拿脚本刷列表/封面，带宽与回源全算我们的 |
+| 封面防盗链 | `OTAKU_COVER_ALLOWED_REFERERS` | 任意站点可把封面代理当免费图床（#189 的开关默认关） |
+
+上了 Nginx/反代后还要把 `OTAKU_TRUST_FORWARDED_FOR=true`，否则限流会把所有请求都算到反代 IP 上。
 
 ### 0.1 机器到手先跑这段自检
 

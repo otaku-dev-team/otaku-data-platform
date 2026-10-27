@@ -17,6 +17,10 @@ spring:
 app:
   # 集成测试直接调 service，不经过 HTTP，给个占位值即可（为空时 /internal/** 一律 401）。
   internal-token: it-token
+  # 限流在集成测试里默认关闭：几十个用例共用 127.0.0.1，开着会把彼此打红。
+  # 限流本身由 RateLimitIntegrationTest 用独立上下文 + 极小额度验证。
+  rate-limit:
+    enabled: false
   cover:
     # 放 target 下，避免在仓库里留运行产物
     cache-dir: target/it-covers

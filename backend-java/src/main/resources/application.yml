@@ -32,6 +32,23 @@ app:
   internal-token: ${OTAKU_INTERNAL_TOKEN:}
   # 留空则按请求 host 推导，便于 Android 模拟器(10.0.2.2)/桌面(127.0.0.1)/真机(局域网 IP) 共用一套代码。
   public-base-url: ${OTAKU_PUBLIC_BASE_URL:}
+  cors:
+    # 允许跨域读 /api/** 的来源（逗号分隔，origin 形式，如 http://154.8.194.198:8000）。
+    # **留空 = 只放行本地调试来源**（localhost / 127.0.0.1 / ::1 任意端口）。
+    # 这是 Issue #188 的收窄：原先 allowedOriginPatterns("*") 会回显任意 Origin，
+    # 任何页面都能把封面代理当图床。新增合作站时把它的 origin 加进来，不要改回 "*"。
+    allowed-origins: ${OTAKU_CORS_ALLOWED_ORIGINS:}
+    allow-localhost: ${OTAKU_CORS_ALLOW_LOCALHOST:true}
+  rate-limit:
+    # 公共读接口按 IP 限流（Issue #188 形态 A）。关闭只用于排障，生产不要关：
+    # 现在没有站点身份，按 IP 是唯一能挡住"脚本刷图床"的手段。
+    enabled: ${OTAKU_RATE_LIMIT_ENABLED:true}
+    # 作品/标签/档期/资讯等公共读：每分钟每 IP
+    public-per-minute: ${OTAKU_RATE_LIMIT_PUBLIC_PER_MINUTE:600}
+    # 封面更严：它会回源并缓存，被当图床的代价是带宽 + 回源
+    cover-per-minute: ${OTAKU_RATE_LIMIT_COVER_PER_MINUTE:120}
+    # 上 Nginx / 反代之后必须打开，否则所有请求都会算到反代 IP 上（限流退化成全局限流）
+    trust-forwarded-for: ${OTAKU_TRUST_FORWARDED_FOR:false}
   cover:
     cache-dir: ${OTAKU_COVER_CACHE_DIR:./data/covers}
     rate-per-second: 2
