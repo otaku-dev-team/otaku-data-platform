@@ -63,8 +63,8 @@ public class AuthFilter extends OncePerRequestFilter {
         chain.doFilter(request, response);
     }
 
-    /** 从 Authorization 头取 Bearer 令牌；取不到返回 null。 */
-    static String bearerToken(HttpServletRequest request) {
+    /** 从 Authorization 头取 Bearer 令牌；取不到返回 null。后台过滤器（ConsoleAuthFilter）复用同一解析。 */
+    public static String bearerToken(HttpServletRequest request) {
         String header = request.getHeader("Authorization");
         if (header == null || !header.startsWith(BEARER)) {
             return null;

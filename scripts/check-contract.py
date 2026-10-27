@@ -28,6 +28,38 @@ except ImportError:
 DEFAULT = pathlib.Path(__file__).resolve().parent.parent / "docs" / "openapi.yaml"
 
 
+class _StrictLoader(yaml.SafeLoader):
+    """带重复键检测的 SafeLoader。"""
+
+
+# 重复键收集器：解析前清空，解析后非空即判失败。
+_DUPLICATES: list[str] = []
+
+
+def _construct_mapping(loader, node, deep=False):
+    """
+    记录同名键，而不是让后者静默覆盖前者。
+
+    为什么需要：PyYAML / snakeyaml 遇到重复键**都只警告或静默取后者**，
+    文件仍然"解析成功"。2026-10-27 加站主后台的 tags 时就踩了一次——
+    插入位置把 `- name: 内部账号` 和它的 `description` 拆开，
+    结果那份 description 被静默吞掉，而 `check-contract.py` 一路绿灯。
+    这种"内容凭空消失但校验通过"的错，比语法错难发现得多。
+    """
+    seen = set()
+    for key_node, _ in node.value:
+        key = loader.construct_object(key_node, deep=deep)
+        if key in seen:
+            _DUPLICATES.append(f"{key}（第 {key_node.start_mark.line + 1} 行）")
+        seen.add(key)
+    return yaml.SafeLoader.construct_mapping(loader, node, deep)
+
+
+_StrictLoader.add_constructor(
+    yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _construct_mapping
+)
+
+
 def fail(msg: str) -> int:
     print("契约校验失败：", msg)
     return 1
@@ -39,10 +71,15 @@ def main() -> int:
         return fail(f"文件不存在：{path}")
 
     text = path.read_text(encoding="utf-8")
+    _DUPLICATES.clear()
     try:
-        doc = yaml.safe_load(text)
+        doc = yaml.load(text, Loader=_StrictLoader)
     except yaml.YAMLError as exc:
         return fail(f"不是合法 YAML：\n{exc}")
+
+    if _DUPLICATES:
+        return fail("以下键在同一层重复出现（后者会静默覆盖前者，内容凭空消失）：\n  "
+                    + "\n  ".join(dict.fromkeys(_DUPLICATES)))
 
     if not isinstance(doc, dict):
         return fail("顶层必须是对象（mapping）")

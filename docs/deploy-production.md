@@ -581,3 +581,26 @@ df -h
 3. `docker compose -f compose.prod.yaml up -d`（这次带上 nginx）。
 4. 重跑本节 11.3 的表，外网换成域名 + `https://`。
 5. 打开 `renew-letsencrypt.sh` 的 cron，把 `EXPECT_TLS` 恢复默认。
+
+### 11.6 站主后台（V10）已上线
+
+2026-10-27 下午把首版站主后台（Issue #144）部署到同一台机器，**V10 迁移在生产库上真跑过**。
+
+| 项 | 实测 |
+|---|---|
+| 迁移 | `otaku` 库 v9 → v10，`Successfully applied 1 migration`（0.4 秒），服务 8.4 秒启动 |
+| 页面 | `http://154.8.194.198:8080/console/` → 200 `text/html`（20 KB，零依赖单文件） |
+| 开通 | `POST /internal/sites`（site_key=otaku，sources=[otaku_site]）→ 201；`POST /internal/site-admins` → 201 |
+| 概览 | 作品 3（anime 2 / comic 1），来源 `otaku_site`，未配来源时不会退化成看全库 |
+| 用户 | 列表只含本站账号；跨站/未归属账号 403，不存在 404（见集成测试） |
+| 禁用 | `revoked_sessions=1`；旧令牌立刻 401；原密码重登 403 `USER_DISABLED`；解禁后 200 |
+| 同步 | 读到既有 2 次导入运行，`partial`（4 条拒收），失败条目带 `source_id` |
+| 鉴权面 | 公网 `/internal/sites` → 401；`/api/console/overview` 无令牌 → 401；两套令牌互不通用（各 401） |
+| 回归 | `/api/works`、`/api/articles` 仍 200 |
+
+运维注意：
+
+- 后台账号与站点**只能**由 `/internal/**` 开通（令牌只在平台侧），后台页面里没有开通入口；
+- 线上的演示账号 `console-demo-user`（`site_key=otaku`）只是为了让站主后台有数据可看，
+  不再需要时按 `/internal/accounts` 的账号删除流程处理（直接删 `app_user` 行即可，注意先清 `user_session`）；
+- 站主账号密码只存在服务器 `/opt/otaku/backend/.console-demo-credentials`（600），**不入库、不入仓库**。

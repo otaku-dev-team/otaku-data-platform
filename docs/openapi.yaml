@@ -57,6 +57,10 @@ tags:
     description: 阶段 2：本人收藏与观看状态，路径里永不出现 user_id
   - name: 内部账号
     description: 阶段 2：仅内网可用的建号接口，客户端不得持有内部令牌
+  - name: 站主后台
+    description: Issue #144。站主只能看/管自己站点的数据；路径与请求里都没有 site 参数，站点来自登录态
+  - name: 内部站点
+    description: 平台侧建站与开设站主；仅内网可用，站主后台里没有这些接口的调用点
 
 security: []
 
@@ -728,6 +732,278 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "409": { $ref: "#/components/responses/ConflictUsername" }
 
+  # ---------------------------------------------------------------------------
+  # 阶段 3：站主运营后台（Issue #144）
+  # 依据 docs/site-owner-console-proposal.md §2–§4、§8
+  #
+  # 与客户端 /api/auth/** 是两套独立凭据：不同表、不同令牌（后台 12 小时 / 客户端 30 天）。
+  # 一条贯穿全段的规则：**没有任何请求参数携带站点标识**，站点只能来自登录态。
+  # 越权（目标资源属于别的站点）返回 403，契约要求 403 而非 404。
+  # ---------------------------------------------------------------------------
+
+  /api/console/auth/login:
+    post:
+      tags: [站主后台]
+      summary: 站主登录（平台账号过渡态）
+      operationId: consoleLogin
+      description: |
+        站主用自己站点的管理员账号登录后台。
+
+        当前是提案 §4.1 的过渡态 C：平台侧建号（`/internal/site-admins`）+ 站主名单校验。
+        网站 OAuth（#147）就绪后切到方案 B（网站账号 + 名单），表结构已预留
+        `identity_source` / `external_user_id`，后台接口与页面不需要改。
+
+        失败一律 `401 INVALID_CREDENTIALS`，不区分「账号不存在」与「密码错」。
+        **账号或站点被停用**时，口令正确的前提下返回 `403`：这需要先猜对密码，
+        不构成账号枚举；若也返回 401，站主只会反复重置密码，永远看不到真正的原因。
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ConsoleLoginRequest" }
+      responses:
+        "200":
+          description: 登录成功。`token` 只在此处返回一次
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConsoleSession" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/UnauthorizedSession" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /api/console/auth/me:
+    get:
+      tags: [站主后台]
+      summary: 当前站主与所属站点
+      operationId: consoleMe
+      description: 后台页面刷新时用它判断登录态是否还有效；站点名从这里取，不从本地缓存拼
+      security:
+        - consoleAuth: []
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConsoleMe" }
+        "401": { $ref: "#/components/responses/UnauthorizedSession" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/console/auth/logout:
+    post:
+      tags: [站主后台]
+      summary: 撤销当前后台会话
+      operationId: consoleLogout
+      description: 与客户端一致：不带令牌或已失效也返回 `204`，退出流程不卡在 401 分支上
+      security: []
+      responses:
+        "204":
+          description: 已撤销；或本来就没有有效会话（幂等）
+
+  /api/console/overview:
+    get:
+      tags: [站主后台]
+      summary: 本站数据概览（作品数 / 字段覆盖率 / 同步摘要）
+      operationId: consoleOverview
+      description: |
+        覆盖率口径与 `scripts/data-coverage.sql` 完全一致，不另立一套：
+        空串与 NULL 都算「没有」；`rating_value` 为 NULL 是**无评分**（不是 0 分）；
+        `tags_provided`（来源提供了标签）与 `tags_nonempty`（标签非空）分开统计。
+
+        站点没有配置任何来源时返回 0 与空列表，**不会**退化成"不加过滤看全库"。
+      security:
+        - consoleAuth: []
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConsoleOverview" }
+        "401": { $ref: "#/components/responses/UnauthorizedSession" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/console/users:
+    get:
+      tags: [站主后台]
+      summary: 本站客户端用户列表
+      operationId: consoleListUsers
+      description: |
+        只返回 `site_key` 等于登录站点的账号。历史账号（`site_key` 为空）**不出现在任何站点的列表里**。
+
+        `active_sessions` 是当前有效会话数，用来解释"我禁了他，他为什么还连着"——
+        正常情况下禁用会当场撤销全部会话，这个数字会归零。
+      security:
+        - consoleAuth: []
+      parameters:
+        - name: status
+          in: query
+          required: false
+          description: 省略表示全部
+          schema:
+            type: string
+            enum: [active, disabled]
+        - name: q
+          in: query
+          required: false
+          description: 用户名子串匹配（`%` 与 `_` 按普通字符处理）
+          schema: { type: string }
+        - name: page
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: page_size
+          in: query
+          required: false
+          description: 超过 50 时按 50 截断，不报错
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConsoleUserPage" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/UnauthorizedSession" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/console/users/{user_id}/disable:
+    post:
+      tags: [站主后台]
+      summary: 禁用本站用户（只封客户端登录）
+      operationId: consoleDisableUser
+      description: |
+        **只影响客户端登录，不影响网站账号。** 平台不回写网站侧账号状态
+        （提案 §4.2 已拍板）：网站账号的存废是网站自己的事，站主禁用 ≠ 用户本人授权。
+
+        效果有两层，缺一不可：
+
+        1. `app_user.status = disabled` → 之后的登录返回 `403 USER_DISABLED`；
+        2. 撤销该用户**全部**平台会话 → 已登录的设备立刻掉线，不用等 30 天过期。
+
+        重复调用幂等：已经禁用时返回同样的结果，不再撤一遍会话。
+
+        站点不符（含 `site_key` 为空的历史账号）返回 `403`；账号不存在返回 `404 USER_NOT_FOUND`。
+      security:
+        - consoleAuth: []
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ConsoleUserStatusRequest" }
+      responses:
+        "200":
+          description: 成功（`note` 是给站主看的原话：禁用 ≠ 封网站账号）
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConsoleUserStatusChange" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/UnauthorizedSession" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/UserNotFound" }
+
+  /api/console/users/{user_id}/enable:
+    post:
+      tags: [站主后台]
+      summary: 解禁本站用户
+      operationId: consoleEnableUser
+      description: 恢复客户端登录。此前的会话不会自动恢复，用户需要重新登录（刻意如此）。
+      security:
+        - consoleAuth: []
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConsoleUserStatusChange" }
+        "401": { $ref: "#/components/responses/UnauthorizedSession" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/UserNotFound" }
+
+  /api/console/sync:
+    get:
+      tags: [站主后台]
+      summary: 同步状态（最近一次 / 近期运行 / 失败条目）
+      operationId: consoleSyncStatus
+      description: |
+        `summary.status` 四态：`never` 从没跑过、`ok`、`partial`（有拒收）、
+        `failed`（最近一次没有收尾时间，通常是被中断）。**先判 `failed`**：
+        中断的运行如果只按"有没有拒收"判断，会显示成成功。
+
+        **只读，后台不提供触发同步的入口**（提案 §9：手动触发属二期）——
+        那等于给站主一个能打满来源站的按钮，而限速责任在平台侧。
+        失败补齐 = `failed_items` 里的 `source_id` + `retry_hint` 里那条平台侧命令。
+      security:
+        - consoleAuth: []
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConsoleSyncStatus" }
+        "401": { $ref: "#/components/responses/UnauthorizedSession" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /internal/sites:
+    post:
+      tags: [内部站点]
+      summary: 平台侧建站（含来源绑定）
+      operationId: createSite
+      description: |
+        站点接入是**底座核心能力**，只在这里开放（提案 §2.2），站主后台没有任何调用点。
+
+        `sources` 至少一项：没有来源的站点在后台什么都看不到。
+        一个 `source` 只能属于一个站点（`uk_site_source` 唯一索引）——
+        允许共用的话，A 站的作品会同时出现在 B 站后台，任何过滤都说不清。
+      security:
+        - internalToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SiteCreateRequest" }
+      responses:
+        "201":
+          description: 已创建
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConsoleSite" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /internal/site-admins:
+    post:
+      tags: [内部站点]
+      summary: 平台侧开设站主（加入站主名单）
+      operationId: createSiteAdmin
+      description: |
+        提案 §8 第 3 条：站主名单在网站接入时由我们配置。
+
+        用户名全局唯一（站主登录时不需要先选站点）。不返回会话、不返回密码。
+      security:
+        - internalToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SiteAdminCreateRequest" }
+      responses:
+        "201":
+          description: 已创建
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SiteAdminCreated" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/ConflictUsername" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
 components:
 
   securitySchemes:
@@ -746,12 +1022,30 @@ components:
         查询串会进访问日志与浏览器历史。服务端只存其 SHA-256，30 天固定有效期。
         收到 401 时客户端应清本地会话并回到登录页，不要重试。
 
+    consoleAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
+      description: |
+        站主后台会话令牌（43 字符 Base64URL 不透明串，服务端只存 SHA-256）。
+        **12 小时固定有效期、不滑动续期**：管理权限不该「用着用着一直有效」。
+
+        与客户端 `bearerAuth` 是两套独立凭据：站主令牌调不了 `/api/**`，
+        客户端令牌也进不了 `/api/console/**`。
+
   parameters:
     WorkId:
       name: work_id
       in: path
       required: true
       description: 平台内部标识，由 Java 生成，客户端只当不透明字符串使用
+      schema: { type: string }
+
+    UserId:
+      name: user_id
+      in: path
+      required: true
+      description: 客户端账号的对外标识（`U-` 前缀），不是自增主键
       schema: { type: string }
 
   responses:
@@ -812,6 +1106,22 @@ components:
           schema: { $ref: "#/components/schemas/ErrorResponse" }
     InternalError:
       description: 服务端错误（重试，带退避）
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+    Forbidden:
+      description: |
+        登录态有效但无权做这件事（`FORBIDDEN`）。
+
+        两种来源：目标资源属于**别的站点**（含 `site_key` 为空的历史账号），
+        或站主账号／站点已被平台停用。契约要求 403 而不是 404——
+        「我没权限」和「没这个用户」在站主那边是两件该做不同处理的事。
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    UserNotFound:
+      description: 用户不存在（`USER_NOT_FOUND`）
       content:
         application/json:
           schema: { $ref: "#/components/schemas/ErrorResponse" }
@@ -1403,6 +1713,14 @@ components:
           minLength: 8
           maxLength: 72
           format: password
+        site_key:
+          type: string
+          nullable: true
+          description: |
+            归属站点（Issue #144 站主后台的隔离依据）。必须已存在，未知站点返回 400。
+
+            **不传 = 未归属站点**：账号能登录客户端，但任何站主后台都看不到、也禁不了。
+            刻意不设默认值——猜一个默认站意味着 A 站能把 B 站的用户封掉。
 
     User:
       type: object
@@ -1609,3 +1927,248 @@ components:
           type: array
           items: { type: string }
           description: 来源站「关联作品」的站点作品 id 原文，透传不回填
+
+    # -------------------------------------------------------------------------
+    # 站主运营后台（Issue #144）
+    # 字段一律 snake_case（服务端统一 SNAKE_CASE 策略）；时间均为 UTC，ISO-8601
+    # -------------------------------------------------------------------------
+
+    ConsoleLoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username: { type: string, maxLength: 64 }
+        password: { type: string, maxLength: 72, description: 明文只在传输层出现，服务端只存 BCrypt }
+        device_label:
+          type: string
+          nullable: true
+          maxLength: 64
+          description: 仅用于会话列表与排查，可空
+
+    ConsoleSite:
+      type: object
+      required: [site_key, display_name]
+      properties:
+        site_key: { type: string, example: demo-site }
+        display_name: { type: string }
+
+    ConsoleAdmin:
+      type: object
+      required: [admin_id, username, identity_source]
+      properties:
+        admin_id: { type: string, description: "`G-` 前缀，对外不透明" }
+        username: { type: string }
+        display_name: { type: string, nullable: true }
+        identity_source:
+          type: string
+          enum: [platform, site_oauth]
+          description: platform = 平台建号（过渡态）；site_oauth = 网站账号（#147 就绪后）
+
+    ConsoleSession:
+      type: object
+      required: [token, expires_at, site, admin]
+      properties:
+        token: { type: string, description: 只在此处返回一次；客户端自行安全保存，不要放进 URL }
+        expires_at: { type: string, format: date-time, description: 12 小时后固定过期，不滑动续期 }
+        site: { $ref: "#/components/schemas/ConsoleSite" }
+        admin: { $ref: "#/components/schemas/ConsoleAdmin" }
+
+    ConsoleMe:
+      type: object
+      required: [site, admin]
+      properties:
+        site: { $ref: "#/components/schemas/ConsoleSite" }
+        admin: { $ref: "#/components/schemas/ConsoleAdmin" }
+
+    ConsoleTypeCount:
+      type: object
+      required: [work_type, count]
+      properties:
+        work_type: { type: string, enum: [anime, comic, game, novel] }
+        count: { type: integer }
+
+    ConsoleWorksStats:
+      type: object
+      required: [total, by_type]
+      properties:
+        total: { type: integer, description: 本站作品总数 }
+        by_type:
+          type: array
+          items: { $ref: "#/components/schemas/ConsoleTypeCount" }
+
+    ConsoleFieldCoverage:
+      type: object
+      required: [field, present, percent]
+      properties:
+        field:
+          type: string
+          description: |
+            字段名（与 `scripts/data-coverage.sql` 口径一一对应）：
+            title / summary / release_year / cover_source_url / cover_cached_at /
+            rating_value / tags_provided / tags_nonempty / source_url
+        present: { type: integer, description: 非空条数 }
+        percent: { type: number, description: 保留一位小数的百分比（0–100） }
+
+    ConsoleCoverage:
+      type: object
+      required: [total, fields]
+      properties:
+        total: { type: integer }
+        fields:
+          type: array
+          items: { $ref: "#/components/schemas/ConsoleFieldCoverage" }
+
+    ConsoleSyncSummary:
+      type: object
+      required: [status, runs_last_7d, failed_runs_last_7d, rejected_last_7d]
+      properties:
+        status:
+          type: string
+          enum: [never, ok, partial, failed]
+          description: |
+            never = 从没跑过；failed = 最近一次没有收尾时间（被中断），**优先于 partial**；
+            partial = 有拒收；ok = 正常
+        last_run_at: { type: string, format: date-time, nullable: true }
+        last_batch_id: { type: string, nullable: true }
+        runs_last_7d: { type: integer }
+        failed_runs_last_7d: { type: integer, description: 7 天内没有收尾时间的运行数 }
+        rejected_last_7d: { type: integer }
+
+    ConsoleOverview:
+      type: object
+      required: [site, sources, works, coverage, sync]
+      properties:
+        site: { $ref: "#/components/schemas/ConsoleSite" }
+        sources:
+          type: array
+          items: { type: string }
+          description: 本站绑定的数据来源标识；空数组表示还没配来源
+        works: { $ref: "#/components/schemas/ConsoleWorksStats" }
+        coverage: { $ref: "#/components/schemas/ConsoleCoverage" }
+        sync: { $ref: "#/components/schemas/ConsoleSyncSummary" }
+
+    ConsoleUser:
+      type: object
+      required: [user_id, username, status, created_at, active_sessions]
+      properties:
+        user_id: { type: string }
+        username: { type: string }
+        status:
+          type: string
+          enum: [active, disabled]
+          description: disabled = 不能登录**客户端**；网站账号不受影响
+        created_at: { type: string, format: date-time }
+        status_changed_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: 最近一次禁用/解禁时间；从未改过为 null
+        active_sessions:
+          type: integer
+          description: 当前有效会话数。禁用会当场撤销全部会话，正常情况下此处为 0
+
+    ConsoleUserPage:
+      allOf:
+        - $ref: "#/components/schemas/Paging"
+        - type: object
+          properties:
+            items:
+              type: array
+              items: { $ref: "#/components/schemas/ConsoleUser" }
+
+    ConsoleUserStatusRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+          nullable: true
+          maxLength: 200
+          description: |
+            禁用原因，仅写入服务端日志（不进数据库、不回显）。
+            要「有据可查」请查日志；需要长期留痕时再补审计表，不在这里临时存一份。
+
+    ConsoleUserStatusChange:
+      type: object
+      required: [user_id, status, revoked_sessions, note]
+      properties:
+        user_id: { type: string }
+        status: { type: string, enum: [active, disabled] }
+        revoked_sessions: { type: integer, description: 本次撤销的会话数（幂等重复调用为 0） }
+        note:
+          type: string
+          description: |
+            给站主看的原话，后台必须原样展示。禁用时明确写「网站账号不受影响」——
+            这句话只写在文档里是不够的，前端换个实现就会漏掉
+
+    ConsoleSyncRun:
+      type: object
+      required: [batch_id, run_seq, source, counts, started_at, status]
+      properties:
+        batch_id: { type: string }
+        run_seq: { type: integer, description: 该 batch 的第几次运行，从 1 开始 }
+        source: { type: string }
+        counts: { $ref: "#/components/schemas/Counts" }
+        started_at: { type: string, format: date-time }
+        finished_at: { type: string, format: date-time, nullable: true, description: null = 没有收尾 }
+        status: { type: string, enum: [ok, partial, failed] }
+
+    ConsoleFailedItem:
+      type: object
+      required: [batch_id]
+      properties:
+        batch_id: { type: string }
+        source_id: { type: string, nullable: true, description: 来源站作品 id，补齐时按它重跑 }
+        code: { type: string, nullable: true }
+        message: { type: string, nullable: true }
+        run_at: { type: string, format: date-time, nullable: true }
+
+    ConsoleSyncStatus:
+      type: object
+      required: [site, sources, summary, recent_runs, failed_items, retry_hint]
+      properties:
+        site: { $ref: "#/components/schemas/ConsoleSite" }
+        sources:
+          type: array
+          items: { type: string }
+        summary: { $ref: "#/components/schemas/ConsoleSyncSummary" }
+        recent_runs:
+          type: array
+          description: 最近 20 次运行，按时间倒序
+          items: { $ref: "#/components/schemas/ConsoleSyncRun" }
+        failed_items:
+          type: array
+          description: 最近几次运行里的拒收条目（最多 50 条），供运维按 source_id 补齐
+          items: { $ref: "#/components/schemas/ConsoleFailedItem" }
+        retry_hint:
+          type: string
+          description: 补齐方式说明（含具体命令）。后台不提供触发同步的按钮，理由见接口描述
+
+    SiteCreateRequest:
+      type: object
+      required: [site_key, display_name, sources]
+      properties:
+        site_key: { type: string, maxLength: 32 }
+        display_name: { type: string, maxLength: 128 }
+        sources:
+          type: array
+          minItems: 1
+          description: 本站的数据来源标识（与 work.source 同值）。一个来源只能属于一个站点
+          items: { type: string, maxLength: 64 }
+
+    SiteAdminCreateRequest:
+      type: object
+      required: [site_key, username, password]
+      properties:
+        site_key: { type: string, description: 必须已存在 }
+        username: { type: string, maxLength: 64, description: 全局唯一，站主登录时不需要先选站点 }
+        password: { type: string, description: 8–72 字符；服务端只存 BCrypt }
+        display_name: { type: string, nullable: true, maxLength: 64 }
+
+    SiteAdminCreated:
+      type: object
+      required: [admin_id, site_key, username]
+      properties:
+        admin_id: { type: string, description: "`G-` 前缀" }
+        site_key: { type: string }
+        username: { type: string }
+        display_name: { type: string, nullable: true }

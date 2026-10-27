@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>站主运营后台</title>
+<!--
+  站主运营后台（Issue #144）。单文件、零依赖、零构建、不走 CDN：
+  - 与后端同源，因此不需要也不应该给 /api/console/** 开 CORS（管理接口不该对任意源开放）；
+  - 令牌放 sessionStorage：关标签即失效，不落磁盘、不进 URL；
+  - 页面里没有、也不该有「站点配置 / 跨站 / 接入新站」的任何入口（提案 §2.2 红线）。
+-->
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --panel: #ffffff;
+    --line: #e3e6eb;
+    --text: #1f2329;
+    --muted: #6b7280;
+    --accent: #2f6feb;
+    --warn-bg: #fff7e6;
+    --warn-line: #f0c36d;
+    --danger: #c0392b;
+    --ok: #1f8a4c;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.6 -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  }
+  header {
+    display: flex; align-items: center; gap: 16px;
+    padding: 14px 24px; background: var(--panel); border-bottom: 1px solid var(--line);
+  }
+  header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+  header .who { color: var(--muted); font-size: 13px; }
+  header .spacer { flex: 1; }
+  main { max-width: 1080px; margin: 0 auto; padding: 20px 24px 60px; }
+  .card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    padding: 18px 20px; margin-bottom: 16px;
+  }
+  .card h2 { font-size: 14px; margin: 0 0 14px; font-weight: 600; color: var(--muted); }
+  .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+  .stat { border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; }
+  .stat .k { color: var(--muted); font-size: 12px; }
+  .stat .v { font-size: 24px; font-weight: 600; margin-top: 4px; }
+  .stat .v.small { font-size: 16px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; }
+  tbody tr:last-child td { border-bottom: none; }
+  .bar { height: 6px; background: #eef1f5; border-radius: 3px; overflow: hidden; min-width: 80px; }
+  .bar > i { display: block; height: 100%; background: var(--accent); }
+  button {
+    font: inherit; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--line);
+    background: var(--panel); color: var(--text); cursor: pointer;
+  }
+  button:hover { border-color: #c9cfd8; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.danger { color: var(--danger); border-color: #e8c4bf; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  input[type=text], input[type=password] {
+    font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; width: 100%;
+  }
+  nav { display: flex; gap: 4px; margin-bottom: 16px; }
+  nav button { border-radius: 6px; border: 1px solid transparent; background: transparent; color: var(--muted); }
+  nav button[aria-current=true] { background: var(--panel); border-color: var(--line); color: var(--text); font-weight: 600; }
+  .hint { color: var(--muted); font-size: 12px; }
+  .warn {
+    background: var(--warn-bg); border: 1px solid var(--warn-line); border-radius: 8px;
+    padding: 10px 12px; margin-bottom: 14px;
+  }
+  .err { color: var(--danger); }
+  .tag { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; border: 1px solid var(--line); }
+  .tag.disabled { color: var(--danger); border-color: #e8c4bf; background: #fdf2f0; }
+  .tag.active { color: var(--ok); border-color: #bfe3cd; background: #f1faf4; }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .hide { display: none !important; }
+  #login { max-width: 360px; margin: 12vh auto; }
+  #login .card { padding: 24px; }
+  #login label { display: block; margin-bottom: 12px; }
+  #login .hint { margin-top: 10px; }
+  code { background: #f2f4f7; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+</style>
+</head>
+<body>
+
+<header class="hide" id="topbar">
+  <h1>站主运营后台</h1>
+  <span class="who" id="who"></span>
+  <span class="spacer"></span>
+  <button id="logout">退出</button>
+</header>
+
+<!-- 登录 -->
+<div id="login">
+  <div class="card">
+    <h2 style="font-size:15px;color:var(--text)">登录</h2>
+    <form id="loginForm">
+      <label>账号<input type="text" id="username" autocomplete="username" required></label>
+      <label>密码<input type="password" id="password" autocomplete="current-password" required></label>
+      <button class="primary" type="submit" style="width:100%">登录</button>
+      <p class="err" id="loginErr"></p>
+    </form>
+    <p class="hint">
+      账号由平台运营开通。登录后只能看到并管理<b>你自己站点</b>的数据与用户。
+    </p>
+  </div>
+</div>
+
+<!-- 主界面 -->
+<div id="app" class="hide">
+  <main>
+    <nav>
+      <button data-tab="overview" aria-current="true">数据概览</button>
+      <button data-tab="users">用户管理</button>
+      <button data-tab="sync">同步状态</button>
+    </nav>
+
+    <!-- 概览 -->
+    <section id="tab-overview">
+      <div class="card">
+        <h2>站点</h2>
+        <div class="grid">
+          <div class="stat"><div class="k">作品总数</div><div class="v" id="ov-total">-</div></div>
+          <div class="stat"><div class="k">最近同步</div><div class="v small" id="ov-sync">-</div></div>
+          <div class="stat"><div class="k">近 7 天运行</div><div class="v" id="ov-runs">-</div></div>
+          <div class="stat"><div class="k">近 7 天拒收</div><div class="v" id="ov-rejected">-</div></div>
+        </div>
+        <p class="hint" id="ov-sources"></p>
+      </div>
+      <div class="card">
+        <h2>按类型</h2>
+        <table><tbody id="ov-types"></tbody></table>
+      </div>
+      <div class="card">
+        <h2>字段覆盖率</h2>
+        <p class="hint">口径与 <code>scripts/data-coverage.sql</code> 一致：空串与 NULL 都算没有；评分 NULL 表示来源没给，不是 0 分。</p>
+        <table>
+          <thead><tr><th>字段</th><th style="width:32%">覆盖</th><th style="width:88px">有值条数</th><th style="width:64px">占比</th></tr></thead>
+          <tbody id="ov-cov"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 用户 -->
+    <section id="tab-users" class="hide">
+      <div class="card">
+        <div class="warn">
+          <b>关于「禁用」</b>：只禁止该用户<b>登录本站客户端</b>，并当场撤销他所有已登录的设备。
+          <b>不会封掉他在网站上的账号</b> —— 网站账号的存废是网站自己的事，我们不会回写。
+        </div>
+        <div class="row" style="margin-bottom:12px">
+          <input type="text" id="uq" placeholder="搜索用户名" style="max-width:220px">
+          <select id="ustatus" style="padding:8px;border:1px solid var(--line);border-radius:6px">
+            <option value="">全部状态</option>
+            <option value="active">正常</option>
+            <option value="disabled">已禁用</option>
+          </select>
+          <button id="usearch">查询</button>
+          <span class="spacer" style="flex:1"></span>
+          <span class="hint" id="utotal"></span>
+        </div>
+        <table>
+          <thead><tr><th>用户名</th><th>状态</th><th>在线会话</th><th>注册时间</th><th>状态变更</th><th style="width:110px">操作</th></tr></thead>
+          <tbody id="urows"></tbody>
+        </table>
+        <div class="row" style="margin-top:12px">
+          <button id="uprev">上一页</button>
+          <span class="hint" id="upage"></span>
+          <button id="unext">下一页</button>
+        </div>
+        <p class="err" id="uerr"></p>
+      </div>
+    </section>
+
+    <!-- 同步 -->
+    <section id="tab-sync" class="hide">
+      <div class="card">
+        <h2>最近一次</h2>
+        <div class="grid">
+          <div class="stat"><div class="k">状态</div><div class="v small" id="sy-status">-</div></div>
+          <div class="stat"><div class="k">开始时间</div><div class="v small" id="sy-at">-</div></div>
+          <div class="stat"><div class="k">批次</div><div class="v small" id="sy-batch">-</div></div>
+          <div class="stat"><div class="k">近 7 天未收尾</div><div class="v" id="sy-unfinished">-</div></div>
+        </div>
+      </div>
+      <div class="card">
+        <h2>近期运行</h2>
+        <table>
+          <thead><tr><th>开始</th><th>批次</th><th>来源</th><th>新增</th><th>更新</th><th>未变</th><th>拒收</th><th>状态</th></tr></thead>
+          <tbody id="sy-runs"></tbody>
+        </table>
+      </div>
+      <div class="card">
+        <h2>失败条目（补齐入口）</h2>
+        <p class="hint" id="sy-hint"></p>
+        <table>
+          <thead><tr><th>时间</th><th>批次</th><th>来源作品 id</th><th>原因</th><th>说明</th></tr></thead>
+          <tbody id="sy-items"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var TOKEN_KEY = 'otaku.console.token';
+  var state = { token: sessionStorage.getItem(TOKEN_KEY) || '', page: 1, pageSize: 20, total: 0 };
+
+  var $ = function (id) { return document.getElementById(id); };
+
+  function show(el, yes) { el.classList.toggle('hide', !yes); }
+
+  function api(path, options) {
+    options = options || {};
+    var headers = { 'Accept': 'application/json' };
+    if (state.token) { headers['Authorization'] = 'Bearer ' + state.token; }
+    if (options.body) { headers['Content-Type'] = 'application/json'; }
+    return fetch(path, {
+      method: options.method || 'GET',
+      headers: headers,
+      body: options.body ? JSON.stringify(options.body) : undefined
+    }).then(function (res) {
+      if (res.status === 204) { return null; }
+      return res.text().then(function (text) {
+        var data = text ? JSON.parse(text) : null;
+        if (!res.ok) {
+          var err = new Error((data && data.error && data.error.message) || ('HTTP ' + res.status));
+          err.status = res.status;
+          err.code = data && data.error && data.error.code;
+          throw err;
+        }
+        return data;
+      });
+    });
+  }
+
+  // ------------------------------------------------------------------ 登录态
+  function enterConsole() {
+    return api('/api/console/auth/me').then(function (me) {
+      show($('login'), false);
+      show($('app'), true);
+      show($('topbar'), true);
+      $('who').textContent = (me.site.display_name || me.site.site_key)
+        + ' · ' + (me.admin.display_name || me.admin.username);
+      loadOverview();
+      loadUsers();
+      loadSync();
+    }).catch(function (err) {
+      if (err.status === 401 || err.status === 403) { clearToken(); return; }
+      throw err;
+    });
+  }
+
+  function clearToken() {
+    state.token = '';
+    sessionStorage.removeItem(TOKEN_KEY);
+    show($('app'), false);
+    show($('topbar'), false);
+    show($('login'), true);
+  }
+
+  $('loginForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    $('loginErr').textContent = '';
+    api('/api/console/auth/login', {
+      method: 'POST',
+      body: { username: $('username').value.trim(), password: $('password').value }
+    }).then(function (session) {
+      state.token = session.token;
+      sessionStorage.setItem(TOKEN_KEY, session.token);
+      $('password').value = '';
+      return enterConsole();
+    }).catch(function (err) {
+      $('loginErr').textContent = err.status === 429
+        ? '尝试次数过多，请稍后再试。'
+        : (err.message || '登录失败');
+    });
+  });
+
+  $('logout').addEventListener('click', function () {
+    api('/api/console/auth/logout', { method: 'POST' }).catch(function () { }).then(clearToken);
+  });
+
+  // ------------------------------------------------------------------ 切换
+  var tabs = ['overview', 'users', 'sync'];
+  document.querySelectorAll('nav button').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var name = btn.getAttribute('data-tab');
+      tabs.forEach(function (t) {
+        show($('tab-' + t), t === name);
+      });
+      document.querySelectorAll('nav button').forEach(function (b) {
+        b.setAttribute('aria-current', String(b === btn));
+      });
+      if (name === 'overview') { loadOverview(); }
+      if (name === 'users') { loadUsers(); }
+      if (name === 'sync') { loadSync(); }
+    });
+  });
+
+  // ------------------------------------------------------------------ 概览
+  var FIELD_LABEL = {
+    title: '标题',
+    summary: '简介',
+    release_year: '年份',
+    cover_source_url: '封面地址',
+    cover_cached_at: '封面已缓存',
+    rating_value: '评分',
+    tags_provided: '标签（来源提供）',
+    tags_nonempty: '标签（有内容）',
+    source_url: '原页地址'
+  };
+  var SYNC_LABEL = { never: '从未同步', ok: '正常', partial: '有拒收', failed: '未收尾/中断' };
+
+  function loadOverview() {
+    api('/api/console/overview').then(function (d) {
+      $('ov-total').textContent = d.works.total;
+      $('ov-sync').textContent = SYNC_LABEL[d.sync.status] || d.sync.status;
+      $('ov-runs').textContent = d.sync.runs_last_7d;
+      $('ov-rejected').textContent = d.sync.rejected_last_7d;
+      $('ov-sources').textContent = '数据来源：' + (d.sources.length ? d.sources.join('、') : '尚未配置（因此看不到任何作品）');
+
+      $('ov-types').innerHTML = d.works.by_type.length
+        ? d.works.by_type.map(function (t) {
+            return '<tr><td>' + t.work_type + '</td><td style="text-align:right">' + t.count + '</td></tr>';
+          }).join('')
+        : '<tr><td class="hint">还没有作品</td></tr>';
+
+      $('ov-cov').innerHTML = d.coverage.fields.map(function (f) {
+        return '<tr><td>' + (FIELD_LABEL[f.field] || f.field) + '</td>'
+          + '<td><div class="bar"><i style="width:' + Math.min(100, f.percent) + '%"></i></div></td>'
+          + '<td>' + f.present + '</td><td>' + f.percent + '%</td></tr>';
+      }).join('');
+    }).catch(handleError);
+  }
+
+  // ------------------------------------------------------------------ 用户
+  function loadUsers() {
+    $('uerr').textContent = '';
+    var q = $('uq').value.trim();
+    var status = $('ustatus').value;
+    var params = ['page=' + state.page, 'page_size=' + state.pageSize];
+    if (status) { params.push('status=' + encodeURIComponent(status)); }
+    if (q) { params.push('q=' + encodeURIComponent(q)); }
+
+    api('/api/console/users?' + params.join('&')).then(function (page) {
+      state.total = page.total;
+      $('utotal').textContent = '共 ' + page.total + ' 个用户';
+      $('upage').textContent = '第 ' + page.page + ' / ' + Math.max(1, page.total_pages) + ' 页';
+
+      $('urows').innerHTML = page.items.length ? page.items.map(function (u) {
+        var disabled = u.status === 'disabled';
+        return '<tr data-user="' + u.user_id + '">'
+          + '<td>' + escapeHtml(u.username) + '</td>'
+          + '<td><span class="tag ' + (disabled ? 'disabled' : 'active') + '">' + (disabled ? '已禁用' : '正常') + '</span></td>'
+          + '<td>' + u.active_sessions + '</td>'
+          + '<td class="hint">' + fmt(u.created_at) + '</td>'
+          + '<td class="hint">' + fmt(u.status_changed_at) + '</td>'
+          + '<td>' + (disabled
+            ? '<button data-act="enable">解禁</button>'
+            : '<button class="danger" data-act="disable">禁用</button>') + '</td>'
+          + '</tr>';
+      }).join('') : '<tr><td colspan="6" class="hint">没有符合条件的用户</td></tr>';
+
+      Array.prototype.forEach.call($('urows').querySelectorAll('button[data-act]'), function (btn) {
+        btn.addEventListener('click', function () {
+          var userId = btn.closest('tr').getAttribute('data-user');
+          changeStatus(userId, btn.getAttribute('data-act'), btn);
+        });
+      });
+    }).catch(handleError);
+  }
+
+  function changeStatus(userId, action, btn) {
+    var reason = null;
+    if (action === 'disable') {
+      var input = window.prompt('禁用原因（仅记入服务端日志，可留空）：', '');
+      if (input === null) { return; }
+      reason = input || null;
+    }
+    btn.disabled = true;
+    api('/api/console/users/' + encodeURIComponent(userId) + '/' + action, {
+      method: 'POST',
+      body: action === 'disable' ? { reason: reason } : undefined
+    }).then(function (r) {
+      // 后端返回的 note 是给站主看的原话，原样展示（禁用时的措辞由后端定，前端不得改写）
+      window.alert(r.note);
+      loadUsers();
+    }).catch(function (err) {
+      $('uerr').textContent = err.status === 403
+        ? '无权操作：这个用户不属于你的站点。'
+        : (err.message || '操作失败');
+      btn.disabled = false;
+    });
+  }
+
+  $('usearch').addEventListener('click', function () { state.page = 1; loadUsers(); });
+  $('ustatus').addEventListener('change', function () { state.page = 1; loadUsers(); });
+  $('uprev').addEventListener('click', function () {
+    if (state.page > 1) { state.page -= 1; loadUsers(); }
+  });
+  $('unext').addEventListener('click', function () {
+    if (state.page * state.pageSize < state.total) { state.page += 1; loadUsers(); }
+  });
+
+  // ------------------------------------------------------------------ 同步
+  function loadSync() {
+    api('/api/console/sync').then(function (d) {
+      $('sy-status').textContent = SYNC_LABEL[d.summary.status] || d.summary.status;
+      $('sy-at').textContent = fmt(d.summary.last_run_at);
+      $('sy-batch').textContent = d.summary.last_batch_id || '-';
+      $('sy-unfinished').textContent = d.summary.failed_runs_last_7d;
+      $('sy-hint').textContent = d.retry_hint;
+
+      $('sy-runs').innerHTML = d.recent_runs.length ? d.recent_runs.map(function (r) {
+        var c = r.counts || {};
+        return '<tr><td class="hint">' + fmt(r.started_at) + '</td><td>' + escapeHtml(r.batch_id) + '</td>'
+          + '<td>' + escapeHtml(r.source) + '</td><td>' + (c.inserted || 0) + '</td><td>' + (c.updated || 0) + '</td>'
+          + '<td>' + (c.unchanged || 0) + '</td><td>' + (c.rejected || 0) + '</td>'
+          + '<td>' + (SYNC_LABEL[r.status] || r.status) + '</td></tr>';
+      }).join('') : '<tr><td colspan="8" class="hint">还没有同步记录</td></tr>';
+
+      $('sy-items').innerHTML = d.failed_items.length ? d.failed_items.map(function (f) {
+        return '<tr><td class="hint">' + fmt(f.run_at) + '</td><td>' + escapeHtml(f.batch_id) + '</td>'
+          + '<td>' + escapeHtml(f.source_id || '-') + '</td><td>' + escapeHtml(f.code || '-') + '</td>'
+          + '<td>' + escapeHtml(f.message || '') + '</td></tr>';
+      }).join('') : '<tr><td colspan="5" class="hint">没有失败条目</td></tr>';
+    }).catch(handleError);
+  }
+
+  // ------------------------------------------------------------------ 工具
+  function handleError(err) {
+    if (err.status === 401) { clearToken(); return; }
+    if (err.status === 403) { window.alert(err.message || '无权访问'); return; }
+    window.alert(err.message || '请求失败');
+  }
+
+  function fmt(value) {
+    if (!value) { return '-'; }
+    var d = new Date(value);
+    if (isNaN(d.getTime())) { return String(value); }
+    var pad = function (n) { return n < 10 ? '0' + n : String(n); };
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
+      + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  }
+
+  function escapeHtml(text) {
+    return String(text == null ? '' : text)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  if (state.token) { enterConsole(); }
+})();
+</script>
+</body>
+</html>

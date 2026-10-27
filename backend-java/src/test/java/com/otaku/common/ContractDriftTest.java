@@ -171,6 +171,24 @@ class ContractDriftTest {
         targets.put("ArticleSummary", com.otaku.article.dto.ArticleDtos.ArticleSummary.class);
         targets.put("ArticleDetail", com.otaku.article.dto.ArticleDtos.ArticleDetail.class);
         targets.put("ArticleCategory", com.otaku.article.dto.ArticleDtos.Category.class);
+        // 站主后台（Issue #144）：站点维度不进出参，但形状仍要钉住——字段漂移比逻辑漂移更难发现
+        targets.put("ConsoleSession", com.otaku.console.dto.ConsoleDtos.SessionResponse.class);
+        targets.put("ConsoleMe", com.otaku.console.dto.ConsoleDtos.MeResponse.class);
+        targets.put("ConsoleSite", com.otaku.console.dto.ConsoleDtos.SiteView.class);
+        targets.put("ConsoleAdmin", com.otaku.console.dto.ConsoleDtos.AdminView.class);
+        targets.put("ConsoleOverview", com.otaku.console.dto.ConsoleDtos.Overview.class);
+        targets.put("ConsoleWorksStats", com.otaku.console.dto.ConsoleDtos.WorksStats.class);
+        targets.put("ConsoleTypeCount", com.otaku.console.dto.ConsoleDtos.TypeCount.class);
+        targets.put("ConsoleCoverage", com.otaku.console.dto.ConsoleDtos.Coverage.class);
+        targets.put("ConsoleFieldCoverage", com.otaku.console.dto.ConsoleDtos.FieldCoverage.class);
+        targets.put("ConsoleSyncSummary", com.otaku.console.dto.ConsoleDtos.SyncSummary.class);
+        targets.put("ConsoleUser", com.otaku.console.dto.ConsoleDtos.UserItem.class);
+        targets.put("ConsoleUserPage", PageResponse.class);
+        targets.put("ConsoleUserStatusChange", com.otaku.console.dto.ConsoleDtos.UserStatusChange.class);
+        targets.put("ConsoleSyncRun", com.otaku.console.dto.ConsoleDtos.SyncRun.class);
+        targets.put("ConsoleFailedItem", com.otaku.console.dto.ConsoleDtos.FailedItem.class);
+        targets.put("ConsoleSyncStatus", com.otaku.console.dto.ConsoleDtos.SyncStatus.class);
+        targets.put("SiteAdminCreated", com.otaku.console.dto.ConsoleDtos.SiteAdminCreated.class);
         return targets;
     }
 
@@ -186,6 +204,11 @@ class ContractDriftTest {
         targets.put("ScheduleImportItem", com.otaku.schedule.dto.ScheduleImportRequest.ScheduleImportItem.class);
         targets.put("ArticleImportRequest", com.otaku.article.dto.ArticleImportRequest.class);
         targets.put("ArticleImportItem", com.otaku.article.dto.ArticleImportRequest.ArticleImportItem.class);
+        // 站主后台的入参：站点一律不出现（隔离靠登录态），所以这里没有 site_key 字段
+        targets.put("ConsoleLoginRequest", com.otaku.console.dto.ConsoleDtos.LoginRequest.class);
+        targets.put("ConsoleUserStatusRequest", com.otaku.console.dto.ConsoleDtos.UserStatusRequest.class);
+        targets.put("SiteCreateRequest", com.otaku.console.dto.InternalSiteDtos.SiteCreateRequest.class);
+        targets.put("SiteAdminCreateRequest", com.otaku.console.dto.InternalSiteDtos.SiteAdminCreateRequest.class);
         return targets;
     }
 

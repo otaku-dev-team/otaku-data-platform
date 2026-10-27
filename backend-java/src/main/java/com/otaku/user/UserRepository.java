@@ -20,7 +20,8 @@ import java.util.Optional;
 public class UserRepository {
 
     private static final String COLUMNS =
-            "id, user_id, username, password_hash, created_at, updated_at";
+            "id, user_id, username, password_hash, site_key, status, status_changed_at,"
+                    + " created_at, updated_at";
 
     private static final RowMapper<UserRecord> MAPPER = UserRepository::map;
 
@@ -51,17 +52,44 @@ public class UserRepository {
         return rows.stream().findFirst();
     }
 
+    public Optional<UserRecord> findByUserId(String userId) {
+        List<UserRecord> rows = jdbc.query(
+                "SELECT " + COLUMNS + " FROM app_user WHERE user_id = :userId",
+                new MapSqlParameterSource("userId", userId), MAPPER);
+        return rows.stream().findFirst();
+    }
+
     public void insert(UserRecord user) {
         jdbc.update("""
-                        INSERT INTO app_user (user_id, username, password_hash, created_at, updated_at)
-                        VALUES (:userId, :username, :passwordHash, :createdAt, :updatedAt)
+                        INSERT INTO app_user (user_id, username, password_hash, site_key, status,
+                                              created_at, updated_at)
+                        VALUES (:userId, :username, :passwordHash, :siteKey,
+                                COALESCE(:status, 'active'), :createdAt, :updatedAt)
                         """,
                 new MapSqlParameterSource()
                         .addValue("userId", user.userId())
                         .addValue("username", user.username())
                         .addValue("passwordHash", user.passwordHash())
+                        .addValue("siteKey", user.siteKey())
+                        .addValue("status", user.status())
                         .addValue("createdAt", user.createdAt())
                         .addValue("updatedAt", user.updatedAt()));
+    }
+
+    /**
+     * 改账号状态。**只在站主后台的禁用/解禁路径调用**，且调用前必须已校验归属站点。
+     * 返回受影响行数：0 表示账号不存在（或状态本来就相同，这里按状态差异判断）。
+     */
+    public int updateStatus(long id, String status, LocalDateTime now) {
+        return jdbc.update("""
+                        UPDATE app_user
+                           SET status = :status, status_changed_at = :now, updated_at = :now
+                         WHERE id = :id
+                        """,
+                new MapSqlParameterSource()
+                        .addValue("id", id)
+                        .addValue("status", status)
+                        .addValue("now", now));
     }
 
     private static UserRecord map(ResultSet rs, int rowNum) throws SQLException {
@@ -70,6 +98,9 @@ public class UserRepository {
                 rs.getString("user_id"),
                 rs.getString("username"),
                 rs.getString("password_hash"),
+                rs.getString("site_key"),
+                rs.getString("status"),
+                rs.getObject("status_changed_at", LocalDateTime.class),
                 rs.getObject("created_at", LocalDateTime.class),
                 rs.getObject("updated_at", LocalDateTime.class));
     }
