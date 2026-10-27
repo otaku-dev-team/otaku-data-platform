@@ -69,6 +69,7 @@ class MockWorkDataSource implements WorkDataSource {
     int page = 1,
     int pageSize = AppConfig.pageSize,
     String? tag,
+    int? year,
   }) async {
     if (latency > Duration.zero) await Future<void>.delayed(latency);
 
@@ -90,6 +91,8 @@ class MockWorkDataSource implements WorkDataSource {
         final tags = work.tags;
         if (tags == null || !tags.contains(wantedTag)) return false;
       }
+      // 年份是等值筛选，`null`（不知道哪一年）会被排除——与服务端一致。
+      if (year != null && work.releaseYear != year) return false;
       return true;
     }).toList(growable: false);
 

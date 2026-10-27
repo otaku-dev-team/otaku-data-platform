@@ -15,6 +15,7 @@ class ContentsFilter {
     this.query = '',
     this.sort = WorkSort.id,
     this.tag,
+    this.year,
   });
 
   final WorkType? type;
@@ -26,6 +27,11 @@ class ContentsFilter {
   /// 只筛本地列表是错的——服务端手里才有全量数据。
   final String? tag;
 
+  /// 年份筛选（契约 `year=`，等值）。`null` 表示不限年份。
+  ///
+  /// 与 [sort] 是两件事：`sort = year` 是「按年份排」，这里是「只看某一年」。
+  final int? year;
+
   /// 排序。它和类型/关键词是同一层的条件：变了就得重新查第一页，
   /// 只改本地顺序是不行的——服务端手里才有全量数据。
   final WorkSort sort;
@@ -36,10 +42,34 @@ class ContentsFilter {
       other.type == type &&
       other.query == query &&
       other.sort == sort &&
-      other.tag == tag;
+      other.tag == tag &&
+      other.year == year;
 
   @override
-  int get hashCode => Object.hash(type, query, sort, tag);
+  int get hashCode => Object.hash(type, query, sort, tag, year);
+
+  /// 只改一个条件、其余原样带走。
+  ///
+  /// 以前每个 setter 都手抄一遍全部字段，加一个维度就要改五处——
+  /// 漏改一处就是「先选标签再搜索，标签静默没了」。
+  ContentsFilter copyWith({
+    WorkType? type,
+    bool clearType = false,
+    String? query,
+    WorkSort? sort,
+    String? tag,
+    bool clearTag = false,
+    int? year,
+    bool clearYear = false,
+  }) {
+    return ContentsFilter(
+      type: clearType ? null : (type ?? this.type),
+      query: query ?? this.query,
+      sort: sort ?? this.sort,
+      tag: clearTag ? null : (tag ?? this.tag),
+      year: clearYear ? null : (year ?? this.year),
+    );
+  }
 }
 
 class ContentsFilterController extends Notifier<ContentsFilter> {
@@ -49,40 +79,32 @@ class ContentsFilterController extends Notifier<ContentsFilter> {
   /// 传 `null` 表示"全部类型"。
   void selectType(WorkType? type) {
     if (state.type == type) return;
-    // 同 search：其余条件要一起带走，别把已选的标签丢掉。
-    state = ContentsFilter(
-      type: type,
-      query: state.query,
-      sort: state.sort,
-      tag: state.tag,
-    );
+    state = state.copyWith(type: type, clearType: type == null);
   }
 
   void search(String query) {
     final normalized = query.trim();
     if (normalized == state.query) return;
-    // 标签必须一起带走：换筛选条件的语义是「保持其余条件、只改这一个」，
-    // 漏掉 tag 的话，用户先选标签再搜索会把标签静默清掉——
+    // 其余条件由 copyWith 带走：换筛选条件的语义是「保持其余条件、只改这一个」，
+    // 漏掉某个维度的话，用户先选标签再搜索会把标签静默清掉——
     // 而界面上的筛选条会跟着消失，用户只会觉得「标签筛没了」。
-    state = ContentsFilter(
-      type: state.type,
-      query: normalized,
-      sort: state.sort,
-      tag: state.tag,
-    );
+    state = state.copyWith(query: normalized);
   }
 
   void selectSort(WorkSort sort) {
     if (state.sort == sort) return;
-    state = ContentsFilter(
-      type: state.type,
-      query: state.query,
-      sort: sort,
-      tag: state.tag,
-    );
+    state = state.copyWith(sort: sort);
   }
 
-  /// 从首页「分类浏览」进来：**只保留类型**，清掉搜索 / 标签 / 排序。
+  /// 按年份筛选。传 `null` 表示不限年份。
+  ///
+  /// 与 [selectSort] 是两件事：`sort = 年份` 是「按年份排」，这里是「只看某一年」。
+  void selectYear(int? year) {
+    if (state.year == year) return;
+    state = state.copyWith(year: year, clearYear: year == null);
+  }
+
+  /// 从首页「分类浏览」进来：**只保留类型**，清掉搜索 / 标签 / 年份 / 排序。
   ///
   /// 不能直接调 [selectType]：它的语义是「保持其余条件、只改类型」。
   /// 从首页进来时用户看到的是一条干净的分栏入口，如果残留着上次的标签
@@ -91,6 +113,7 @@ class ContentsFilterController extends Notifier<ContentsFilter> {
     if (state.type == type &&
         state.query.isEmpty &&
         state.tag == null &&
+        state.year == null &&
         state.sort == WorkSort.id) {
       return;
     }
@@ -102,7 +125,8 @@ class ContentsFilterController extends Notifier<ContentsFilter> {
     if (state.sort == WorkSort.rating &&
         state.type == null &&
         state.query.isEmpty &&
-        state.tag == null) {
+        state.tag == null &&
+        state.year == null) {
       return;
     }
     state = const ContentsFilter(sort: WorkSort.rating);
@@ -113,15 +137,10 @@ class ContentsFilterController extends Notifier<ContentsFilter> {
     final trimmed = tag?.trim();
     final next = (trimmed == null || trimmed.isEmpty) ? null : trimmed;
     if (next == state.tag) return;
-    state = ContentsFilter(
-      type: state.type,
-      query: state.query,
-      sort: state.sort,
-      tag: next,
-    );
+    state = state.copyWith(tag: next, clearTag: next == null);
   }
 
-  /// 从详情页点标签进来：**只保留标签**，清掉类型 / 搜索 / 排序。
+  /// 从详情页点标签进来：**只保留标签**，清掉类型 / 搜索 / 年份 / 排序。
   ///
   /// 与 [selectTag] 的区别在语义：selectTag 是「在当前条件下换一个标签」，
   /// 而从详情页跳进来时，用户脑子里只有「这个标签还有什么」——如果列表里
@@ -133,18 +152,24 @@ class ContentsFilterController extends Notifier<ContentsFilter> {
     if (state.tag == trimmed &&
         state.type == null &&
         state.query.isEmpty &&
+        state.year == null &&
         state.sort == WorkSort.id) {
       return;
     }
     state = ContentsFilter(tag: trimmed);
   }
 
-  /// 清掉全部筛选条件（类型 / 关键词 / 标签），**保留排序**。
+  /// 清掉全部筛选条件（类型 / 关键词 / 标签 / 年份），**保留排序**。
   ///
   /// 排序不是筛选：用户选「按评分」是想看到顺序，不是想少看内容；
   /// 清筛选时把它一起重置，会让他觉得排序也莫名其妙丢了。
   void clearFilters() {
-    if (state.type == null && state.query.isEmpty && state.tag == null) return;
+    if (state.type == null &&
+        state.query.isEmpty &&
+        state.tag == null &&
+        state.year == null) {
+      return;
+    }
     state = ContentsFilter(sort: state.sort);
   }
 }
@@ -233,6 +258,7 @@ class ContentsController extends AsyncNotifier<ContentsData> {
       sort: filter.sort,
       page: 1,
       tag: filter.tag,
+      year: filter.year,
     );
     final result = fetched.value;
 
@@ -265,6 +291,7 @@ class ContentsController extends AsyncNotifier<ContentsData> {
         sort: filter.sort,
         page: current.page + 1,
         tag: filter.tag,
+        year: filter.year,
       );
       final next = fetched.value;
 

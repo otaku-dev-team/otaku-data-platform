@@ -44,7 +44,8 @@ class _RecordingWorkSource implements WorkDataSource {
     int page = 1,
     int pageSize = 20,
     String? tag,
-  }) async {
+  
+    int? year,}) async {
     sorts.add(sort);
     pages.add(page);
     return PagedResult<WorkSummary>(

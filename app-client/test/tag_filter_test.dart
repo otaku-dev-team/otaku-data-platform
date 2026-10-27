@@ -64,7 +64,8 @@ class _TagRecordingSource implements WorkDataSource {
     int page = 1,
     int pageSize = 20,
     String? tag,
-  }) async {
+  
+    int? year,}) async {
     tags.add(tag);
     final wanted = tag?.trim() ?? '';
     final items = catalog.where((w) {
@@ -280,10 +281,9 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('标签：科幻'), findsOneWidget);
-      expect(find.text('清除'), findsOneWidget);
 
-      // 点「清除」应当真的把筛选撤掉——有入口还得能用。
-      await tester.tap(find.text('清除'));
+      // 点 chip 上的删除按钮应当真的把筛选撤掉——有入口还得能用。
+      await tester.tap(find.byTooltip('取消标签筛选'));
       await tester.pumpAndSettle();
 
       expect(find.textContaining('标签：'), findsNothing);
@@ -318,7 +318,8 @@ class _OfflineSource implements WorkDataSource {
     int page = 1,
     int pageSize = 20,
     String? tag,
-  }) async => throw _unreachable;
+  
+    int? year,}) async => throw _unreachable;
 
   @override
   Future<Work> fetchDetail(String workId) async => throw _unreachable;

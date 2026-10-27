@@ -31,7 +31,8 @@ class _EmptySource implements WorkDataSource {
     int page = 1,
     int pageSize = 20,
     String? tag,
-  }) async => const PagedResult<WorkSummary>(
+  
+    int? year,}) async => const PagedResult<WorkSummary>(
     items: [],
     total: 0,
     page: 1,

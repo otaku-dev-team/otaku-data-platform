@@ -31,6 +31,7 @@ class RemoteWorkDataSource implements WorkDataSource {
     int page = 1,
     int pageSize = AppConfig.pageSize,
     String? tag,
+    int? year,
   }) async {
     final keyword = query?.trim() ?? '';
     final response = await _dio.get<Map<String, dynamic>>(
@@ -40,6 +41,9 @@ class RemoteWorkDataSource implements WorkDataSource {
         if (keyword.isNotEmpty) 'q': keyword,
         // 标签精确匹配整个标签。空值不带这个参数——服务端把省略与空串都当不过滤。
         if (tag != null && tag.trim().isNotEmpty) 'tag': tag.trim(),
+        // 年份是等值筛选：不带 = 不过滤。服务端对非法值（<1900 / >2100）返回 400，
+        // 所以这里只透传，不做 clamp——把 1800 悄悄改成 1900 会掩盖调用方的 bug。
+        'year': ?year,
         // 契约：省略等价于 id，非法取值服务端返回 400。
         // 默认项也显式带上，好处是抓包时能一眼看出这一页用的是哪种顺序。
         'sort': sort.value,

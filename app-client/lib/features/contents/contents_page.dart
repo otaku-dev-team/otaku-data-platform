@@ -260,6 +260,14 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
                 onPressed: () => context.push(RoutePaths.schedule),
                 icon: const Icon(Icons.calendar_today_outlined),
               ),
+              // 年份筛选。与排序并列：两个都是「对整个结果集生效」的条件，
+              // 塞进类型 chips 那条横向列表会被挤到看不见。
+              _YearMenu(
+                current: filter.year,
+                onChanged: (year) => ref
+                    .read(contentsFilterProvider.notifier)
+                    .selectYear(year),
+              ),
               // 排序放在 AppBar 而不是筛选栏：筛选栏已经塞了类型 chips 和
               // 视图切换，再放一个控件会在手机上把 chips 挤到只剩一两个。
               _SortMenu(
@@ -326,15 +334,15 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
                     onViewChanged: (next) =>
                         ref.read(catalogViewProvider.notifier).select(next),
                   ),
-                  // 当前标签筛选状态 + 清除入口。
+                  // 当前筛选状态 + 逐项清除入口。
                   //
                   // 筛选条件**必须显式可见**：卡片上的标签被标了色，但
                   // 一屏 50 张卡里只看一张时，用户很容易不知道自己筛过标签，
                   // 也不知道为什么结果变少了。空结果时尤其重要——
                   // 「按『科幻』筛出 0 部」和「库里没有科幻」是两回事。
-                  if (filter.tag != null)
-                    _TagFilterBar(
-                      tag: filter.tag!,
+                  if (filter.tag != null || filter.year != null)
+                    _ActiveFiltersBar(
+                      filter: filter,
                       // `tag` 与 `q` 同用约 720ms（后端实测：LIKE '%kw%' 与
                       // 标签求交集，两边都定位不了索引）。这不是客户端能绕过的，
                       // 所以先选标签时把搜索框禁用并说明原因，
@@ -638,10 +646,10 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
 ///
 /// 单独一条而不是把提示混进空结果页：筛出 0 条时列表会显示空状态，
 /// 那时用户最容易困惑「是我筛错了，还是库里真没有」——这一条正好回答它。
-class _TagFilterBar extends ConsumerWidget {
-  const _TagFilterBar({required this.tag, required this.searchBlocked});
+class _ActiveFiltersBar extends ConsumerWidget {
+  const _ActiveFiltersBar({required this.filter, required this.searchBlocked});
 
-  final String tag;
+  final ContentsFilter filter;
 
   /// 搜索框里已经有词了。`tag` + `q` 同用是一次约 720ms 的查询
   /// （后端实测），所以这个组合要明确提示，而不是让它悄悄变慢。
@@ -658,33 +666,84 @@ class _TagFilterBar extends ConsumerWidget {
         right: AppLayout.pagePadding,
         top: 2,
       ),
-      child: Row(
+      child: Wrap(
+        spacing: 6,
+        runSpacing: 2,
+        crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          Icon(
-            Icons.sell_outlined,
-            size: 14,
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-          const SizedBox(width: 6),
-          Text(
-            '标签：$tag',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-          const Spacer(),
-          // 清除出口用文字按钮而不是图标按钮：图标（×）在这里含义不够明确，
-          // 而「清除筛选」四个字不会误解。
-          TextButton(
-            onPressed: () => controller.selectTag(null),
-            style: TextButton.styleFrom(
+          if (filter.tag != null)
+            InputChip(
+              avatar: const Icon(Icons.sell_outlined, size: 14),
+              label: Text('标签：${filter.tag}'),
               visualDensity: VisualDensity.compact,
-              padding: const EdgeInsets.symmetric(horizontal: 8),
+              deleteButtonTooltipMessage: '取消标签筛选',
+              onDeleted: () => controller.selectTag(null),
             ),
-            child: const Text('清除'),
-          ),
+          if (filter.year != null)
+            InputChip(
+              avatar: const Icon(Icons.date_range_rounded, size: 14),
+              label: Text('年份：${filter.year} 年'),
+              visualDensity: VisualDensity.compact,
+              deleteButtonTooltipMessage: '取消年份筛选',
+              onDeleted: () => controller.selectYear(null),
+            ),
+          if (filter.tag != null && searchBlocked)
+            Text(
+              '标签与关键词同时筛选较慢',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
         ],
       ),
+    );
+  }
+}
+
+/// 年份筛选菜单。
+///
+/// 为什么用菜单而不是下拉框：候选是 1950–今年，下拉会拖成很长一条；
+/// PopupMenu 自带滚动与勾选态，而且和旁边的排序菜单是同一个交互。
+///
+/// 菜单项的 value 用 `0` 表示「全部年份」——`PopupMenuButton` 把 `null`
+/// 当作「点了外面关掉」，用 null 当选项值会让「取消筛选」永远点不动。
+class _YearMenu extends StatelessWidget {
+  const _YearMenu({required this.current, required this.onChanged});
+
+  final int? current;
+  final ValueChanged<int?> onChanged;
+
+  static const int _allValue = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final thisYear = DateTime.now().year;
+
+    return PopupMenuButton<int>(
+      tooltip: '年份筛选（当前：${current == null ? '全部' : '$current 年'}）',
+      icon: Icon(
+        Icons.date_range_rounded,
+        // 有条件生效时给个颜色提示：筛选栏里的 chip 在手机上可能要滚出视野，
+        // 图标是唯一一直可见的状态位。
+        color: current == null ? null : theme.colorScheme.primary,
+      ),
+      initialValue: current ?? _allValue,
+      constraints: const BoxConstraints(maxHeight: 420),
+      onSelected: (value) => onChanged(value == _allValue ? null : value),
+      itemBuilder: (context) => [
+        CheckedPopupMenuItem<int>(
+          value: _allValue,
+          checked: current == null,
+          child: const Text('全部年份'),
+        ),
+        for (var year = thisYear; year >= 1950; year--)
+          CheckedPopupMenuItem<int>(
+            value: year,
+            checked: current == year,
+            child: Text('$year 年'),
+          ),
+      ],
     );
   }
 }

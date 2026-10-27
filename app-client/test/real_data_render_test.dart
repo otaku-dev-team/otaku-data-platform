@@ -54,7 +54,8 @@ class _FixtureWorkSource implements WorkDataSource {
     int page = 1,
     int pageSize = 20,
     String? tag,
-  }) async {
+  
+    int? year,}) async {
     final failure = error;
     if (failure != null) throw failure;
     return this.page;
@@ -91,7 +92,8 @@ class _CountingFailingSource implements WorkDataSource {
     int page = 1,
     int pageSize = 20,
     String? tag,
-  }) async {
+  
+    int? year,}) async {
     onCall();
     throw const ApiException(code: ApiErrorCode.network, message: '网络不可达');
   }

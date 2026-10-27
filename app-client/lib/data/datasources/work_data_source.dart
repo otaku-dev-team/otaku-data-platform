@@ -14,6 +14,10 @@ abstract interface class WorkDataSource {
   /// [tag] 是**精确匹配整个标签**（契约：匹配 `科幻` 不会命中 `科幻机甲`）。
   /// 未知标签服务端返回 `200 + 空数组`——不是 404：标签是数据里的值、
   /// 不是接口枚举，来源站改名后旧链接属于「没有结果」而不是「用法错了」。
+  ///
+  /// [year] 是**等值**筛选（契约 `year=`），与 `sort` 是两件事：
+  /// 一个决定结果集、一个决定顺序。没年份的作品会被排除——点「2022」的人
+  /// 要看的就是 2022 年，不该混进「不知道哪一年」的那 9%。
   Future<PagedResult<WorkSummary>> fetchWorks({
     WorkType? type,
     String? query,
@@ -21,6 +25,7 @@ abstract interface class WorkDataSource {
     int page = 1,
     int pageSize = 20,
     String? tag,
+    int? year,
   });
 
   Future<Work> fetchDetail(String workId);

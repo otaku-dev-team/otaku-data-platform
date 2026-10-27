@@ -49,7 +49,8 @@ class _SwitchableWorkSource implements WorkDataSource {
     int page = 1,
     int pageSize = 20,
     String? tag,
-  }) async {
+  
+    int? year,}) async {
     listCalls++;
     if (notFound) {
       throw const ApiException(
