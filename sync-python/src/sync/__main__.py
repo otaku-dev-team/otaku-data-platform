@@ -128,6 +128,28 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="不建一致性快照，直接读源库（仅在源库静止时使用）",
     )
+    # ---- 数据集 → 后端：把导出的数据集提交到接口② ----
+    parser.add_argument(
+        "--import-dataset",
+        action="store_true",
+        help="把已导出的标准数据集提交到后端（默认预演，加 --apply 才写）",
+    )
+    parser.add_argument(
+        "--dataset-in",
+        default=None,
+        help="要提交的数据集路径，默认 runs/dataset.db",
+    )
+    parser.add_argument(
+        "--backend-source",
+        default=None,
+        help="写入后端时用的来源标识（决定 (source, source_id) 唯一键），"
+        "默认 otaku_site；换站必须显式指定，否则会被当成新作品重复插入",
+    )
+    parser.add_argument(
+        "--apply",
+        action="store_true",
+        help="数据集提交时真正写入后端；不加则只预演",
+    )
     parser.add_argument(
         "--health",
         action="store_true",
@@ -197,11 +219,97 @@ def _run_dataset_export(args) -> int:
     return 0
 
 
+def _run_dataset_publish(args) -> int:
+    """数据集 → 后端。与导出对称：默认预演，只读数据集，不发任何请求。"""
+    from .config import SOURCE_NAME
+    from .dataset import CHUNK_LIMIT, publish_dataset
+    from .importer import JavaImporter
+
+    dataset = args.dataset_in or "runs/dataset.db"
+    backend_source = args.backend_source or SOURCE_NAME
+    chunk = args.batch_size or CHUNK_LIMIT
+    if chunk < 1 or chunk > CHUNK_LIMIT:
+        print(f"错误：单批上限 {CHUNK_LIMIT} 条", file=sys.stderr)
+        return 2
+
+    config = SyncConfig.from_env(java_base_url=args.java_base_url)
+    if args.apply and not config.internal_token:
+        print(
+            "错误：--apply 需要内部导入令牌，请设置环境变量 OTAKU_INTERNAL_TOKEN",
+            file=sys.stderr,
+        )
+        return 2
+
+    importer = None
+    if args.apply:
+        importer = JavaImporter(
+            config.java_base_url,
+            token=config.internal_token,
+            timeout=config.timeout_seconds,
+            max_attempts=config.max_attempts,
+            backoff_seconds=config.backoff_seconds,
+        )
+
+    try:
+        report = publish_dataset(
+            dataset,
+            backend_source=backend_source,
+            site_base_url=config.source_base_url,
+            chunk_size=chunk,
+            limit=args.limit,
+            apply=args.apply,
+            importer=importer,
+            report_path=f"{dataset}.publish.json",
+            sample_path=None if args.apply else f"{dataset}.publish-sample.json",
+        )
+    except FileNotFoundError as exc:
+        print(f"错误：{exc}", file=sys.stderr)
+        return 2
+
+    print(
+        f"数据集: {report.dataset_path}  后端 source: {report.backend_source}  "
+        f"数据时间: {report.fetched_at}"
+    )
+    print(
+        ("真实提交 → " + config.java_base_url)
+        if args.apply
+        else "预演（未发送任何请求，加 --apply 才写入）"
+    )
+    print(
+        f"扫描 {report.works_scanned} 条，组装 {report.items_built} 条，"
+        f"分 {len(report.batches)} 批，耗时 {report.elapsed_seconds:.1f}s"
+    )
+    if report.skipped_invalid_type:
+        print(f"筛掉 {report.skipped_invalid_type} 条（work_type 不在契约四类内）")
+    print(
+        f"封面: 绝对 {report.covers_absolute}  相对已拼接 {report.covers_resolved}  "
+        f"无地址丢弃 {report.covers_dropped}  本来就没有 {report.covers_empty}"
+        f"（拼接基址 {config.source_base_url}）"
+    )
+    if args.apply and report.counts:
+        print(
+            "结果: "
+            + "  ".join(f"{k}={v}" for k, v in sorted(report.counts.items()))
+        )
+    if report.errors:
+        print(f"后端拒收明细（前 5 条，共 {len(report.errors)}）:")
+        for err in report.errors[:5]:
+            print(f"  - {err.source_id}: {err.reason_code} {err.message or ''}")
+    if report.aborted:
+        print(f"已中止：{report.aborted}", file=sys.stderr)
+    for warning in report.warnings:
+        print(f"注意: {warning}")
+    print(f"报告: {report.dataset_path}.publish.json")
+    return 0 if report.ok else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
     if args.export_dataset:
         return _run_dataset_export(args)
+    if args.import_dataset:
+        return _run_dataset_publish(args)
     if args.retry_failed and (args.articles or args.schedule):
         print(
             "错误：--retry-failed 目前只支持作品抓取，不与 --articles / --schedule 同用",
