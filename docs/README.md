@@ -12,6 +12,7 @@
 ## 一之二、项目总纲与授权
 
 - [`docs/project-charter.md`](project-charter.md)：**项目总纲**——总目标 G1–G3、六条工作流 W1–W6、两个探索项、授权与自治规则、必须回来确认的红线、验收与信任机制。**先读这一份再看其他。**
+- [`docs/collaboration-protocol.md`](collaboration-protocol.md)：**并行开发时的阻塞处理**——三类阻塞各怎么应对、「确认默认同意、沉默不阻塞」（PR 是通知不是闸门）、冲突归作者解。**开工前读一遍，省掉等点头的时间。**
 - [`docs/ROADMAP.md`](ROADMAP.md)：唯一看板，含阶段总览（§6）与工作流看板（§8）。
 - [`docs/product-positioning.md`](product-positioning.md)：**上位依据**（2026-10-24 起，定位 > 契约 > 其他文档）——商业模式、身份归属、六条边界、运营形态三态（附录 A：站点生命周期与关停预案）。技术判断有分歧时以它为准。
 - [`docs/merge-queue.md`](merge-queue.md)：合并队列与合并后动作清单——栈关系、四批合并顺序、合并后要关 / rebase 的分支、三个已知坑。合并期间以这份为准。
@@ -64,6 +65,7 @@
 
 - [`docs/how-we-serve-sites.md`](how-we-serve-sites.md)：对站点方说明"我们做什么、不做什么、怎么计费"的对外口径。
 - [`docs/deploy-production.md`](deploy-production.md)：生产部署步骤与拓扑（MySQL + 后端容器、封面回源白名单）。
+- [`docs/deployment-schedule.md`](deployment-schedule.md)：**接单后 3 天部署**的排期——接单前必建的 P1–P9、四条独立并行流、逐日执行窗口与当前卡点。
 - [`docs/bangumi-archive-handover.md`](bangumi-archive-handover.md)：Bangumi 档案灌库说明（55.6 万条来源与管线）。
 
 ## 七、文档维护约定
