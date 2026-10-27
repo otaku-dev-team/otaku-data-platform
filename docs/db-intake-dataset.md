@@ -116,19 +116,25 @@ MySQL 可以 `GRANT SELECT` 到某几张表；**SQLite 没有账号与授权体�
 | `schema.py` | 标准数据集 12 表 DDL + 版本 + 源表白名单/禁区 |
 | `mapping.py` | 映射加载与校验、结构探测、指纹、三档降级 |
 | `exporter.py` | 一致性快照、类型转换、质量统计、原子落盘、版本校验 |
+| `publisher.py` | 数据集 → 接口②：分块、标签聚合、封面拼接、幂等批次号 |
 | `mappings/otaku.json` | Otaku 的映射（`contents` 21 列 + 5 张关联表 + 资讯 + 档期） |
 
 CLI：
 
 ```bash
+# 导出（读客户库，产物是数据集，不写后端）
 python -m sync --export-dataset \
   --source-db /opt/acgn-test-platform/local_dev.db \
   --mapping src/sync/dataset/mappings/otaku.json \
   --dataset-out runs/dataset.db
+
+# 提交（读数据集，默认预演；--apply 才真正写后端）
+python -m sync --import-dataset --dataset-in runs/dataset.db \
+  --source-base-url http://154.8.194.198:8000 --apply
 ```
 
 本机实测（网站库开发规模副本，11 作品 / 13 标签 / 6 资讯 / 6 档期）：
-49 行，结构指纹 `8e99573f3965f427`，一致性快照成功，13 项 dataset 测试 + 全量 213 项绿。
+49 行，结构指纹 `8e99573f3965f427`，一致性快照成功，13 项 dataset 测试 + 全量 206 项绿。
 
 已确认打通：`work_type` 中文→契约枚举、`rating_scale` 常量、`title_original`
 （`/api/contents` 永远不给的原名）、`alias`/`media`/`episodes` 等富字段，
@@ -141,8 +147,23 @@ python -m sync --export-dataset \
    这是整件事唯一需要改客户表结构的地方。
 2. **MySQL 源**：第三方客户多为 MySQL，需要 `information_schema` 探测 + 可选驱动
    （`pymysql` 纯 Python）。当前只实现 SQLite，接口已按「探测函数可替换」预留。
-3. **导入器接线**：数据集 → 现有 `POST /internal/import/batches`（后端零改动，
-   `works` 前 9 列就是 ImportItem）。`work_tags` 聚合成 `tags[]` 在导入侧做。
+3. ~~导入器接线~~ → **已实现（`dataset/publisher.py`）**，后端与契约零改动。
+   两处必须留意，写错了都是静默故障：
+
+   - **`backend_source` 决定「更新」还是「新增」**。后端唯一键是
+     `(source, source_id)`；数据集里的 `meta.source_id`（`otaku`）只是数据集标签，
+     首站后端现存行的 `source` 是 `otaku_site`。两者不一致时同一批作品会被当成
+     新作品插入一遍——1.8 万条目录变 3.6 万条，界面只表现为"重复条目"，
+     不会有任何报错。故 `--backend-source` 默认取 `otaku_site` 并在报告里回显。
+   - **封面是站内相对路径**（实测 `contents.image_url` = `/covers/cover_x.jpg`），
+     后端封面代理要求带 scheme，收到相对路径直接跳过；更糟的是导入是 upsert，
+     它会用这个不可用地址**覆盖**掉站点适配器先前写好的绝对地址。所以发布侧用
+     `--source-base-url` 拼绝对地址，拿不到基址时按 `null` 发送（不覆盖）并计数。
+
+   `batch_id` 由「批次序号 + 该批内容 sha256」生成，因此重跑 = 续跑：断点之后
+   已成功的批次 id 不变、后端返回首次结果，数据真的变了则换号正常 upsert。
+   只发 `works`；资讯与档期仍走 `--articles` / `--schedule` 原通道。
+   19 项 publisher 测试 + 全量 206 项绿。
 4. ~~线上规模实测~~ → **已实测（2026-10-28，服务器，`nice`/`ionice` 降优先级跑，
    未打断正在进行的全量导入）**：`works` **18,828** 条，全表合计 **618,853 行**，
    耗时 **12.1 秒**，派生库 **79.8 MB**（源库 119 MB），一致性快照生效，结构指纹
