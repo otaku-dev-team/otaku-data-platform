@@ -82,6 +82,11 @@ class ConsoleIsolationIntegrationTest {
                 SITE_A, SITE_B);
         jdbc.update("DELETE FROM site_admin_session WHERE site_admin_id IN "
                 + "(SELECT id FROM site_admin WHERE site_key IN (?, ?))", SITE_A, SITE_B);
+        // 收藏有外键指向 app_user，必须先删；审计没有外键，但留着会污染"计数为 1"的断言
+        jdbc.update("DELETE FROM collection WHERE user_id IN "
+                + "(SELECT id FROM app_user WHERE site_key IN (?, ?) OR username LIKE 'it-console-%')",
+                SITE_A, SITE_B);
+        jdbc.update("DELETE FROM console_audit WHERE site_key IN (?, ?)", SITE_A, SITE_B);
         jdbc.update("DELETE FROM app_user WHERE site_key IN (?, ?) OR username LIKE 'it-console-%'",
                 SITE_A, SITE_B);
         jdbc.update("DELETE FROM site_admin WHERE site_key IN (?, ?)", SITE_A, SITE_B);
@@ -391,6 +396,313 @@ class ConsoleIsolationIntegrationTest {
         assertThat(errorCode(admin)).isEqualTo("ADMIN_NOT_FOUND");
     }
 
+
+    // ------------------------------------------------------------ 二期：站主名单自助维护
+
+    @Test
+    @DisplayName("站主列表只含本站，当前登录的 self=true")
+    void adminListIsScopedAndMarksSelf() throws Exception {
+        twoSites();
+        createAdmin(SITE_A, "it-console-admin-a2");
+
+        String tokenA = loginAdmin(ADMIN_A);
+        JsonNode list = okJson(get("/api/console/admins").header("Authorization", "Bearer " + tokenA));
+
+        assertThat(list).hasSize(2);
+        assertThat(list).extracting(n -> n.get("username").asText())
+                .containsExactlyInAnyOrder(ADMIN_A, "it-console-admin-a2")
+                .doesNotContain(ADMIN_B);
+        JsonNode self = null;
+        for (JsonNode item : list) {
+            if (item.get("self").asBoolean()) {
+                self = item;
+            }
+        }
+        assertThat(self).as("必须有一项标记为 self").isNotNull();
+        assertThat(self.get("username").asText()).isEqualTo(ADMIN_A);
+    }
+
+    @Test
+    @DisplayName("站主可自助新增本站站主：新账号立即能登录，且只能看到本站")
+    void adminCanCreateTeammate() throws Exception {
+        twoSites();
+        String tokenA = loginAdmin(ADMIN_A);
+
+        MvcResult created = mvc.perform(post("/api/console/admins")
+                        .header("Authorization", "Bearer " + tokenA)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"it-console-new-admin\",\"password\":\"new-pass-1234\","
+                                + "\"display_name\":\"新同事\"}"))
+                .andReturn();
+        assertThat(created.getResponse().getStatus()).isEqualTo(201);
+        JsonNode body = json(created);
+        assertThat(body.get("admin_id").asText()).startsWith("G-");
+        // 口令绝不回显（连刚输入的那份也不回显）
+        assertThat(created.getResponse().getContentAsString(StandardCharsets.UTF_8))
+                .doesNotContain("new-pass-1234");
+
+        // 新站主能登录，且站点是 A
+        String newToken = loginAdminWith("it-console-new-admin", "new-pass-1234");
+        JsonNode me = okJson(get("/api/console/auth/me").header("Authorization", "Bearer " + newToken));
+        assertThat(me.get("site").get("site_key").asText()).isEqualTo(SITE_A);
+
+        // 全局用户名唯一 → 409
+        MvcResult dup = mvc.perform(post("/api/console/admins")
+                        .header("Authorization", "Bearer " + tokenA)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"it-console-new-admin\",\"password\":\"new-pass-1234\"}"))
+                .andReturn();
+        assertThat(dup.getResponse().getStatus()).isEqualTo(409);
+        assertThat(errorCode(dup)).isEqualTo("USERNAME_TAKEN");
+    }
+
+    @Test
+    @DisplayName("停用别的站主：旧会话 401、重登 403；恢复后可重登；不能停用自己")
+    void adminDisableEnableAndSelfGuard() throws Exception {
+        twoSites();
+        createAdmin(SITE_A, "it-console-admin-a2");
+        String adminIdA2 = adminIdOf("it-console-admin-a2");
+        String tokenA = loginAdmin(ADMIN_A);
+        String tokenA2 = loginAdmin("it-console-admin-a2");
+
+        JsonNode disabled = okJson(post("/api/console/admins/" + adminIdA2 + "/disable")
+                .header("Authorization", "Bearer " + tokenA));
+        assertThat(disabled.get("status").asText()).isEqualTo("disabled");
+        assertThat(disabled.get("revoked_sessions").asInt()).isGreaterThanOrEqualTo(1);
+
+        // 旧令牌被撤销（401），重登 403 且说明原因
+        assertThat(mvc.perform(get("/api/console/overview")
+                        .header("Authorization", "Bearer " + tokenA2))
+                .andReturn().getResponse().getStatus()).isEqualTo(401);
+        MvcResult relogin = mvc.perform(post("/api/console/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(loginBody("it-console-admin-a2", PASSWORD)))
+                .andReturn();
+        assertThat(relogin.getResponse().getStatus()).isEqualTo(403);
+
+        // 幂等
+        JsonNode again = okJson(post("/api/console/admins/" + adminIdA2 + "/disable")
+                .header("Authorization", "Bearer " + tokenA));
+        assertThat(again.get("revoked_sessions").asInt()).isZero();
+
+        // 恢复后可重登
+        okJson(post("/api/console/admins/" + adminIdA2 + "/enable")
+                .header("Authorization", "Bearer " + tokenA));
+        assertThat(loginAdmin("it-console-admin-a2")).isNotBlank();
+
+        // 不能停用自己
+        MvcResult self = mvc.perform(post("/api/console/admins/" + adminIdOf(ADMIN_A) + "/disable")
+                        .header("Authorization", "Bearer " + tokenA))
+                .andReturn();
+        assertThat(self.getResponse().getStatus()).isEqualTo(400);
+        assertThat(errorCode(self)).isEqualTo("BAD_REQUEST");
+    }
+
+    @Test
+    @DisplayName("停用站主：不存在 404、别站 403")
+    void adminLifecycleIsolation() throws Exception {
+        twoSites();
+        String tokenA = loginAdmin(ADMIN_A);
+        String adminIdB = adminIdOf(ADMIN_B);
+
+        MvcResult other = mvc.perform(post("/api/console/admins/" + adminIdB + "/disable")
+                        .header("Authorization", "Bearer " + tokenA))
+                .andReturn();
+        assertThat(other.getResponse().getStatus()).isEqualTo(403);
+        assertThat(errorCode(other)).isEqualTo("FORBIDDEN");
+
+        MvcResult unknown = mvc.perform(post("/api/console/admins/G-notexist/disable")
+                        .header("Authorization", "Bearer " + tokenA))
+                .andReturn();
+        assertThat(unknown.getResponse().getStatus()).isEqualTo(404);
+        assertThat(errorCode(unknown)).isEqualTo("ADMIN_NOT_FOUND");
+    }
+
+    @Test
+    @DisplayName("改口令：旧口令错 401、新口令太短 400；成功后其它设备被撤销、当前仍可用")
+    void changePasswordRevokesOtherSessions() throws Exception {
+        twoSites();
+        String first = loginAdminWith(ADMIN_A, PASSWORD);
+        String second = loginAdminWith(ADMIN_A, PASSWORD);
+
+        MvcResult wrongOld = mvc.perform(post("/api/console/auth/password")
+                        .header("Authorization", "Bearer " + first)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"old_password\":\"wrong-old\",\"new_password\":\"brand-new-pass\"}"))
+                .andReturn();
+        assertThat(wrongOld.getResponse().getStatus()).isEqualTo(401);
+        assertThat(errorCode(wrongOld)).isEqualTo("INVALID_CREDENTIALS");
+
+        MvcResult tooShort = mvc.perform(post("/api/console/auth/password")
+                        .header("Authorization", "Bearer " + first)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"old_password\":\"" + PASSWORD + "\",\"new_password\":\"short\"}"))
+                .andReturn();
+        assertThat(tooShort.getResponse().getStatus()).isEqualTo(400);
+
+        MvcResult ok = mvc.perform(post("/api/console/auth/password")
+                        .header("Authorization", "Bearer " + first)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"old_password\":\"" + PASSWORD + "\",\"new_password\":\"brand-new-pass\"}"))
+                .andReturn();
+        assertThat(ok.getResponse().getStatus()).isEqualTo(204);
+
+        // 当前设备保留，其它设备被撤销
+        assertThat(mvc.perform(get("/api/console/auth/me").header("Authorization", "Bearer " + first))
+                .andReturn().getResponse().getStatus()).isEqualTo(200);
+        assertThat(mvc.perform(get("/api/console/auth/me").header("Authorization", "Bearer " + second))
+                .andReturn().getResponse().getStatus()).isEqualTo(401);
+        // 新口令可登录，旧口令不可
+        assertThat(loginAdminWith(ADMIN_A, "brand-new-pass")).isNotBlank();
+        assertThat(mvc.perform(post("/api/console/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(loginBody(ADMIN_A, PASSWORD)))
+                .andReturn().getResponse().getStatus()).isEqualTo(401);
+    }
+
+    // ------------------------------------------------------------ 二期：用户详情与收藏
+
+    @Test
+    @DisplayName("用户详情：会话数与收藏聚合只算这个人的；别站 403、不存在 404")
+    void userDetailStatsAndIsolation() throws Exception {
+        twoSites();
+        String userA = createAccount("it-console-a-user", SITE_A);
+        String userB = createAccount("it-console-b-user", SITE_B);
+        insertWork(SRC_A, "a-1", "作品一");
+        insertWork(SRC_A, "a-2", "作品二");
+        insertWork(SRC_A, "a-3", "作品三");
+        insertCollection(userA, "W-a-1", "want");
+        insertCollection(userA, "W-a-2", "watching");
+        insertCollection(userA, "W-a-3", null);
+        loginApp("it-console-a-user", PASSWORD); // 产生 1 个活跃会话
+
+        String tokenA = loginAdmin(ADMIN_A);
+        JsonNode detail = okJson(get("/api/console/users/" + userA)
+                .header("Authorization", "Bearer " + tokenA));
+
+        assertThat(detail.get("username").asText()).isEqualTo("it-console-a-user");
+        assertThat(detail.get("active_sessions").asInt()).isEqualTo(1);
+        JsonNode stats = detail.get("collections");
+        assertThat(stats.get("total").asInt()).isEqualTo(3);
+        assertThat(stats.get("want").asInt()).isEqualTo(1);
+        assertThat(stats.get("watching").asInt()).isEqualTo(1);
+        assertThat(stats.get("watched").asInt()).isZero();
+        assertThat(stats.get("none").asInt()).isEqualTo(1);
+        assertThat(stats.get("last_updated_at").isNull()).isFalse();
+
+        // 别站用户 → 403；不存在 → 404
+        MvcResult other = mvc.perform(get("/api/console/users/" + userB)
+                        .header("Authorization", "Bearer " + tokenA))
+                .andReturn();
+        assertThat(other.getResponse().getStatus()).isEqualTo(403);
+        MvcResult unknown = mvc.perform(get("/api/console/users/U-notexist")
+                        .header("Authorization", "Bearer " + tokenA))
+                .andReturn();
+        assertThat(unknown.getResponse().getStatus()).isEqualTo(404);
+    }
+
+    @Test
+    @DisplayName("收藏明细：按 updated_at 倒序、状态可过滤、非法状态 400、别站 403")
+    void userCollectionsPageAndFilter() throws Exception {
+        twoSites();
+        String userA = createAccount("it-console-a-user", SITE_A);
+        String userB = createAccount("it-console-b-user", SITE_B);
+        insertWork(SRC_A, "a-1", "作品一");
+        insertWork(SRC_A, "a-2", "作品二");
+        insertWork(SRC_A, "a-3", "作品三");
+        insertCollection(userA, "W-a-1", "want", finishedMinutesAgo(30));
+        insertCollection(userA, "W-a-2", "watching", finishedMinutesAgo(10));
+        insertCollection(userA, "W-a-3", null, finishedMinutesAgo(50));
+
+        String tokenA = loginAdmin(ADMIN_A);
+        JsonNode page = okJson(get("/api/console/users/" + userA + "/collections")
+                .header("Authorization", "Bearer " + tokenA));
+        assertThat(page.get("total").asInt()).isEqualTo(3);
+        assertThat(page.get("items")).hasSize(3);
+        // updated_at 倒序：watching(10 分钟前) → want(30) → none(50)
+        assertThat(page.get("items").get(0).get("work_id").asText()).isEqualTo("W-a-2");
+        assertThat(page.get("items").get(2).get("work_id").asText()).isEqualTo("W-a-3");
+        assertThat(page.get("items").get(0).get("title").asText()).isEqualTo("作品二");
+
+        JsonNode watching = okJson(get("/api/console/users/" + userA + "/collections")
+                .header("Authorization", "Bearer " + tokenA)
+                .param("status", "watching"));
+        assertThat(watching.get("total").asInt()).isEqualTo(1);
+        JsonNode none = okJson(get("/api/console/users/" + userA + "/collections")
+                .header("Authorization", "Bearer " + tokenA)
+                .param("status", "none"));
+        assertThat(none.get("total").asInt()).isEqualTo(1);
+
+        assertThat(mvc.perform(get("/api/console/users/" + userA + "/collections")
+                        .header("Authorization", "Bearer " + tokenA)
+                        .param("status", "bogus"))
+                .andReturn().getResponse().getStatus()).isEqualTo(400);
+
+        // 别站的用户：同样 403，且不会先查出数据再判断
+        assertThat(mvc.perform(get("/api/console/users/" + userB + "/collections")
+                        .header("Authorization", "Bearer " + tokenA))
+                .andReturn().getResponse().getStatus()).isEqualTo(403);
+    }
+
+    @Test
+    @DisplayName("审计：新增/停用站主与禁用用户都留痕（console_audit）")
+    void auditTrailIsWritten() throws Exception {
+        twoSites();
+        String tokenA = loginAdmin(ADMIN_A);
+        createdJson(post("/api/console/admins")
+                .header("Authorization", "Bearer " + tokenA)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"username\":\"it-console-audit-admin\",\"password\":\"audit-pass-123\"}"));
+        String auditAdminId = adminIdOf("it-console-audit-admin");
+        okJson(post("/api/console/admins/" + auditAdminId + "/disable")
+                .header("Authorization", "Bearer " + tokenA));
+
+        String userA = createAccount("it-console-a-user", SITE_A);
+        okJson(post("/api/console/users/" + userA + "/disable")
+                .header("Authorization", "Bearer " + tokenA)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"reason\":\"刷屏\"}"));
+
+        assertThat(auditCount(ConsoleAuditRepository.ACTION_ADMIN_CREATE)).isEqualTo(1);
+        assertThat(auditCount(ConsoleAuditRepository.ACTION_ADMIN_DISABLE)).isEqualTo(1);
+        assertThat(auditCount(ConsoleAuditRepository.ACTION_USER_DISABLE)).isEqualTo(1);
+        String detail = jdbc.queryForObject(
+                "SELECT detail FROM console_audit WHERE action = 'user.disable' AND target_id = ?",
+                String.class, userA);
+        assertThat(detail).contains("刷屏");
+    }
+
+    // ------------------------------------------------------------ 二期夹具
+
+    private void insertCollection(String userId, String workId, String status) {
+        insertCollection(userId, workId, status, null);
+    }
+
+    private void insertCollection(String userId, String workId, String status, LocalDateTime updatedAt) {
+        Long pk = jdbc.queryForObject("SELECT id FROM app_user WHERE user_id = ?", Long.class, userId);
+        LocalDateTime at = updatedAt == null ? LocalDateTime.now(ZoneOffset.UTC) : updatedAt;
+        jdbc.update("""
+                        INSERT INTO collection (user_id, work_id, status, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?)
+                        """, pk, workId, status, at, at);
+    }
+
+    private int auditCount(String action) {
+        Integer n = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM console_audit WHERE action = ? AND site_key = ?",
+                Integer.class, action, SITE_A);
+        return n == null ? 0 : n;
+    }
+
+    private String loginAdminWith(String username, String password) throws Exception {
+        MvcResult result = mvc.perform(post("/api/console/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(loginBody(username, password)))
+                .andReturn();
+        assertThat(result.getResponse().getStatus()).isEqualTo(200);
+        return json(result).get("token").asText();
+    }
+
     // ------------------------------------------------------------------ 鉴权
 
     @Test
@@ -499,6 +811,17 @@ class ConsoleIsolationIntegrationTest {
 
     private static String loginBody(String username, String password) {
         return "{\"username\":\"" + username + "\",\"password\":\"" + password + "\"}";
+    }
+
+    /** 201 Created 的 JSON（新增站主用）；与 okJson 分开，避免"200/201 都算成功"的模糊断言。 */
+    private JsonNode createdJson(MockHttpServletRequestBuilder request) throws Exception {
+        request.contentType(MediaType.APPLICATION_JSON);
+        MvcResult result = mvc.perform(request).andReturn();
+        assertThat(result.getResponse().getStatus())
+                .as("期望 201，实际 %s：%s", result.getResponse().getStatus(),
+                        result.getResponse().getContentAsString(StandardCharsets.UTF_8))
+                .isEqualTo(201);
+        return json(result);
     }
 
     private JsonNode okJson(MockHttpServletRequestBuilder request) throws Exception {

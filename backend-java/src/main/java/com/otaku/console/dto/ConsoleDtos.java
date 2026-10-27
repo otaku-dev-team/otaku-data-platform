@@ -96,6 +96,88 @@ public final class ConsoleDtos {
     }
 
     /**
+     * 用户详情（二期）。{@code collections} 是聚合计数，不是明细——
+     * 站主打开用户页第一眼要看到「这个人收藏了 37 部、其中 12 部在看」，
+     * 明细由 {@code /collections} 分页拉。
+     */
+    public record UserDetail(
+            String userId,
+            String username,
+            String status,
+            OffsetDateTime createdAt,
+            OffsetDateTime statusChangedAt,
+            long activeSessions,
+            CollectionStats collections
+    ) {
+    }
+
+    /** 收藏聚合。{@code none} 是「收藏了但没设状态」，与契约里 status 可空一致。 */
+    public record CollectionStats(
+            long total,
+            long want,
+            long watching,
+            long watched,
+            long none,
+            OffsetDateTime lastUpdatedAt
+    ) {
+    }
+
+    /** 用户的一条收藏（含作品摘要），供站主核对「这个人到底收藏了什么」。 */
+    public record UserCollectionItem(
+            String workId,
+            String title,
+            String workType,
+            String status,
+            String coverUrl,
+            OffsetDateTime updatedAt
+    ) {
+    }
+
+    /**
+     * 站主名单的一项（二期：站主可以自助增删名单）。
+     *
+     * <p>{@code self} 标记当前登录的这位——前端据此禁用「停用自己」按钮，
+     * 但**后端仍然会拒绝**：按钮只是提示，规则不能只活在前端。
+     */
+    public record AdminItem(
+            String adminId,
+            String username,
+            String displayName,
+            String status,
+            OffsetDateTime createdAt,
+            OffsetDateTime lastLoginAt,
+            boolean self
+    ) {
+    }
+
+    /** 新增站主的入参。密码由当前站主设置并线下转告；平台只存 BCrypt，不保存明文。 */
+    public record AdminCreateRequest(String username, String password, String displayName) {
+    }
+
+    /** 修改自己的后台口令。修改成功后**其它设备**的会话会被撤销，当前这台保留。 */
+    public record PasswordChangeRequest(String oldPassword, String newPassword) {
+    }
+
+    /**
+     * 新增站主的回执。
+     *
+     * <p>刻意**不回显密码**（连当前站主刚输入的那份也不回显）：回显会让"口令出现在响应体里"
+     * 变成常态，浏览器、代理、日志都可能留下它。要转告就由操作者自己记住/粘贴。
+     */
+    public record AdminCreated(String adminId, String username, String displayName, String note) {
+    }
+
+    /** 停用/恢复站主的结果。{@code note} 说明影响范围，避免误以为动了整个站点。 */
+    public record AdminStatusChange(
+            String adminId,
+            String username,
+            String status,
+            int revokedSessions,
+            String note
+    ) {
+    }
+
+    /**
      * 状态变更结果。
      *
      * <p>{@code note} 是**给站主看的原话**：禁用不等于封网站账号。

@@ -66,6 +66,44 @@ public class ConsoleUserRepository {
         return count == null ? 0 : count;
     }
 
+    /**
+     * 用户详情页需要的两个聚合（一次查完，别在 Java 里翻页统计）。
+     *
+     * <p>{@code active_sessions} 与列表同一口径：只数未撤销且未过期的会话，
+     * 否则站主会看到「已禁用但还有 3 个在线」这种自相矛盾的画面
+     * （禁用会撤销会话，两处口径必须一致）。
+     */
+    public ConsoleDtos.CollectionStats collectionStats(long userPk) {
+        return jdbc.queryForObject("""
+                        SELECT COUNT(*)                                   AS total,
+                               COALESCE(SUM(c.status = 'want'), 0)        AS want,
+                               COALESCE(SUM(c.status = 'watching'), 0)    AS watching,
+                               COALESCE(SUM(c.status = 'watched'), 0)     AS watched,
+                               COALESCE(SUM(c.status IS NULL), 0)         AS none,
+                               MAX(c.updated_at)                          AS last_updated_at
+                          FROM collection c
+                         WHERE c.user_id = :userId
+                        """,
+                new MapSqlParameterSource("userId", userPk),
+                (rs, rowNum) -> new ConsoleDtos.CollectionStats(
+                        rs.getLong("total"),
+                        rs.getLong("want"),
+                        rs.getLong("watching"),
+                        rs.getLong("watched"),
+                        rs.getLong("none"),
+                        toOffset(rs.getObject("last_updated_at", LocalDateTime.class))));
+    }
+
+    public long countActiveSessions(long userPk, LocalDateTime now) {
+        Long count = jdbc.queryForObject("""
+                        SELECT COUNT(*) FROM user_session
+                         WHERE user_id = :userId AND revoked_at IS NULL AND expires_at > :now
+                        """,
+                new MapSqlParameterSource().addValue("userId", userPk).addValue("now", now),
+                Long.class);
+        return count == null ? 0 : count;
+    }
+
     private static String where(String status, String keyword, MapSqlParameterSource params) {
         StringBuilder sql = new StringBuilder(" WHERE u.site_key = :siteKey");
         if (StringUtils.hasText(status)) {

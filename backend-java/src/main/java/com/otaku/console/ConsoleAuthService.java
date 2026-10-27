@@ -10,6 +10,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.Duration;
@@ -125,6 +126,36 @@ public class ConsoleAuthService {
         sessionRepository.touch(hash, now);
         return Optional.of(new ConsolePrincipal(row.id(), row.adminId(), row.username(),
                 row.displayName(), row.identitySource(), row.siteKey(), row.siteName()));
+    }
+
+    /**
+     * 修改自己的口令（二期，配合"站主可自助新增站主"）。
+     *
+     * <p>没有它，新增出来的站主口令只能由创建者一直记着、或由平台改库重置——
+     * 那是运营事故的温床（口令通过聊天工具传来传去）。
+     *
+     * <p>成功后撤销**其它设备**的会话、保留当前这台：改口令的常见场景是"怀疑泄露"，
+     * 此时把所有设备都踢掉会连自己一起踢，用户会以为改失败了。
+     */
+    @Transactional
+    public void changePassword(ConsolePrincipal principal, String currentToken,
+                               ConsoleDtos.PasswordChangeRequest request) {
+        String oldPassword = request == null || request.oldPassword() == null ? "" : request.oldPassword();
+        String newPassword = request == null || request.newPassword() == null ? "" : request.newPassword();
+        validatePassword(newPassword);
+        if (oldPassword.equals(newPassword)) {
+            throw ApiException.badRequest("新口令不能与旧口令相同");
+        }
+        SiteAdminRow row = adminRepository.findSessionOwner(principal.adminPk())
+                .orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED, "登录态已失效，请重新登录"));
+        if (row.passwordHash() == null || !passwordEncoder.matches(oldPassword, row.passwordHash())) {
+            throw new ApiException(ErrorCode.INVALID_CREDENTIALS, "当前口令不正确");
+        }
+        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
+        adminRepository.updatePassword(row.adminId(), passwordEncoder.encode(newPassword), now);
+        if (StringUtils.hasText(currentToken)) {
+            sessionRepository.revokeOthers(row.id(), SessionTokens.hash(currentToken), now);
+        }
     }
 
     public void logout(String token) {

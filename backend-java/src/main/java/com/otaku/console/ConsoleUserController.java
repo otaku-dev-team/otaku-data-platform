@@ -37,6 +37,30 @@ public class ConsoleUserController {
         return userService.list(principal, status, q, page, pageSize);
     }
 
+    @GetMapping("/{userId}")
+    public ConsoleDtos.UserDetail detail(
+            @RequestAttribute(ConsoleAuthFilter.ATTRIBUTE_PRINCIPAL) ConsolePrincipal principal,
+            @PathVariable("userId") String userId) {
+        return userService.detail(principal, userId);
+    }
+
+    /**
+     * 用户收藏明细（二期）。
+     *
+     * <p>路径放在用户之下而不是 {@code /api/console/collections?user_id=}：
+     * user_id 出现在 path 里，归属校验只需要写一次（{@link ConsoleUserService#detail} 同一入口），
+     * 而 query 参数容易被前端漏传或改传别人的。
+     */
+    @GetMapping("/{userId}/collections")
+    public PageResponse<ConsoleDtos.UserCollectionItem> collections(
+            @RequestAttribute(ConsoleAuthFilter.ATTRIBUTE_PRINCIPAL) ConsolePrincipal principal,
+            @PathVariable("userId") String userId,
+            @RequestParam(name = "status", required = false) String status,
+            @RequestParam(name = "page", defaultValue = "1") int page,
+            @RequestParam(name = "page_size", defaultValue = "20") int pageSize) {
+        return userService.collections(principal, userId, status, page, pageSize);
+    }
+
     @PostMapping("/{userId}/disable")
     public ConsoleDtos.UserStatusChange disable(
             @RequestAttribute(ConsoleAuthFilter.ATTRIBUTE_PRINCIPAL) ConsolePrincipal principal,

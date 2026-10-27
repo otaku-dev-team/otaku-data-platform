@@ -41,6 +41,16 @@ public class ConsoleAuthController {
                         principal.displayName(), principal.identitySource()));
     }
 
+    /** 修改自己的口令；成功后其它设备的会话被撤销，当前设备保留。 */
+    @PostMapping("/password")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void changePassword(
+            @RequestAttribute(ConsoleAuthFilter.ATTRIBUTE_PRINCIPAL) ConsolePrincipal principal,
+            HttpServletRequest request,
+            @RequestBody ConsoleDtos.PasswordChangeRequest body) {
+        authService.changePassword(principal, AuthFilter.bearerToken(request), body);
+    }
+
     /** 与客户端一致：不带令牌或令牌已失效也返回 204，退出流程不该卡在 401 上。 */
     @PostMapping("/logout")
     @ResponseStatus(HttpStatus.NO_CONTENT)

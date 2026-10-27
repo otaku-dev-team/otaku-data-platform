@@ -107,6 +107,17 @@ public class SiteAdminRepository {
                 new MapSqlParameterSource().addValue("id", adminPk).addValue("now", now));
     }
 
+    public void updatePassword(String adminId, String passwordHash, LocalDateTime now) {
+        jdbc.update("""
+                        UPDATE site_admin SET password_hash = :hash, updated_at = :now
+                         WHERE admin_id = :adminId
+                        """,
+                new MapSqlParameterSource()
+                        .addValue("adminId", adminId)
+                        .addValue("hash", passwordHash)
+                        .addValue("now", now));
+    }
+
     /** 站主状态流转只发生在 /internal/**（平台侧），后台不能动站主名单。 */
     public void updateStatus(String adminId, String status, LocalDateTime now) {
         jdbc.update("""

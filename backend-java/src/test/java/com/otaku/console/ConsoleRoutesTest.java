@@ -42,10 +42,19 @@ class ConsoleRoutesTest {
             "POST /api/console/auth/login",
             "GET /api/console/auth/me",
             "POST /api/console/auth/logout",
+            "POST /api/console/auth/password",
             "GET /api/console/overview",
             "GET /api/console/users",
+            "GET /api/console/users/{userId}",
+            "GET /api/console/users/{userId}/collections",
             "POST /api/console/users/{userId}/disable",
             "POST /api/console/users/{userId}/enable",
+            // 二期：站主可以自助增删**本站**名单（提案 §8 第 3 条）。
+            // 注意这与「站点配置」不同：名单只决定谁有本站的登录权，不能接入新站点。
+            "GET /api/console/admins",
+            "POST /api/console/admins",
+            "POST /api/console/admins/{adminId}/disable",
+            "POST /api/console/admins/{adminId}/enable",
             "GET /api/console/sync"));
 
     /** 平台侧（/internal）的路径：站主拿不到内部令牌，所以不算"后台入口"，但也要钉住。 */
@@ -85,7 +94,7 @@ class ConsoleRoutesTest {
     }
 
     @Test
-    @DisplayName("后台一级路径只有 auth / overview / users / sync 四类")
+    @DisplayName("后台一级路径只有 auth / overview / users / admins / sync 五类")
     void consoleFirstSegments() throws Exception {
         Set<String> segments = new TreeSet<>();
         for (String route : allRoutes()) {
@@ -97,8 +106,9 @@ class ConsoleRoutesTest {
             segments.add(rest.contains("/") ? rest.substring(0, rest.indexOf('/')) : rest);
         }
         assertThat(segments)
-                .as("一级路径就是站主能做的事的全集。出现 sites / config / sources 之类，说明红线被越过了")
-                .containsExactly("auth", "overview", "sync", "users");
+                .as("一级路径就是站主能做的事的全集。admins 是二期允许的「管理本站站主名单」；"
+                        + "出现 sites / config / sources 之类，说明红线被越过了")
+                .containsExactly("admins", "auth", "overview", "sync", "users");
     }
 
     // ------------------------------------------------------------------ 反射

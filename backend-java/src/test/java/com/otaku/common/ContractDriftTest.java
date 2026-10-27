@@ -202,6 +202,14 @@ class ContractDriftTest {
         targets.put("ConsoleUser", com.otaku.console.dto.ConsoleDtos.UserItem.class);
         targets.put("ConsoleUserPage", PageResponse.class);
         targets.put("ConsoleUserStatusChange", com.otaku.console.dto.ConsoleDtos.UserStatusChange.class);
+        // 二期：用户详情/收藏 + 站主名单自助维护
+        targets.put("ConsoleUserDetail", com.otaku.console.dto.ConsoleDtos.UserDetail.class);
+        targets.put("ConsoleCollectionStats", com.otaku.console.dto.ConsoleDtos.CollectionStats.class);
+        targets.put("ConsoleUserCollectionItem", com.otaku.console.dto.ConsoleDtos.UserCollectionItem.class);
+        targets.put("ConsoleUserCollectionPage", PageResponse.class);
+        targets.put("ConsoleAdminItem", com.otaku.console.dto.ConsoleDtos.AdminItem.class);
+        targets.put("ConsoleAdminCreated", com.otaku.console.dto.ConsoleDtos.AdminCreated.class);
+        targets.put("ConsoleAdminStatusChange", com.otaku.console.dto.ConsoleDtos.AdminStatusChange.class);
         targets.put("ConsoleSyncRun", com.otaku.console.dto.ConsoleDtos.SyncRun.class);
         targets.put("ConsoleFailedItem", com.otaku.console.dto.ConsoleDtos.FailedItem.class);
         targets.put("ConsoleSyncStatus", com.otaku.console.dto.ConsoleDtos.SyncStatus.class);
@@ -228,6 +236,8 @@ class ContractDriftTest {
         // 站主后台的入参：站点一律不出现（隔离靠登录态），所以这里没有 site_key 字段
         targets.put("ConsoleLoginRequest", com.otaku.console.dto.ConsoleDtos.LoginRequest.class);
         targets.put("ConsoleUserStatusRequest", com.otaku.console.dto.ConsoleDtos.UserStatusRequest.class);
+        targets.put("ConsoleAdminCreateRequest", com.otaku.console.dto.ConsoleDtos.AdminCreateRequest.class);
+        targets.put("ConsolePasswordChangeRequest", com.otaku.console.dto.ConsoleDtos.PasswordChangeRequest.class);
         targets.put("SiteCreateRequest", com.otaku.console.dto.InternalSiteDtos.SiteCreateRequest.class);
         targets.put("SiteAdminCreateRequest", com.otaku.console.dto.InternalSiteDtos.SiteAdminCreateRequest.class);
         targets.put("DeviceRegistrationRequest", com.otaku.device.dto.DeviceRegistrationRequest.class);

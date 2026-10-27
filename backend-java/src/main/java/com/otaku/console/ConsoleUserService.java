@@ -2,11 +2,14 @@ package com.otaku.console;
 
 import com.otaku.common.ApiException;
 import com.otaku.common.ErrorCode;
+import com.otaku.collection.CollectionRepository;
+import com.otaku.collection.CollectionWorkRow;
 import com.otaku.common.PageResponse;
 import com.otaku.console.dto.ConsoleDtos;
 import com.otaku.session.SessionRepository;
 import com.otaku.user.UserRecord;
 import com.otaku.user.UserRepository;
+import com.otaku.work.WorkService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -44,13 +47,22 @@ public class ConsoleUserService {
     private final ConsoleUserRepository consoleUserRepository;
     private final UserRepository userRepository;
     private final SessionRepository sessionRepository;
+    private final CollectionRepository collectionRepository;
+    private final WorkService workService;
+    private final ConsoleAuditRepository auditRepository;
 
     public ConsoleUserService(ConsoleUserRepository consoleUserRepository,
                               UserRepository userRepository,
-                              SessionRepository sessionRepository) {
+                              SessionRepository sessionRepository,
+                              CollectionRepository collectionRepository,
+                              WorkService workService,
+                              ConsoleAuditRepository auditRepository) {
         this.consoleUserRepository = consoleUserRepository;
         this.userRepository = userRepository;
         this.sessionRepository = sessionRepository;
+        this.collectionRepository = collectionRepository;
+        this.workService = workService;
+        this.auditRepository = auditRepository;
     }
 
     public PageResponse<ConsoleDtos.UserItem> list(ConsolePrincipal principal, String status,
@@ -67,6 +79,60 @@ public class ConsoleUserService {
         return PageResponse.of(safePage, safeSize, total, items);
     }
 
+    /**
+     * 用户详情（二期）：基本信息 + 会话数 + 收藏聚合。
+     *
+     * <p>收藏明细单独分页（{@link #collections}）：一个人的收藏可能上千条，
+     * 塞进详情会让这个接口变成"一次拉全量"的入口，而站主多数时候只想看总数。
+     */
+    public ConsoleDtos.UserDetail detail(ConsolePrincipal principal, String userId) {
+        UserRecord user = ownedUser(principal, userId);
+        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
+        return new ConsoleDtos.UserDetail(
+                user.userId(),
+                user.username(),
+                user.status(),
+                toOffset(user.createdAt()),
+                toOffset(user.statusChangedAt()),
+                consoleUserRepository.countActiveSessions(user.id(), now),
+                consoleUserRepository.collectionStats(user.id()));
+    }
+
+    /**
+     * 某个本站用户的收藏明细（二期）。
+     *
+     * <p>先做归属校验再查收藏——顺序反了就是越权：先按 user_id 查出数据、
+     * 再判断"是不是本站的"，中间那一步已经把别人的数据读进内存了。
+     * 这里用 {@link #ownedUser} 一次挡掉"不存在（404）/ 别站（403）"。
+     */
+    public PageResponse<ConsoleDtos.UserCollectionItem> collections(ConsolePrincipal principal, String userId,
+                                                                    String status, int page, int pageSize) {
+        UserRecord user = ownedUser(principal, userId);
+        String normalizedStatus = normalizeCollectionStatus(status);
+        int safePage = Math.max(page, 1);
+        int safeSize = Math.min(Math.max(pageSize, 1), PAGE_SIZE_MAX);
+
+        long total = collectionRepository.count(user.id(), normalizedStatus);
+        List<ConsoleDtos.UserCollectionItem> items = total == 0
+                ? List.of()
+                : collectionRepository.findPage(user.id(), normalizedStatus,
+                        safeSize, (safePage - 1) * safeSize).stream()
+                .map(this::toCollectionItem)
+                .toList();
+        return PageResponse.of(safePage, safeSize, total, items);
+    }
+
+    private ConsoleDtos.UserCollectionItem toCollectionItem(CollectionWorkRow row) {
+        return new ConsoleDtos.UserCollectionItem(
+                row.workId(),
+                row.title(),
+                row.workType(),
+                row.status(),
+                // 封面仍走平台代理：站主看到的是与客户端一致的地址，也不把来源站暴露给前端
+                workService.coverUrl(row.workId(), row.coverSourceUrl()),
+                toOffset(row.updatedAt()));
+    }
+
     @Transactional
     public ConsoleDtos.UserStatusChange disable(ConsolePrincipal principal, String userId, String reason) {
         UserRecord user = ownedUser(principal, userId);
@@ -77,9 +143,11 @@ public class ConsoleUserService {
         LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
         int revoked = sessionRepository.revokeAllForUser(user.id(), now);
         userRepository.updateStatus(user.id(), UserRecord.STATUS_DISABLED, now);
+        String auditReason = StringUtils.hasText(reason) ? reason.trim() : "未填写";
         log.info("站主 {} 禁用用户 {}（撤销会话 {} 条，原因：{}）",
-                principal.adminId(), user.userId(), revoked,
-                StringUtils.hasText(reason) ? reason.trim() : "未填写");
+                principal.adminId(), user.userId(), revoked, auditReason);
+        audit(principal, ConsoleAuditRepository.ACTION_USER_DISABLE, user.userId(),
+                "reason=" + auditReason);
         return new ConsoleDtos.UserStatusChange(user.userId(), UserRecord.STATUS_DISABLED, revoked, DISABLED_NOTE);
     }
 
@@ -91,6 +159,7 @@ public class ConsoleUserService {
         }
         userRepository.updateStatus(user.id(), UserRecord.STATUS_ACTIVE, LocalDateTime.now(ZoneOffset.UTC));
         log.info("站主 {} 解禁用户 {}", principal.adminId(), user.userId());
+        audit(principal, ConsoleAuditRepository.ACTION_USER_ENABLE, user.userId(), null);
         return new ConsoleDtos.UserStatusChange(user.userId(), UserRecord.STATUS_ACTIVE, 0, ENABLED_NOTE);
     }
 
@@ -112,6 +181,32 @@ public class ConsoleUserService {
             throw new ApiException(ErrorCode.FORBIDDEN, "无权操作其它站点的用户");
         }
         return user;
+    }
+
+    /** 收藏状态过滤：与客户端同一套取值；{@code none} 表示「收藏了但没设状态」。 */
+    private static String normalizeCollectionStatus(String raw) {
+        if (!StringUtils.hasText(raw)) {
+            return null;
+        }
+        String status = raw.trim().toLowerCase();
+        if (!"want".equals(status) && !"watching".equals(status)
+                && !"watched".equals(status) && !"none".equals(status)) {
+            throw ApiException.badRequest("status 只能是 want / watching / watched / none");
+        }
+        return status;
+    }
+
+    private void audit(ConsolePrincipal principal, String action, String targetId, String detail) {
+        try {
+            auditRepository.record(principal.siteKey(), principal.adminId(), action,
+                    "user", targetId, detail, LocalDateTime.now(ZoneOffset.UTC));
+        } catch (RuntimeException ex) {
+            log.warn("审计写入失败（action={}, target={}）：{}", action, targetId, ex.getMessage());
+        }
+    }
+
+    private static java.time.OffsetDateTime toOffset(LocalDateTime value) {
+        return value == null ? null : value.atOffset(ZoneOffset.UTC);
     }
 
     private static String normalizeStatus(String raw) {
