@@ -92,15 +92,33 @@ paths:
             标题关键词，子串匹配、忽略大小写。不支持别名与拼音
             （别名来源未出口，第一阶段做不到）。省略表示不过滤。
           schema: { type: string, maxLength: 100 }
-        - name: tag
+        - name: tags
           in: query
           description: |
-            **标签精确匹配**（不做模糊、不做分词），可与 `type` / `q` / `sort` 组合。
+            **多标签筛选（AND：每个标签都必须命中）**，逗号分隔，最多 10 个。
 
-            - 未知标签**不报错**：返回 `200` + `items: []` + `total: 0`
-              （标签是数据里的值、不是接口枚举，来源站改名后旧链接属「没有结果」）。
-            - 超过 64 字符按 64 截断（与该列宽度一致），不报错。
-            - 匹配的是**整个标签**：`科幻` 不会命中 `科幻机甲`。
+            - 与 `tag` 的关系：`tag` 是单标签的**旧写法**（已标记 deprecated），
+              `tags` 是它的推广；两者**不能同时出现**（同时传返回 `400`）。
+            - 重复项去重、首尾空白忽略；空串等价于不筛选。
+            - 每个标签超过 64 字符按 64 截断（与 `work_tag.tag` 列宽一致），不报错。
+            - 未知标签**不报错**：只要有一个标签查不到，结果就是 `200` + 空数组。
+            - **为什么是 AND 而不是 OR**：`tag` 原有的语义是"含有这个标签"，
+              AND 是它的单调推广（选得越多、结果越窄），与排行榜/评分排序组合时语义稳定；
+              OR 会让"再加一个标签"反而变宽，翻页与排序的解释成本更高。
+              需要 OR 时客户端可分多次请求再合并（词表规模小，代价可控）。
+          style: form
+          explode: false
+          schema:
+            type: string
+            example: 科幻,机战
+        - name: tag
+          in: query
+          deprecated: true
+          description: |
+            **已废弃，请改用 `tags`。** 单标签精确匹配，等价于 `tags` 只有一个值。
+
+            保留是为了不让已上线的旧调用立刻断掉；新代码不要再使用。
+            与 `tags` 同时传入返回 `400`（不做"谁覆盖谁"的猜测）。
           schema: { type: string, maxLength: 64, example: 科幻 }
         - name: sort
           in: query
@@ -209,6 +227,42 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/RelatedWorks" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /api/tags:
+    get:
+      tags: [作品查询]
+      summary: 标签词表（供客户端做标签选择 / 筛选 UI）
+      operationId: listTags
+      description: |
+        返回当前库里的标签及作品数，按 `count` 降序、`name` 升序（同分按名称保证稳定）。
+
+        约定与取舍：
+        - `total` 是**本次返回的条数**，不是词表总数（与首站同语义）。
+        - 不分页：词表规模约 500 条/类（实测首站四类 197/118/130/104），
+          一次返回足够；超过 `limit` 时截断，不报错。
+        - `count` 是**作品数**，只统计当前快照；来源未提供标签的作品不计入任何标签
+          （`WorkSummary.tags = null` 与 `[]` 都不产生词表行）。
+        - 词表与作品列表同一份数据（`work_tag`），不额外维护白名单：
+          来源站改名后旧词自然消失，不会出现"词表里有、筛出来是空"的幽灵标签。
+      parameters:
+        - name: type
+          in: query
+          description: 只统计该类型的作品；省略表示全部类型
+          schema:
+            type: string
+            enum: [anime, comic, game, novel]
+        - name: limit
+          in: query
+          description: 最多返回多少条；省略返回全部，上限 2000（超过按 2000 截断，不报错）
+          schema: { type: integer, minimum: 1, maximum: 2000 }
+      responses:
+        "200":
+          description: 成功；没有标签时返回空 items（不是 404）
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TagList" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "500": { $ref: "#/components/responses/InternalError" }
 
   /api/schedule:
@@ -1282,6 +1336,34 @@ components:
         source:
           type: string
           example: otaku_site
+
+    TagList:
+      type: object
+      required: [total, items]
+      properties:
+        type:
+          type: string
+          nullable: true
+          enum: [anime, comic, game, novel]
+          description: 请求里带的 `type` 原样回显；省略时为 `null`（全部类型）
+        total:
+          type: integer
+          description: |
+            **本次返回的条数**，不是词表总数（与首站语义一致）。
+            有 `limit` 时等于 `items` 的长度，不代表库里一共有多少个标签。
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/TagItem" }
+
+    TagItem:
+      type: object
+      required: [name, count]
+      properties:
+        name: { type: string, example: 科幻 }
+        count:
+          type: integer
+          minimum: 1
+          description: 该标签下的作品数（当前快照；来源未提供标签的作品不计入）
 
     WorkSummary:
       type: object

@@ -165,11 +165,16 @@ public class WorkRepository {
      * <p>外层再排一次序是为了抵消 JOIN 可能打乱的顺序；只有 50 行，代价可忽略。
      * 真正的根治是键集分页（记住上一页末位 id），那需要改契约，另议。
      *
-     * <p>带 {@code tag} 时内层换成查 {@code work_tag}：那两张索引里冗余了评分与年份，
+     * <p>带标签时内层换成查 {@code work_tag}：那两张索引里冗余了评分与年份，
      * 所以「标签 + 评分/年份排序」仍是有序扫描，不需要 filesort（35ms vs 772ms）。
      * 代价是标签内跳深页仍受 OFFSET 影响，与主表一致。
+     *
+     * <p>单标签走上面那条索引有序路径；**多标签走 {@code tag IN (...)} + GROUP BY ...
+     * HAVING COUNT(DISTINCT tag) = n**（AND 语义）。多标签天然是集合运算，
+     * 无法再靠单标签索引保证顺序，排序会多一次 filesort——这是 AND 语义的固有成本，
+     * 不是实现缺陷；词表规模小、标签组合有限，实测代价可接受。
      */
-    public List<WorkRecord> findPage(String workType, String titlePattern, String tag, WorkSort sort,
+    public List<WorkRecord> findPage(String workType, String titlePattern, List<String> tags, WorkSort sort,
                                      BigDecimal minRating, int limit, int offset) {
         MapSqlParameterSource params = new MapSqlParameterSource()
                 .addValue("limit", limit)
@@ -177,13 +182,13 @@ public class WorkRepository {
         WorkSort effective = sort == null ? WorkSort.ID : sort;
 
         StringBuilder inner;
-        if (tag == null) {
+        if (tags == null || tags.isEmpty()) {
             inner = new StringBuilder("SELECT w.id AS id FROM work w WHERE 1 = 1");
             appendConditions(inner, params, workType, titlePattern, minRating);
             inner.append(" ORDER BY ").append(effective.orderBy("w"));
-        } else {
+        } else if (tags.size() == 1) {
             // 走关联表：标签条件的成本与标签基数成正比，而不是与全表成正比。
-            params.addValue("tag", tag);
+            params.addValue("tag", tags.get(0));
             // 只有标题关键词必须回表（title 不在 work_tag 里）；类型已经冗余进索引。
             // 为取 id 而回表是纯浪费：55.6 万条实测，`COUNT(*) ... JOIN work` 296ms
             // （46,000 次随机回表），纯索引扫描只要个位数毫秒。
@@ -193,18 +198,14 @@ public class WorkRepository {
                 appendConditions(inner, params, workType, titlePattern, minRating);
             } else {
                 inner = new StringBuilder("SELECT t.work_ref AS id FROM work_tag t WHERE t.tag = :tag");
-                if (workType != null) {
-                    inner.append(" AND t.work_type = :workType");
-                    params.addValue("workType", workType);
-                }
-                if (minRating != null) {
-                    // 用冗余列而不是回表比 w.rating_value：(tag, rating_value, work_ref) 上
-                    // 一次范围扫描就够，还能顺带满足 sort=rating 的顺序。
-                    inner.append(" AND t.rating_value >= :minRating");
-                    params.addValue("minRating", minRating);
-                }
+                appendTagConditions(inner, params, workType, minRating);
             }
             inner.append(" ORDER BY ").append(effective.orderByOnTagTable("t"));
+        } else {
+            inner = multiTagSelect(params, workType, titlePattern, tags, minRating);
+            inner.append(" GROUP BY t.work_ref")
+                    .append(" HAVING COUNT(DISTINCT t.tag) = :tagCount")
+                    .append(" ORDER BY ").append(effective.orderByOnTagAggregate("t"));
         }
         inner.append(" LIMIT :limit OFFSET :offset");
 
@@ -212,6 +213,46 @@ public class WorkRepository {
                 + " JOIN (" + inner + ") p ON p.id = w.id"
                 + " ORDER BY " + effective.orderBy("w");
         return jdbc.query(sql, params, MAPPER);
+    }
+
+    /**
+     * 多标签查询的 FROM/WHERE 部分（AND 语义由调用方追加 GROUP BY + HAVING 完成）。
+     *
+     * <p>{@code tag IN (:tags)} 会按每个标签各做一次索引范围扫描，再合并；
+     * 条件用 {@code work_tag} 的冗余列（`work_type` / `rating_value`），
+     * 只有标题关键词必须回表。
+     */
+    private static StringBuilder multiTagSelect(MapSqlParameterSource params, String workType,
+                                                String titlePattern, List<String> tags,
+                                                BigDecimal minRating) {
+        params.addValue("tags", tags);
+        params.addValue("tagCount", tags.size());
+        StringBuilder sql = new StringBuilder("SELECT t.work_ref AS id FROM work_tag t");
+        if (titlePattern != null) {
+            sql.append(" JOIN work w ON w.id = t.work_ref");
+        }
+        sql.append(" WHERE t.tag IN (:tags)");
+        appendTagConditions(sql, params, workType, minRating);
+        if (titlePattern != null) {
+            sql.append(" AND w.title LIKE :titlePattern");
+            params.addValue("titlePattern", titlePattern);
+        }
+        return sql;
+    }
+
+    /** 落在 {@code work_tag} 冗余列上的过滤条件（类型 / 评分下限）。 */
+    private static void appendTagConditions(StringBuilder sql, MapSqlParameterSource params,
+                                            String workType, BigDecimal minRating) {
+        if (workType != null) {
+            sql.append(" AND t.work_type = :workType");
+            params.addValue("workType", workType);
+        }
+        if (minRating != null) {
+            // 用冗余列而不是回表比 w.rating_value：(tag, rating_value, work_ref) 上
+            // 一次范围扫描就够，还能顺带满足 sort=rating 的顺序。
+            sql.append(" AND t.rating_value >= :minRating");
+            params.addValue("minRating", minRating);
+        }
     }
 
     /**
@@ -235,14 +276,14 @@ public class WorkRepository {
                 .addValue("limit", limit), MAPPER);
     }
 
-    public long count(String workType, String titlePattern, String tag, BigDecimal minRating) {
+    public long count(String workType, String titlePattern, List<String> tags, BigDecimal minRating) {
         MapSqlParameterSource params = new MapSqlParameterSource();
         StringBuilder sql;
-        if (tag == null) {
+        if (tags == null || tags.isEmpty()) {
             sql = new StringBuilder("SELECT COUNT(*) FROM work w WHERE 1 = 1");
             appendConditions(sql, params, workType, titlePattern, minRating);
-        } else {
-            params.addValue("tag", tag);
+        } else if (tags.size() == 1) {
+            params.addValue("tag", tags.get(0));
             // 同 findPage：标题必须回表；类型已冗余进 work_tag，不必 JOIN。
             if (titlePattern != null) {
                 sql = new StringBuilder("SELECT COUNT(*) FROM work_tag t"
@@ -250,15 +291,13 @@ public class WorkRepository {
                 appendConditions(sql, params, workType, titlePattern, minRating);
             } else {
                 sql = new StringBuilder("SELECT COUNT(*) FROM work_tag t WHERE t.tag = :tag");
-                if (workType != null) {
-                    sql.append(" AND t.work_type = :workType");
-                    params.addValue("workType", workType);
-                }
-                if (minRating != null) {
-                    sql.append(" AND t.rating_value >= :minRating");
-                    params.addValue("minRating", minRating);
-                }
+                appendTagConditions(sql, params, workType, minRating);
             }
+        } else {
+            // 多标签：先按 work_ref 分组数出"命中了几个标签"，再取满足 n 个的组数。
+            StringBuilder inner = multiTagSelect(params, workType, titlePattern, tags, minRating);
+            inner.append(" GROUP BY t.work_ref HAVING COUNT(DISTINCT t.tag) = :tagCount");
+            sql = new StringBuilder("SELECT COUNT(*) FROM (").append(inner).append(") matched");
         }
         Long total = jdbc.queryForObject(sql.toString(), params, Long.class);
         return total == null ? 0L : total;

@@ -81,15 +81,15 @@ class WorkServiceSortAndRelatedTest {
     @Test
     @DisplayName("tag 去掉首尾空白后透传，计数与取页用同一个条件")
     void tagIsTrimmedAndPassedThrough() {
-        when(repository.count(null, null, "科幻", null)).thenReturn(1L);
-        when(repository.findPage(null, null, "科幻", WorkSort.ID, null, 20, 0))
+        when(repository.count(null, null, List.of("科幻"), null)).thenReturn(1L);
+        when(repository.findPage(null, null, List.of("科幻"), WorkSort.ID, null, 20, 0))
                 .thenReturn(List.of(record(1L, "W-1", "[\"科幻\"]")));
 
         var page = service.list(null, null, "  科幻  ", null, null, 1, 20);
 
         assertThat(page.items()).hasSize(1);
-        verify(repository).count(null, null, "科幻", null);
-        verify(repository).findPage(null, null, "科幻", WorkSort.ID, null, 20, 0);
+        verify(repository).count(null, null, List.of("科幻"), null);
+        verify(repository).findPage(null, null, List.of("科幻"), WorkSort.ID, null, 20, 0);
     }
 
     @Test
@@ -111,21 +111,23 @@ class WorkServiceSortAndRelatedTest {
 
         service.list(null, null, longTag, null, null, 1, 20);
 
-        ArgumentCaptor<String> captured = ArgumentCaptor.forClass(String.class);
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<String>> captured = ArgumentCaptor.forClass(List.class);
         verify(repository).count(any(), any(), captured.capture(), any());
-        assertThat(captured.getValue()).hasSize(64);
+        assertThat(captured.getValue()).hasSize(1);
+        assertThat(captured.getValue().get(0)).hasSize(64);
     }
 
     @Test
     @DisplayName("tag 与 type / q / sort 可组合，四个条件一起透传")
     void tagCombinesWithOtherFilters() {
-        when(repository.count("anime", "%魔法%", "科幻", null)).thenReturn(1L);
-        when(repository.findPage("anime", "%魔法%", "科幻", WorkSort.YEAR, null, 10, 0))
+        when(repository.count("anime", "%魔法%", List.of("科幻"), null)).thenReturn(1L);
+        when(repository.findPage("anime", "%魔法%", List.of("科幻"), WorkSort.YEAR, null, 10, 0))
                 .thenReturn(List.of(record(1L, "W-1", "[\"科幻\"]")));
 
         service.list("anime", "魔法", "科幻", "year", null, 1, 10);
 
-        verify(repository).findPage("anime", "%魔法%", "科幻", WorkSort.YEAR, null, 10, 0);
+        verify(repository).findPage("anime", "%魔法%", List.of("科幻"), WorkSort.YEAR, null, 10, 0);
     }
 
     // ------------------------------------------------------- 榜单 min_rating
