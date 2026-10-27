@@ -54,7 +54,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--source",
         choices=VALID_SOURCES,
         default=None,
-        help="来源：otaku_site（在线站点）或 bangumi（本地档案），默认读环境变量",
+        help="来源：otaku_site（在线站点）或 bangumi（本地档案）或 vndb（VNDB 在线），"
+        "默认读环境变量",
     )
     parser.add_argument(
         "--archive", default=None, help="Bangumi 档案路径（dump.zip），仅 --source bangumi 用"
@@ -96,6 +97,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--source-base-url", default=None, help="覆盖来源站点地址"
     )
+    parser.add_argument(
+        "--vndb-base-url",
+        default=None,
+        help="覆盖 VNDB kana API 地址（默认 https://api.vndb.org/kana）",
+    )
     parser.add_argument("--java-base-url", default=None, help="覆盖 Java 后端地址")
     parser.add_argument(
         "--health",
@@ -132,6 +138,7 @@ def main(argv: list[str] | None = None) -> int:
         archive_path=args.archive,
         sample_method=args.sample,
         source_base_url=args.source_base_url,
+        vndb_base_url=args.vndb_base_url,
         java_base_url=args.java_base_url,
     )
 
@@ -151,6 +158,14 @@ def main(argv: list[str] | None = None) -> int:
     if config.source == "bangumi" and not config.archive_path:
         print(
             "错误：--source bangumi 需要 --archive <dump.zip> 或 OTAKU_ARCHIVE_PATH",
+            file=sys.stderr,
+        )
+        return 2
+    if config.source == "vndb" and args.work_types:
+        # VNDB 只有视觉小说一种（work_type 固定 game），没有类型维度。
+        # 静默忽略 --type 会让人以为筛了类型，实际拉的是全量——直接报错说清。
+        print(
+            "错误：--source vndb 不支持 --type（VNDB 只有视觉小说一种，work_type 固定为 game）",
             file=sys.stderr,
         )
         return 2
