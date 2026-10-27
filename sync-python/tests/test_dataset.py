@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from sync.dataset import (
+    DATASET_VERSION,
     BreakingSchemaChange,
     DatasetMapping,
     MappingError,
@@ -134,7 +135,7 @@ def test_mapping_rejects_unknown_version(tmp_path):
 def test_mapping_rejects_forbidden_source_table(tmp_path):
     p = tmp_path / "m.json"
     p.write_text(json.dumps({
-        "dataset_version": "1", "source_id": "x",
+        "dataset_version": DATASET_VERSION, "source_id": "x",
         "tables": [{"target": "works", "mode": "table", "source": "users",
                     "fields": [{"target": "title", "column": "email"}]}],
     }), encoding="utf-8")
@@ -145,7 +146,7 @@ def test_mapping_rejects_forbidden_source_table(tmp_path):
 def test_mapping_rejects_table_outside_whitelist(tmp_path):
     p = tmp_path / "m.json"
     p.write_text(json.dumps({
-        "dataset_version": "1", "source_id": "x",
+        "dataset_version": DATASET_VERSION, "source_id": "x",
         "tables": [{"target": "works", "mode": "table", "source": "some_unknown_table",
                     "fields": [{"target": "title", "column": "name"}]}],
     }), encoding="utf-8")
@@ -165,7 +166,7 @@ def test_full_export_counts_and_meta(tmp_path):
     assert report.row_counts["schedules"] == 1
 
     meta = read_meta(out)
-    assert meta["dataset_version"] == "1"
+    assert meta["dataset_version"] == DATASET_VERSION
     assert meta["source_id"] == "otaku"
     assert len(meta["source_fingerprint"]) == 16
 
@@ -302,3 +303,82 @@ def test_assert_compatible_rejects_wrong_version(tmp_path):
 
     with pytest.raises(ValueError, match="版本"):
         assert_compatible(out)
+
+
+# --------------------------------------------------------------- v2：credits 白名单与 people
+
+
+def test_credits_filtered_by_role_whitelist(tmp_path):
+    """credits 不再整表照搬：工序流水与出版元数据都不该进数据集。
+
+    源表里 40.8 万条 credits 有 91% 是原画这类工序流水，外加混进来的漫画出版
+    字段（`发售日` / `作者` / `版本:*`）。详情页只用得上「谁做的这部片子」，
+    所以映射改成 `tier='main'` ∪ 中层工序白名单，并排除已知脏值。
+    """
+    src = make_source(tmp_path / "site.db")
+    conn = sqlite3.connect(src)
+    conn.executemany(
+        "insert into content_credits(content_id, person_id, role, name, tier, sort_order)"
+        " values (?,?,?,?,?,?)",
+        [
+            (2, 1, "原画", "某原画", "long", 10),        # 工序流水 → 丢
+            (2, 2, "作画监督", "某监督", "long", 11),     # 中层白名单 → 收
+            (2, 3, "发售日", "2020-01-01", "main", 12),   # 出版元数据 → 丢
+            (2, 4, "版本:东立版", "台版", "main", 13),     # LIKE 黑名单 → 丢
+        ],
+    )
+    conn.commit()
+    conn.close()
+
+    out = tmp_path / "dataset.db"
+    export_dataset(src, out, MAPPING, snapshot=True)
+
+    conn = sqlite3.connect(out)
+    roles = {r[0] for r in conn.execute("select role from work_credits")}
+    conn.close()
+    assert roles == {"导演", "作画监督"}
+
+
+def test_people_exported_when_entities_present(tmp_path):
+    """有 entities 表时，人物 / 公司实体进 people 表（credits / cast 的 person_ref 指向它）。"""
+    src = make_source(tmp_path / "site.db")
+    conn = sqlite3.connect(src)
+    conn.execute(
+        "create table entities(id integer primary key, name text, entity_type text,"
+        " bangumi_person_id integer, created_at text)"
+    )
+    conn.execute(
+        "insert into entities(id, name, entity_type, bangumi_person_id, created_at)"
+        " values (900, '庵野秀明', 'person', 12345, '2026-01-01')"
+    )
+    conn.commit()
+    conn.close()
+
+    out = tmp_path / "dataset.db"
+    report = export_dataset(src, out, MAPPING, snapshot=True)
+
+    conn = sqlite3.connect(out)
+    rows = conn.execute(
+        "select source_id, name, entity_type, bangumi_person_id from people"
+    ).fetchall()
+    conn.close()
+    assert rows == [("900", "庵野秀明", "person", "12345")]
+    assert report.row_counts["people"] == 1
+
+
+def test_missing_entities_table_degrades_instead_of_failing(tmp_path):
+    """客户库没有 entities 表时跳过 people，不让整批导出失败。
+
+    「客户临时撤掉一张表就整批失败」是最不必要的脆弱——缺表记账即可，
+    下游看到 `degraded` 里写着 table_missing 就知道为什么没有人物数据。
+    """
+    src = make_source(tmp_path / "site.db")  # 迷你库没有 entities
+
+    out = tmp_path / "dataset.db"
+    report = export_dataset(src, out, MAPPING, snapshot=True)
+
+    # 跳过的表不进 row_counts，只记在 skipped / degraded 里
+    assert report.row_counts.get("people", 0) == 0
+    assert "people" in report.skipped_tables
+    assert any(d.get("table") == "people" and d.get("kind") == "table_missing"
+               for d in report.degraded)

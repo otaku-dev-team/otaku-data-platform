@@ -195,6 +195,95 @@ def _tags_for(conn: sqlite3.Connection, ids: Sequence[str]) -> dict[str, list[st
     return out
 
 
+def _staff_for(conn: sqlite3.Connection, ids: Sequence[str]) -> dict[str, list[dict]]:
+    """一次取整批的制作人员，不做 N+1。
+
+    与 `_tags_for` 同样的取舍：**没有记录的作品返回空（不返回 `[]`）**。数据集里
+    没有行，既可能是"确实没有 Staff"，也可能是"源站没录"，两者分不清；按契约
+    `[]` 的意思是"明确没有，清空已有值"，误判就是不可逆的内容损失。
+
+    顺序按数据集里的 `sort_order`：来源侧已经排好了（导演在前、脚本在后），
+    重排一次等于替来源决定"谁更重要"。
+    """
+    if not ids:
+        return {}
+    placeholders = ",".join("?" * len(ids))
+    rows = conn.execute(
+        f"SELECT source_id, role, name, person_ref FROM work_credits"
+        f" WHERE source_id IN ({placeholders})"
+        f" ORDER BY source_id, sort_order, role, name",
+        list(ids),
+    )
+    out: dict[str, list[dict]] = {}
+    seen: dict[str, set[tuple]] = {}
+    for row in rows:
+        entry = {
+            "role": row["role"],
+            "name": row["name"],
+            # 人物实体 id；Staff 侧绝大多数为空（来源是 infobox 文本解析）
+            "person_id": row["person_ref"],
+        }
+        key = (entry["role"], entry["name"], entry["person_id"])
+        # 源表没有唯一约束，「同一个人在同一职位出现两次」是真实存在的
+        # （跨季合并、数据重复导入都会产生），去重比让客户端去重省事
+        if key in seen.setdefault(row["source_id"], set()):
+            continue
+        seen[row["source_id"]].add(key)
+        out.setdefault(row["source_id"], []).append(entry)
+    return out
+
+
+def _characters_for(
+    conn: sqlite3.Connection, ids: Sequence[str]
+) -> dict[str, list[dict]]:
+    """一次取整批的角色与声优。取舍与 `_staff_for` 完全一致。"""
+    if not ids:
+        return {}
+    placeholders = ",".join("?" * len(ids))
+    rows = conn.execute(
+        f"SELECT source_id, character, actor, relation, person_ref FROM work_cast"
+        f" WHERE source_id IN ({placeholders})"
+        f" ORDER BY source_id, sort_order, character",
+        list(ids),
+    )
+    out: dict[str, list[dict]] = {}
+    seen: dict[str, set[tuple]] = {}
+    for row in rows:
+        entry = {
+            "name": row["character"],
+            "actor": row["actor"],
+            # 数据集列叫 relation，契约叫 character_type：前者是源表原词，
+            # 后者对客户端更有意义（relation 容易被理解成"作品间关系"）
+            "character_type": row["relation"],
+            "person_id": row["person_ref"],
+        }
+        key = (entry["name"], entry["actor"], entry["person_id"])
+        if key in seen.setdefault(row["source_id"], set()):
+            continue
+        seen[row["source_id"]].add(key)
+        out.setdefault(row["source_id"], []).append(entry)
+    return out
+
+
+def _studios_for(conn: sqlite3.Connection, ids: Sequence[str]) -> dict[str, list[str]]:
+    """一次取整批的制作公司。取舍与 `_staff_for` 一致。"""
+    if not ids:
+        return {}
+    placeholders = ",".join("?" * len(ids))
+    rows = conn.execute(
+        f"SELECT source_id, name FROM work_studios"
+        f" WHERE source_id IN ({placeholders})"
+        f" ORDER BY source_id, name",
+        list(ids),
+    )
+    out: dict[str, list[str]] = {}
+    for row in rows:
+        bucket = out.setdefault(row["source_id"], [])
+        if row["name"] not in bucket:
+            bucket.append(row["name"])
+    return out
+
+
 def _resolve_cover(
     raw: Any, site_base_url: str, report: PublishReport
 ) -> str | None:
@@ -223,18 +312,40 @@ def _resolve_cover(
     return url
 
 
+def _parse_aliases(raw: Any) -> list[str] | None:
+    """数据集里的 `aliases_json`（TEXT）→ 别名数组。
+
+    坏 JSON 不发、返回 None 而不是发空数组：`[]` 的语义是「明确没有别名，清空」，
+    解析失败说明我们不知道有没有，退回「不覆盖」才是安全的一侧。
+    """
+    if not raw:
+        return None
+    try:
+        parsed = json.loads(raw)
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(parsed, list):
+        return None
+    names = [str(x).strip() for x in parsed if str(x).strip()]
+    return names or None
+
+
 def _to_work_item(
     row: sqlite3.Row,
+    *,
     tags: dict[str, list[str]],
+    staff: dict[str, list[dict]],
+    characters: dict[str, list[dict]],
+    studios: dict[str, list[str]],
     backend_source: str,
     site_base_url: str,
     report: PublishReport,
 ) -> WorkItem:
-    """数据集一行 → 接口②的一条。
+    """数据集一行 → 接口②的一条（16 字段）。
 
-    只映射契约当前收的 9 个字段。`title_original` / `media` / `episodes` /
-    `work_credits` 那些富字段**故意不发**——后端没有列、接口没有字段，硬塞只会
-    被丢弃或 400。它们在数据集里等着，等契约扩容时直接用，不用再回源。
+    **富字段与关联数组一律用 `or None`**：空数组发 `[]` 意味着「明确没有，清空」，
+    而数据集里没有行分不清「确实没有」与「源站没录」，所以退回不覆盖。
+    见 `_tags_for` / `_staff_for` 的说明。
     """
     value = row["rating_value"]
     scale = row["rating_scale"] or RATING_SCALE
@@ -243,9 +354,10 @@ def _to_work_item(
         if value is not None
         else None
     )
+    source_id = row["source_id"]
     return WorkItem(
         source_record=SourceRecord(
-            source_id=row["source_id"],
+            source_id=source_id,
             source_url=row["source_url"],
             source=backend_source,
         ),
@@ -255,8 +367,14 @@ def _to_work_item(
         main_rating=rating,
         cover_url=_resolve_cover(row["cover_url"], site_base_url, report),
         release_year=row["release_year"],
-        # 空列表 → None，见 _tags_for 的说明
-        tags=tags.get(row["source_id"]) or None,
+        tags=tags.get(source_id) or None,
+        title_original=row["title_original"],
+        aliases=_parse_aliases(row["aliases_json"]),
+        media=row["media"],
+        episodes=row["episodes"],
+        staff=staff.get(source_id) or None,
+        characters=characters.get(source_id) or None,
+        studios=studios.get(source_id) or None,
     )
 
 
@@ -278,7 +396,8 @@ def _iter_chunks(
     """
     cur = conn.execute(
         "SELECT source_id, work_type, title, summary, cover_url, release_year,"
-        " rating_value, rating_scale, source_url"
+        " rating_value, rating_scale, source_url,"
+        " title_original, aliases_json, media, episodes"
         " FROM works ORDER BY source_id"
     )
     batch: list[WorkItem] = []
@@ -309,8 +428,21 @@ def _iter_chunks(
 
         if kept:
             tags = _tags_for(conn, ids)
+            # 关联数组也按批取：18 万条 credits 逐条查会是 1.8 万次往返
+            staff = _staff_for(conn, ids)
+            characters = _characters_for(conn, ids)
+            studios = _studios_for(conn, ids)
             batch.extend(
-                _to_work_item(r, tags, backend_source, site_base_url, report)
+                _to_work_item(
+                    r,
+                    tags=tags,
+                    staff=staff,
+                    characters=characters,
+                    studios=studios,
+                    backend_source=backend_source,
+                    site_base_url=site_base_url,
+                    report=report,
+                )
                 for r in kept
             )
 

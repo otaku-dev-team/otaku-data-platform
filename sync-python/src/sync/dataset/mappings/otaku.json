@@ -1,14 +1,16 @@
 {
-  "dataset_version": "1",
+  "dataset_version": "2",
   "source_id": "otaku",
   "_notes": [
-    "Otaku 网站（FastAPI + SQLite）→ 标准数据集 v1 的映射。",
+    "Otaku 网站（FastAPI + SQLite）→ 标准数据集 v2 的映射。",
     "改客户表只改本文件，不动代码——这是解耦的落点。",
     "on_missing 三档：break=关键列缺失就停机 / reject=该行拒绝 / degrade=置空继续。",
     "source_id、关联表的 content_id 一律 break：主键错了会静默产生几十万条重复脏数据。",
     "contents 表没有 updated_at，故 works.source_updated_at 不映射（保持 NULL）。",
     "需要增量同步时，源侧必须补 updated_at 列或触发器；否则只能全量重扫或内容哈希比对。",
-    "articles 用 filter 只取已发布，未审核草稿不进数据集。"
+    "articles 用 filter 只取已发布，未审核草稿不进数据集。",
+    "v2：work_credits 从「整表照搬」改成按 role 白名单过滤——源表 407,949 条里 91% 是原画等工序流水，详情页用不上。白名单与黑名单都写在本文件的 SQL 里，改词表不用改代码、不用发版。",
+    "v2：新增 people 表（源 entities），credits / cast 的 person_ref 指向它。没有实体的人名（Staff 侧大量如此）不进这张表，person_ref 留空。"
   ],
   "tables": [
     {
@@ -58,18 +60,22 @@
       ]
     },
     {
-      "target": "work_credits",
+      "target": "people",
       "mode": "table",
-      "source": "content_credits",
-      "key": "content_id",
+      "source": "entities",
+      "key": "id",
       "fields": [
-        {"target": "source_id", "column": "content_id", "type": "str", "required": true, "on_missing": "break"},
-        {"target": "role", "column": "role", "type": "str", "required": true, "on_missing": "reject"},
+        {"target": "source_id", "column": "id", "type": "str", "required": true, "on_missing": "break"},
         {"target": "name", "column": "name", "type": "str", "required": true, "on_missing": "reject"},
-        {"target": "person_ref", "column": "person_id", "type": "str"},
-        {"target": "tier", "column": "tier", "type": "str"},
-        {"target": "sort_order", "column": "sort_order", "type": "int"}
+        {"target": "entity_type", "column": "entity_type", "type": "str"},
+        {"target": "bangumi_person_id", "column": "bangumi_person_id", "type": "str"}
       ]
+    },
+    {
+      "target": "work_credits",
+      "mode": "query",
+      "required_sources": ["content_credits"],
+      "sql": "select cast(content_id as text) as source_id, role, name, cast(person_id as text) as person_ref, tier, sort_order from content_credits where (tier = 'main' and role not like '版本:%' and role not in ('发售日','作者','连载杂志','ISBN-10','ISBN-13','册数','链接','出版社','开始','结束','页数','价格','装帧','尺寸')) or role in ('作画监督','总作画监督','演出','分镜','机械作画监督','动作作画监督') order by content_id, sort_order"
     },
     {
       "target": "work_cast",

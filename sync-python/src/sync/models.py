@@ -63,6 +63,15 @@ class WorkItem:
     cover_url: str | None = None
     release_year: int | None = None
     tags: list[str] | None = None
+    # ---- 富字段（档 A，2026-10-28 契约扩入）----
+    title_original: str | None = None
+    aliases: list[str] | None = None
+    media: str | None = None
+    episodes: int | None = None
+    # ---- 关联数组（档 B，2026-10-28 契约扩入）----
+    staff: list[dict[str, Any]] | None = None
+    characters: list[dict[str, Any]] | None = None
+    studios: list[str] | None = None
 
     @property
     def source_id(self) -> str:
@@ -71,7 +80,7 @@ class WorkItem:
     def to_payload(self) -> dict[str, Any]:
         """转成导入接口（接口②）的 JSON 体。
 
-        输出契约约定的 9 个字段，字段名与契约、openapi.yaml 完全一致。
+        输出契约约定的 16 个字段，字段名与契约、openapi.yaml 完全一致。
         空值一律传 null，不传空字符串。
 
         `release_year` 自 2026-10-22 起纳入（此前「第一阶段不纳入」）。
@@ -81,9 +90,18 @@ class WorkItem:
         Otaku 为 `/contents/{id}` 人读页，Bangumi 为 `https://bgm.tv/subject/{id}`。
         无法可靠确定原页时传 null，不猜测生成（契约第 2.1 节）。
 
+        **富字段与关联数组全部是「None = 不覆盖」语义**：这些字段只有数据集通道
+        （直读客户库）拿得到，站点 REST 通道拿不到。所以站点适配器构造 items 时
+        它们保持 None，后端据此不动库里已有的值——若把 None 当「清空」，一次
+        常规站点同步就会把数据集通道导进来的 Staff / 原名全抹掉。
+
+        None 的字段**直接不出现在载荷里**（不是发 null）：契约里「省略」与「null」
+        同义，而站点通道全量 1.8 万条、每批 500 条，平白多 7 个 null 键只是白占
+        带宽。数据集通道真有值时才带上。
+
         `source_updated_at` 仅作本地记录，不提交。
         """
-        return {
+        payload: dict[str, Any] = {
             "source_id": self.source_record.source_id,
             "work_type": self.work_type,
             "title": self.title,
@@ -94,6 +112,19 @@ class WorkItem:
             "main_rating": self.main_rating.to_payload() if self.main_rating else None,
             "source_url": self.source_record.source_url,
         }
+        for key in (
+            "title_original",
+            "aliases",
+            "media",
+            "episodes",
+            "staff",
+            "characters",
+            "studios",
+        ):
+            value = getattr(self, key)
+            if value is not None:
+                payload[key] = value
+        return payload
 
 
 @dataclass
