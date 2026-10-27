@@ -8,7 +8,7 @@
 # 查四件事，任一失败 → 退出码 1：
 #
 #   1. 健康检查     后端 /actuator/health 是否返回 UP
-#   2. 容器状态     otaku-backend / otaku-mysql / otaku-nginx 是否 healthy（有 docker 才查）
+#   2. 容器状态     EXPECT_SERVICES 里的每个容器是否 healthy（有 docker 才查）
 #   3. 磁盘占用     超过阈值就报——磁盘满是最常见的"服务莫名其妙挂了"
 #   4. 备份新鲜度   最新备份必须 < 26 小时。备份停了但不报警 = 以为有备份
 #
@@ -16,7 +16,8 @@
 #
 #   5. 证书剩余天数 HTTPS 静默过期那天，App 会突然全部连不上，而服务器本身"正常"
 #
-# 阈值都能用环境变量覆盖，默认值是按 2 核 2G / 50G 盘定的。
+# 阈值都能用环境变量覆盖，默认值是按 2 核 2G / 50G 盘定的；
+# 也可以在 .env 里写 EXPECT_SERVICES / EXPECT_TLS，切换"正式形态 / 联调形态"。
 
 set -uo pipefail
 
@@ -46,6 +47,13 @@ DISK_MAX_PCT=${DISK_MAX_PCT:-85}
 BACKUP_MAX_AGE_H=${BACKUP_MAX_AGE_H:-26}
 CERT_MIN_DAYS=${CERT_MIN_DAYS:-14}
 COMPOSE_PROJECT=${COMPOSE_PROJECT:-otaku-prod}
+# 该有哪些容器、要不要校验 TLS —— 都**显式**配，不让脚本猜。
+# 为什么不用「没有就当没起过」的自动探测：那样 nginx 被误删/起不来也会被静默跳过，
+# 巡检就变成了「什么都不查也报通过」。
+#   正式形态（域名 + HTTPS）：保持默认，三个容器 + 校验证书
+#   联调形态（IP + HTTP，nginx 未启用）：EXPECT_SERVICES="otaku-backend otaku-mysql" EXPECT_TLS=0
+EXPECT_SERVICES=${EXPECT_SERVICES:-$(read_env EXPECT_SERVICES "otaku-backend otaku-mysql otaku-nginx")}
+EXPECT_TLS=${EXPECT_TLS:-$(read_env EXPECT_TLS 1)}
 
 FAILS=0
 say()  { [ "$QUIET" = "1" ] || printf '%s\n' "$*"; }
@@ -74,7 +82,7 @@ fi
 if ! command -v docker >/dev/null 2>&1; then
     skip "容器状态（没有 docker CLI）"
 else
-    for c in otaku-backend otaku-mysql otaku-nginx; do
+    for c in $EXPECT_SERVICES; do
         STATE=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' \
                     "$c" 2>/dev/null) || STATE=""
         case "$STATE" in
@@ -115,7 +123,9 @@ fi
 
 # ── 5. 证书剩余天数（只告警，不计失败）────────────────────────────────
 # 为什么不计失败：证书过期当天第 1 项和第 3 项都会炸，这条只是提前预警。
-if [ -z "$DOMAIN" ]; then
+if [ "$EXPECT_TLS" = "0" ]; then
+    skip "证书到期（EXPECT_TLS=0：当前是没有域名 / 没有 HTTPS 的联调形态）"
+elif [ -z "$DOMAIN" ]; then
     skip "证书到期（.env 里没有 DOMAIN）"
 elif ! command -v openssl >/dev/null 2>&1; then
     skip "证书到期（没有 openssl）"

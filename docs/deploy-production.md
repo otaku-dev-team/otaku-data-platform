@@ -418,8 +418,21 @@ nc -zv <服务器IP> 3306
 19 4 * * * cd /path/to/otaku-data-platform/backend-java && ./deploy/renew-letsencrypt.sh 2>&1 | logger -t otaku-tls
 ```
 
-`deploy/monitor.sh` 查五件事：后端健康、三个容器状态、磁盘阈值、**备份新鲜度（< 26h）**、
+`deploy/monitor.sh` 查五件事：后端健康、容器状态、磁盘阈值、**备份新鲜度（< 26h）**、
 证书剩余天数（< 14 天开始 WARN）。任一失败退出码非 0，cron 会因此发邮件。
+
+**「该有哪些容器 / 要不要验证书」是显式配置，不是自动探测**（`.env`）：
+
+| 变量 | 默认 | 什么时候改 |
+|---|---|---|
+| `EXPECT_SERVICES` | `otaku-backend otaku-mysql otaku-nginx` | 没有启用 nginx 的联调形态：去掉 nginx |
+| `EXPECT_TLS` | `1` | 没有域名 / 没有 HTTPS 时设 `0`，否则每天报「取不到证书」 |
+
+刻意不做「容器不存在就跳过」的自动探测：那样 nginx 被误删、起不来都会被静默放过，
+巡检就退化成「什么都不查也报通过」。
+
+> **从 Windows 拷贝脚本的坑**：仓库在 Windows 上检出是 CRLF，`scp` 到 Linux 后 shebang 会变成
+> `bash\r`，报 `No such file or directory`。传之前先 `sed -i 's/\r$//' deploy/*.sh`。
 
 用 `--quiet`：它只在出问题时说话。每天一封"一切正常"的邮件，等于把所有告警都训练成噪音。
 
@@ -451,9 +464,9 @@ df -h
 ## 9. 新站接入：接单前清单与时间预算
 
 > **目标**：接单后 3 天内部署新站，第 3 天用户能用上 App。
-> 这个目标目前**只写在 Issue #195 的正文里**——它引用的 `docs/deployment-requirement.md` 与
-> `docs/deployment-schedule.md` 在仓库中**从未存在**（查过全部提交历史）。所以在本文把它锚下来，
-> 免得以后没人说得清「3 天」从哪天算、包含什么。
+> 目标与分级的权威出处是 [`deployment-requirement.md`](deployment-requirement.md) 与
+> [`deployment-schedule.md`](deployment-schedule.md)（2026-10-26 由负责人补齐并拍板 3 天）。
+> 本节只保留**执行视角**的那一半：从哪天算、必须拿到什么、每一步真实要多久。
 
 ### 9.1 接单前必须拿到的东西（缺一项就不能承诺 3 天）
 
@@ -500,3 +513,71 @@ df -h
 
 真正会踩坑的是 §3 那六项配置，尤其第 4 项（`OTAKU_PUBLIC_BASE_URL`）——它不会报错，
 只会让所有人的封面变成一片空白，而且看起来像「图片接口坏了」。
+
+---
+
+## 11. 实况记录：2026-10-27 首次真机部署（联调形态）
+
+> 这一节不写「应该怎样」，只写**机器上现在到底是什么**。命令与输出都实际跑过；
+> 与前面章节冲突时，以本节为准，并回来改前面。
+
+### 11.1 现在的形态
+
+| 项 | 值 |
+|---|---|
+| 机器 | 腾讯云 Lighthouse `154.8.194.198`（Ubuntu 24.04，2 核 2 GB，50 GB 盘，Swap 1.9 GB） |
+| 部署目录 | `/opt/otaku/backend`（`pyxz0` 所有；`.env` 600，未入库） |
+| 进程 | `otaku-mysql` + `otaku-backend` 两个容器；**nginx 未启用**（没有域名、且 80 被现网站点占用） |
+| 对外地址 | `http://154.8.194.198:8080` —— 公网直连，无 HTTPS |
+| 镜像构建 | 本地 `./mvnw package` 出 jar → 服务器 `BACKEND_DOCKERFILE=Dockerfile.runtime` 组装（25 秒）；**不在 2G 机器上跑 Maven** |
+| 数据 | 只有导入链路的样例：3 条作品 / 9 条 Flyway 迁移；**全量 57.1 万未导**（没有 dump） |
+| 备份 | 每日 03:10 → `/opt/otaku/backups`，保留 14 天；已做一次恢复演练 |
+| 巡检 | 每日 04:17（`--quiet`，只在失败时说话） |
+| 时区 | `Asia/Shanghai`（`TZ` 同时给了容器和 JVM） |
+
+### 11.2 部署时踩到、已写进仓库的四件事
+
+1. **服务器拉不到 Docker Hub**（`registry-1.docker.io` 直连超时，连 hello-world 都过不去）。
+   改用腾讯云内网镜像 `mirror.ccs.tencentyun.com`（`/etc/docker/daemon.json` → `registry-mirrors`），
+   之后 `mysql:8.0` / `eclipse-temurin:17-jre-jammy` 都是秒级。
+   顺带在同一个文件里配了 `log-opts`（单文件 20 MB × 3），否则容器日志会把 50 GB 盘写满。
+2. **2 GB 机器必须给容器设上限**：不设时 MySQL 按宿主机内存自算，和 JVM 抢到整机 OOM。
+   现在 `MYSQL_MEM_LIMIT=768m`、`BACKEND_MEM_LIMIT=768m`，实测占用 432 MiB / 200 MiB，
+   同机现网站点（uvicorn :8000）在部署前后均 200。
+3. **备份的大小下限会挡住「空库」**：`MIN_SIZE_KB` 默认 1 MB，空库 dump 只有 8 KB，
+   脚本会判失败——这是设计意图（挡「连不上却写出几 KB 文件」）。空库验收期在 `.env` 里临时写
+   `MIN_SIZE_KB=4`，**导入全量数据后必须删掉这行**。
+4. **cron 不继承登录环境**：`backup.sh` / `monitor.sh` 自己读 `.env`（不 `source`，避免执行文件内容），
+   compose 也从 compose 文件所在目录自动加载 `.env`。已用 `env -i PATH=/usr/bin:/bin` 实测两个脚本都能跑通。
+
+### 11.3 已实测过的（附证据方式）
+
+| 项 | 怎么验的 | 结果 |
+|---|---|---|
+| 公网可达 | 从开发机 `curl http://154.8.194.198:8080/actuator/health` | 200 `{"status":"UP"}` |
+| 空库自动迁移 | 看容器日志 | 9 个迁移全部应用，7.6 秒启动完成 |
+| 导入链路 | `POST /internal/import/batches` 两批样例 | 3 插入 / 2 更新 / 4 按规则拒收 |
+| 列表 + 分页 | `GET /api/works?page=1&page_size=5` | `total=3`，`cover_url` 已按 `OTAKU_PUBLIC_BASE_URL` 改写 |
+| 封面代理 + 缓存 | `GET /api/covers/{work_id}` 连取两次 | 首次回源 97 KB webp，二次 0.18 s（命中缓存） |
+| 内部接口隔离 | 公网 `POST /internal/import/batches`（不带令牌） | 401 |
+| 备份可恢复 | 恢复进 `restore_check` 库后比对 | `work` 3/3、`flyway_schema_history` 9/9 一致 |
+| 巡检会失败 | `DISK_MAX_PCT=1` / 期望一个不存在的容器 | 均 exit 1，且原因对得上 |
+
+### 11.4 还不是「上线」——差什么
+
+| 差什么 | 卡在哪 | 谁动 |
+|---|---|---|
+| HTTPS（D-2） | 没有域名。Let's Encrypt 不给 IP 签证书 | 商务侧给域名 + 解析 |
+| 全量数据（D-3） | 仓库里没有 57.1 万行的 dump | 来源侧导出（#124） |
+| 正式反代形态 | 机器上 80 端口被现网站点占着；启用 nginx 要先决定端口与站点归属 | 部署时定 |
+| 告警出口（D-8） | 现在只有 cron 邮件，没人收 | 云监控告警 + 值班人 |
+| 上线前点头 | 章程 §3.2 红线 4：对外服务需 @zhengmin486 知情 | zm |
+
+### 11.5 切回正式形态的顺序（域名到位那天照着做）
+
+1. `.env`：`DOMAIN=<域名>`、`OTAKU_PUBLIC_BASE_URL=https://<域名>`、`BACKEND_BIND=127.0.0.1`，
+   去掉 `EXPECT_SERVICES` / `EXPECT_TLS` 这两行；`NGINX_HTTP_PORT` 按机器上空出来的端口定。
+2. `./deploy/init-letsencrypt.sh --staging` → 通了再正式签（顺序见 §4.6，别先手动起 nginx）。
+3. `docker compose -f compose.prod.yaml up -d`（这次带上 nginx）。
+4. 重跑本节 11.3 的表，外网换成域名 + `https://`。
+5. 打开 `renew-letsencrypt.sh` 的 cron，把 `EXPECT_TLS` 恢复默认。

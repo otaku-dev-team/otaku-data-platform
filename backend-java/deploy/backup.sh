@@ -42,8 +42,12 @@ read_env() {
 SITE_KEY=${SITE_KEY:-$(read_env SITE_KEY otaku)}
 BACKUP_DIR=${BACKUP_DIR:-$(read_env BACKUP_DIR /var/backups/otaku)}
 RETAIN_DAYS=${RETAIN_DAYS:-$(read_env BACKUP_RETAIN_DAYS 14)}
-MIN_FREE_MB=${MIN_FREE_MB:-2048}
-MIN_SIZE_KB=${MIN_SIZE_KB:-1024}
+MIN_FREE_MB=${MIN_FREE_MB:-$(read_env MIN_FREE_MB 2048)}
+# 大小下限：默认 1 MB，是按「全量几十万行」估的。
+# 库还没导数据时（刚部署、空库跑通链路）会因此判失败——这是**故意的**，
+# 它挡的正是「mysqldump 连不上、写了个几 KB 的空文件却报成功」。
+# 确实要在空库上验收备份链路，就在 .env 里临时写 MIN_SIZE_KB=4，导完数据改回去。
+MIN_SIZE_KB=${MIN_SIZE_KB:-$(read_env MIN_SIZE_KB 1024)}
 
 STAMP=$(date -u +%Y%m%dT%H%M%SZ)
 OUT="$BACKUP_DIR/${SITE_KEY}-${STAMP}.sql.gz"

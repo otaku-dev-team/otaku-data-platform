@@ -51,11 +51,17 @@ services:
       timeout: 5s
       retries: 12
       start_period: 40s
+    # 内存上限：2 GB 机器上如果不设，MySQL 会按宿主机内存自己算，
+    # 和 JVM 抢到把整机 OOM（这台机器上还跑着别的站）。
+    # 值是**上限**不是预留，正常占用远低于它。
+    mem_limit: ${MYSQL_MEM_LIMIT:-768m}
 
   backend:
     build:
       context: .
-      dockerfile: Dockerfile
+      # 2 核 2 GB 的小机器别在服务器上跑 Maven：先本地 `./mvnw package` 出 jar，
+      # 再把 BACKEND_DOCKERFILE 设成 Dockerfile.runtime，镜像几秒就能组装好。
+      dockerfile: ${BACKEND_DOCKERFILE:-Dockerfile}
     image: otaku-backend:latest
     container_name: otaku-backend
     restart: unless-stopped
@@ -101,6 +107,9 @@ services:
       timeout: 3s
       retries: 3
       start_period: 60s
+    # 同上：限制成 768m 时 JVM 的 MaxRAMPercentage=75 按 576m 堆算，
+    # 加上 Metaspace/线程栈约 700m 封顶，给同机的 MySQL 和其它站留出余量。
+    mem_limit: ${BACKEND_MEM_LIMIT:-768m}
 
   nginx:
     image: ${NGINX_IMAGE:-nginx:1.27-alpine}
