@@ -189,6 +189,9 @@ class ContractDriftTest {
         targets.put("ConsoleFailedItem", com.otaku.console.dto.ConsoleDtos.FailedItem.class);
         targets.put("ConsoleSyncStatus", com.otaku.console.dto.ConsoleDtos.SyncStatus.class);
         targets.put("SiteAdminCreated", com.otaku.console.dto.ConsoleDtos.SiteAdminCreated.class);
+        // 平台侧状态流转（停用/启用站点与站主）的出参
+        targets.put("SiteStatusChange", com.otaku.console.dto.InternalSiteDtos.SiteStatusChange.class);
+        targets.put("SiteAdminStatusChange", com.otaku.console.dto.InternalSiteDtos.SiteAdminStatusChange.class);
         return targets;
     }
 

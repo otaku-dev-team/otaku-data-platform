@@ -7,6 +7,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.util.StringUtils;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -28,6 +29,8 @@ import java.util.List;
  *   <li>后台页面与后台接口都没有任何调用点，所以站主拿到后台账号后也接不了新站。</li>
  * </ul>
  * 提案 §8 第 3 条把站主名单维护定为"网站接入时由我们配置"，这里就是那个配置入口。
+ *
+ * <p>建站/开站主之外，状态流转（停用/启用）也在这里：见 {@link InternalLifecycleService}。
  */
 @RestController
 @RequestMapping("/internal")
@@ -38,10 +41,13 @@ public class InternalSiteController {
 
     private final SiteRepository siteRepository;
     private final ConsoleAuthService authService;
+    private final InternalLifecycleService lifecycleService;
 
-    public InternalSiteController(SiteRepository siteRepository, ConsoleAuthService authService) {
+    public InternalSiteController(SiteRepository siteRepository, ConsoleAuthService authService,
+                                  InternalLifecycleService lifecycleService) {
         this.siteRepository = siteRepository;
         this.authService = authService;
+        this.lifecycleService = lifecycleService;
     }
 
     @PostMapping("/sites")
@@ -70,10 +76,36 @@ public class InternalSiteController {
     public ConsoleDtos.SiteAdminCreated createAdmin(
             @RequestBody InternalSiteDtos.SiteAdminCreateRequest request) {
         String siteKey = requireText(request.siteKey(), "site_key", SITE_KEY_MAX);
-        if (siteRepository.find(siteKey).isEmpty()) {
-            throw ApiException.badRequest("站点不存在：" + siteKey);
+        SiteRecord site = siteRepository.find(siteKey)
+                .orElseThrow(() -> ApiException.badRequest("站点不存在：" + siteKey));
+        // 已停用的站点不能继续加人：恢复站点才是正路，绕开状态去开新站主只会留下
+        // "站点停着、名单却在变长"的账目，谁也说不清哪些人是被谁加进来的。
+        if (!site.active()) {
+            throw ApiException.badRequest("站点已停用（" + site.status() + "），不能新增站主；请先恢复站点");
         }
         return authService.createAdmin(siteKey, request.username(), request.password(), request.displayName());
+    }
+
+    // ------------------------------------------------------------ 状态流转（平台侧）
+
+    @PostMapping("/sites/{siteKey}/disable")
+    public InternalSiteDtos.SiteStatusChange suspendSite(@PathVariable String siteKey) {
+        return lifecycleService.suspendSite(siteKey);
+    }
+
+    @PostMapping("/sites/{siteKey}/enable")
+    public InternalSiteDtos.SiteStatusChange resumeSite(@PathVariable String siteKey) {
+        return lifecycleService.resumeSite(siteKey);
+    }
+
+    @PostMapping("/site-admins/{adminId}/disable")
+    public InternalSiteDtos.SiteAdminStatusChange disableAdmin(@PathVariable String adminId) {
+        return lifecycleService.disableAdmin(adminId);
+    }
+
+    @PostMapping("/site-admins/{adminId}/enable")
+    public InternalSiteDtos.SiteAdminStatusChange enableAdmin(@PathVariable String adminId) {
+        return lifecycleService.enableAdmin(adminId);
     }
 
     private static String requireText(String value, String field, int max) {

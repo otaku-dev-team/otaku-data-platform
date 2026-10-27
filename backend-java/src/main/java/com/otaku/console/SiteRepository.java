@@ -55,6 +55,17 @@ public class SiteRepository {
                 new MapSqlParameterSource("siteKey", siteKey), String.class);
     }
 
+    /** 站点状态流转只发生在 /internal/**（平台侧），后台没有任何调用点。 */
+    public void updateStatus(String siteKey, String status, LocalDateTime now) {
+        jdbc.update("""
+                        UPDATE site SET status = :status, updated_at = :now WHERE site_key = :siteKey
+                        """,
+                new MapSqlParameterSource()
+                        .addValue("siteKey", siteKey)
+                        .addValue("status", status)
+                        .addValue("now", now));
+    }
+
     @Transactional
     public void create(SiteRecord site, List<String> sources) {
         jdbc.update("""

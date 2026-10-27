@@ -68,6 +68,26 @@ public class SiteAdminSessionRepository {
                 new MapSqlParameterSource().addValue("tokenHash", tokenHash).addValue("now", now));
     }
 
+    /** 停用单个站主时撤他的全部会话：改 status 只挡住"下一次登录"，已登录的设备要当场掉线。 */
+    public int revokeAllForAdmin(long adminPk, LocalDateTime now) {
+        return jdbc.update("""
+                        UPDATE site_admin_session SET revoked_at = :now
+                         WHERE site_admin_id = :adminPk AND revoked_at IS NULL
+                        """,
+                new MapSqlParameterSource().addValue("adminPk", adminPk).addValue("now", now));
+    }
+
+    /** 停用整个站点时撤该站全部站主的会话——与"每个请求都联表判断站点状态"双保险。 */
+    public int revokeAllForSite(String siteKey, LocalDateTime now) {
+        return jdbc.update("""
+                        UPDATE site_admin_session ses
+                          JOIN site_admin adm ON adm.id = ses.site_admin_id
+                           SET ses.revoked_at = :now
+                         WHERE adm.site_key = :siteKey AND ses.revoked_at IS NULL
+                        """,
+                new MapSqlParameterSource().addValue("siteKey", siteKey).addValue("now", now));
+    }
+
     public int purgeStale(LocalDateTime cutoff) {
         return jdbc.update("""
                         DELETE FROM site_admin_session

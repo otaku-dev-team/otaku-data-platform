@@ -262,6 +262,135 @@ class ConsoleIsolationIntegrationTest {
                 .andReturn().getResponse().getStatus()).isEqualTo(401);
     }
 
+    // ------------------------------------------------------------------ 平台侧停用（站点 / 站主）
+
+    @Test
+    @DisplayName("平台停用站主：旧令牌立刻 403，重登 403（说明是停用不是掉线）；恢复后可重登")
+    void platformDisableAndEnableSiteAdmin() throws Exception {
+        twoSites();
+        String adminIdA = adminIdOf(ADMIN_A);
+        String tokenA = loginAdmin(ADMIN_A);
+
+        JsonNode change = okJson(post("/internal/site-admins/" + adminIdA + "/disable")
+                .header("X-Internal-Token", INTERNAL_TOKEN));
+        assertThat(change.get("status").asText()).isEqualTo("disabled");
+        assertThat(change.get("revoked_sessions").asInt()).isGreaterThanOrEqualTo(1);
+        assertThat(change.get("note").asText()).contains("站点本身不受影响");
+
+        // 已登录的会话当场被撤销 → 旧令牌 401（与用户禁用同一语义）；
+        // 403 只出现在"拿正确密码重新登录"时，用于说明"是停用，不是掉线"
+        assertThat(mvc.perform(get("/api/console/overview")
+                        .header("Authorization", "Bearer " + tokenA))
+                .andReturn().getResponse().getStatus()).isEqualTo(401);
+
+        // 正确密码重登：403 且说明原因
+        MvcResult relogin = mvc.perform(post("/api/console/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(loginBody(ADMIN_A, PASSWORD)))
+                .andReturn();
+        assertThat(relogin.getResponse().getStatus()).isEqualTo(403);
+        assertThat(relogin.getResponse().getContentAsString(StandardCharsets.UTF_8))
+                .contains("站主账号已停用");
+
+        // 恢复后可重新登录
+        okJson(post("/internal/site-admins/" + adminIdA + "/enable")
+                .header("X-Internal-Token", INTERNAL_TOKEN));
+        assertThat(loginAdmin(ADMIN_A)).isNotBlank();
+        // 旧令牌仍然无效（解禁不恢复会话）
+        assertThat(mvc.perform(get("/api/console/overview").header("Authorization", "Bearer " + tokenA))
+                .andReturn().getResponse().getStatus()).isEqualTo(401);
+    }
+
+    @Test
+    @DisplayName("平台停用站主是幂等的：第二次返回 revoked_sessions = 0")
+    void platformDisableAdminIsIdempotent() throws Exception {
+        twoSites();
+        String adminIdA = adminIdOf(ADMIN_A);
+
+        okJson(post("/internal/site-admins/" + adminIdA + "/disable")
+                .header("X-Internal-Token", INTERNAL_TOKEN));
+        JsonNode second = okJson(post("/internal/site-admins/" + adminIdA + "/disable")
+                .header("X-Internal-Token", INTERNAL_TOKEN));
+
+        assertThat(second.get("status").asText()).isEqualTo("disabled");
+        assertThat(second.get("revoked_sessions").asInt()).isZero();
+    }
+
+    @Test
+    @DisplayName("平台停用站点：该站全部站主立即 403，另一站点不受影响；恢复后可重登")
+    void platformSuspendSiteBlocksAllItsAdmins() throws Exception {
+        twoSites();
+        // A 站放两个站主，验证「停站点 = 该站所有站主都进不去」而不是只挡一个
+        createAdmin(SITE_A, "it-console-admin-a2");
+        String tokenA = loginAdmin(ADMIN_A);
+        String tokenA2 = loginAdmin("it-console-admin-a2");
+        String tokenB = loginAdmin(ADMIN_B);
+
+        JsonNode change = okJson(post("/internal/sites/" + SITE_A + "/disable")
+                .header("X-Internal-Token", INTERNAL_TOKEN));
+        assertThat(change.get("status").asText()).isEqualTo("suspended");
+        assertThat(change.get("revoked_admin_sessions").asInt()).isEqualTo(2);
+        assertThat(change.get("note").asText()).contains("数据");
+
+        // A 站两个站主：旧会话当场撤销（401），重登 403 且说明原因
+        assertThat(mvc.perform(get("/api/console/overview").header("Authorization", "Bearer " + tokenA))
+                .andReturn().getResponse().getStatus()).isEqualTo(401);
+        assertThat(mvc.perform(get("/api/console/overview").header("Authorization", "Bearer " + tokenA2))
+                .andReturn().getResponse().getStatus()).isEqualTo(401);
+        MvcResult reloginA = mvc.perform(post("/api/console/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(loginBody(ADMIN_A, PASSWORD)))
+                .andReturn();
+        assertThat(reloginA.getResponse().getStatus()).isEqualTo(403);
+        assertThat(reloginA.getResponse().getContentAsString(StandardCharsets.UTF_8))
+                .contains("站点已停用");
+
+        // B 站完全不受影响
+        assertThat(mvc.perform(get("/api/console/overview").header("Authorization", "Bearer " + tokenB))
+                .andReturn().getResponse().getStatus()).isEqualTo(200);
+
+        // 恢复后 A 站站主可重新登录
+        okJson(post("/internal/sites/" + SITE_A + "/enable").header("X-Internal-Token", INTERNAL_TOKEN));
+        assertThat(loginAdmin(ADMIN_A)).isNotBlank();
+    }
+
+    @Test
+    @DisplayName("站点停用期间不能新增站主（400）；恢复后可以")
+    void cannotCreateAdminOnSuspendedSite() throws Exception {
+        twoSites();
+        okJson(post("/internal/sites/" + SITE_A + "/disable").header("X-Internal-Token", INTERNAL_TOKEN));
+
+        MvcResult result = mvc.perform(post("/internal/site-admins")
+                        .header("X-Internal-Token", INTERNAL_TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"site_key\":\"" + SITE_A + "\",\"username\":\"it-console-late-admin\""
+                                + ",\"password\":\"" + PASSWORD + "\"}"))
+                .andReturn();
+        assertThat(result.getResponse().getStatus()).isEqualTo(400);
+        assertThat(result.getResponse().getContentAsString(StandardCharsets.UTF_8)).contains("已停用");
+
+        okJson(post("/internal/sites/" + SITE_A + "/enable").header("X-Internal-Token", INTERNAL_TOKEN));
+        assertThat(createAdmin(SITE_A, "it-console-late-admin").get("admin_id").asText()).isNotBlank();
+    }
+
+    @Test
+    @DisplayName("停用不存在的站点/站主：404 且错误码分开（SITE_NOT_FOUND / ADMIN_NOT_FOUND）")
+    void lifecycleUnknownTargetsAre404() throws Exception {
+        twoSites();
+
+        MvcResult site = mvc.perform(post("/internal/sites/it-no-such-site/disable")
+                        .header("X-Internal-Token", INTERNAL_TOKEN))
+                .andReturn();
+        assertThat(site.getResponse().getStatus()).isEqualTo(404);
+        assertThat(errorCode(site)).isEqualTo("SITE_NOT_FOUND");
+
+        MvcResult admin = mvc.perform(post("/internal/site-admins/G-notexist/enable")
+                        .header("X-Internal-Token", INTERNAL_TOKEN))
+                .andReturn();
+        assertThat(admin.getResponse().getStatus()).isEqualTo(404);
+        assertThat(errorCode(admin)).isEqualTo("ADMIN_NOT_FOUND");
+    }
+
     // ------------------------------------------------------------------ 鉴权
 
     @Test
@@ -321,7 +450,7 @@ class ConsoleIsolationIntegrationTest {
                 .andReturn().getResponse().getStatus();
     }
 
-    private void createAdmin(String siteKey, String username) throws Exception {
+    private JsonNode createAdmin(String siteKey, String username) throws Exception {
         MvcResult result = mvc.perform(post("/internal/site-admins")
                         .header("X-Internal-Token", INTERNAL_TOKEN)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -331,6 +460,7 @@ class ConsoleIsolationIntegrationTest {
         assertThat(result.getResponse().getStatus())
                 .as("开设站主失败：%s", result.getResponse().getContentAsString(StandardCharsets.UTF_8))
                 .isEqualTo(201);
+        return json(result);
     }
 
     private String createAccount(String username, String siteKey) throws Exception {
@@ -387,6 +517,10 @@ class ConsoleIsolationIntegrationTest {
 
     private String errorCode(MvcResult result) throws Exception {
         return json(result).get("error").get("code").asText();
+    }
+
+    private String adminIdOf(String username) {
+        return jdbc.queryForObject("SELECT admin_id FROM site_admin WHERE username = ?", String.class, username);
     }
 
     private String userStatus(String userId) {

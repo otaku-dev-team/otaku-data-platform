@@ -1004,6 +1004,114 @@ paths:
         "409": { $ref: "#/components/responses/ConflictUsername" }
         "500": { $ref: "#/components/responses/InternalError" }
 
+  /internal/sites/{site_key}/disable:
+    post:
+      tags: [内部站点]
+      summary: 平台侧停用站点（该站全部站主立即失去后台）
+      operationId: suspendSite
+      description: |
+        site.status 置为 suspended，并撤销该站**所有站主**的后台会话——
+        只改状态挡得住下一次登录，挡不住已经打开的后台页面。
+
+        客户端数据（作品、用户、收藏）原样保留；恢复后原样可见。
+        幂等：重复调用不报错，返回 revoked_admin_sessions = 0。
+      security:
+        - internalToken: []
+      parameters:
+        - name: site_key
+          in: path
+          required: true
+          schema: { type: string, maxLength: 32 }
+      responses:
+        "200":
+          description: 已停用（或本就停用）
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SiteStatusChange" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/SiteNotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /internal/sites/{site_key}/enable:
+    post:
+      tags: [内部站点]
+      summary: 平台侧恢复站点
+      operationId: resumeSite
+      description: |
+        site.status 置回 active。停用时撤销的站主会话**不会**自动恢复，站主需重新登录。
+        幂等：重复调用不报错。
+      security:
+        - internalToken: []
+      parameters:
+        - name: site_key
+          in: path
+          required: true
+          schema: { type: string, maxLength: 32 }
+      responses:
+        "200":
+          description: 已恢复（或本就在用）
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SiteStatusChange" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/SiteNotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /internal/site-admins/{admin_id}/disable:
+    post:
+      tags: [内部站点]
+      summary: 平台侧停用单个站主
+      operationId: disableSiteAdmin
+      description: |
+        site_admin.status 置为 disabled 并撤销其全部后台会话。站点本身与其他站主不受影响。
+        按响应里的 note 原样理解：停的是站主，不是站点。
+        幂等：重复调用不报错，返回 revoked_sessions = 0。
+      security:
+        - internalToken: []
+      parameters:
+        - name: admin_id
+          in: path
+          required: true
+          schema: { type: string, maxLength: 32, description: "`G-` 前缀，不暴露自增主键" }
+      responses:
+        "200":
+          description: 已停用（或本就停用）
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SiteAdminStatusChange" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/AdminNotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /internal/site-admins/{admin_id}/enable:
+    post:
+      tags: [内部站点]
+      summary: 平台侧恢复单个站主
+      operationId: enableSiteAdmin
+      description: |
+        site_admin.status 置回 active。撤销过的会话不会恢复，站主需重新登录。
+        幂等：重复调用不报错。
+      security:
+        - internalToken: []
+      parameters:
+        - name: admin_id
+          in: path
+          required: true
+          schema: { type: string, maxLength: 32, description: "`G-` 前缀，不暴露自增主键" }
+      responses:
+        "200":
+          description: 已恢复（或本就在用）
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SiteAdminStatusChange" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/AdminNotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
 components:
 
   securitySchemes:
@@ -1080,6 +1188,16 @@ components:
           schema: { $ref: "#/components/schemas/ErrorResponse" }
     NotFound:
       description: 作品或批次不存在
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    SiteNotFound:
+      description: 站点不存在（`SITE_NOT_FOUND`）
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    AdminNotFound:
+      description: 站主不存在（`ADMIN_NOT_FOUND`）
       content:
         application/json:
           schema: { $ref: "#/components/schemas/ErrorResponse" }
@@ -2172,3 +2290,31 @@ components:
         site_key: { type: string }
         username: { type: string }
         display_name: { type: string, nullable: true }
+
+    SiteStatusChange:
+      type: object
+      required: [site_key, status, revoked_admin_sessions, note]
+      properties:
+        site_key: { type: string }
+        status: { type: string, enum: [active, suspended], description: 流转后的状态 }
+        revoked_admin_sessions:
+          type: integer
+          description: 本次撤销的站主后台会话数；幂等重试时为 0
+        note:
+          type: string
+          description: 给平台运营看的说明（含"会话已撤销、数据保留"等事实）
+
+    SiteAdminStatusChange:
+      type: object
+      required: [admin_id, site_key, username, status, revoked_sessions, note]
+      properties:
+        admin_id: { type: string, description: "`G-` 前缀" }
+        site_key: { type: string }
+        username: { type: string }
+        status: { type: string, enum: [active, disabled], description: 流转后的状态 }
+        revoked_sessions:
+          type: integer
+          description: 本次撤销的该站主后台会话数；幂等重试时为 0
+        note:
+          type: string
+          description: 给平台运营看的说明（含"站点本身不受影响"等事实）
