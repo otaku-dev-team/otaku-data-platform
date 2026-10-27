@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/router/app_router.dart';
 import '../../core/router/route_paths.dart';
 import 'auth_controller.dart';
+import 'site_auth_urls.dart';
 
 /// 接住站点授权回跳的那一下。
 ///
@@ -43,7 +44,8 @@ class _SiteAuthBootstrapState extends ConsumerState<SiteAuthBootstrap> {
     final uri = Uri.tryParse(raw);
     if (uri == null) return;
     // scheme 可能被别的用途复用（以后加深链），只认授权回跳路径。
-    if (uri.path != '/oauth2redirect' && uri.host != 'oauth2redirect') return;
+    // 判定收敛在 SiteAuthUrls 里，别在页面里再写一份——两份迟早会分叉。
+    if (!SiteAuthUrls.isRedirect(uri)) return;
 
     final ok = await ref
         .read(authControllerProvider.notifier)

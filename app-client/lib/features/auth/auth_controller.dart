@@ -12,6 +12,7 @@ import '../../data/models/account_user.dart';
 import '../../data/repositories/auth_repository.dart';
 import 'site_auth_launcher.dart';
 import 'site_auth_state.dart';
+import 'site_auth_webview_launcher.dart';
 
 enum AuthStatus {
   /// 还在读本地令牌。此时既不能显示「已登录」，也不该闪一下登录页。
@@ -331,14 +332,16 @@ final authControllerProvider = NotifierProvider<AuthController, AuthState>(
   AuthController.new,
 );
 
-/// 站点授权的「打开浏览器」能力。
+/// 站点授权的「打开授权页」能力。
 ///
-/// - Mock：假实现，不真开浏览器，桌面走查与测试能跑通整条授权链；
-/// - 生产：Android 深链尚未落地（方案 §4 步 3），先给 [UnsupportedSiteAuthLauncher]，
-///   登录页据此**隐藏**入口而不是置灰。落地后换真实现即可，上层不用改。
+/// - Mock：假实现，不真开授权页，桌面走查与测试能跑通整条授权链；
+/// - 生产：App 内 WebView（Issue #238 方案 A，注册与授权同域，见
+///   [`SiteAuthWebViewLauncher`](site_auth_webview_launcher.dart)）。
+///   平台没有 WebView 实现（Windows 桌面）或构建期没注入 `SITE_BASE_URL` 时，
+///   它自己的 `supported` 为 false，登录页据此**隐藏**入口而不是置灰。
 final siteAuthLauncherProvider = Provider<SiteAuthLauncher>((ref) {
   if (AppConfig.useMock) return MockSiteAuthLauncher();
-  return const UnsupportedSiteAuthLauncher();
+  return WebViewSiteAuthLauncher(ref);
 });
 
 /// 「这一次授权尝试」的本机存储。

@@ -22,6 +22,12 @@ abstract final class RoutePaths {
   /// 登录页。从收藏页跳来时用 push，登录成功后 pop 回去。
   static const String login = '/login';
 
+  /// App 内 WebView 承载站点登录 / 注册页（W1 账号绑定，Issue #238）。
+  ///
+  /// 不作为可深链的公开路由：它由 `WebViewSiteAuthLauncher` 用 push 打开，
+  /// 并带上 `SiteAuthWebViewArgs`；直接访问会因为缺 extra 而显示错误态。
+  static const String siteAuth = '/auth/site';
+
   /// 我的收藏。未登录时页面自己显示登录引导，不在这里做重定向——
   /// 冷启动直接落到收藏页时，用户需要知道「为什么看不到东西」。
   static const String collections = '/collections';

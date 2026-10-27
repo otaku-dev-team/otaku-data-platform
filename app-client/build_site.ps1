@@ -98,9 +98,15 @@ $appName = Get-ConfValue 'APP_NAME' $conf
 $brandCompany = Get-ConfValue 'BRAND_COMPANY' $conf
 $appId = Get-ConfValue 'APP_ID' $conf
 $apiBaseUrl = Get-ConfValue 'API_BASE_URL' $conf
+# 可选：来源站地址（HTML 页面，给 App 内 WebView 登录 / 注册用）。
+# 不填不报错，只是登录页不显示站点入口——与不注入时的默认行为一致。
+$siteBaseUrl = Get-ConfValue 'SITE_BASE_URL' $conf
 
 if (-not ($apiBaseUrl -match '^https?://')) {
     Stop-Fail "API_BASE_URL 要以 http:// 或 https:// 开头，当前：$apiBaseUrl"
+}
+if ($siteBaseUrl -and -not ($siteBaseUrl -match '^https?://')) {
+    Stop-Fail "SITE_BASE_URL 要以 http:// 或 https:// 开头，当前：$siteBaseUrl"
 }
 if ($Target -eq 'apk' -and $BuildMode -eq 'release' -and $apiBaseUrl -match '^http://') {
     Write-Say '注意：release 包连的是明文 HTTP，Android 会拒绝（release 只认 HTTPS）'
@@ -114,6 +120,9 @@ $flutterArgs = @(
     "--dart-define=BRAND_COMPANY=$brandCompany",
     "--dart-define=API_BASE_URL=$apiBaseUrl"
 )
+if ($siteBaseUrl) {
+    $flutterArgs += "--dart-define=SITE_BASE_URL=$siteBaseUrl"
+}
 if ($Target -eq 'apk') {
     $flutterArgs += "-PappName=$appName"
     $flutterArgs += "-PappId=$appId"
@@ -122,6 +131,11 @@ if ($Target -eq 'apk') {
 Write-Say "站点：$Site（$siteId）"
 Write-Say "应用名：$appName ｜ 归属：$brandCompany ｜ 包名：$appId"
 Write-Say "后端：$apiBaseUrl"
+if ($siteBaseUrl) {
+    Write-Say "站点：$siteBaseUrl（App 内登录 / 注册）"
+} else {
+    Write-Say '站点地址未配置（SITE_BASE_URL）——App 内登录入口将不显示'
+}
 $printed = ($flutterArgs | ForEach-Object { Format-Arg $_ }) -join ' '
 Write-Say "命令：flutter $printed"
 

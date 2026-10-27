@@ -54,6 +54,14 @@
 
 用户感知：**全程在 App 内完成注册，注册完直接就是登录态**。
 
+> **实现补充（2026-10-28 实测，Issue #238）**：客户端不需要单独拼 `/register`。
+> 实测 `/oauth/authorize`（未登录）返回 **303 → `/login?next=<授权完整地址>`**，
+> 而登录页里带 `<a href="/register?next=…">` 且 next 被保留。所以 WebView
+> **只加载 authorize 一条地址**即可：登录 / 注册由站点自己在同一个 WebView 里
+> 路由，注册完成后回到 authorize 再回跳，cookie 全程同域。
+> 客户端据此省掉了「先开 /register、再手动发起 authorize」的拼接与判定。
+> 见 `app-client/lib/features/auth/site_auth_webview_page.dart`。
+
 ### 3.2 为什么这个方案同时满足三条约束
 
 - **不要求网站开发**：用的是它现成的 `/register` 页面与端点，一个字段都不用改。

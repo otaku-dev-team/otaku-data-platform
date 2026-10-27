@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../features/article/article_detail_page.dart';
 import '../../features/article/article_list_page.dart';
 import '../../features/auth/login_page.dart';
+import '../../features/auth/site_auth_webview_page.dart';
 import '../../features/collection/collection_page.dart';
 import '../../features/contents/contents_page.dart';
 import '../../features/detail/work_detail_page.dart';
@@ -65,6 +66,24 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: RoutePaths.login,
         builder: (context, state) => const LoginPage(),
+      ),
+      GoRoute(
+        path: RoutePaths.siteAuth,
+        builder: (context, state) {
+          final args = state.extra;
+          if (args is! SiteAuthWebViewArgs) {
+            // 只有 launcher 会带 extra 打开这里；直接输入路径说明调用方式错了。
+            return Scaffold(
+              appBar: AppBar(),
+              body: const EmptyState(
+                icon: Icons.link_off_rounded,
+                title: '这个页面不能直接打开',
+                message: '请从登录页进入。',
+              ),
+            );
+          }
+          return SiteAuthWebViewPage(args: args);
+        },
       ),
       GoRoute(
         path: RoutePaths.collections,
