@@ -19,6 +19,24 @@ _NAMES = {"java": "Java", "py": "Python", "dart": "Dart"}
 
 _TOOL_PREFIXES = ("scripts/", "devkit/")
 
+# 改了这些不会映射到任何单测，但会改线上行为：devkit 选不到，得交给部署后的 smoke。
+# 不吭声的话，开发者看到「无相关测试」会以为自己安全了。
+_DEPLOY_TOUCH = (
+    "backend-java/src/main/resources/application",
+    "backend-java/compose",
+    "backend-java/.env",
+    "backend-java/Dockerfile",
+    ".github/workflows/",
+    "docs/deploy",
+)
+
+_GATE_LABELS = {"contract": "契约", "site-isolation": "站点隔离"}
+
+
+def deploy_touching(changed: list[str]) -> list[str]:
+    """改动里会影响线上行为、但选不到测试的那部分（配置 / 部署 / CI）。"""
+    return [path for path in changed if path.startswith(_DEPLOY_TOUCH)]
+
 
 def classify_extras(changed: list[str]) -> tuple[list[str], list[str]]:
     """分出「工具自身」和「完全没映射规则」的文件。
@@ -76,14 +94,17 @@ def print_plan(plan: dict, base_note: str = "") -> None:
 # --------------------------------------------------------------------------
 
 
-def contract_check() -> dict:
-    script = select.ROOT / "scripts" / "check-contract.py"
-    spec = select.ROOT / "docs" / "openapi.yaml"
-    if not script.exists():
-        return {"status": "skipped", "detail": "没有 scripts/check-contract.py"}
+def _script_check(script: str, argv: list[str] | None = None) -> dict:
+    """跑 `scripts/` 下的一个守卫脚本，返回统一形状。
+
+    这些脚本 CI 也会跑；本地提前跑掉，是为了别等 push 上去才知道红。
+    """
+    path = select.ROOT / script
+    if not path.exists():
+        return {"status": "skipped", "detail": f"没有 {script}"}
     started = time.perf_counter()
     proc = subprocess.run(
-        [sys.executable, str(script), str(spec)],
+        [sys.executable, str(path), *(argv or [])],
         cwd=str(select.ROOT), capture_output=True, text=True,
         encoding="utf-8", errors="replace",
     )
@@ -93,6 +114,40 @@ def contract_check() -> dict:
     tail = ((proc.stdout or "") + (proc.stderr or "")).strip().splitlines()
     return {"status": "failed", "seconds": seconds,
             "detail": tail[-1][:300] if tail else f"退出码 {proc.returncode}"}
+
+
+def contract_check() -> dict:
+    return _script_check("scripts/check-contract.py",
+                         [str(select.ROOT / "docs" / "openapi.yaml")])
+
+
+def site_isolation_check() -> dict:
+    """核心代码零硬编码站名——CI 有同名 workflow，写死站名/IP 会红。"""
+    return _script_check("scripts/check-site-isolation.py")
+
+
+def run_gate() -> dict:
+    """本地门禁：CI 会跑、且本机秒级能跑完的守卫。
+
+    需要 docker（deploy-lint）或 Flutter（flutter analyze）的不在此列——
+    本地跑不动的写进来只会变成永远「跳过」的装饰。
+    """
+    return {
+        "contract": contract_check(),
+        "site-isolation": site_isolation_check(),
+    }
+
+
+def gate_failures(gate: dict | None) -> list[str]:
+    return [name for name, item in (gate or {}).items()
+            if item.get("status") == "failed"]
+
+
+def print_gate(gate: dict) -> None:
+    for name, item in gate.items():
+        word = {"passed": "通过", "failed": "未通过"}.get(item["status"], "跳过")
+        detail = f"  {item['detail']}" if item.get("detail") else ""
+        print(f"{_GATE_LABELS.get(name, name):<6} {word}  {item.get('seconds', 0)}s{detail}")
 
 
 # --------------------------------------------------------------------------
@@ -115,7 +170,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--inventory", action="store_true", help="三栈测试实时清点")
     p.add_argument("--rerun-failed", action="store_true",
                    help="只重跑上次失败的用例（精确到方法）")
-    p.add_argument("--gate", action="store_true", help="跑测试 + 契约校验，等价于本地过一遍 CI")
+    p.add_argument("--gate", action="store_true",
+                   help="跑测试 + 本机可跑的 CI 守卫（契约、站点隔离）")
     p.add_argument("--retry", type=int, default=0, metavar="N",
                    help="失败后只复跑失败用例 N 次，复跑通过则标记 flaky")
     p.add_argument("--slow", type=int, default=0, metavar="N", help="列出最慢的 N 个用例")
@@ -196,6 +252,7 @@ def main(argv: list[str] | None = None) -> int:
                 }
 
     tooling, unmapped = classify_extras(changed)
+    deploy = deploy_touching(changed)
 
     if args.collect:
         print_plan(plan, base_note)
@@ -204,42 +261,65 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  · 工具/脚本改动 {len(tooling)} 个（{names}）：无单测覆盖，改了请按用法手跑一次")
         for path in unmapped:
             print(f"  ! {path} 没有映射规则，拿不准请加 --all")
+        if deploy:
+            print(f"  · 配置/部署改动 {len(deploy)} 个：devkit 选不到这部分的测试，"
+                  "部署后用 python scripts/smoke.py --base-url <地址> 验")
         return 0
 
     started = time.perf_counter()
     results = run.run_all(plan, options)
     elapsed = time.perf_counter() - started
 
+    # 门禁先跑：只改配置/部署时选不到任何测试，但门禁依然该过一遍，
+    # 否则这类改动会把 gate 一起跳过。
+    gate = run_gate() if args.gate else None
+    gate_failed = gate_failures(gate)
+
     if not results:
         print("没有需要跑的测试。")
+        if deploy:
+            print(f"  · 但改了 {len(deploy)} 个配置/部署文件，devkit 管不到这部分——"
+                  "部署后用 smoke 验：")
+            print("      python scripts/smoke.py --base-url <地址>")
+        if gate:
+            print()
+            print_gate(gate)
+            print()
+            if gate_failed:
+                print(f"结论：{'、'.join(_GATE_LABELS.get(n, n) for n in gate_failed)}未通过。")
+                return 1
+            print("结论：门禁通过。")
         return 0
 
     failures = run.collect_failures(results, previous, select.ROOT, args.context)
-    gate = contract_check() if args.gate else None
     payload = run.build_payload(plan, results, failures, elapsed, argv)
     if gate:
-        payload["gate"] = {"contract": gate}
+        payload["gate"] = gate
+    if deploy:
+        payload["deploy_touch"] = deploy
     state.save(payload)
 
-    contract_failed = bool(gate and gate["status"] == "failed")
     # 疑似不稳定也算失败：CI 不会重试，本地放过就是让 CI 去挂一次。
     unstable = [s for s, r in results.items() if r.get("status") == "flaky"]
-    exit_code = 1 if (failures or contract_failed or unstable) else 0
+    exit_code = 1 if (failures or gate_failed or unstable) else 0
     # 一个栈都没跑成（工具链都没有）时不能返回 0：那会被当成「测试通过了」。
-    if not failures and not unstable and not any(
-            r.get("status") != "skipped" for r in results.values()):
+    # 但「选都没选中」是另一回事——只改配置时本来就没测试可跑，那是没得跑不是跑不成，
+    # 报 2 会把门禁已过的事实盖掉，也会让 pre-commit 之类的调用方误判失败。
+    nothing_ran = not any(r.get("status") != "skipped" for r in results.values())
+    selected_any = any((plan.get(s) or {}).get("mode") != "none" for s in stacks)
+    if nothing_ran and selected_any and not failures and not unstable and not gate_failed:
         exit_code = 2
 
     if args.json:
         print(json.dumps(_json_view(payload, exit_code), ensure_ascii=False, indent=2))
         return exit_code
 
-    _print_human(payload, results, failures, gate, args)
+    _print_human(payload, results, failures, gate, args, deploy)
     return exit_code
 
 
 def _print_human(payload: dict, results: dict, failures: list[dict],
-                 gate: dict | None, args) -> None:
+                 gate: dict | None, args, deploy: list[str] | None = None) -> None:
     for stack in select.STACKS:
         result = results.get(stack)
         if not result:
@@ -265,9 +345,7 @@ def _print_human(payload: dict, results: dict, failures: list[dict],
             print(f"       {item['message']}")
 
     if gate:
-        word = "通过" if gate["status"] == "passed" else "未通过"
-        detail = f"  {gate['detail']}" if gate.get("detail") else ""
-        print(f"{'契约':<6} {word}  {gate.get('seconds', 0)}s{detail}")
+        print_gate(gate)
 
     print()
     skipped = [_NAMES[s] for s in select.STACKS
@@ -275,14 +353,24 @@ def _print_human(payload: dict, results: dict, failures: list[dict],
     ran = [_NAMES[s] for s in select.STACKS
            if results.get(s) and results[s].get("status") != "skipped"]
     unstable = [s for s in select.STACKS if (results.get(s) or {}).get("status") == "flaky"]
+    gate_failed = gate_failures(gate)
     if failures:
         new_count = sum(1 for f in failures if f["badge"] == "新增失败")
-        print(f"结论：{len(failures)} 项失败（{new_count} 项新增）。"
-              + ("契约校验未通过。" if gate and gate["status"] == "failed" else ""))
-    elif gate and gate["status"] == "failed":
-        print("结论：测试通过，但契约校验未通过。")
+        extra = (f"{'、'.join(_GATE_LABELS.get(n, n) for n in gate_failed)}未通过。"
+                 if gate_failed else "")
+        print(f"结论：{len(failures)} 项失败（{new_count} 项新增）。{extra}")
+    elif gate_failed:
+        print(f"结论：测试通过，但 {'、'.join(_GATE_LABELS.get(n, n) for n in gate_failed)}未通过。")
     elif skipped and not ran:
-        print(f"结论：什么都没跑成（{'、'.join(skipped)} 都不可用），不等于通过。")
+        # 「没选中」和「跑不成」是两回事：前者本来就没得跑，后者是工具链缺失。
+        selection = payload.get("selection") or {}
+        selected_any = any((selection.get(stack) or {}).get("mode") != "none"
+                           for stack in select.STACKS)
+        if not selected_any:
+            gate_note = "，门禁通过。" if gate else "。"
+            print(f"结论：没有选中任何测试（改动不触及这三个栈的代码）{gate_note}")
+        else:
+            print(f"结论：什么都没跑成（{'、'.join(skipped)} 都不可用），不等于通过。")
     elif unstable:
         print(f"结论：{'、'.join(_NAMES[s] for s in unstable)} 疑似不稳定（首跑失败、复跑通过）。"
               "CI 不会重试，这里按失败算。")
@@ -290,6 +378,14 @@ def _print_human(payload: dict, results: dict, failures: list[dict],
         print(f"结论：{'、'.join(ran)} 通过；{'、'.join(skipped)} 没执行（不算通过）。")
     else:
         print("结论：全部通过。可以提交。")
+
+    # 改了配置/部署时选不到测试，光说「全部通过」会让人以为验过了——把人交给 smoke。
+    if deploy and not any((results.get(stack) or {}).get("status") != "skipped"
+                          for stack in select.STACKS):
+        print()
+        print(f"  · 改了 {len(deploy)} 个配置/部署文件，devkit 选不到这部分的测试——"
+              "部署后用下面这条验：")
+        print("      python scripts/smoke.py --base-url <地址>")
 
     if args.slow:
         for stack in select.STACKS:
@@ -351,4 +447,5 @@ def _json_view(payload: dict, exit_code: int) -> dict:
             for f in payload.get("failures") or []
         ],
         "gate": payload.get("gate"),
+        "deploy_touch": payload.get("deploy_touch") or [],
     }

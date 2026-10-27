@@ -16,7 +16,7 @@ python scripts/devtest.py --collect   # 只列清单和原因，不动手（先�
 python scripts/devtest.py --json      # 机器可读，适合脚本/智能体接手
 python scripts/devtest.py --all       # 明确全量，慎用
 python scripts/devtest.py --inventory # 三栈测试实时清点（文档里的数字会过期，这个不会）
-python scripts/devtest.py --gate      # 测试 + 契约校验，≈ 本地过一遍 CI
+python scripts/devtest.py --gate      # 测试 + 本机可跑的 CI 守卫（契约、站点隔离）
 python scripts/devtest.py --rerun-failed  # 只重跑上次失败的用例（精确到方法，通常 <2s）
 python -m devkit serve --port 8787    # 本地看板（失败卡片、慢用例、历史）
 ```
