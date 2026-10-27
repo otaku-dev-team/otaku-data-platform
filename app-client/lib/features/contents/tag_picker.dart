@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/util/tag_filter.dart';
 import '../../data/models/tag_vocabulary.dart';
+import '../../data/models/work_type.dart';
 import 'tag_vocabulary_provider.dart';
 
 /// 打开标签面板，返回用户确认后的标签列表；取消返回 `null`。
@@ -12,17 +13,22 @@ import 'tag_vocabulary_provider.dart';
 Future<List<String>?> showTagPicker(
   BuildContext context, {
   required List<String> selected,
+  WorkType? type,
 }) {
   return showDialog<List<String>>(
     context: context,
-    builder: (_) => TagPickerDialog(initial: selected),
+    builder: (_) => TagPickerDialog(initial: selected, type: type),
   );
 }
 
 class TagPickerDialog extends ConsumerStatefulWidget {
-  const TagPickerDialog({super.key, required this.initial});
+  const TagPickerDialog({super.key, required this.initial, this.type});
 
   final List<String> initial;
+
+  /// 当前筛的作品类型。传了就只显示该类型的标签——点了必然有结果的标签，
+  /// 比「全量词表里一半点了是 0 条」有用得多。
+  final WorkType? type;
 
   @override
   ConsumerState<TagPickerDialog> createState() => _TagPickerDialogState();
@@ -53,7 +59,7 @@ class _TagPickerDialogState extends ConsumerState<TagPickerDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final vocabulary = ref.watch(tagVocabularyProvider);
+    final vocabulary = ref.watch(tagVocabularyProvider(widget.type));
 
     return AlertDialog(
       titlePadding: const EdgeInsets.fromLTRB(20, 18, 12, 8),
@@ -70,10 +76,20 @@ class _TagPickerDialogState extends ConsumerState<TagPickerDialog> {
                   : theme.colorScheme.onSurfaceVariant,
             ),
           ),
+          if (widget.type != null) ...[
+            const SizedBox(width: 8),
+            Text(
+              '仅「${widget.type!.label}」',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
           const Spacer(),
           IconButton(
             tooltip: '刷新词表',
-            onPressed: () => ref.invalidate(tagVocabularyProvider),
+            onPressed: () =>
+                ref.invalidate(tagVocabularyProvider(widget.type)),
             icon: const Icon(Icons.refresh_rounded, size: 20),
           ),
         ],
@@ -180,7 +196,8 @@ class _TagPickerDialogState extends ConsumerState<TagPickerDialog> {
           Text('词表加载失败：$error', textAlign: TextAlign.center),
           const SizedBox(height: 8),
           OutlinedButton(
-            onPressed: () => ref.invalidate(tagVocabularyProvider),
+            onPressed: () =>
+                ref.invalidate(tagVocabularyProvider(widget.type)),
             child: const Text('重试'),
           ),
         ],

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:otaku_app/data/models/tag_vocabulary.dart';
+import 'package:otaku_app/data/models/work_type.dart';
 import 'package:otaku_app/features/contents/tag_picker.dart';
 import 'package:otaku_app/features/contents/tag_vocabulary_provider.dart';
 
@@ -22,18 +23,25 @@ void main() {
     WidgetTester tester, {
     required void Function(List<String>?) onResult,
     List<String> selected = const [],
+    WorkType? type,
   }) async {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          tagVocabularyProvider.overrideWith((ref) async => vocabulary),
+          tagVocabularyProvider.overrideWith((ref, type) async => vocabulary),
         ],
         child: MaterialApp(
           home: Scaffold(
             body: Builder(
               builder: (context) => ElevatedButton(
                 onPressed: () async {
-                  onResult(await showTagPicker(context, selected: selected));
+                  onResult(
+                    await showTagPicker(
+                      context,
+                      selected: selected,
+                      type: type,
+                    ),
+                  );
                 },
                 child: const Text('打开'),
               ),
@@ -65,6 +73,15 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(result, ['科幻', '日常']);
+  });
+
+  testWidgets('传了类型：标题上标出「仅动画」，词表也该按这个类型取', (tester) async {
+    await pumpPicker(tester, onResult: (_) {}, type: WorkType.anime);
+
+    await tester.tap(find.text('打开'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('仅「动画」'), findsOneWidget);
   });
 
   testWidgets('取消返回 null——不能悄悄把已有条件清空', (tester) async {
