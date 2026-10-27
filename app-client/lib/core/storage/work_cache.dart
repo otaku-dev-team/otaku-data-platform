@@ -43,6 +43,7 @@ class ListCacheKey {
     required this.page,
     this.pageSize = 50,
     this.tag,
+    this.year,
   });
 
   final WorkType? type;
@@ -63,6 +64,12 @@ class ListCacheKey {
   /// 而界面上看不出任何异常——这是最坏的一类缓存 bug。
   final String? tag;
 
+  /// 年份筛选（契约 `GET /api/works?year=`，等值）。
+  ///
+  /// **同样必须参与键的计算**：少了它，「2022 年的第一页」会覆盖掉
+  /// 「不限年份的第一页」，离线时看到的条数与在线完全不同。
+  final int? year;
+
   /// 归一后的标签：空串与 null 是同一个意思（都表示不过滤）。
   String get normalizedTag => tag?.trim() ?? '';
 
@@ -80,6 +87,7 @@ class ListCacheKey {
       '$page',
       '$pageSize',
       normalizedTag,
+      year?.toString() ?? '',
     ];
     return 'list:${parts.join('\u0000')}';
   }
@@ -92,11 +100,12 @@ class ListCacheKey {
       other.sort == sort &&
       other.page == page &&
       other.pageSize == pageSize &&
-      other.normalizedTag == normalizedTag;
+      other.normalizedTag == normalizedTag &&
+      other.year == year;
 
   @override
   int get hashCode =>
-      Object.hash(type, normalizedQuery, sort, page, pageSize, normalizedTag);
+      Object.hash(type, normalizedQuery, sort, page, pageSize, normalizedTag, year);
 
   @override
   String toString() => 'ListCacheKey($storageKey)';

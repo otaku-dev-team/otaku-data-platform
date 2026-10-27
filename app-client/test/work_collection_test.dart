@@ -39,7 +39,8 @@ class _FakeWorkSource implements WorkDataSource {
     int page = 1,
     int pageSize = 20,
     String? tag,
-  }) async {
+  
+    int? year,}) async {
     return PagedResult<WorkSummary>(
       items: [
         WorkSummary(workId: 'W-1', workType: WorkType.anime, title: '测试作品 W-1'),

@@ -40,10 +40,11 @@ class WorkRepository {
     int page = 1,
     int pageSize = AppConfig.pageSize,
     String? tag,
+    int? year,
   }) async {
-    // 标签进缓存键：**少一个维度就会取错内容**——「按科幻筛的第一页」与
-    // 「不筛标签的第一页」共用一个键的话，离线时按标签打开列表会拿到
-    // 根本没筛过的内容，而界面上看不出任何异常（与 pageSize 同一个坑）。
+    // 标签与年份都要进缓存键：**少一个维度就会取错内容**——「按科幻筛的第一页」
+    // 与「不筛标签的第一页」共用一个键的话，离线时会拿到根本没筛过的内容，
+    // 而界面上看不出任何异常（与 pageSize 同一个坑）。
     final key = ListCacheKey(
       type: type,
       query: query?.trim() ?? '',
@@ -51,6 +52,7 @@ class WorkRepository {
       page: page,
       pageSize: pageSize,
       tag: tag,
+      year: year,
     );
 
     try {
@@ -61,6 +63,7 @@ class WorkRepository {
         page: page,
         pageSize: pageSize,
         tag: tag,
+        year: year,
       );
       await _cache?.writeList(
         key,

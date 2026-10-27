@@ -45,7 +45,8 @@ class _FakeDataSource implements WorkDataSource {
     int page = 1,
     int pageSize = 20,
     String? tag,
-  }) async {
+  
+    int? year,}) async {
     return const PagedResult<WorkSummary>(
       items: [summaryItem, summaryItem, summaryItem],
       total: 3,
@@ -90,7 +91,8 @@ class _OfflineOnFilterDataSource extends _FakeDataSource {
     int page = 1,
     int pageSize = 20,
     String? tag,
-  }) async {
+  
+    int? year,}) async {
     if (type != null) {
       throw const ApiException(
         code: ApiErrorCode.network,
@@ -113,7 +115,8 @@ class _OfflineAfterFirstLoadDataSource extends _FakeDataSource {
     int page = 1,
     int pageSize = 20,
     String? tag,
-  }) async {
+  
+    int? year,}) async {
     calls++;
     if (calls > 1) {
       throw const ApiException(
