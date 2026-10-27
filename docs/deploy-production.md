@@ -31,6 +31,7 @@
 | CORS 白名单 | `OTAKU_CORS_ALLOWED_ORIGINS` | 站点页面跨域读接口一律 403；留空只放行 localhost |
 | 公共读限流 | `OTAKU_RATE_LIMIT_PUBLIC_PER_MINUTE` / `OTAKU_RATE_LIMIT_COVER_PER_MINUTE` | 被人拿脚本刷列表/封面，带宽与回源全算我们的 |
 | 封面防盗链 | `OTAKU_COVER_ALLOWED_REFERERS` | 任意站点可把封面代理当免费图床（#189 的开关默认关） |
+| 封面回源白名单 | `OTAKU_COVER_ALLOWED_HOSTS` | 不在表里的来源站封面**全部 404**（fail-closed）；接 Bangumi 镜像需加 `bgmimg.anibt.net:443` |
 
 上了 Nginx/反代后还要把 `OTAKU_TRUST_FORWARDED_FOR=true`，否则限流会把所有请求都算到反代 IP 上。
 
@@ -602,6 +603,44 @@ df -h
 ### 11.6 站主后台（V10）已上线
 
 2026-10-27 下午把首版站主后台（Issue #144）部署到同一台机器，**V10 迁移在生产库上真跑过**。
+
+### 11.7 封面回填上线后：allowed-hosts 必须配（Issue #124 / PR #222）
+
+封面回填把作品的 `cover_url` 改写成 Bangumi CDN 镜像地址（`bgmimg.anibt.net:443`）。
+后端 `/api/covers/{id}` 回源时查 `app.cover.allowed-hosts` 白名单，**fail-closed：不在表里 = 404**。
+首站默认只含 `154.8.194.198:8000`（首站自身媒体），所以回填后的 Bangumi 封面**全 404**——
+这跟「回填没跑」「接口坏了」看起来一样，但根因是配置漏了一项。
+
+**根因（两层，任一缺失都 404）：**
+1. `application.yml` 里 `allowed-hosts` 之前是**写死的 YAML 列表**，**不读环境变量**；
+2. `compose.prod.yaml` 的 `backend.environment` **没有转发**任何 `APP_COVER_ALLOWED_HOSTS*`。
+⇒ 服务器 `.env` 里就算写了，也到不了容器，等于没配。（之前误以为是「逗号串不生效」，其实是根本没转发 + yml 不读。）
+
+**修复（3 个仓库文件 + 1 个服务器 `.env`）：**
+1. `backend-java/src/main/resources/application.yml`：`allowed-hosts:` 列表 →
+   `allowed-hosts: ${OTAKU_COVER_ALLOWED_HOSTS:154.8.194.198:8000}`
+   （逗号串会被 Spring 自动拆成 `List<String>`；默认值保证不写 `.env` 时首站封面仍可用）
+2. `backend-java/compose.prod.yaml` backend.environment 加一行：
+   `OTAKU_COVER_ALLOWED_HOSTS: ${OTAKU_COVER_ALLOWED_HOSTS:-154.8.194.198:8000,bgmimg.anibt.net:443}`
+3. `backend-java/.env.production.example` 加 `OTAKU_COVER_ALLOWED_HOSTS=154.8.194.198:8000,bgmimg.anibt.net:443`
+4. 服务器 `/opt/otaku/backend/.env` 加同一行（这是真正生效的那一步）。
+
+**⚠️ 改了 application.yml = 改了打进 jar 的配置，服务器必须重建镜像才生效：**
+`cd /opt/otaku/backend && docker compose -f compose.prod.yaml up -d --build backend`
+（单纯 `restart` 不够——jar 里还是旧的白名单。）
+
+**重启步骤（沿用 §11.2.5，不要打断导入）：**
+1. 等全量导入跑到 `total` 接近 557,847，或确认 import 单元已结束。
+2. `kill -STOP <sync pid>` 冻写端（封面回填单元 `otaku-covers3` + 全量导入单元都停）。
+3. 应用上面的仓库改动并重建：`up -d --build backend`。
+4. 验证白名单真的进了容器：`docker exec otaku-backend env | grep -i allowed_hosts`。
+5. 验封面：`curl -sI http://154.8.194.198:8080/api/covers/<回填过的 work_id>` 应 200。
+6. `kill -CONT <sync pid>` 恢复写端；封面回填单元继续按热度补完最可能被点到的作品。
+
+**临时不停机验证（不重建镜像也能验，但只是验证不是修复）：**
+若不方便立刻重建，可临时在 compose 的 `backend.environment` 加
+`SPRING_APPLICATION_JSON: '{"app":{"cover":{"allowed-hosts":["154.8.194.198:8000","bgmimg.anibt.net:443"]}}}'`
+并 `up -d backend`——这能绕过 jar 里的旧 yml 立即验证封面是否转 200；验证完再走上面的正规修复。
 
 | 项 | 实测 |
 |---|---|

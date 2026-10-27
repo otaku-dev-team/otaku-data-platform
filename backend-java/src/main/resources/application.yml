@@ -56,9 +56,10 @@ app:
     timeout: 10s
     max-bytes: 5242880
     # 封面回源白名单（host:port）。**留空 = 全部拒绝**（fail-closed），不是"不限"。
-    # 接新的来源站时，把它的 host:port 加在这里即可，不需要改代码。
-    allowed-hosts:
-      - 154.8.194.198:8000
+    # 接新的来源站时，把它的 host:port 加到 OTAKU_COVER_ALLOWED_HOSTS 即可，不需要改代码。
+    # 默认只含首站自身：保证不写 .env 时行为与旧版一致（首站封面仍可用）。
+    # 逗号分隔的字符串会被 Spring 自动拆成 List<String>；接 Bangumi 镜像需加 bgmimg.anibt.net:443。
+    allowed-hosts: ${OTAKU_COVER_ALLOWED_HOSTS:154.8.194.198:8000}
     # 封面防盗链：允许**跨域引用**封面的来源页（origin 形式，如 http://example.com:8080）。
     # **留空 = 不限制**（历史行为）。开启后：不带 Referer 的请求（Flutter 客户端 / curl / 服务端）
     # 仍然放行，只有「浏览器带着别站页面地址来取图」才拒（返回 404，契约里既有的码）。
