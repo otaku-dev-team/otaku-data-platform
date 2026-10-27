@@ -209,6 +209,39 @@ class TagEndpointsIntegrationTest {
      *   4 anime  T2     无评分
      * </pre>
      */
+    @Test
+    @DisplayName("词表缓存：导入后必须立刻可见（失效钩子接在导入链路上，不是靠 TTL）")
+    void vocabularyCacheIsInvalidatedByImport() throws Exception {
+        seed();
+        // 第一次调用把词表读进缓存（此时还没有 T4）
+        assertThat(okJson("/api/tags").get("items").toString()).doesNotContain("it8-新词");
+
+        importService.importBatch(new ImportBatchRequest(
+                BATCH_PREFIX + UUID.randomUUID(), "otaku_site", null, List.of(
+                item("it8tag-cache-1", "anime", "缓存失效样本", List.of("it8-新词"), "8.0"))));
+
+        // 若失效没接上，这里拿到的是旧缓存 → 断言失败（这正是缓存的真实风险）
+        JsonNode after = okJson("/api/tags");
+        assertThat(after.get("items").toString()).contains("it8-新词");
+        assertThat(after.get("total").asInt()).isEqualTo(after.get("items").size());
+    }
+
+    @Test
+    @DisplayName("词表缓存：limit 不改变结果内容，只截断（缓存存的是整份前 N 条）")
+    void cacheStillHonoursLimit() throws Exception {
+        seed();
+        JsonNode full = okJson("/api/tags");
+        JsonNode limited = okJson("/api/tags", "limit", "2");
+        JsonNode again = okJson("/api/tags", "limit", "3");
+
+        assertThat(limited.get("items")).hasSize(2);
+        assertThat(again.get("items")).hasSize(3);
+        // 缓存存的是整份，limit 只是截断：前 2 条必须与全量的前 2 条逐字一致
+        assertThat(names(limited)).isEqualTo(names(full).subList(0, 2));
+        assertThat(names(again)).isEqualTo(names(full).subList(0, 3));
+        assertThat(limited.get("total").asInt()).isEqualTo(2);
+    }
+
     private void seed() {
         importService.importBatch(new ImportBatchRequest(
                 BATCH_PREFIX + UUID.randomUUID(), "otaku_site", null, List.of(
@@ -228,6 +261,13 @@ class TagEndpointsIntegrationTest {
         return new ImportItem(sourceId, type, title, null, null, year, tags,
                 rating == null ? null : new SourceRating(new BigDecimal(rating), "0-10", "otaku_site"),
                 null);
+    }
+
+    /** 词表里按顺序取出标签名，用于比对「截断」语义。 */
+    private static List<String> names(JsonNode tagList) {
+        List<String> out = new ArrayList<>();
+        tagList.get("items").forEach(item -> out.add(item.get("name").asText()));
+        return out;
     }
 
     private JsonNode okJson(String path, String... params) throws Exception {

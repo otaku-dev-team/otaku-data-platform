@@ -12,6 +12,7 @@ import com.otaku.importer.dto.ImportBatchDetail;
 import com.otaku.importer.dto.ImportBatchResult;
 import com.otaku.importer.dto.ImportItemResult;
 import com.otaku.work.CountCache;
+import com.otaku.work.TagCache;
 import com.otaku.work.WorkRecord;
 import com.otaku.work.WorkRepository;
 import org.slf4j.Logger;
@@ -64,19 +65,22 @@ public class ImportService {
     private final TransactionTemplate transactionTemplate;
     private final ObjectMapper objectMapper;
     private final CountCache countCache;
+    private final TagCache tagCache;
 
     public ImportService(WorkRepository workRepository,
                          ImportBatchRepository batchRepository,
                          PublicIdGenerator idGenerator,
                          TransactionTemplate transactionTemplate,
                          ObjectMapper objectMapper,
-                         CountCache countCache) {
+                         CountCache countCache,
+                         TagCache tagCache) {
         this.workRepository = workRepository;
         this.batchRepository = batchRepository;
         this.idGenerator = idGenerator;
         this.transactionTemplate = transactionTemplate;
         this.objectMapper = objectMapper;
         this.countCache = countCache;
+        this.tagCache = tagCache;
     }
 
     public ImportBatchResult importBatch(ImportBatchRequest request) {
@@ -148,6 +152,9 @@ public class ImportService {
         // 行数变了 → 列表总数缓存整体失效。unchanged/rejected 不影响行数，不必失效。
         if (inserted > 0 || updated > 0) {
             countCache.invalidateAll();
+            // 标签词表同理：新增/更新作品会带来新的 work_tag 行，词表与计数都变了。
+            // 只按 inserted 判断不够——更新也可能改标签（WorkMerger 会重写标签关联）。
+            tagCache.invalidateAll();
         }
 
         ImportBatchResult result = new ImportBatchResult(
