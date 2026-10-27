@@ -1,0 +1,177 @@
+{
+  "dataset_version": "1",
+  "source_id": "otaku",
+  "_notes": [
+    "Otaku 网站（FastAPI + SQLite）→ 标准数据集 v1 的映射。",
+    "改客户表只改本文件，不动代码——这是解耦的落点。",
+    "on_missing 三档：break=关键列缺失就停机 / reject=该行拒绝 / degrade=置空继续。",
+    "source_id、关联表的 content_id 一律 break：主键错了会静默产生几十万条重复脏数据。",
+    "contents 表没有 updated_at，故 works.source_updated_at 不映射（保持 NULL）。",
+    "需要增量同步时，源侧必须补 updated_at 列或触发器；否则只能全量重扫或内容哈希比对。",
+    "articles 用 filter 只取已发布，未审核草稿不进数据集。"
+  ],
+  "tables": [
+    {
+      "target": "works",
+      "mode": "table",
+      "source": "contents",
+      "key": "id",
+      "fields": [
+        {"target": "source_id", "column": "id", "type": "str", "required": true, "on_missing": "break"},
+        {"target": "work_type", "column": "type", "type": "enum", "required": true, "on_missing": "reject",
+         "enum_map": {
+           "动画": "anime", "漫画": "comic", "游戏": "game", "轻小说": "novel",
+           "anime": "anime", "comic": "comic", "game": "game", "novel": "novel"
+         }},
+        {"target": "title", "column": "title", "type": "str", "required": true, "on_missing": "reject"},
+        {"target": "summary", "column": "summary", "type": "text"},
+        {"target": "cover_url", "column": "image_url", "type": "str"},
+        {"target": "release_year", "column": "year", "type": "int", "min": 1900, "max": 2100},
+        {"target": "rating_value", "column": "rating", "type": "float", "min": 0, "max": 10},
+        {"target": "rating_scale", "const": "0-10", "type": "str"},
+        {"target": "source_url", "column": "source_url", "type": "str"},
+        {"target": "title_original", "column": "title_original", "type": "str"},
+        {"target": "summary_original", "column": "summary_original", "type": "text"},
+        {"target": "aliases_json", "column": "aliases", "type": "json_list"},
+        {"target": "rating_count", "column": "rating_count", "type": "int", "min": 0},
+        {"target": "media", "column": "media", "type": "str"},
+        {"target": "episodes", "column": "episodes", "type": "int", "min": 0, "max": 10000},
+        {"target": "source_material", "column": "source_material", "type": "str"},
+        {"target": "series_key", "column": "series_id", "type": "str"}
+      ]
+    },
+    {
+      "target": "work_tags",
+      "mode": "query",
+      "required_sources": ["content_tags", "tags"],
+      "sql": "select ct.content_id as source_id, t.name as name from content_tags ct join tags t on t.id = ct.tag_id"
+    },
+    {
+      "target": "work_facts",
+      "mode": "table",
+      "source": "content_facts",
+      "key": "content_id",
+      "fields": [
+        {"target": "source_id", "column": "content_id", "type": "str", "required": true, "on_missing": "break"},
+        {"target": "key", "column": "key", "type": "str", "required": true, "on_missing": "reject"},
+        {"target": "value", "column": "value", "type": "str", "required": true, "on_missing": "reject"}
+      ]
+    },
+    {
+      "target": "work_credits",
+      "mode": "table",
+      "source": "content_credits",
+      "key": "content_id",
+      "fields": [
+        {"target": "source_id", "column": "content_id", "type": "str", "required": true, "on_missing": "break"},
+        {"target": "role", "column": "role", "type": "str", "required": true, "on_missing": "reject"},
+        {"target": "name", "column": "name", "type": "str", "required": true, "on_missing": "reject"},
+        {"target": "person_ref", "column": "person_id", "type": "str"},
+        {"target": "tier", "column": "tier", "type": "str"},
+        {"target": "sort_order", "column": "sort_order", "type": "int"}
+      ]
+    },
+    {
+      "target": "work_cast",
+      "mode": "table",
+      "source": "content_cast",
+      "key": "content_id",
+      "fields": [
+        {"target": "source_id", "column": "content_id", "type": "str", "required": true, "on_missing": "break"},
+        {"target": "character", "column": "character", "type": "str", "required": true, "on_missing": "reject"},
+        {"target": "actor", "column": "actor", "type": "str", "required": true, "on_missing": "reject"},
+        {"target": "person_ref", "column": "person_id", "type": "str"},
+        {"target": "relation", "column": "relation", "type": "str"},
+        {"target": "sort_order", "column": "sort_order", "type": "int"}
+      ]
+    },
+    {
+      "target": "work_studios",
+      "mode": "table",
+      "source": "content_studios",
+      "key": "content_id",
+      "fields": [
+        {"target": "source_id", "column": "content_id", "type": "str", "required": true, "on_missing": "break"},
+        {"target": "name", "column": "name", "type": "str", "required": true, "on_missing": "reject"}
+      ]
+    },
+    {
+      "target": "work_relations",
+      "mode": "query",
+      "required_sources": ["content_relations"],
+      "sql": "select from_content_id as source_id, to_content_id as related_source_id, relation_type as relation from content_relations"
+    },
+    {
+      "target": "series",
+      "mode": "table",
+      "source": "series",
+      "key": "id",
+      "fields": [
+        {"target": "series_key", "column": "id", "type": "str", "required": true, "on_missing": "reject"},
+        {"target": "name", "column": "name", "type": "str", "required": true, "on_missing": "reject"}
+      ]
+    },
+    {
+      "target": "tags",
+      "mode": "table",
+      "source": "tags",
+      "key": "name",
+      "fields": [
+        {"target": "name", "column": "name", "type": "str", "required": true, "on_missing": "reject"}
+      ]
+    },
+    {
+      "target": "articles",
+      "mode": "table",
+      "source": "articles",
+      "key": "id",
+      "filter": "is_published = 1",
+      "fields": [
+        {"target": "source_id", "column": "id", "type": "str", "required": true, "on_missing": "break"},
+        {"target": "title", "column": "title", "type": "str", "required": true, "on_missing": "reject"},
+        {"target": "summary", "column": "summary", "type": "text"},
+        {"target": "body", "column": "body", "type": "text"},
+        {"target": "category", "column": "category", "type": "str"},
+        {"target": "subcategory", "column": "subcategory", "type": "str"},
+        {"target": "event_type", "column": "event_type", "type": "str"},
+        {"target": "published_at", "column": "published_at", "type": "datetime"},
+        {"target": "source_name", "column": "source", "type": "str"},
+        {"target": "source_url", "column": "original_url", "type": "str"},
+        {"target": "cover_url", "column": "image_url", "type": "str"},
+        {"target": "is_adult", "column": "is_adult", "type": "bool"},
+        {"target": "source_updated_at", "column": "updated_at", "type": "datetime"}
+      ]
+    },
+    {
+      "target": "article_links",
+      "mode": "query",
+      "required_sources": ["article_content_links"],
+      "sql": "select article_id as article_source_id, content_id as work_source_id from article_content_links"
+    },
+    {
+      "target": "schedules",
+      "mode": "table",
+      "source": "anime_schedules",
+      "key": "id",
+      "fields": [
+        {"target": "source_id", "column": "id", "type": "str", "required": true, "on_missing": "break"},
+        {"target": "season_code", "column": "season_code", "type": "str"},
+        {"target": "title_main", "column": "title_main", "type": "str"},
+        {"target": "title_cn", "column": "title_cn", "type": "str"},
+        {"target": "title_jp", "column": "title_jp", "type": "str"},
+        {"target": "weekday", "column": "weekday", "type": "int", "min": 1, "max": 7},
+        {"target": "broadcast_time", "column": "broadcast_time", "type": "str"},
+        {"target": "broadcast_note", "column": "broadcast_note", "type": "str"},
+        {"target": "air_date", "column": "air_date", "type": "str"},
+        {"target": "box_office", "column": "box_office", "type": "str"},
+        {"target": "work_type", "column": "work_type", "type": "str"},
+        {"target": "work_tags_json", "column": "work_tags", "type": "str"},
+        {"target": "image_url", "column": "image_url", "type": "str"},
+        {"target": "platforms_json", "column": "platforms", "type": "json_list"},
+        {"target": "source_url", "column": "source_url", "type": "str"},
+        {"target": "content_source_id", "column": "content_id", "type": "str"},
+        {"target": "source_updated_at", "column": "last_synced_at", "type": "datetime"}
+      ]
+    }
+  ]
+}
