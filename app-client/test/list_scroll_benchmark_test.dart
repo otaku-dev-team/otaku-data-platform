@@ -39,7 +39,7 @@ class _BulkDataSource implements WorkDataSource {
     WorkSort sort = WorkSort.id,
     int page = 1,
     int pageSize = 20,
-    String? tag,
+    List<String>? tags,
   
     int? year,}) async {
     final items = List<WorkSummary>.generate(
@@ -88,7 +88,7 @@ class _PagedCountingDataSource implements WorkDataSource {
     WorkSort sort = WorkSort.id,
     int page = 1,
     int pageSize = 20,
-    String? tag,
+    List<String>? tags,
   
     int? year,}) async {
     calls++;

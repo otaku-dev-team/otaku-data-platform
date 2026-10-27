@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 
+import '../util/tag_filter.dart';
+
 import '../../data/models/related_works.dart';
 import '../../data/models/work.dart';
 import '../../data/models/work_sort.dart';
@@ -42,7 +44,7 @@ class ListCacheKey {
     required this.sort,
     required this.page,
     this.pageSize = 50,
-    this.tag,
+    this.tags,
     this.year,
   });
 
@@ -57,12 +59,12 @@ class ListCacheKey {
   /// 每页条数。参与键的计算，理由见类注释。
   final int pageSize;
 
-  /// 标签筛选（契约 `GET /api/works?tag=`，精确匹配整个标签）。
+  /// 标签筛选（契约 `tags=a,b`，AND，最多 10 个）。
   ///
   /// **必须参与键的计算**：少了它，「按科幻筛的第一页」与「不筛标签的第一页」
   /// 共用一个键，离线时按标签打开列表会拿到根本没筛过的内容，
   /// 而界面上看不出任何异常——这是最坏的一类缓存 bug。
-  final String? tag;
+  final List<String>? tags;
 
   /// 年份筛选（契约 `GET /api/works?year=`，等值）。
   ///
@@ -70,8 +72,10 @@ class ListCacheKey {
   /// 「不限年份的第一页」，离线时看到的条数与在线完全不同。
   final int? year;
 
-  /// 归一后的标签：空串与 null 是同一个意思（都表示不过滤）。
-  String get normalizedTag => tag?.trim() ?? '';
+  /// 归一后的标签：去重、去空、限 10 个，**与选择顺序无关**。
+  ///
+  /// 先点「科幻」再点「机战」和反过来是同一个查询，必须命中同一条缓存。
+  String get normalizedTags => tagsCacheKey(tags);
 
   /// 归一后的关键词：null 与空串是同一个意思。
   String get normalizedQuery => query.trim();
@@ -86,7 +90,7 @@ class ListCacheKey {
       sort.value,
       '$page',
       '$pageSize',
-      normalizedTag,
+      normalizedTags,
       year?.toString() ?? '',
     ];
     return 'list:${parts.join('\u0000')}';
@@ -100,12 +104,12 @@ class ListCacheKey {
       other.sort == sort &&
       other.page == page &&
       other.pageSize == pageSize &&
-      other.normalizedTag == normalizedTag &&
+      other.normalizedTags == normalizedTags &&
       other.year == year;
 
   @override
   int get hashCode =>
-      Object.hash(type, normalizedQuery, sort, page, pageSize, normalizedTag, year);
+      Object.hash(type, normalizedQuery, sort, page, pageSize, normalizedTags, year);
 
   @override
   String toString() => 'ListCacheKey($storageKey)';

@@ -102,10 +102,12 @@ class WorkListTile extends ConsumerWidget {
                         maxVisible: 5,
                         onTag: (tag) => ref
                             .read(contentsFilterProvider.notifier)
-                            .selectTag(tag),
-                        selectedTag: ref.watch(
-                          contentsFilterProvider.select((f) => f.tag),
-                        ),
+                            .toggleTag(tag),
+                        selectedTags: ref
+                            .watch(
+                              contentsFilterProvider.select((f) => f.tags),
+                            )
+                            .toSet(),
                       ),
                     ),
                   ),

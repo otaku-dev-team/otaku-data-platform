@@ -44,7 +44,7 @@ class _FakeDataSource implements WorkDataSource {
     WorkSort sort = WorkSort.id,
     int page = 1,
     int pageSize = 20,
-    String? tag,
+    List<String>? tags,
   
     int? year,}) async {
     return const PagedResult<WorkSummary>(
@@ -90,7 +90,7 @@ class _OfflineOnFilterDataSource extends _FakeDataSource {
     WorkSort sort = WorkSort.id,
     int page = 1,
     int pageSize = 20,
-    String? tag,
+    List<String>? tags,
   
     int? year,}) async {
     if (type != null) {
@@ -114,7 +114,7 @@ class _OfflineAfterFirstLoadDataSource extends _FakeDataSource {
     WorkSort sort = WorkSort.id,
     int page = 1,
     int pageSize = 20,
-    String? tag,
+    List<String>? tags,
   
     int? year,}) async {
     calls++;

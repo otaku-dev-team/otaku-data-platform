@@ -60,7 +60,7 @@ class _FakeWorkSource implements WorkDataSource {
     WorkSort sort = WorkSort.id,
     int page = 1,
     int pageSize = 20,
-    String? tag,
+    List<String>? tags,
   
     int? year,}) async {
     calls++;
@@ -310,7 +310,7 @@ void main() {
 
       final filter = container.read(contentsFilterProvider);
       expect(filter.type, WorkType.anime);
-      expect(filter.tag, isNull);
+      expect(filter.tags, isEmpty);
       expect(filter.query, isEmpty);
       expect(filter.sort, WorkSort.id);
     });
@@ -328,7 +328,7 @@ void main() {
       final filter = container.read(contentsFilterProvider);
       expect(filter.sort, WorkSort.rating);
       expect(filter.type, isNull);
-      expect(filter.tag, isNull);
+      expect(filter.tags, isEmpty);
     });
   });
 }

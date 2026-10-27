@@ -85,7 +85,7 @@ void main() {
       final filter = read();
       expect(filter.year, 2022);
       expect(filter.query, '魔法');
-      expect(filter.tag, '奇幻');
+      expect(filter.tags, ['奇幻']);
       expect(filter.sort, WorkSort.rating);
     });
 
@@ -106,7 +106,7 @@ void main() {
       notifier.selectYear(null);
 
       expect(read().year, isNull);
-      expect(read().tag, '奇幻');
+      expect(read().tags, ['奇幻']);
     });
 
     test('clearFilters 连年份一起清，但保留排序', () {
@@ -117,7 +117,7 @@ void main() {
 
       notifier.clearFilters();
 
-      expect(read().tag, isNull);
+      expect(read().tags, isEmpty);
       expect(read().year, isNull);
       expect(read().sort, WorkSort.rating);
     });
@@ -127,7 +127,7 @@ void main() {
       notifier.selectYear(2022);
       notifier.showTag('奇幻');
 
-      expect(read().tag, '奇幻');
+      expect(read().tags, ['奇幻']);
       expect(read().year, isNull);
     });
   });

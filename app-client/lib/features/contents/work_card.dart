@@ -112,10 +112,12 @@ class WorkCard extends ConsumerWidget {
                         // 用户想「看同题材的」时，入口就在他眼睛盯着的地方。
                         onTag: (tag) => ref
                             .read(contentsFilterProvider.notifier)
-                            .selectTag(tag),
-                        selectedTag: ref.watch(
-                          contentsFilterProvider.select((f) => f.tag),
-                        ),
+                            .toggleTag(tag),
+                        selectedTags: ref
+                            .watch(
+                              contentsFilterProvider.select((f) => f.tags),
+                            )
+                            .toSet(),
                       ),
                     ),
                   ),

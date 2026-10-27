@@ -30,7 +30,7 @@ class _EmptySource implements WorkDataSource {
     WorkSort sort = WorkSort.id,
     int page = 1,
     int pageSize = 20,
-    String? tag,
+    List<String>? tags,
   
     int? year,}) async => const PagedResult<WorkSummary>(
     items: [],
@@ -77,7 +77,7 @@ void main() {
       filter.showTag(' 科幻 ');
 
       final state = container.read(contentsFilterProvider);
-      expect(state.tag, '科幻');
+      expect(state.tags, ['科幻']);
       expect(state.type, isNull);
       expect(state.query, isEmpty);
       // 从详情页跳过来是「看这个标签都有什么」，残留的排序会让首屏顺序
@@ -93,7 +93,7 @@ void main() {
 
       filter.showTag('   ');
 
-      expect(container.read(contentsFilterProvider).tag, '科幻');
+      expect(container.read(contentsFilterProvider).tags, ['科幻']);
     });
 
     test('clearFilters 清类型 / 关键词 / 标签，但保留排序', () {
@@ -110,7 +110,7 @@ void main() {
       final state = container.read(contentsFilterProvider);
       expect(state.type, isNull);
       expect(state.query, isEmpty);
-      expect(state.tag, isNull);
+      expect(state.tags, isEmpty);
       // 排序不是筛选：清筛选不该把用户选的顺序也重置掉。
       expect(state.sort, WorkSort.rating);
     });
@@ -146,7 +146,7 @@ void main() {
       await settle(tester);
 
       final state = container.read(contentsFilterProvider);
-      expect(state.tag, '科幻');
+      expect(state.tags, ['科幻']);
       expect(state.type, isNull);
       expect(state.query, isEmpty);
     });
@@ -173,7 +173,7 @@ void main() {
       final state = container.read(contentsFilterProvider);
       expect(state.query, isEmpty);
       expect(state.type, isNull);
-      expect(state.tag, isNull);
+      expect(state.tags, isEmpty);
       // 输入框也要跟着空：只清条件不清输入框，用户会以为按钮没生效。
       final field = tester.widget<TextField>(find.byType(TextField).first);
       expect(field.controller?.text ?? '', isEmpty);

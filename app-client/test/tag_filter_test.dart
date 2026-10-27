@@ -3,8 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:otaku_app/app.dart';
 import 'package:otaku_app/core/network/api_exception.dart';
+import 'package:otaku_app/core/router/app_router.dart';
+import 'package:otaku_app/core/router/route_paths.dart';
 import 'package:otaku_app/core/storage/memory_work_cache.dart';
+import 'package:otaku_app/core/storage/work_cache.dart';
 import 'package:otaku_app/core/storage/work_cache_provider.dart';
+import 'package:otaku_app/core/util/tag_filter.dart';
 import 'package:otaku_app/data/datasources/collection_data_source.dart';
 import 'package:otaku_app/data/datasources/work_data_source.dart';
 import 'package:otaku_app/data/models/collection_entry.dart';
@@ -18,18 +22,17 @@ import 'package:otaku_app/data/models/work_type.dart';
 import 'package:otaku_app/data/repositories/collection_repository.dart';
 import 'package:otaku_app/data/repositories/work_repository.dart';
 import 'package:otaku_app/features/contents/contents_controller.dart';
-import 'package:otaku_app/core/router/app_router.dart';
-import 'package:otaku_app/core/router/route_paths.dart';
 
 import 'support/test_overrides.dart';
 
-/// 记录收到的 tag 的数据源，同时按 tag 真实过滤——过滤逻辑放在这里才能证明
-/// 「客户端发出的 tag 是对的」，只记录不过滤等于没验语义。
+/// 记录收到的标签条件、并真实按 AND 过滤的数据源。
+///
+/// 过滤逻辑放在这里才能证明「客户端发出的条件是对的」——只记录不过滤等于没验语义。
 class _TagRecordingSource implements WorkDataSource {
-  final List<String?> tags = <String?>[];
+  final List<List<String>> calls = <List<String>>[];
 
-  /// 可过滤的数据集。标签刻意包含 `科幻` 与 `科幻机甲`，
-  /// 用来验证契约要求的「精确匹配整个标签」。
+  /// 标签刻意包含 `科幻` 与 `科幻机甲`，用来验证「整标签匹配」；
+  /// `W-both` 同时带两个标签，用来验证 AND。
   static const List<WorkSummary> catalog = [
     WorkSummary(
       workId: 'W-sci',
@@ -42,6 +45,12 @@ class _TagRecordingSource implements WorkDataSource {
       workType: WorkType.anime,
       title: '科幻机甲作品',
       tags: ['科幻机甲'],
+    ),
+    WorkSummary(
+      workId: 'W-both',
+      workType: WorkType.anime,
+      title: '科幻日常两开花',
+      tags: ['科幻', '日常'],
     ),
     WorkSummary(
       workId: 'W-slice',
@@ -63,15 +72,18 @@ class _TagRecordingSource implements WorkDataSource {
     WorkSort sort = WorkSort.id,
     int page = 1,
     int pageSize = 20,
-    String? tag,
-  
-    int? year,}) async {
-    tags.add(tag);
-    final wanted = tag?.trim() ?? '';
-    final items = catalog.where((w) {
+    List<String>? tags,
+    int? year,
+  }) async {
+    final wanted = normalizeTags(tags);
+    calls.add(wanted);
+
+    final items = catalog.where((work) {
       if (wanted.isEmpty) return true;
-      final t = w.tags;
-      return t != null && t.contains(wanted);
+      final own = work.tags;
+      if (own == null) return false;
+      // AND：每个标签都要命中。
+      return wanted.every(own.contains);
     }).toList(growable: false);
 
     return PagedResult<WorkSummary>(
@@ -103,135 +115,170 @@ void main() {
 
   WorkRepository buildRepository() => WorkRepository(source, cache: cache);
 
-  group('契约：tag 的语义', () {
-    test('精确匹配整个标签——「科幻」不命中「科幻机甲」', () async {
-      final result = await buildRepository().fetchWorks(tag: '科幻');
-      expect(result.value.items.map((w) => w.workId), ['W-sci']);
+  group('契约：标签的语义', () {
+    test('整标签匹配——「科幻」不命中「科幻机甲」', () async {
+      final result = await buildRepository().fetchWorks(tags: ['科幻']);
+      expect(
+        result.value.items.map((w) => w.workId),
+        containsAll(<String>['W-sci', 'W-both']),
+      );
+      expect(result.value.items.map((w) => w.workId), isNot(contains('W-mecha')));
     });
 
-    test('精确匹配另一个标签「科幻机甲」能命中', () async {
-      final result = await buildRepository().fetchWorks(tag: '科幻机甲');
-      expect(result.value.items.map((w) => w.workId), ['W-mecha']);
+    test('多标签是 AND：只有同时带这两个标签的才命中', () async {
+      final result = await buildRepository().fetchWorks(
+        tags: ['科幻', '日常'],
+      );
+      expect(result.value.items.map((w) => w.workId), ['W-both']);
     });
 
     test('未知标签返空数组（不是错误）', () async {
-      final result = await buildRepository().fetchWorks(tag: '不存在的标签');
+      final result = await buildRepository().fetchWorks(tags: ['不存在的标签']);
       expect(result.value.items, isEmpty);
-      // 契约：未知标签是 200 + 空数组，不是 404，所以这里不该抛。
       expect(result.fromCache, isFalse);
     });
 
-    test('null 与空串都表示不过滤', () async {
+    test('空列表表示不过滤', () async {
       final repo = buildRepository();
-      expect((await repo.fetchWorks()).value.items.length, 4);
-      expect((await repo.fetchWorks(tag: '')).value.items.length, 4);
-      expect((await repo.fetchWorks(tag: '   ')).value.items.length, 4);
+      expect((await repo.fetchWorks()).value.items.length, 5);
+      expect((await repo.fetchWorks(tags: const [])).value.items.length, 5);
+      // 全是空白的标签等于没给。
+      expect((await repo.fetchWorks(tags: const ['  '])).value.items.length, 5);
     });
 
-    test('tag 与 type / sort 可组合，且都原样发出去', () async {
-      final repo = buildRepository();
-      await repo.fetchWorks(type: WorkType.anime, sort: WorkSort.rating, tag: '科幻');
-      expect(source.tags.last, '科幻');
+    test('去重：同一个标签选两次只算一个条件', () async {
+      await buildRepository().fetchWorks(tags: ['科幻', ' 科幻 ']);
+      expect(source.calls.last, ['科幻']);
+    });
+
+    test('上限 10 个：超出部分被截断，不是报错', () async {
+      final many = List<String>.generate(12, (index) => 't$index');
+      await buildRepository().fetchWorks(tags: many);
+      expect(source.calls.last, hasLength(maxFilterTags));
     });
   });
 
-  group('缓存键：标签必须是独立维度', () {
+  group('缓存键：标签是独立维度', () {
     test('按标签筛与不筛标签不共用缓存', () async {
       final repo = buildRepository();
-      await repo.fetchWorks(tag: '科幻');
+      await repo.fetchWorks(tags: ['科幻']);
 
-      source.tags.clear();
       final untagged = await repo.fetchWorks();
       // 不筛标签那次必须打到服务端（它没有独立的缓存条目）。
       expect(untagged.fromCache, isFalse);
-      expect(untagged.value.items.length, 4);
+      expect(untagged.value.items.length, 5);
     });
 
-    test('离线时按标签取回的是该标签的那份，不是别的条件的', () async {
-      final repo = buildRepository();
-      await repo.fetchWorks(tag: '科幻');
+    test('选择顺序不影响缓存键——「科幻+日常」与「日常+科幻」是同一条', () {
+      const a = ListCacheKey(
+        type: null,
+        query: '',
+        sort: WorkSort.id,
+        page: 1,
+        tags: ['科幻', '日常'],
+      );
+      const b = ListCacheKey(
+        type: null,
+        query: '',
+        sort: WorkSort.id,
+        page: 1,
+        tags: ['日常', '科幻'],
+      );
 
-      // 断网：仓储会回退缓存。
-      final offline = _OfflineSource();
-      final offlineRepo = WorkRepository(offline, cache: cache);
-      final result = await offlineRepo.fetchWorks(tag: '科幻');
+      // 幂等：点选顺序不同不该各存一份缓存（也不该各打一次服务端）。
+      expect(a, b);
+      expect(a.storageKey, b.storageKey);
+      expect(a.hashCode, b.hashCode);
+    });
+
+    test('离线时按标签取回的是该标签的那份', () async {
+      final repo = buildRepository();
+      await repo.fetchWorks(tags: ['科幻', '日常']);
+
+      final offlineRepo = WorkRepository(_OfflineSource(), cache: cache);
+      final result = await offlineRepo.fetchWorks(tags: ['日常', '科幻']);
 
       expect(result.fromCache, isTrue);
-      expect(result.value.items.map((w) => w.workId), ['W-sci']);
+      expect(result.value.items.map((w) => w.workId), ['W-both']);
     });
 
-    test('离线时请求未缓存过的标签，会报错而不是拿别的标签顶上', () async {
+    test('离线时请求没缓存过的标签组合，报错而不是拿别的顶上', () async {
       final repo = buildRepository();
-      await repo.fetchWorks(tag: '科幻');
+      await repo.fetchWorks(tags: ['科幻']);
 
       final offlineRepo = WorkRepository(_OfflineSource(), cache: cache);
       await expectLater(
-        offlineRepo.fetchWorks(tag: '日常'),
+        offlineRepo.fetchWorks(tags: ['科幻', '日常']),
         throwsA(anything),
-        reason: '「日常」没缓存过，不能拿「科幻」的缓存顶上',
+        reason: '两个标签的组合没缓存过，不能拿单标签的缓存顶上',
       );
     });
   });
 
-  group('控制器：标签是筛选条件', () {
-    test('selectTag 改变筛选状态，selectTag(null) 清除', () {
+  group('控制器：多标签是筛选条件', () {
+    ProviderContainer newContainer() {
       final container = ProviderContainer(overrides: authOverrides());
       addTearDown(container.dispose);
+      return container;
+    }
+
+    test('selectTags 整体替换；空列表清除', () {
+      final container = newContainer();
       final controller = container.read(contentsFilterProvider.notifier);
 
-      expect(container.read(contentsFilterProvider).tag, isNull);
-      controller.selectTag('科幻');
-      expect(container.read(contentsFilterProvider).tag, '科幻');
-      controller.selectTag(null);
-      expect(container.read(contentsFilterProvider).tag, isNull);
+      expect(container.read(contentsFilterProvider).tags, isEmpty);
+      controller.selectTags(['科幻', '日常']);
+      expect(container.read(contentsFilterProvider).tags, ['科幻', '日常']);
+      controller.selectTags(const []);
+      expect(container.read(contentsFilterProvider).tags, isEmpty);
     });
 
-    test('空串与空白等价于清除', () {
-      final container = ProviderContainer(overrides: authOverrides());
-      addTearDown(container.dispose);
+    test('toggleTag 加入 / 移出，且不动其它标签', () {
+      final container = newContainer();
       final controller = container.read(contentsFilterProvider.notifier);
 
-      controller.selectTag('科幻');
-      controller.selectTag('  ');
-      expect(container.read(contentsFilterProvider).tag, isNull);
+      controller.toggleTag('科幻');
+      controller.toggleTag('日常');
+      expect(container.read(contentsFilterProvider).tags, ['科幻', '日常']);
+
+      controller.toggleTag('科幻');
+      expect(container.read(contentsFilterProvider).tags, ['日常']);
     });
 
-    test('选标签不会丢掉已有的类型与排序', () {
-      final container = ProviderContainer(overrides: authOverrides());
-      addTearDown(container.dispose);
+    test('到上限后 toggleTag 不再加新标签', () {
+      final container = newContainer();
       final controller = container.read(contentsFilterProvider.notifier);
 
-      controller.selectType(WorkType.anime);
-      controller.selectSort(WorkSort.rating);
-      controller.selectTag('科幻');
+      controller.selectTags(List<String>.generate(maxFilterTags, (i) => 't$i'));
+      controller.toggleTag('new');
 
-      final filter = container.read(contentsFilterProvider);
-      expect(filter.type, WorkType.anime);
-      expect(filter.sort, WorkSort.rating);
-      expect(filter.tag, '科幻');
+      expect(
+        container.read(contentsFilterProvider).tags,
+        hasLength(maxFilterTags),
+      );
+      expect(container.read(contentsFilterProvider).tags, isNot(contains('new')));
     });
 
     test('换类型 / 换排序 / 搜索都保留标签条件', () {
-      final container = ProviderContainer(overrides: authOverrides());
-      addTearDown(container.dispose);
+      final container = newContainer();
       final controller = container.read(contentsFilterProvider.notifier);
 
-      controller.selectTag('科幻');
+      controller.selectTags(['科幻', '日常']);
       controller.selectType(WorkType.anime);
       controller.selectSort(WorkSort.year);
       controller.search('机动');
 
       final filter = container.read(contentsFilterProvider);
-      expect(filter.tag, '科幻');
+      expect(filter.tags, ['科幻', '日常']);
       expect(filter.type, WorkType.anime);
       expect(filter.sort, WorkSort.year);
       expect(filter.query, '机动');
     });
 
     test('相等性包含标签——否则 Riverpod 不会重建', () {
-      const a = ContentsFilter(tag: '科幻');
-      const b = ContentsFilter(tag: '科幻');
-      const c = ContentsFilter(tag: '日常');
+      const a = ContentsFilter(tags: ['科幻']);
+      const b = ContentsFilter(tags: ['科幻']);
+      const c = ContentsFilter(tags: ['日常']);
       expect(a, b);
       expect(a.hashCode, b.hashCode);
       expect(a, isNot(c));
@@ -239,9 +286,6 @@ void main() {
   });
 
   group('界面：筛选状态可见', () {
-    /// 自己持有容器：测试要从外面驱动筛选状态（模拟「点了某个标签」）。
-    /// `ProviderScope.containerOf` 要的是子树里的 widget、不是 scope 本身，
-    /// 所以这里用 [UncontrolledProviderScope]。
     ProviderContainer newContainer() {
       final container = ProviderContainer(
         overrides: [
@@ -270,29 +314,29 @@ void main() {
       expect(find.textContaining('标签：'), findsNothing);
     });
 
-    testWidgets('选中标签后显示筛选条与清除出口', (tester) async {
+    testWidgets('选了多个标签：每个都能单独删掉', (tester) async {
       final container = newContainer();
       await tester.pumpWidget(app(container));
       await tester.pumpAndSettle();
 
-      // 直接驱动控制器：验卡片上点标签那条接线要等列表渲染出卡片，
-      // 这里验的是筛选条本身在选中后确实出现。
-      container.read(contentsFilterProvider.notifier).selectTag('科幻');
+      container.read(contentsFilterProvider.notifier).selectTags([
+        '科幻',
+        '日常',
+      ]);
       await tester.pumpAndSettle();
 
       expect(find.text('标签：科幻'), findsOneWidget);
+      expect(find.text('标签：日常'), findsOneWidget);
 
-      // 点 chip 上的删除按钮应当真的把筛选撤掉——有入口还得能用。
-      await tester.tap(find.byTooltip('取消标签筛选'));
+      await tester.tap(find.byTooltip('取消「科幻」'));
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('标签：'), findsNothing);
-      expect(container.read(contentsFilterProvider).tag, isNull);
+      expect(find.text('标签：科幻'), findsNothing);
+      expect(find.text('标签：日常'), findsOneWidget);
+      expect(container.read(contentsFilterProvider).tags, ['日常']);
     });
 
-    testWidgets('筛出 0 条时说清是筛选太窄，不是库里没数据', (
-      tester,
-    ) async {
+    testWidgets('单标签筛出 0 条：说清是精确匹配，不是库里没数据', (tester) async {
       final container = newContainer();
       await tester.pumpWidget(app(container));
       await tester.pumpAndSettle();
@@ -300,10 +344,22 @@ void main() {
       container.read(contentsFilterProvider.notifier).selectTag('不存在的标签');
       await tester.pumpAndSettle();
 
-      // 契约里未知标签是 200 + 空数组，文案不能说成「这里还没有作品」——
-      // 那会让用户以为同步任务没跑完。
       expect(find.text('没有这个标签的作品'), findsOneWidget);
       expect(find.text('这里还没有作品'), findsNothing);
+    });
+
+    testWidgets('多标签筛出 0 条：文案解释「并且」关系', (tester) async {
+      final container = newContainer();
+      await tester.pumpWidget(app(container));
+      await tester.pumpAndSettle();
+
+      container.read(contentsFilterProvider.notifier).selectTags([
+        '科幻机甲',
+        '日常',
+      ]);
+      await tester.pumpAndSettle();
+
+      expect(find.text('这几个标签没有同时命中的作品'), findsOneWidget);
     });
   });
 }
@@ -317,9 +373,9 @@ class _OfflineSource implements WorkDataSource {
     WorkSort sort = WorkSort.id,
     int page = 1,
     int pageSize = 20,
-    String? tag,
-  
-    int? year,}) async => throw _unreachable;
+    List<String>? tags,
+    int? year,
+  }) async => throw _unreachable;
 
   @override
   Future<Work> fetchDetail(String workId) async => throw _unreachable;

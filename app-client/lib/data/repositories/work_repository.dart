@@ -39,7 +39,7 @@ class WorkRepository {
     WorkSort sort = WorkSort.id,
     int page = 1,
     int pageSize = AppConfig.pageSize,
-    String? tag,
+    List<String>? tags,
     int? year,
   }) async {
     // 标签与年份都要进缓存键：**少一个维度就会取错内容**——「按科幻筛的第一页」
@@ -51,7 +51,7 @@ class WorkRepository {
       sort: sort,
       page: page,
       pageSize: pageSize,
-      tag: tag,
+      tags: tags,
       year: year,
     );
 
@@ -62,7 +62,7 @@ class WorkRepository {
         sort: sort,
         page: page,
         pageSize: pageSize,
-        tag: tag,
+        tags: tags,
         year: year,
       );
       await _cache?.writeList(

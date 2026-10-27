@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 
 import '../../core/config/app_config.dart';
 import '../../core/network/api_exception.dart';
+import '../../core/util/tag_filter.dart';
 import '../models/paged_result.dart';
 import '../models/related_works.dart';
 import '../models/work.dart';
@@ -30,17 +31,19 @@ class RemoteWorkDataSource implements WorkDataSource {
     WorkSort sort = WorkSort.id,
     int page = 1,
     int pageSize = AppConfig.pageSize,
-    String? tag,
+    List<String>? tags,
     int? year,
   }) async {
     final keyword = query?.trim() ?? '';
+    final wantedTags = normalizeTags(tags);
     final response = await _dio.get<Map<String, dynamic>>(
       _listPath,
       queryParameters: <String, dynamic>{
         if (type != null && type != WorkType.unknown) 'type': type.value,
         if (keyword.isNotEmpty) 'q': keyword,
-        // 标签精确匹配整个标签。空值不带这个参数——服务端把省略与空串都当不过滤。
-        if (tag != null && tag.trim().isNotEmpty) 'tag': tag.trim(),
+        // 多标签 AND：逗号分隔、去重、最多 10 个（契约）。空值不带这个参数。
+        // 不再发已废弃的 `tag=`——两者同时出现服务端返回 400。
+        if (wantedTags.isNotEmpty) 'tags': wantedTags.join(','),
         // 年份是等值筛选：不带 = 不过滤。服务端对非法值（<1900 / >2100）返回 400，
         // 所以这里只透传，不做 clamp——把 1800 悄悄改成 1900 会掩盖调用方的 bug。
         'year': ?year,
