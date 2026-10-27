@@ -79,6 +79,25 @@ public enum WorkSort {
     }
 
     /**
+     * 多标签（AND）查询的排序子句。
+     *
+     * <p>多标签必须 {@code GROUP BY work_ref} 才能做「命中全部标签」的判断，
+     * 此时排序列也必须是聚合（或在 GROUP BY 里）。评分/年份对同一个作品的多行是**同值**
+     * （冗余列写入时来自同一行的 work），所以 {@code MAX()} 取到的就是那个值，不改变语义。
+     *
+     * <p>代价：聚合排序无法复用单标签索引的有序性，会多一次 filesort。
+     * 这是 AND 语义的固有成本（见 {@code WorkRepository.findPage} 的说明）。
+     */
+    public String orderByOnTagAggregate(String alias) {
+        String prefix = (alias == null || alias.isEmpty()) ? "" : alias + ".";
+        return switch (this) {
+            case ID -> prefix + "work_ref ASC";
+            case RATING -> "MAX(" + prefix + "rating_value) DESC, " + prefix + "work_ref DESC";
+            case YEAR -> "MAX(" + prefix + "release_year) DESC, " + prefix + "work_ref DESC";
+        };
+    }
+
+    /**
      * 解析外部参数。省略 / 空串走默认，非法值按契约 6.1 报 400（与「查不到结果」区分开）。
      */
     public static WorkSort parse(String raw) {

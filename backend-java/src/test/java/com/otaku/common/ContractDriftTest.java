@@ -152,6 +152,9 @@ class ContractDriftTest {
     private static Map<String, Class<?>> responseTargets() {
         Map<String, Class<?>> targets = new java.util.LinkedHashMap<>();
         targets.put("RelatedWorks", com.otaku.work.dto.RelatedWorksDto.class);
+        // 标签词表（Issue #208）
+        targets.put("TagList", com.otaku.work.dto.TagDtos.TagList.class);
+        targets.put("TagItem", com.otaku.work.dto.TagDtos.TagItem.class);
         targets.put("ErrorResponse", ErrorResponse.class);
         targets.put("User", com.otaku.auth.dto.UserDto.class);
         targets.put("SessionResponse", com.otaku.auth.dto.SessionResponse.class);

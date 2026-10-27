@@ -16,7 +16,9 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.time.ZoneOffset;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * 作品查询（接口③④）。
@@ -35,6 +37,8 @@ public class WorkService {
     private static final int MAX_WORK_ID_LENGTH = 64;
     /** 与 work_tag.tag 列宽一致；超长参数截断而不是报错，见 normalizeTag。 */
     private static final int MAX_TAG_LENGTH = 64;
+    /** 多标签上限：再多就不是"筛选"而是"扫全库"，也挡住把整个词表塞进 URL。 */
+    private static final int MAX_TAGS = 10;
 
     /** 详情页推荐默认返回 6 条、最多 20 条——与来源站详情页的 6 条对齐，避免一次拉太多。 */
     static final int DEFAULT_RELATED_LIMIT = 6;
@@ -58,12 +62,28 @@ public class WorkService {
         this.countCache = countCache;
     }
 
+    /**
+     * 单标签入口（旧调用方 / 测试用）：等价于只传一个值的 {@code tags}。
+     */
     public PageResponse<WorkSummaryDto> list(String typeParam, String qParam, String tagParam,
                                              String sortParam, String minRatingParam,
                                              int page, int pageSize) {
+        return list(typeParam, qParam, tagParam, null, sortParam, minRatingParam, page, pageSize);
+    }
+
+    /**
+     * 列表查询（含多标签）。
+     *
+     * <p>{@code tag} 是单标签旧写法，{@code tags} 是逗号分隔的多标签（AND）。
+     * 两者同时出现直接 400：不做「谁覆盖谁」的猜测——那会让调用方以为筛选生效了，
+     * 实际只用了其中一个，结果集看起来"莫名多/少"。见 openapi 的 /api/works 参数说明。
+     */
+    public PageResponse<WorkSummaryDto> list(String typeParam, String qParam, String tagParam,
+                                             String tagsParam, String sortParam, String minRatingParam,
+                                             int page, int pageSize) {
         String workType = normalizeType(typeParam);
         String keyword = normalizeKeyword(qParam);
-        String tag = normalizeTag(tagParam);
+        List<String> tags = normalizeTags(tagParam, tagsParam);
         WorkSort sort = WorkSort.parse(sortParam);
         BigDecimal minRating = normalizeMinRating(minRatingParam);
 
@@ -73,18 +93,19 @@ public class WorkService {
 
         // COUNT(*) 是 76–126 ms，取一页只要 0.4 ms（docs/list-pagination-perf.md）。
         // 同一组筛选只有第一次真查库，导入结束时整体失效——不是靠 TTL 容忍过期。
-        String countKey = CountCache.key(workType, pattern, tag, minRating);
+        // 标签按字典序拼键：tags=a,b 与 b,a 是同一组条件，不该各缓存一份。
+        String countKey = CountCache.key(workType, pattern, tagsKey(tags), minRating);
         Long cachedTotal = countCache.get(countKey);
         long total;
         if (cachedTotal != null) {
             total = cachedTotal;
         } else {
-            total = repository.count(workType, pattern, tag, minRating);
+            total = repository.count(workType, pattern, tags, minRating);
             countCache.put(countKey, total);
         }
         List<WorkSummaryDto> items = total == 0
                 ? List.of()
-                : repository.findPage(workType, pattern, tag, sort, minRating,
+                : repository.findPage(workType, pattern, tags, sort, minRating,
                         safeSize, (safePage - 1) * safeSize)
                         .stream()
                         .map(this::toSummary)
@@ -253,6 +274,54 @@ public class WorkService {
             return null;
         }
         return tag.length() > MAX_TAG_LENGTH ? tag.substring(0, MAX_TAG_LENGTH) : tag;
+    }
+
+    /**
+     * 解析标签筛选参数，返回去重后的标签列表（AND 语义）。
+     *
+     * <p>规则（与契约一致）：
+     * <ul>
+     *   <li>{@code tag} 与 {@code tags} 同时出现 → 400，不猜优先级；</li>
+     *   <li>逗号分隔、去首尾空白、去重；全为空等价于不筛选；</li>
+     *   <li>每个标签超过 64 字符按 64 截断（与 {@code tag} 的既有行为一致，
+     *       超长参数不该永远查不到东西还看不出原因）；</li>
+     *   <li>超过 {@value #MAX_TAGS} 个 → 400：再多就不是"筛选"而是"扫全库"了，
+     *       也挡住把整个词表塞进 URL 的用法。</li>
+     * </ul>
+     */
+    private static List<String> normalizeTags(String tagParam, String tagsParam) {
+        boolean hasTag = tagParam != null && !tagParam.isBlank();
+        boolean hasTags = tagsParam != null && !tagsParam.isBlank();
+        if (hasTag && hasTags) {
+            throw ApiException.badRequest("tag 与 tags 不能同时使用：tag 是单标签的旧写法，多标签请只用 tags");
+        }
+        if (!hasTags) {
+            String tag = normalizeTag(tagParam);
+            return tag == null ? null : List.of(tag);
+        }
+        LinkedHashSet<String> unique = new LinkedHashSet<>();
+        for (String raw : tagsParam.split(",")) {
+            String tag = raw.trim();
+            if (tag.isEmpty()) {
+                continue;
+            }
+            unique.add(tag.length() > MAX_TAG_LENGTH ? tag.substring(0, MAX_TAG_LENGTH) : tag);
+        }
+        if (unique.isEmpty()) {
+            return null;
+        }
+        if (unique.size() > MAX_TAGS) {
+            throw ApiException.badRequest(
+                    "tags 最多 " + MAX_TAGS + " 个（实际 " + unique.size() + " 个）");
+        }
+        return List.copyOf(unique);
+    }
+
+    /** 计数缓存的标签键：字典序拼接，保证 a,b 与 b,a 命中同一条缓存。 */
+    private static String tagsKey(List<String> tags) {
+        return tags == null || tags.isEmpty()
+                ? null
+                : tags.stream().sorted().collect(Collectors.joining(","));
     }
 
     /**

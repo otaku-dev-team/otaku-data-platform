@@ -35,12 +35,17 @@ public class CountCache {
         }
     };
 
-    /** 组装缓存键。**影响总数的条件都要进来**，否则会串结果。 */
-    static String key(String workType, String pattern, String tag, Object minRating) {
+    /**
+     * 组装缓存键。**影响总数的条件都要进来**，否则会串结果。
+     *
+     * <p>{@code tagsKey} 是标签列表的规范形式（字典序逗号拼接，由调用方保证），
+     * 单标签与多标签共用同一个位置——同一个标签的两种写法本来就该命中同一条缓存。
+     */
+    static String key(String workType, String pattern, String tagsKey, Object minRating) {
         return String.join("\u0001",
                 nullToEmpty(workType),
                 nullToEmpty(pattern),
-                nullToEmpty(tag),
+                nullToEmpty(tagsKey),
                 minRating == null ? "" : minRating.toString());
     }
 
