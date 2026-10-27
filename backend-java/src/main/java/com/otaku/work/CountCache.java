@@ -40,13 +40,17 @@ public class CountCache {
      *
      * <p>{@code tagsKey} 是标签列表的规范形式（字典序逗号拼接，由调用方保证），
      * 单标签与多标签共用同一个位置——同一个标签的两种写法本来就该命中同一条缓存。
+     *
+     * <p>{@code year} 必须进键：它改变总数，漏了会把 A 年的总数串给 B 年
+     * （用户点 2021 却看到 2022 的条数，比慢更难查）。
      */
-    static String key(String workType, String pattern, String tagsKey, Object minRating) {
+    static String key(String workType, String pattern, String tagsKey, Object minRating, Object year) {
         return String.join("\u0001",
                 nullToEmpty(workType),
                 nullToEmpty(pattern),
                 nullToEmpty(tagsKey),
-                minRating == null ? "" : minRating.toString());
+                minRating == null ? "" : minRating.toString(),
+                year == null ? "" : year.toString());
     }
 
     private static String nullToEmpty(String value) {

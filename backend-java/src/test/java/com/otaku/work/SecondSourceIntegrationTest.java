@@ -71,7 +71,7 @@ class SecondSourceIntegrationTest {
     void secondSourceWorksWithoutBackendChange() {
         importBatch(item("it2-1", "anime", "第二站的作品", List.of("跨站样本"), "8.2"));
 
-        var page = workService.list("anime", "第二站的作品", null, null, null, 1, 50);
+        var page = workService.list("anime", "第二站的作品", null, null, null, null, null, 1, 50);
         assertThat(page.total()).isEqualTo(1);
         var summary = page.items().get(0);
         assertThat(summary.title()).isEqualTo("第二站的作品");
@@ -82,7 +82,7 @@ class SecondSourceIntegrationTest {
         assertThat(detail.source()).isEqualTo(SOURCE);
         assertThat(detail.sourceId()).isEqualTo("it2-1");
 
-        var byTag = workService.list(null, null, "跨站样本", null, null, 1, 50);
+        var byTag = workService.list(null, null, "跨站样本", null, null, null, null, 1, 50);
         assertThat(byTag.items())
                 .extracting(com.otaku.work.dto.WorkSummaryDto::workId)
                 .contains(summary.workId());
@@ -96,7 +96,7 @@ class SecondSourceIntegrationTest {
         importService.importBatch(new ImportBatchRequest(
                 "otaku_site", "otaku_site", null, List.of(item("it2-2", "anime", "重名作品", null, "9.0"))));
 
-        var page = workService.list(null, "重名作品", null, null, null, 1, 50);
+        var page = workService.list(null, "重名作品", null, null, null, null, null, 1, 50);
         assertThat(page.total()).as("两个来源各一条，不能被当成同一条改写").isEqualTo(2);
         assertThat(page.items()).extracting(com.otaku.work.dto.WorkSummaryDto::source)
                 .containsExactlyInAnyOrder(SOURCE, "otaku_site");

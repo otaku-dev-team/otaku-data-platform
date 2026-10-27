@@ -178,6 +178,26 @@ class TagEndpointsIntegrationTest {
         assertThat(unknown.get("items")).isEmpty();
     }
 
+    @Test
+    @DisplayName("多标签 + 年份：两个条件同时生效（AND 与等值过滤不能互相吞掉）")
+    void multiTagWithYear() throws Exception {
+        seed();
+        importService.importBatch(new ImportBatchRequest(
+                BATCH_PREFIX + UUID.randomUUID(), "otaku_site", null, List.of(
+                itemWithYear("it8tag-5", "anime", "2021 样本", List.of(T1, T2), "8.5", 2021))));
+
+        JsonNode y2022 = okJson("/api/works", "tags", T1 + "," + T2, "year", "2022");
+        assertThat(y2022.get("total").asInt()).isEqualTo(2);
+
+        JsonNode y2021 = okJson("/api/works", "tags", T1 + "," + T2, "year", "2021");
+        assertThat(y2021.get("total").asInt()).isEqualTo(1);
+        assertThat(workIds(y2021)).containsExactly(workIdOf("it8tag-5"));
+
+        // 年份把结果筛空时仍是 200 + 空数组，不是 404
+        assertThat(okJson("/api/works", "tags", T1 + "," + T2, "year", "1999").get("total").asInt())
+                .isZero();
+    }
+
     // ---------------------------------------------------------------- fixtures
 
     /**
@@ -200,7 +220,12 @@ class TagEndpointsIntegrationTest {
 
     private static ImportItem item(String sourceId, String type, String title,
                                    List<String> tags, String rating) {
-        return new ImportItem(sourceId, type, title, null, null, 2022, tags,
+        return itemWithYear(sourceId, type, title, tags, rating, 2022);
+    }
+
+    private static ImportItem itemWithYear(String sourceId, String type, String title,
+                                           List<String> tags, String rating, int year) {
+        return new ImportItem(sourceId, type, title, null, null, year, tags,
                 rating == null ? null : new SourceRating(new BigDecimal(rating), "0-10", "otaku_site"),
                 null);
     }

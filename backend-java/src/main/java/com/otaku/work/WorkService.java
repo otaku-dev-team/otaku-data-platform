@@ -68,7 +68,7 @@ public class WorkService {
     public PageResponse<WorkSummaryDto> list(String typeParam, String qParam, String tagParam,
                                              String sortParam, String minRatingParam,
                                              int page, int pageSize) {
-        return list(typeParam, qParam, tagParam, null, sortParam, minRatingParam, page, pageSize);
+        return list(typeParam, qParam, tagParam, null, sortParam, minRatingParam, null, page, pageSize);
     }
 
     /**
@@ -80,12 +80,13 @@ public class WorkService {
      */
     public PageResponse<WorkSummaryDto> list(String typeParam, String qParam, String tagParam,
                                              String tagsParam, String sortParam, String minRatingParam,
-                                             int page, int pageSize) {
+                                             String yearParam, int page, int pageSize) {
         String workType = normalizeType(typeParam);
         String keyword = normalizeKeyword(qParam);
         List<String> tags = normalizeTags(tagParam, tagsParam);
         WorkSort sort = WorkSort.parse(sortParam);
         BigDecimal minRating = normalizeMinRating(minRatingParam);
+        Integer year = normalizeYear(yearParam);
 
         int safePage = Math.max(page, 1);
         int safeSize = pageSize <= 0 ? DEFAULT_PAGE_SIZE : Math.min(pageSize, MAX_PAGE_SIZE);
@@ -94,18 +95,19 @@ public class WorkService {
         // COUNT(*) 是 76–126 ms，取一页只要 0.4 ms（docs/list-pagination-perf.md）。
         // 同一组筛选只有第一次真查库，导入结束时整体失效——不是靠 TTL 容忍过期。
         // 标签按字典序拼键：tags=a,b 与 b,a 是同一组条件，不该各缓存一份。
-        String countKey = CountCache.key(workType, pattern, tagsKey(tags), minRating);
+        // year 必须进键：它改变总数，漏了会把 A 年的总数串给 B 年。
+        String countKey = CountCache.key(workType, pattern, tagsKey(tags), minRating, year);
         Long cachedTotal = countCache.get(countKey);
         long total;
         if (cachedTotal != null) {
             total = cachedTotal;
         } else {
-            total = repository.count(workType, pattern, tags, minRating);
+            total = repository.count(workType, pattern, tags, minRating, year);
             countCache.put(countKey, total);
         }
         List<WorkSummaryDto> items = total == 0
                 ? List.of()
-                : repository.findPage(workType, pattern, tags, sort, minRating,
+                : repository.findPage(workType, pattern, tags, sort, minRating, year,
                         safeSize, (safePage - 1) * safeSize)
                         .stream()
                         .map(this::toSummary)
@@ -338,6 +340,39 @@ public class WorkService {
      * <p>缺省 / 空串 = 不过滤；非数字、负数、超上限一律 400——与「筛出来没有结果」区分开，
      * 避免客户端把参数写错当成「这个榜单是空的」。
      */
+    /** 合法年份区间。超出这个范围的输入基本可以断定是参数写错了，而不是真有数据。 */
+    static final int MIN_YEAR = 1900;
+    static final int MAX_YEAR = 2100;
+
+    /**
+     * 年份筛选（{@code year=}）。
+     *
+     * <p>缺省 / 空串 = 不过滤；非整数或超出合理区间一律 400——与 {@code min_rating} 同一口径。
+     * 为什么不像 {@code sort} 那样静默兜底：年份是用户**明确点选**的筛选条件，
+     * 写错的参数若被静默忽略，用户看到的是「全部作品」，会以为筛选没生效；
+     * 而 400 让客户端能把「参数错了」和「这一年没有作品」分开。
+     *
+     * <p>语义是**等值**匹配，没有年份的作品（约 9%）不会混进任何一年：
+     * 要支持「含未知年份」得单独加选项，不能把 {@code =} 悄悄改成 {@code IS NULL OR =}。
+     */
+    private static Integer normalizeYear(String yearParam) {
+        if (yearParam == null || yearParam.isBlank()) {
+            return null;
+        }
+        int value;
+        try {
+            value = Integer.parseInt(yearParam.trim());
+        } catch (NumberFormatException ex) {
+            throw ApiException.badRequest(
+                    "year 取值非法：" + yearParam + "（需为 4 位年份，如 2022）");
+        }
+        if (value < MIN_YEAR || value > MAX_YEAR) {
+            throw ApiException.badRequest(
+                    "year 取值非法：" + yearParam + "（需在 " + MIN_YEAR + "-" + MAX_YEAR + " 之间）");
+        }
+        return value;
+    }
+
     private static BigDecimal normalizeMinRating(String minRatingParam) {
         if (minRatingParam == null || minRatingParam.isBlank()) {
             return null;

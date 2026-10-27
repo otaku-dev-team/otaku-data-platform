@@ -30,8 +30,8 @@ class WorkCountCacheTest {
             repository, mock(PublicUrlResolver.class), new ObjectMapper(), cache);
 
     private void stubCount(long total) {
-        when(repository.count(any(), any(), any(), any())).thenReturn(total);
-        when(repository.findPage(any(), any(), any(), any(), any(), anyInt(), anyInt()))
+        when(repository.count(any(), any(), any(), any(), any())).thenReturn(total);
+        when(repository.findPage(any(), any(), any(), any(), any(), any(), anyInt(), anyInt()))
                 .thenReturn(List.of());
     }
 
@@ -40,11 +40,11 @@ class WorkCountCacheTest {
     void sameFilterCountsOnce() {
         stubCount(5);
 
-        service.list(null, null, null, null, null, 1, 20);
-        service.list(null, null, null, null, null, 2, 20);
-        service.list(null, null, null, "rating", null, 3, 20);
+        service.list(null, null, null, null, null, null, null, 1, 20);
+        service.list(null, null, null, null, null, null, null, 2, 20);
+        service.list(null, null, null, null, "rating", null, null, 3, 20);
 
-        verify(repository, times(1)).count(any(), any(), any(), any());
+        verify(repository, times(1)).count(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -52,26 +52,41 @@ class WorkCountCacheTest {
     void differentFiltersAreSeparateEntries() {
         stubCount(5);
 
-        service.list("anime", null, null, null, null, 1, 20);
-        service.list("comic", null, null, null, null, 1, 20);
-        service.list("anime", "魔法", null, null, null, 1, 20);
-        service.list("anime", null, "日常", null, null, 1, 20);
-        service.list("anime", null, null, null, "7.5", 1, 20);
+        service.list("anime", null, null, null, null, null, null, 1, 20);
+        service.list("comic", null, null, null, null, null, null, 1, 20);
+        service.list("anime", "魔法", null, null, null, null, null, 1, 20);
+        service.list("anime", null, "日常", null, null, null, null, 1, 20);
+        service.list("anime", null, null, null, null, "7.5", null, 1, 20);
 
-        verify(repository, times(5)).count(any(), any(), any(), any());
+        verify(repository, times(5)).count(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("年份不同也是不同条目——漏了 year 会把 A 年的总数串给 B 年")
+    void yearIsPartOfCacheKey() {
+        stubCount(5);
+
+        service.list(null, null, null, null, null, null, "2022", 1, 20);
+        service.list(null, null, null, null, null, null, "2021", 1, 20);
+        service.list(null, null, null, null, null, null, null, 1, 20);
+
+        // 三次都是不同的 year（两个年份 + 不过滤），必须各查各的。
+        // 若 CountCache.key 漏了 year，这里只会剩 1 次调用，
+        // 用户看到的就是「点 2021 显示 2022 的总数」。
+        verify(repository, times(3)).count(any(), any(), any(), any(), any());
     }
 
     @Test
     @DisplayName("导入失效后必须重新 COUNT，不能拿旧总数糊弄")
     void invalidationForcesRecount() {
         stubCount(5);
-        service.list(null, null, null, null, null, 1, 20);
-        verify(repository, times(1)).count(any(), any(), any(), any());
+        service.list(null, null, null, null, null, null, null, 1, 20);
+        verify(repository, times(1)).count(any(), any(), any(), any(), any());
 
         cache.invalidateAll();
 
-        service.list(null, null, null, null, null, 1, 20);
-        verify(repository, times(2)).count(any(), any(), any(), any());
+        service.list(null, null, null, null, null, null, null, 1, 20);
+        verify(repository, times(2)).count(any(), any(), any(), any(), any());
     }
 
     @Test

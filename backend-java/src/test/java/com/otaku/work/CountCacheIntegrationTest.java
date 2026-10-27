@@ -93,7 +93,7 @@ class CountCacheIntegrationTest {
     // ---------------------------------------------------------------- helpers
 
     private long total() {
-        return workService.list(null, KEYWORD, null, null, null, 1, 50).total();
+        return workService.list(null, KEYWORD, null, null, null, null, null, 1, 50).total();
     }
 
     private void importItems(String tag, int count) {

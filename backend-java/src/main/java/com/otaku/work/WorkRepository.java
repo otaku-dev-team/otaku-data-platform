@@ -175,7 +175,7 @@ public class WorkRepository {
      * 不是实现缺陷；词表规模小、标签组合有限，实测代价可接受。
      */
     public List<WorkRecord> findPage(String workType, String titlePattern, List<String> tags, WorkSort sort,
-                                     BigDecimal minRating, int limit, int offset) {
+                                     BigDecimal minRating, Integer year, int limit, int offset) {
         MapSqlParameterSource params = new MapSqlParameterSource()
                 .addValue("limit", limit)
                 .addValue("offset", offset);
@@ -184,7 +184,7 @@ public class WorkRepository {
         StringBuilder inner;
         if (tags == null || tags.isEmpty()) {
             inner = new StringBuilder("SELECT w.id AS id FROM work w WHERE 1 = 1");
-            appendConditions(inner, params, workType, titlePattern, minRating);
+            appendConditions(inner, params, workType, titlePattern, minRating, year);
             inner.append(" ORDER BY ").append(effective.orderBy("w"));
         } else if (tags.size() == 1) {
             // 走关联表：标签条件的成本与标签基数成正比，而不是与全表成正比。
@@ -195,14 +195,14 @@ public class WorkRepository {
             if (titlePattern != null) {
                 inner = new StringBuilder("SELECT t.work_ref AS id FROM work_tag t"
                         + " JOIN work w ON w.id = t.work_ref WHERE t.tag = :tag");
-                appendConditions(inner, params, workType, titlePattern, minRating);
+                appendConditions(inner, params, workType, titlePattern, minRating, year);
             } else {
                 inner = new StringBuilder("SELECT t.work_ref AS id FROM work_tag t WHERE t.tag = :tag");
-                appendTagConditions(inner, params, workType, minRating);
+                appendTagConditions(inner, params, workType, minRating, year);
             }
             inner.append(" ORDER BY ").append(effective.orderByOnTagTable("t"));
         } else {
-            inner = multiTagSelect(params, workType, titlePattern, tags, minRating);
+            inner = multiTagSelect(params, workType, titlePattern, tags, minRating, year);
             inner.append(" GROUP BY t.work_ref")
                     .append(" HAVING COUNT(DISTINCT t.tag) = :tagCount")
                     .append(" ORDER BY ").append(effective.orderByOnTagAggregate("t"));
@@ -224,7 +224,7 @@ public class WorkRepository {
      */
     private static StringBuilder multiTagSelect(MapSqlParameterSource params, String workType,
                                                 String titlePattern, List<String> tags,
-                                                BigDecimal minRating) {
+                                                BigDecimal minRating, Integer year) {
         params.addValue("tags", tags);
         params.addValue("tagCount", tags.size());
         StringBuilder sql = new StringBuilder("SELECT t.work_ref AS id FROM work_tag t");
@@ -232,7 +232,7 @@ public class WorkRepository {
             sql.append(" JOIN work w ON w.id = t.work_ref");
         }
         sql.append(" WHERE t.tag IN (:tags)");
-        appendTagConditions(sql, params, workType, minRating);
+        appendTagConditions(sql, params, workType, minRating, year);
         if (titlePattern != null) {
             sql.append(" AND w.title LIKE :titlePattern");
             params.addValue("titlePattern", titlePattern);
@@ -242,7 +242,7 @@ public class WorkRepository {
 
     /** 落在 {@code work_tag} 冗余列上的过滤条件（类型 / 评分下限）。 */
     private static void appendTagConditions(StringBuilder sql, MapSqlParameterSource params,
-                                            String workType, BigDecimal minRating) {
+                                            String workType, BigDecimal minRating, Integer year) {
         if (workType != null) {
             sql.append(" AND t.work_type = :workType");
             params.addValue("workType", workType);
@@ -252,6 +252,11 @@ public class WorkRepository {
             // 一次范围扫描就够，还能顺带满足 sort=rating 的顺序。
             sql.append(" AND t.rating_value >= :minRating");
             params.addValue("minRating", minRating);
+        }
+        if (year != null) {
+            // 用冗余列：idx_work_tag_year (tag, release_year, work_ref) 直接可用，不必回表。
+            sql.append(" AND t.release_year = :year");
+            params.addValue("year", year);
         }
     }
 
@@ -276,26 +281,27 @@ public class WorkRepository {
                 .addValue("limit", limit), MAPPER);
     }
 
-    public long count(String workType, String titlePattern, List<String> tags, BigDecimal minRating) {
+    public long count(String workType, String titlePattern, List<String> tags, BigDecimal minRating,
+                      Integer year) {
         MapSqlParameterSource params = new MapSqlParameterSource();
         StringBuilder sql;
         if (tags == null || tags.isEmpty()) {
             sql = new StringBuilder("SELECT COUNT(*) FROM work w WHERE 1 = 1");
-            appendConditions(sql, params, workType, titlePattern, minRating);
+            appendConditions(sql, params, workType, titlePattern, minRating, year);
         } else if (tags.size() == 1) {
             params.addValue("tag", tags.get(0));
             // 同 findPage：标题必须回表；类型已冗余进 work_tag，不必 JOIN。
             if (titlePattern != null) {
                 sql = new StringBuilder("SELECT COUNT(*) FROM work_tag t"
                         + " JOIN work w ON w.id = t.work_ref WHERE t.tag = :tag");
-                appendConditions(sql, params, workType, titlePattern, minRating);
+                appendConditions(sql, params, workType, titlePattern, minRating, year);
             } else {
                 sql = new StringBuilder("SELECT COUNT(*) FROM work_tag t WHERE t.tag = :tag");
-                appendTagConditions(sql, params, workType, minRating);
+                appendTagConditions(sql, params, workType, minRating, year);
             }
         } else {
             // 多标签：先按 work_ref 分组数出"命中了几个标签"，再取满足 n 个的组数。
-            StringBuilder inner = multiTagSelect(params, workType, titlePattern, tags, minRating);
+            StringBuilder inner = multiTagSelect(params, workType, titlePattern, tags, minRating, year);
             inner.append(" GROUP BY t.work_ref HAVING COUNT(DISTINCT t.tag) = :tagCount");
             sql = new StringBuilder("SELECT COUNT(*) FROM (").append(inner).append(") matched");
         }
@@ -305,7 +311,8 @@ public class WorkRepository {
 
     /** 列表的公共过滤条件。列统一带 {@code w.} 前缀，因为按标签查时是 JOIN。 */
     private static void appendConditions(StringBuilder sql, MapSqlParameterSource params,
-                                         String workType, String titlePattern, BigDecimal minRating) {
+                                         String workType, String titlePattern, BigDecimal minRating,
+                                         Integer year) {
         if (workType != null) {
             sql.append(" AND w.work_type = :workType");
             params.addValue("workType", workType);
@@ -319,6 +326,12 @@ public class WorkRepository {
             // 无评分作品因此被自然排除——不需要额外写 IS NOT NULL。
             sql.append(" AND w.rating_value >= :minRating");
             params.addValue("minRating", minRating);
+        }
+        if (year != null) {
+            // 等值匹配：没有年份的作品不混进任何一年。
+            // 走 idx_work_year (release_year, ...) 的范围扫描，不需要 filesort 之外的成本。
+            sql.append(" AND w.release_year = :year");
+            params.addValue("year", year);
         }
     }
 

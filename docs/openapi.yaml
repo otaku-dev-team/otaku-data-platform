@@ -148,6 +148,22 @@ paths:
             尺度取 0–10（库内 `rating_scale` 当前均为 `0-10`）。非法值（非数字、负数、超上限）返回 `400`
             （`BAD_REQUEST`），与「筛出来是空的」区分开。
           schema: { type: number, minimum: 0, maximum: 10, example: 7.0 }
+        - name: year
+          in: query
+          description: |
+            **按上映 / 发售年份筛选**（等值）。省略表示不过滤。
+
+            ⚠️ 与 `sort=year` 是两件事：`sort` 决定**顺序**，`year` 决定**结果集**。
+            两者可以同时用（`?sort=year&year=2022` = 只看 2022 年的、按年份排——同一年的内部再按 id）。
+
+            - **没有年份的作品（`null`）在带 `year` 时被排除**。这是有意的：
+              用户点「2022」想看的就是 2022 年的，不该混进「不知道哪一年」的。
+              要做「含未知年份」得单独加选项，不能悄悄把 `=` 改成「`IS NULL OR =`」。
+            - 这一年没有作品时返回 `200` + `items: []` + `total: 0`（与未知标签同口径，
+              筛选没结果是正常结果，不是错误）。
+            - 非法值（非整数、超出 1900–2100）返回 `400`（`BAD_REQUEST`）——
+              参数写错若被静默忽略，用户看到的是「全部作品」，会以为筛选坏了。
+          schema: { type: integer, minimum: 1900, maximum: 2100, example: 2022 }
         - name: page
           in: query
           schema: { type: integer, minimum: 1, default: 1 }
