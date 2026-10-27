@@ -51,7 +51,11 @@ class ConsoleRoutesTest {
     /** 平台侧（/internal）的路径：站主拿不到内部令牌，所以不算"后台入口"，但也要钉住。 */
     private static final Set<String> INTERNAL_ROUTES = new TreeSet<>(List.of(
             "POST /internal/sites",
-            "POST /internal/site-admins"));
+            "POST /internal/sites/{siteKey}/disable",
+            "POST /internal/sites/{siteKey}/enable",
+            "POST /internal/site-admins",
+            "POST /internal/site-admins/{adminId}/disable",
+            "POST /internal/site-admins/{adminId}/enable"));
 
     @Test
     @DisplayName("站主后台的接口清单 == 白名单（多一条就说明偷偷开了新能力）")

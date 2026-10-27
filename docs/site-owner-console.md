@@ -118,18 +118,38 @@ UPDATE app_user SET site_key = '<站点键>' WHERE user_id IN ('U-...', 'U-...')
 
 ### 5.2 停用站主 / 停用站点
 
-表结构已支持（`site_admin.status`、`site.status`），但**首版没有开对应的内部接口**，需要直接改库：
+四个内部接口（`X-Internal-Token`），全部幂等——重复调用不报错，返回里 `revoked_*` 为 0：
 
-```sql
--- 停用站主：登录与已发令牌立即 403（鉴权时联表判断，不是缓存）
-UPDATE site_admin SET status = 'disabled', updated_at = NOW(3) WHERE username = '<登录名>';
+```bash
+BASE=http://127.0.0.1:8080
+TOKEN=$OTAKU_INTERNAL_TOKEN
 
--- 停用整个站点（该站所有站主都进不去）
-UPDATE site SET status = 'suspended', updated_at = NOW(3) WHERE site_key = '<站点键>';
+# 停用站主：登录与已发令牌立即 403（并撤销其全部后台会话，已登录的浏览器当场掉线）
+curl -s -X POST "$BASE/internal/site-admins/<admin_id>/disable" -H "X-Internal-Token: $TOKEN"
+
+# 恢复站主（会话不恢复，需重新登录）
+curl -s -X POST "$BASE/internal/site-admins/<admin_id>/enable" -H "X-Internal-Token: $TOKEN"
+
+# 停用站点：该站**全部**站主立即 403（撤销该站所有站主会话）；客户端数据原样保留
+curl -s -X POST "$BASE/internal/sites/<站点键>/disable" -H "X-Internal-Token: $TOKEN"
+
+# 恢复站点
+curl -s -X POST "$BASE/internal/sites/<站点键>/enable" -H "X-Internal-Token: $TOKEN"
 ```
 
-> 这是首版明确的缺口：运维要动 SQL。补一对 `/internal/site-admins/{id}/status` 属于下一步，
-> 不在这版里硬塞，因为"停用"还牵涉到要不要撤销会话、要不要留审计，值得单独设计。
+语义与站主禁用用户（§3）完全同构：**改状态 + 撤会话**，两条腿缺一不可。
+
+| 要点 | 说明 |
+|---|---|
+| 404 分流 | 站点不存在 → `SITE_NOT_FOUND`；站主不存在 → `ADMIN_NOT_FOUND`；与幂等重试（200）分开 |
+| 站点状态值 | `active / suspended`（`site.status`）；站主为 `active / disabled`（`site_admin.status`） |
+| 停用期间 | 停用的站点**不能再加站主**（400）；恢复后才行 |
+| 停用站主 ≠ 停用站点 | 四条接口刻意分开：站点停用影响该站所有站主，爆炸半径完全不同 |
+| 审计 | 每次流转记一条日志（操作者、对象、撤销会话数）；审计表仍未做（§8） |
+
+> 首版（#210）之前这里需要直接改 SQL；上面的接口在后续补齐，
+> `ConsoleRoutesTest` 的 `/internal` 白名单已钉住这六条路径。
+
 
 ---
 
@@ -172,7 +192,8 @@ UPDATE site SET status = 'suspended', updated_at = NOW(3) WHERE site_key = '<站
 ## 8. 已知未做（首版范围外）
 
 - 审计表：禁用原因只进日志（`ConsoleUserStatusChange.note` 之外的 `reason` 不回显、不落库）；
+  停用站点/站主同样只进日志；
 - 站主自助增减名单（提案 §8 第 3 条的二期项）；
 - 手动触发同步 / 按 `source_id` 一键补齐（二期，见 §2）；
-- 用户详情与收藏（提案 §8 第 4 条：放二期）；
-- 停用站主/站点的内部接口（见 §5.2）。
+- 用户详情与收藏（提案 §8 第 4 条：放二期）。
+- ~~停用站主/站点的内部接口~~：**已补齐**，见 §5.2。

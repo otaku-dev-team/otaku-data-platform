@@ -24,4 +24,18 @@ public final class InternalSiteDtos {
     /** 开设站主（加进站主名单，提案 §4.1）。 */
     public record SiteAdminCreateRequest(String siteKey, String username, String password, String displayName) {
     }
+
+    /**
+     * 停用 / 启用整个站点的结果。
+     *
+     * <p>{@code revoked_admin_sessions} 是该站**所有站主**被撤销的后台会话数：
+     * 改状态只挡住下一次登录，已在后台里的浏览器要当场掉线（与用户禁用同一逻辑）。
+     */
+    public record SiteStatusChange(String siteKey, String status, int revokedAdminSessions, String note) {
+    }
+
+    /** 停用 / 启用单个站主的结果。解禁不会恢复旧会话，站主要重新登录。 */
+    public record SiteAdminStatusChange(String adminId, String siteKey, String username,
+                                        String status, int revokedSessions, String note) {
+    }
 }

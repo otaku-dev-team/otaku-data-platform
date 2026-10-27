@@ -30,6 +30,10 @@ public enum ErrorCode {
     FORBIDDEN(HttpStatus.FORBIDDEN),
     /** 站主后台：账号不存在。与"存在但属于别人站点"（403）分开，便于排查。 */
     USER_NOT_FOUND(HttpStatus.NOT_FOUND),
+    /** 平台侧：站点不存在（/internal/sites/{key}/... 找不到这个 site_key）。 */
+    SITE_NOT_FOUND(HttpStatus.NOT_FOUND),
+    /** 平台侧：站主不存在（/internal/site-admins/{adminId}/... 找不到这个 admin_id）。 */
+    ADMIN_NOT_FOUND(HttpStatus.NOT_FOUND),
     /** 阶段 2：用户名已被占用。 */
     USERNAME_TAKEN(HttpStatus.CONFLICT),
     /** 阶段 2：改状态时收藏已不存在（对应验收 C11，客户端应提示刷新而不是自动重新收藏）。 */
