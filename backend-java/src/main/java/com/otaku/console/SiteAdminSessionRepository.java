@@ -77,6 +77,20 @@ public class SiteAdminSessionRepository {
                 new MapSqlParameterSource().addValue("adminPk", adminPk).addValue("now", now));
     }
 
+    /** 改口令后撤销其它设备：当前这台继续可用，其他设备必须用新口令重登。 */
+    public int revokeOthers(long adminPk, String keepTokenHash, LocalDateTime now) {
+        return jdbc.update("""
+                        UPDATE site_admin_session SET revoked_at = :now
+                         WHERE site_admin_id = :adminPk
+                           AND token_hash <> :keep
+                           AND revoked_at IS NULL
+                        """,
+                new MapSqlParameterSource()
+                        .addValue("adminPk", adminPk)
+                        .addValue("keep", keepTokenHash)
+                        .addValue("now", now));
+    }
+
     /** 停用整个站点时撤该站全部站主的会话——与"每个请求都联表判断站点状态"双保险。 */
     public int revokeAllForSite(String siteKey, LocalDateTime now) {
         return jdbc.update("""

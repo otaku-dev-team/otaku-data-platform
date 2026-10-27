@@ -117,6 +117,7 @@
     <nav>
       <button data-tab="overview" aria-current="true">数据概览</button>
       <button data-tab="users">用户管理</button>
+      <button data-tab="admins">站主名单</button>
       <button data-tab="sync">同步状态</button>
     </nav>
 
@@ -175,9 +176,89 @@
         </div>
         <p class="err" id="uerr"></p>
       </div>
+
+      <!-- 用户详情（二期）：点列表里的「详情」打开 -->
+      <div id="userDetail" class="hide" style="margin-top:22px">
+        <h2 style="font-size:15px;margin:0 0 10px">用户详情：<span id="ud-name"></span>
+          <button id="ud-close" style="float:right;font-size:12px">关闭</button>
+        </h2>
+        <div class="cards" style="margin-bottom:12px">
+          <div class="stat"><div class="k">状态</div><div class="v small" id="ud-status">-</div></div>
+          <div class="stat"><div class="k">活跃会话</div><div class="v" id="ud-sessions">-</div></div>
+          <div class="stat"><div class="k">收藏总数</div><div class="v" id="ud-total">-</div></div>
+          <div class="stat"><div class="k">想看 / 在看 / 看过</div><div class="v small" id="ud-split">-</div></div>
+        </div>
+        <p class="hint" id="ud-last"></p>
+        <div style="display:flex;gap:10px;align-items:center;margin:14px 0 8px">
+          <strong style="font-size:13px">收藏明细</strong>
+          <select id="ud-cstatus" style="padding:6px;border:1px solid var(--line);border-radius:6px">
+            <option value="">全部状态</option>
+            <option value="want">想看</option>
+            <option value="watching">在看</option>
+            <option value="watched">看过</option>
+            <option value="none">未设状态</option>
+          </select>
+          <span class="hint" id="ud-ctotal"></span>
+        </div>
+        <table>
+          <thead><tr><th>作品</th><th>类型</th><th>状态</th><th>更新时间</th></tr></thead>
+          <tbody id="ud-crows"></tbody>
+        </table>
+        <div class="pager">
+          <button id="ud-prev">上一页</button>
+          <span class="hint" id="ud-cpage"></span>
+          <button id="ud-next">下一页</button>
+        </div>
+        <p class="err" id="ud-err"></p>
+      </div>
     </section>
 
     <!-- 同步 -->
+    <section id="tab-admins" class="hide">
+      <div class="panel">
+        <h2 style="font-size:15px;margin:0 0 10px">本站站主</h2>
+        <p class="hint">站主只能管理本站的数据与用户。新增站主时由你设置初始口令，平台不保存明文，请线下转告；对方登录后可自行修改。</p>
+        <table>
+          <thead><tr><th>账号</th><th>称呼</th><th>状态</th><th>最近登录</th><th>操作</th></tr></thead>
+          <tbody id="arows"></tbody>
+        </table>
+        <p class="err" id="aerr"></p>
+        <p class="hint" id="atotal"></p>
+      </div>
+
+      <div class="panel">
+        <h2 style="font-size:15px;margin:0 0 10px">新增站主</h2>
+        <form id="adminForm" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+          <label style="display:flex;flex-direction:column;gap:4px;font-size:12px">登录名
+            <input type="text" id="a-username" autocomplete="off" required minlength="3" maxlength="64">
+          </label>
+          <label style="display:flex;flex-direction:column;gap:4px;font-size:12px">初始口令（8-72 位）
+            <input type="password" id="a-password" autocomplete="new-password" required minlength="8" maxlength="72">
+          </label>
+          <label style="display:flex;flex-direction:column;gap:4px;font-size:12px">称呼（可空）
+            <input type="text" id="a-display" maxlength="64">
+          </label>
+          <button type="submit">创建</button>
+        </form>
+        <p class="err" id="a-form-err"></p>
+      </div>
+
+      <div class="panel">
+        <h2 style="font-size:15px;margin:0 0 10px">修改我的口令</h2>
+        <form id="pwForm" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+          <label style="display:flex;flex-direction:column;gap:4px;font-size:12px">当前口令
+            <input type="password" id="pw-old" autocomplete="current-password" required>
+          </label>
+          <label style="display:flex;flex-direction:column;gap:4px;font-size:12px">新口令（8-72 位）
+            <input type="password" id="pw-new" autocomplete="new-password" required minlength="8" maxlength="72">
+          </label>
+          <button type="submit">修改</button>
+        </form>
+        <p class="hint">修改成功后，其它设备上的后台登录会失效，当前这台保持登录。</p>
+        <p class="err" id="pw-err"></p>
+      </div>
+    </section>
+
     <section id="tab-sync" class="hide">
       <div class="card">
         <h2>最近一次</h2>
@@ -252,6 +333,7 @@
         + ' · ' + (me.admin.display_name || me.admin.username);
       loadOverview();
       loadUsers();
+      loadAdmins();
       loadSync();
     }).catch(function (err) {
       if (err.status === 401 || err.status === 403) { clearToken(); return; }
@@ -290,7 +372,7 @@
   });
 
   // ------------------------------------------------------------------ 切换
-  var tabs = ['overview', 'users', 'sync'];
+  var tabs = ['overview', 'users', 'admins', 'sync'];
   document.querySelectorAll('nav button').forEach(function (btn) {
     btn.addEventListener('click', function () {
       var name = btn.getAttribute('data-tab');
@@ -302,6 +384,7 @@
       });
       if (name === 'overview') { loadOverview(); }
       if (name === 'users') { loadUsers(); }
+      if (name === 'admins') { loadAdmins(); }
       if (name === 'sync') { loadSync(); }
     });
   });
@@ -364,11 +447,19 @@
           + '<td>' + u.active_sessions + '</td>'
           + '<td class="hint">' + fmt(u.created_at) + '</td>'
           + '<td class="hint">' + fmt(u.status_changed_at) + '</td>'
-          + '<td>' + (disabled
+          + '<td><button data-detail="1">详情</button> '
+          + (disabled
             ? '<button data-act="enable">解禁</button>'
             : '<button class="danger" data-act="disable">禁用</button>') + '</td>'
           + '</tr>';
       }).join('') : '<tr><td colspan="6" class="hint">没有符合条件的用户</td></tr>';
+
+      Array.prototype.forEach.call($('urows').querySelectorAll('button[data-detail]'), function (btn) {
+        btn.addEventListener('click', function () {
+          var row = btn.closest('tr');
+          openUserDetail(row.getAttribute('data-user'), row.querySelector('td').textContent);
+        });
+      });
 
       Array.prototype.forEach.call($('urows').querySelectorAll('button[data-act]'), function (btn) {
         btn.addEventListener('click', function () {
@@ -409,6 +500,148 @@
   });
   $('unext').addEventListener('click', function () {
     if (state.page * state.pageSize < state.total) { state.page += 1; loadUsers(); }
+  });
+
+  // ------------------------------------------------------------------ 用户详情（二期）
+  var detail = { userId: '', page: 1, total: 0, status: '' };
+
+  function openUserDetail(userId, username) {
+    detail.userId = userId;
+    detail.page = 1;
+    detail.status = '';
+    $('ud-name').textContent = username || userId;
+    $('ud-cstatus').value = '';
+    show($('userDetail'), true);
+    loadUserDetail();
+    loadUserCollections();
+  }
+
+  function loadUserDetail() {
+    api('/api/console/users/' + encodeURIComponent(detail.userId)).then(function (d) {
+      var disabled = d.status === 'disabled';
+      $('ud-status').textContent = disabled ? '已禁用' : '正常';
+      $('ud-sessions').textContent = d.active_sessions;
+      $('ud-total').textContent = d.collections.total;
+      $('ud-split').textContent = d.collections.want + ' / ' + d.collections.watching
+        + ' / ' + d.collections.watched + (d.collections.none ? '（未设 ' + d.collections.none + '）' : '');
+      $('ud-last').textContent = '最近收藏更新：' + fmt(d.collections.last_updated_at);
+    }).catch(function (err) {
+      $('ud-err').textContent = err.status === 403 ? '无权查看：这个用户不属于你的站点。' : (err.message || '加载失败');
+    });
+  }
+
+  function loadUserCollections() {
+    $('ud-err').textContent = '';
+    var params = ['page=' + detail.page, 'page_size=20'];
+    if (detail.status) { params.push('status=' + encodeURIComponent(detail.status)); }
+    api('/api/console/users/' + encodeURIComponent(detail.userId) + '/collections?' + params.join('&'))
+      .then(function (page) {
+        detail.total = page.total;
+        $('ud-ctotal').textContent = '共 ' + page.total + ' 条';
+        $('ud-cpage').textContent = '第 ' + page.page + ' / ' + Math.max(1, page.total_pages) + ' 页';
+        var LABEL = { want: '想看', watching: '在看', watched: '看过' };
+        $('ud-crows').innerHTML = page.items.length ? page.items.map(function (c) {
+          return '<tr><td>' + escapeHtml(c.title) + '</td><td>' + escapeHtml(c.work_type) + '</td>'
+            + '<td>' + (c.status ? (LABEL[c.status] || c.status) : '未设') + '</td>'
+            + '<td class="hint">' + fmt(c.updated_at) + '</td></tr>';
+        }).join('') : '<tr><td colspan="4" class="hint">没有收藏记录</td></tr>';
+      }).catch(function (err) {
+        $('ud-err').textContent = err.message || '加载收藏失败';
+      });
+  }
+
+  $('ud-close').addEventListener('click', function () { show($('userDetail'), false); });
+  $('ud-cstatus').addEventListener('change', function () {
+    detail.status = $('ud-cstatus').value;
+    detail.page = 1;
+    loadUserCollections();
+  });
+  $('ud-prev').addEventListener('click', function () {
+    if (detail.page > 1) { detail.page -= 1; loadUserCollections(); }
+  });
+  $('ud-next').addEventListener('click', function () {
+    if (detail.page * 20 < detail.total) { detail.page += 1; loadUserCollections(); }
+  });
+
+  // ------------------------------------------------------------------ 站主名单（二期）
+  function loadAdmins() {
+    $('aerr').textContent = '';
+    api('/api/console/admins').then(function (list) {
+      $('atotal').textContent = '共 ' + list.length + ' 位站主';
+      $('arows').innerHTML = list.length ? list.map(function (a) {
+        var disabled = a.status === 'disabled';
+        return '<tr data-admin="' + a.admin_id + '">'
+          + '<td>' + escapeHtml(a.username) + (a.self ? ' <span class="tag active">你</span>' : '') + '</td>'
+          + '<td class="hint">' + escapeHtml(a.display_name || '-') + '</td>'
+          + '<td><span class="tag ' + (disabled ? 'disabled' : 'active') + '">'
+          + (disabled ? '已停用' : '正常') + '</span></td>'
+          + '<td class="hint">' + fmt(a.last_login_at) + '</td>'
+          + '<td>' + (disabled
+            ? '<button data-act="enable">恢复</button>'
+            : '<button class="danger" data-act="disable"' + (a.self ? ' disabled title="不能停用自己"' : '')
+              + '>停用</button>') + '</td>'
+          + '</tr>';
+      }).join('') : '<tr><td colspan="5" class="hint">没有站主记录</td></tr>';
+
+      Array.prototype.forEach.call($('arows').querySelectorAll('button[data-act]'), function (btn) {
+        btn.addEventListener('click', function () {
+          var adminId = btn.closest('tr').getAttribute('data-admin');
+          changeAdmin(adminId, btn.getAttribute('data-act'), btn);
+        });
+      });
+    }).catch(handleError);
+  }
+
+  function changeAdmin(adminId, action, btn) {
+    var tip = action === 'disable'
+      ? '停用后对方会立即退出后台，且无法再登录。确定？'
+      : '恢复后对方需重新登录。继续？';
+    if (!window.confirm(tip)) { return; }
+    btn.disabled = true;
+    api('/api/console/admins/' + encodeURIComponent(adminId) + '/' + action, { method: 'POST' })
+      .then(function (r) { window.alert(r.note); loadAdmins(); })
+      .catch(function (err) {
+        $('aerr').textContent = err.message || '操作失败';
+        btn.disabled = false;
+      });
+  }
+
+  $('adminForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    $('a-form-err').textContent = '';
+    var body = {
+      username: $('a-username').value.trim(),
+      password: $('a-password').value,
+      display_name: $('a-display').value.trim() || null
+    };
+    api('/api/console/admins', { method: 'POST', body: body }).then(function (r) {
+      $('a-password').value = '';
+      $('a-username').value = '';
+      $('a-display').value = '';
+      window.alert(r.note);
+      loadAdmins();
+    }).catch(function (err) {
+      $('a-form-err').textContent = err.code === 'USERNAME_TAKEN'
+        ? '这个登录名已被占用（站主登录名全局唯一，请换一个）。'
+        : (err.message || '创建失败');
+    });
+  });
+
+  $('pwForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    $('pw-err').textContent = '';
+    api('/api/console/auth/password', {
+      method: 'POST',
+      body: { old_password: $('pw-old').value, new_password: $('pw-new').value }
+    }).then(function () {
+      $('pw-old').value = '';
+      $('pw-new').value = '';
+      window.alert('口令已修改。其它设备上的后台登录已失效。');
+    }).catch(function (err) {
+      $('pw-err').textContent = err.status === 401
+        ? '当前口令不正确。'
+        : (err.message || '修改失败');
+    });
   });
 
   // ------------------------------------------------------------------ 同步

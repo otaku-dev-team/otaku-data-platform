@@ -1,6 +1,6 @@
 # 站主运营后台 · 使用说明（首版）
 
-> **状态**：首版已实现（2026-10-27）。对应 **Issue #144**，设计依据
+> **状态**：首版已实现（2026-10-27），二期（站主名单自助维护、用户详情与收藏）同日补齐。对应 **Issue #144**，设计依据
 > [`site-owner-console-proposal.md`](site-owner-console-proposal.md)（§2 范围、§3 权限、§4 边界、§8 拍板）。
 > 接口形状见 [`openapi.yaml`](openapi.yaml) 的「站主后台」与「内部站点」两段。
 >
@@ -17,6 +17,8 @@
 | 数据概览 | 看本站作品数、按类型分布、字段覆盖率、同步摘要 | `GET /api/console/overview` |
 | 用户管理 | 看本站客户端用户列表、**禁用/解禁** | `GET /api/console/users`、`POST .../{user_id}/disable|enable` |
 | 同步状态 | 看最近一次同步时间与成败、近期运行明细、失败条目 | `GET /api/console/sync` |
+| 站主名单（二期） | 看/加/停/恢复**本站**站主，改自己的口令 | `GET|POST /api/console/admins`、`POST .../{admin_id}/disable|enable`、`POST /api/console/auth/password` |
+| 用户详情与收藏（二期） | 看单个用户的状态、会话数、收藏聚合与明细 | `GET /api/console/users/{user_id}`、`GET .../collections` |
 
 页面：`http://<后端地址>/console/`（同源静态页，零构建、无 CDN）。
 
@@ -27,6 +29,7 @@
 | 不做 | 为什么 |
 |---|---|
 | 站点接入、站点配置 | 属于底座核心能力。开放给站主，网站就能自行接入任意站点，服务价值归零（提案 §2.2） |
+| 把「站主名单」当成站点配置 | 两者不同：名单只决定**谁有本站的登录权**，不能接入新站点、不能改来源绑定。二期允许站主自助增删名单（提案 §8 第 3 条），但 `/internal/sites` 仍然只有平台能调 |
 | 跨站查看/管理 | 站主只能看自己这一个站点 |
 | 底座管理 | 平台自身与其他站点的接入配置，不向站主暴露 |
 | 改网站侧账号 | 平台不回写网站账号状态（提案 §4.2） |
@@ -73,7 +76,9 @@
 允许共用的话，A 站的作品会同时出现在 B 站后台，任何 where 都说不清。
 
 集成测试 `ConsoleIsolationIntegrationTest`（真 MySQL + 完整过滤器链）覆盖：
-跨站禁用 403、列表只含本站、未归属账号不可见且不可禁、概览与同步按来源过滤、禁用后旧令牌失效且重登 403、两套令牌互不通用。
+跨站禁用 403、列表只含本站、未归属账号不可见且不可禁、概览与同步按来源过滤、禁用后旧令牌失效且重登 403、两套令牌互不通用；
+二期补充：站主名单只含本站（`self` 标记）、跨站停用站主 403、不能停用自己、用户详情/收藏跨站 403、
+收藏按状态过滤与分页、改口令后其它设备会话失效、审计留痕。
 
 ---
 
@@ -151,6 +156,47 @@ curl -s -X POST "$BASE/internal/sites/<站点键>/enable" -H "X-Internal-Token: 
 > `ConsoleRoutesTest` 的 `/internal` 白名单已钉住这六条路径。
 
 
+### 5.3 站主自助维护名单（二期）
+
+站主可以自己加/停本站的同事，不需要找平台。**站点接入与配置仍然只在平台侧**。
+
+```bash
+BASE=http://127.0.0.1:8080
+# 先登录拿后台令牌
+TOKEN=$(curl -s -X POST "$BASE/api/console/auth/login" -H 'Content-Type: application/json' \
+  -d '{"username":"<站主>","password":"<口令>"}' | python3 -c 'import json,sys;print(json.load(sys.stdin)["token"])')
+
+# 看本站名单（self=true 是当前登录的这位）
+curl -s "$BASE/api/console/admins" -H "Authorization: Bearer $TOKEN"
+
+# 新增站主（初始口令由你设置，平台只存 BCrypt，响应不回显口令）
+curl -s -X POST "$BASE/api/console/admins" -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"<登录名>","password":"<8-72位>","display_name":"<称呼>"}'
+
+# 停用 / 恢复（不能停用自己；停用会立即撤销对方的后台会话）
+curl -s -X POST "$BASE/api/console/admins/<admin_id>/disable" -H "Authorization: Bearer $TOKEN"
+curl -s -X POST "$BASE/api/console/admins/<admin_id>/enable"  -H "Authorization: Bearer $TOKEN"
+```
+
+| 规则 | 行为 |
+|---|---|
+| 不能停用自己 | `400`——手滑就再也进不来，只能找平台 |
+| 目标是别站的站主 | `403 FORBIDDEN`（不存在是 `404 ADMIN_NOT_FOUND`） |
+| 登录名重复 | `409 USERNAME_TAKEN`（站主登录名**全局唯一**，登录时不用先选站点） |
+| 停用 ≠ 删号 | 改状态 + 撤会话；恢复后对方重新登录即可 |
+
+### 5.4 修改自己的口令
+
+```bash
+curl -s -X POST "$BASE/api/console/auth/password" -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"old_password":"<旧>","new_password":"<新，8-72位>"}'
+# 204；其它设备上的后台会话会被撤销，当前设备保留
+```
+
+> 之所以现在就做：二期允许站主自建账号，若没有改密入口，初始口令只能长期在聊天工具里流转。
+
 ---
 
 ## 6. 站主登录方式：现在是过渡态
@@ -176,6 +222,7 @@ curl -s -X POST "$BASE/internal/sites/<站点键>/enable" -H "X-Internal-Token: 
 | CORS | **不对 `/api/console/**` 开放** | 后台页面同源加载；管理接口对任意源开放只会扩大攻击面 |
 | 登录失败限流 | 复用 `LoginThrottle`，5 次 / 15 分钟 | 与客户端同一套策略 |
 | 停用的站主/站点 | 返回 **403** 并说明原因 | 返回 401 会让站主以为是掉线，反复登录撞同一堵墙 |
+| 审计 | `console_audit` 记录名单变更与用户禁用/解禁 | 提案 §4.3 要求「有据可查」；只写不改，平台侧查库/导出 |
 
 ### 7.1 排障对照
 
@@ -189,11 +236,13 @@ curl -s -X POST "$BASE/internal/sites/<站点键>/enable" -H "X-Internal-Token: 
 
 ---
 
-## 8. 已知未做（首版范围外）
+## 8. 已知未做（当前范围外）
 
-- 审计表：禁用原因只进日志（`ConsoleUserStatusChange.note` 之外的 `reason` 不回显、不落库）；
-  停用站点/站主同样只进日志；
-- 站主自助增减名单（提案 §8 第 3 条的二期项）；
-- 手动触发同步 / 按 `source_id` 一键补齐（二期，见 §2）；
-- 用户详情与收藏（提案 §8 第 4 条：放二期）。
-- ~~停用站主/站点的内部接口~~：**已补齐**，见 §5.2。
+- 站主「邀请链接 / 邀请码」流程：二期采用**直接建号 + 线下转告初始口令**；
+  站点侧管理员邀请码属于网站能力，不在我们这里做；
+- 手动触发同步 / 按 `source_id` 一键补齐（见 §2）；
+- 内容层面的运营能力（改作品、下架等）：数据是来源站快照、只读取数（铁律 1），不做；
+- 审计的**后台读接口**：表已建、写入已接（§7），查看走平台侧查库/导出；
+- ~~停用站主/站点的内部接口~~：已补齐，见 §5.2；
+- ~~站主自助增减名单~~：已补齐，见 §5.3；
+- ~~用户详情与收藏~~：已补齐，见 §1 表格与 `GET /api/console/users/{user_id}`。

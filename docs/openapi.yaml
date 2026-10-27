@@ -955,6 +955,30 @@ paths:
         "204":
           description: 已撤销；或本来就没有有效会话（幂等）
 
+  /api/console/auth/password:
+    post:
+      tags: [站主后台]
+      summary: 修改自己的后台口令
+      operationId: consoleChangePassword
+      description: |
+        配合二期「站主可自助新增站主」：新站主拿到初始口令后必须能自己改，
+        否则口令只能通过聊天工具长期流转。
+
+        旧口令错误返回 `401 INVALID_CREDENTIALS`；新口令长度 8–72、不能与旧口令相同（`400`）。
+        成功后撤销**其它设备**的后台会话，当前设备保留——改口令的常见场景是怀疑泄露，
+        把当前设备一起踢掉会让用户以为改失败了。
+      security:
+        - consoleAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ConsolePasswordChangeRequest" }
+      responses:
+        "204": { description: 已修改 }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/UnauthorizedSession" }
+
   /api/console/overview:
     get:
       tags: [站主后台]
@@ -1021,6 +1045,69 @@ paths:
         "401": { $ref: "#/components/responses/UnauthorizedSession" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
+  /api/console/users/{user_id}:
+    get:
+      tags: [站主后台]
+      summary: 本站用户详情（二期）
+      operationId: consoleUserDetail
+      description: |
+        基本信息 + 活跃会话数 + 收藏聚合。收藏**明细**走
+        `/api/console/users/{user_id}/collections`——一个人可能收藏上千条，
+        塞进详情会让这个接口变成「一次拉全量」的入口，而站主多数时候只想看总数。
+
+        归属校验与禁用一致：不存在 → `404 USER_NOT_FOUND`；
+        存在但属于别的站点（含 `site_key` 为空的历史账号）→ `403 FORBIDDEN`。
+      security:
+        - consoleAuth: []
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConsoleUserDetail" }
+        "401": { $ref: "#/components/responses/UnauthorizedSession" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/UserNotFound" }
+
+  /api/console/users/{user_id}/collections:
+    get:
+      tags: [站主后台]
+      summary: 本站用户的收藏明细（二期）
+      operationId: consoleUserCollections
+      description: |
+        按 `updated_at` 降序分页。`status` 可过滤 `want` / `watching` / `watched` / `none`
+        （`none` = 已收藏但未设状态，与客户端契约一致）；非法值 `400`。
+
+        先校验用户归属、再查收藏：不存在 `404`，属于别站 `403`。
+        封面走平台代理地址（与客户端看到的一致），不把来源站暴露给后台页面。
+      security:
+        - consoleAuth: []
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+        - name: status
+          in: query
+          description: 收藏状态过滤；省略表示全部
+          schema: { type: string, enum: [want, watching, watched, none] }
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: page_size
+          in: query
+          description: 单页条数，上限 50
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConsoleUserCollectionPage" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/UnauthorizedSession" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/UserNotFound" }
+
   /api/console/users/{user_id}/disable:
     post:
       tags: [站主后台]
@@ -1077,6 +1164,101 @@ paths:
         "401": { $ref: "#/components/responses/UnauthorizedSession" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/UserNotFound" }
+
+  /api/console/admins:
+    get:
+      tags: [站主后台]
+      summary: 本站站主名单（二期）
+      operationId: consoleListAdmins
+      description: |
+        只列本站的站主。`self=true` 标记当前登录的这位，供前端禁用「停用自己」按钮；
+        后端仍会拒绝该操作——规则不能只活在前端。
+      security:
+        - consoleAuth: []
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ConsoleAdminItem" }
+        "401": { $ref: "#/components/responses/UnauthorizedSession" }
+
+    post:
+      tags: [站主后台]
+      summary: 新增本站站主（二期）
+      operationId: consoleCreateAdmin
+      description: |
+        站主可以自助邀请**本站**同事（提案 §8 第 3 条）。新增的人只能管理本站数据；
+        站点接入与配置仍然只在 `/internal/**`，不在后台暴露。
+
+        用户名**全局唯一**（站主登录时不需要先选站点），冲突返回 `409 USERNAME_TAKEN`。
+        初始口令由操作者设置并线下转告；平台只存 BCrypt，**响应里不回显任何口令**。
+      security:
+        - consoleAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ConsoleAdminCreateRequest" }
+      responses:
+        "201":
+          description: 已创建
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConsoleAdminCreated" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/UnauthorizedSession" }
+        "409": { $ref: "#/components/responses/ConflictUsername" }
+
+  /api/console/admins/{admin_id}/disable:
+    post:
+      tags: [站主后台]
+      summary: 停用本站站主（二期）
+      operationId: consoleDisableAdmin
+      description: |
+        改状态 + 撤销该站主全部后台会话。两条护栏：
+
+        - 不能停用自己（`400`）——手滑就再也进不来。有这一条之后，本站不会被这个接口
+          清空站主：操作者自己必然是 active，停别人不会让站点失去管理入口；
+        - 目标必须属于本站：不存在 `404 ADMIN_NOT_FOUND`，属于别站 `403 FORBIDDEN`。
+
+        重复调用幂等（已停用时 `revoked_sessions = 0`）。
+      security:
+        - consoleAuth: []
+      parameters:
+        - $ref: "#/components/parameters/AdminId"
+      responses:
+        "200":
+          description: 已停用（或本就停用）
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConsoleAdminStatusChange" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/UnauthorizedSession" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/AdminNotFound" }
+
+  /api/console/admins/{admin_id}/enable:
+    post:
+      tags: [站主后台]
+      summary: 恢复本站站主（二期）
+      operationId: consoleEnableAdmin
+      description: 恢复后对方需重新登录；停用时撤销的会话不会自动恢复。
+      security:
+        - consoleAuth: []
+      parameters:
+        - $ref: "#/components/parameters/AdminId"
+      responses:
+        "200":
+          description: 已恢复（或本就可用）
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConsoleAdminStatusChange" }
+        "401": { $ref: "#/components/responses/UnauthorizedSession" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/AdminNotFound" }
 
   /api/console/sync:
     get:
@@ -1301,6 +1483,13 @@ components:
       required: true
       description: 平台内部标识，由 Java 生成，客户端只当不透明字符串使用
       schema: { type: string }
+
+    AdminId:
+      name: admin_id
+      in: path
+      required: true
+      description: 站主对外标识（`G-` 前缀），不暴露自增主键
+      schema: { type: string, maxLength: 32 }
 
     UserId:
       name: user_id
@@ -2392,6 +2581,107 @@ components:
           description: |
             禁用原因，仅写入服务端日志（不进数据库、不回显）。
             要「有据可查」请查日志；需要长期留痕时再补审计表，不在这里临时存一份。
+
+    ConsoleUserDetail:
+      type: object
+      required: [user_id, username, status, active_sessions, collections]
+      properties:
+        user_id: { type: string }
+        username: { type: string }
+        status: { type: string, enum: [active, disabled] }
+        created_at: { type: string, format: date-time, nullable: true }
+        status_changed_at: { type: string, format: date-time, nullable: true }
+        active_sessions:
+          type: integer
+          description: 未撤销且未过期的会话数（与列表同一口径）
+        collections: { $ref: "#/components/schemas/ConsoleCollectionStats" }
+
+    ConsoleCollectionStats:
+      type: object
+      required: [total, want, watching, watched, none]
+      properties:
+        total: { type: integer }
+        want: { type: integer }
+        watching: { type: integer }
+        watched: { type: integer }
+        none:
+          type: integer
+          description: 已收藏但未设状态的条数（对应 status 为 null）
+        last_updated_at: { type: string, format: date-time, nullable: true }
+
+    ConsoleUserCollectionItem:
+      type: object
+      required: [work_id, title, work_type]
+      properties:
+        work_id: { type: string }
+        title: { type: string }
+        work_type: { type: string, enum: [anime, comic, game, novel] }
+        status:
+          type: string
+          nullable: true
+          enum: [want, watching, watched]
+          description: null 表示已收藏但未设状态
+        cover_url: { type: string, nullable: true }
+        updated_at: { type: string, format: date-time }
+
+    ConsoleUserCollectionPage:
+      allOf:
+        - $ref: "#/components/schemas/Paging"
+        - type: object
+          properties:
+            items:
+              type: array
+              items: { $ref: "#/components/schemas/ConsoleUserCollectionItem" }
+
+    ConsoleAdminItem:
+      type: object
+      required: [admin_id, username, status, self]
+      properties:
+        admin_id: { type: string }
+        username: { type: string }
+        display_name: { type: string, nullable: true }
+        status: { type: string, enum: [active, disabled] }
+        created_at: { type: string, format: date-time, nullable: true }
+        last_login_at: { type: string, format: date-time, nullable: true }
+        self:
+          type: boolean
+          description: 是否当前登录的这位（前端据此禁用「停用自己」按钮）
+
+    ConsoleAdminCreateRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username: { type: string, minLength: 3, maxLength: 64, description: 全局唯一 }
+        password: { type: string, minLength: 8, maxLength: 72, description: 只存 BCrypt，不回显 }
+        display_name: { type: string, nullable: true, maxLength: 64 }
+
+    ConsoleAdminCreated:
+      type: object
+      required: [admin_id, username, note]
+      properties:
+        admin_id: { type: string, description: "`G-` 前缀" }
+        username: { type: string }
+        display_name: { type: string, nullable: true }
+        note:
+          type: string
+          description: 给操作者的说明（口令不回显、需线下转告）
+
+    ConsoleAdminStatusChange:
+      type: object
+      required: [admin_id, username, status, revoked_sessions, note]
+      properties:
+        admin_id: { type: string }
+        username: { type: string }
+        status: { type: string, enum: [active, disabled] }
+        revoked_sessions: { type: integer, description: 本次撤销的后台会话数；幂等重试时为 0 }
+        note: { type: string }
+
+    ConsolePasswordChangeRequest:
+      type: object
+      required: [old_password, new_password]
+      properties:
+        old_password: { type: string }
+        new_password: { type: string, minLength: 8, maxLength: 72 }
 
     ConsoleUserStatusChange:
       type: object
