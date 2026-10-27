@@ -14,8 +14,11 @@
 # sites/<site>/site.conf，注入交给脚本。
 #
 # 边界（与 docs/site-branding.md §3 一致）：图标与 Windows 包标识仍需人工替换，
-# 脚本跑完会把它们打印成待办。Android 的 -P 透传本轮未实测（先不动安卓），
-# 首次真机构建时确认一次即可。
+# 脚本跑完会把它们打印成待办。
+#
+# Android 的 -P 透传已于 2026-10-28 实测（`-PappId=com.otaku.smoke -PappName=OtakuSmoke`
+# + `aapt dump badging` 核对：package 与 application-label 都按参数变了），
+# 不再是「未验证」状态。
 
 set -euo pipefail
 
