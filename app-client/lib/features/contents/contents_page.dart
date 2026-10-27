@@ -487,7 +487,11 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
 
   /// 打开标签面板；用户点了「应用」才替换条件（取消不动）。
   Future<void> _openTagPicker(ContentsFilter filter) async {
-    final picked = await showTagPicker(context, selected: filter.tags);
+    final picked = await showTagPicker(
+      context,
+      selected: filter.tags,
+      type: filter.type,
+    );
     if (picked == null || !mounted) return;
     ref.read(contentsFilterProvider.notifier).selectTags(picked);
   }
