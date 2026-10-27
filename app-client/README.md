@@ -60,6 +60,22 @@ flutter run -d windows
 flutter run -d <device-id>
 ```
 
+### 按站构建（交付用）
+
+日常 `flutter run` 不要用这个。它面向「给某个站点出一个包」：
+
+```bash
+./build_site.sh --list                           # 有哪些站
+./build_site.sh --site otaku --build-mode debug   # 联调包
+./build_site.sh --site otaku                      # release（默认 Windows）
+./build_site.sh --site otaku --target apk --build-mode debug
+```
+
+Windows 上等价：`.\build_site.ps1 -Site otaku`（参数同名）。值来自
+[`sites/<site>/site.conf`](sites/otaku/site.conf)，加第二站的步骤见
+[`sites/README.md`](sites/README.md)，机制与边界见
+[`../docs/site-branding.md`](../docs/site-branding.md)。
+
 ### 切换真实接口
 
 默认 `USE_MOCK=true`，不依赖后端即可运行。跑真接口**必须先把 Java 后端起来**，
