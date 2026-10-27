@@ -14,10 +14,11 @@
 
 登录页从「一个表单」变成「**一个主按钮 + 一个折叠表单**」：
 
-1. **主入口「用 Otaku 账号登录」**——走系统浏览器授权，回来即登录。这是目标形态（#150：平台账号只是过渡/兜底）。
+1. **主入口「用 Otaku 账号登录」**——App 内 WebView 承载站点注册 / 授权页，注册完直接是登录态
+   （2026-10-28 起是这个形态，取舍见 §2.2 与 `product-positioning.md` §4.2）。这是目标形态（#150：平台账号只是过渡/兜底）。
 2. **次级入口「平台账号登录」**——现有的用户名密码表单，收在「使用其他方式登录」里，视觉上退到次要位置。
 
-配套三件：账号菜单显示**身份来源**、401 时**静默重走一次授权**、桌面端这一轮**不显示**站点入口（loopback 没定，不给不能用的按钮）。
+配套三件：账号菜单显示**身份来源**、401 时**静默重走一次授权**、桌面端这一轮**不显示**站点入口（桌面没有 WebView 实现，不给点了没反应的按钮）。
 
 一句话理由：两个入口**不是对等关系**。做成两个一样大的按钮，用户每次登录都要先判断「我是哪种人」——而这个判断本该由产品形态替他做掉。
 
@@ -34,7 +35,7 @@
 | 账号菜单：已登录显示昵称 + 「退出登录」；未登录是「登录」按钮 | `lib/shared/widgets/account_menu.dart` |
 | 数据源层已有「接口 + Mock」双实现范式（`auth_data_source.dart` / `auth_remote_data_source.dart` / `auth_mock_data_source.dart`） | `lib/data/datasources/` |
 | `AppConfig.useMock` 默认 `true`：不带 `--dart-define=USE_MOCK=false` 跑起来全是演示数据 | `lib/core/config/app_config.dart` |
-| Android 清单目前只有 launcher 的 intent-filter，**没有自定义 scheme 回跳入口** | `android/app/src/main/AndroidManifest.xml` |
+| Android 清单目前只有 launcher 的 intent-filter，**没有自定义 scheme 回跳入口**（方案 A 起也不需要补，见 §3） | `android/app/src/main/AndroidManifest.xml` |
 | 本地小状态有 `LocalPrefs`（同步读、设备级盒子）可用 | `lib/core/storage/local_prefs.dart` |
 
 ---
@@ -133,8 +134,13 @@ WebView 实现**（`webview_flutter` 覆盖 Android / iOS / macOS / Web，不含
 `SiteAuthLauncher.supported` 判定（平台有 WebView + 构建期注入了 `SITE_BASE_URL`），
 登录页读它决定整块显示与否。
 
-原先报备给站点的桌面 loopback 端口 **`http://127.0.0.1:38711/callback`** 因此暂时用不上，
-白名单那条遗留项可以先不推。
+> **更正（2026-10-28 02:48）**：桌面 loopback 端口 **`http://127.0.0.1:38711/callback`**
+> **已由站在 2026-10-28 加入 OAuth 白名单**（站点 `.env` 的 `oauth_redirect_uris` 追加，
+> 服务重启生效）。所以桌面不是「站点没放行」，站点那一侧早就办好了——
+> 卡的是客户端自己没有桌面 WebView。这条别再去推站点了。
+
+桌面一旦有 WebView 实现（或改走 loopback + 本地 HTTP 服务），站点入口即可放出；
+在那之前平台账号表单仍然是桌面唯一的登录方式。
 
 ### 2.7 Mock 模式要能走通
 
@@ -150,15 +156,18 @@ WebView 实现**（`webview_flutter` 覆盖 Android / iOS / macOS / Web，不含
 
 | 层 | 新增 / 改动 | 说明 |
 |---|---|---|
-| `features/auth/site_auth_launcher.dart` | 新增：接口 + Android 实现 + Mock | `openAuthorize(state)` 打开系统浏览器；`Stream<String> redirects` 收 scheme 回跳。深链接收候选 `app_links` 插件或手写 MethodChannel，实现期定 |
+| `features/auth/site_auth_launcher.dart` | 新增：接口 + WebView 实现 + Mock | `openAuthorize(state)` 在 App 内打开授权页（方案 A，见 §2.2）；`Stream<String> redirects` 收 WebView 拦到的 scheme 回跳。**不引 `app_links`、不加 intent-filter**——回跳在 WebView 内部拦截，不经过系统 intent 分发 |
 | `features/auth/site_auth_state.dart` | 新增：state 生成 / 校验 / 清理 | 纯函数部分（`generateState` / `matches`）单测；存储走 `LocalPrefs`，键 `site_auth_state`，用完即删 |
 | `data/datasources/auth_data_source.dart` | 加 `siteLogin(ticket)` | 接口 + 真实现（`POST /api/auth/site-login`）+ Mock 三份，照现有范式 |
 | `features/auth/auth_controller.dart` | 加 `siteLogin()` 流程 | 复用 `submitting` / `error`；401 静默重走一次的逻辑挂在这里，不散到网络层 |
 | `features/auth/login_page.dart` | 双入口呈现 | 主按钮 + 折叠表单；桌面端隐藏站点入口（`PlatformInfo.isDesktop`） |
 | `shared/widgets/account_menu.dart` | 身份来源小字 | 依赖 `AccountUser` 带身份来源字段（§6 第 2 条） |
-| `AndroidManifest.xml` | 加 scheme intent-filter | `com.otaku.app:/oauth2redirect`，与站点白名单一致 |
+| ~~`AndroidManifest.xml`~~ | ~~加 scheme intent-filter~~ | **2026-10-28 起不需要**：方案 A 在 WebView 内拦截回跳，不经系统 intent 分发，也就不需要注册 scheme 到 OS。清单保持现状 |
 
-**深链接收选型**（实现期定，先说清权衡）：`app_links` 插件成熟、双端一致、社区维护；手写 MethodChannel 少一个依赖但要自己处理 Android 的 `onNewIntent` 与进程重启两种入口。倾向 `app_links`——这条链路的坑（进程被回收后回跳）比一个依赖更值得花钱。
+**~~深链接收选型~~**（2026-10-28 作废）：方案 A 之前要选 `app_links` 或手写 MethodChannel
+来接系统浏览器的回跳；现在回跳根本不出 App，`app_links` 也不必引入了。
+选型这条风险随之消失——顺带省掉「进程被回收后回跳」那个坑的一半
+（另一半是 WebView 页面本身被回收，靠 state 落盘兜住，见 §2.2）。
 
 ---
 
@@ -168,9 +177,10 @@ WebView 实现**（`webview_flutter` 覆盖 Android / iOS / macOS / Web，不含
 |---|---|---|---|
 | 1 | `site_auth_state` 纯逻辑 + 单测 | 无 | state 生成/校验/过期/复用，全单测 |
 | 2 | `siteLogin` 三层（接口/真/Mock）+ `siteLogin()` 控制器流程，深链用替身注入 | 无 | Mock 全链走通；widget 测试覆盖双入口与错误文案 |
-| 3 | Android：intent-filter + 系统浏览器 + 真实回跳 | 站点 authorize 可达 | 真机授权登录成功（契约 §6 步 3 的判据） |
+| 3 | Android：App 内 WebView 打开站点授权页 → 拦回跳 → 拿 ticket（**不需要 intent-filter**）<br>*已交付：PR #243。模拟器中已验到 WebView 打开站点授权页（02:40）* | 站点 authorize 可达 + 后端 `POST /api/auth/site-login`（#242） | 授权登录成功（契约 §6 步 3 的判据）。**真断点在后端 #242，不是客户端** |
 | 4 | 401 静默重走一次 | 步 3 | 伪造 401 只重试一次 |
 | 5 | 账号菜单身份来源；「断开连接」视 §6 第 1 条而定 | 后端端点 | — |
+| 6 | 桌面端：引 WebView2 插件，或改走 loopback + 本地 HTTP 服务 | 站点 loopback 已放行 | 桌面站点登录成功。**未开工**，见 §2.6 |
 
 步 1–2 不依赖任何未确认项，可以立刻做；步 3 起才需要联调环境。
 
@@ -181,8 +191,12 @@ WebView 实现**（`webview_flutter` 覆盖 Android / iOS / macOS / Web，不含
 1. **「断开与网站的连接」缺一个平台端点**。契约 §5 的三态②要求 self-revoke，但客户端不持站点令牌——这个调用只能由平台后端代理（建议 `POST /api/auth/site-unlink`，平台侧据此调站点 revoke 并清映射）。没有它，三态②这一轮做不了，登录页与账号菜单只能交付①。
 2. **平台 `user` 响应需要带 `identity_source`**（NULL = 平台账号）。否则账号菜单无法显示身份来源，客户端也无从区分「该不该静默重走授权」。这是 `AccountUser` 要加的字段，属账号结构变更，一并走三人确认。
 3. **平台会话与站点令牌的寿命关系**。契约说站点无 refresh_token、authorize 幂等可静默续；但客户端持的是**平台**令牌。若两者寿命脱钩（平台 30 天、站点 1 小时），「临期静默重走」在客户端侧根本无从判断——需要明确「平台会话是否随站点令牌失效而失效」。在此之前，客户端只做 401 被动重走，不主动续期。
-4. **桌面 loopback 端口**：客户端定 `http://127.0.0.1:38711/callback`，**已于 2026-10-28 入站点白名单**（这一轮桌面不做入口，先报备）。
-5. **ticket 120 秒够不够**。系统浏览器冷启动 + 站点登录 + 回跳，慢一点就可能超。客户端按 120 秒设计、不假设更宽；若站主愿意放宽到 300 秒，超时投诉会少一批。
+4. ~~**桌面 loopback 端口**：客户端定 `http://127.0.0.1:38711/callback`~~
+   **已闭环（2026-10-28）**：站点 `.env` 的 `oauth_redirect_uris` 已追加该地址并重启生效。
+   这一条不再需要确认——桌面入口没放开的唯一原因是**客户端侧没有桌面 WebView**（见 §6）。
+   （数据来源：`docs/identity-auth-endpoint-playbook.md`，由 @zhengmin486 在站点侧完成。）
+5. **ticket 120 秒够不够**。站点登录 + 回跳，慢一点就可能超。客户端按 120 秒设计、不假设更宽；若站主愿意放宽到 300 秒，超时投诉会少一批。
+   *（2026-10-28：方案 A 之后**没有系统浏览器冷启动**这一项了，时限压力比原先估算的小；保守按 120 秒设计不变。）*
 
 ---
 
@@ -193,7 +207,10 @@ WebView 实现**（`webview_flutter` 覆盖 Android / iOS / macOS / Web，不含
 - **不做站点资料回显**：`nickname` / `avatar_url` 仅客户端展示，不回写平台、不再分发（契约 §7）。
 - **不做多站绑定**：首站 1:1，N:M 是未来目标。
 - **不做 iOS**：本仓库没有 iOS 端。
-- **不做桌面授权入口**：这一轮隐藏，loopback 就绪再说。
+- **不做桌面授权入口**：这一轮隐藏。
+  ~~loopback 就绪再说~~ → **2026-10-28 更正**：loopback 已入站点白名单，站点侧不再是
+  阻塞点；剩下的唯一原因是**桌面没有 WebView 实现**（`webview_flutter` 不含 Windows）。
+  要放开桌面入口，路径是引 WebView2 系插件，或改走 loopback + App 内本地 HTTP 服务。
 - **不自己持有任何站点凭据**：secret、站点令牌都不进 App——这是整套方案的前提，不是可选项。
 
 ---
