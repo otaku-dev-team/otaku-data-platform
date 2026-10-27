@@ -143,8 +143,18 @@ python -m sync --export-dataset \
    （`pymysql` 纯 Python）。当前只实现 SQLite，接口已按「探测函数可替换」预留。
 3. **导入器接线**：数据集 → 现有 `POST /internal/import/batches`（后端零改动，
    `works` 前 9 列就是 ImportItem）。`work_tags` 聚合成 `tags[]` 在导入侧做。
-4. **线上规模实测**：线上约 299 页 × 60 ≈ 1.79 万条（未实测确认），
-   派生库体积与耗时待服务器上跑一次再定，不按估算写死。
+4. ~~线上规模实测~~ → **已实测（2026-10-28，服务器，`nice`/`ionice` 降优先级跑，
+   未打断正在进行的全量导入）**：`works` **18,828** 条，全表合计 **618,853 行**，
+   耗时 **12.1 秒**，派生库 **79.8 MB**（源库 119 MB），一致性快照生效，结构指纹
+   `8e99573f3965f427` 与本地副本一致。最大的三张关联表：`work_credits` 407,900 /
+   `work_cast` 75,731 / `work_tags` 51,773。
+   三条空值率警告都是**源侧本来就没维护**的字段，不是导出问题：
+   `works.rating_count` 99% 空、`schedules.broadcast_time` 93% 空、
+   `schedules.box_office` 96% 空。**「评分人数」这条数据网站侧拿不到**，产品上别依赖它。
+5. **服务器代码两处并存（2026-10-28 现状）**：`/opt/otaku/cover-src` = #222 分支
+   （含 `covers.py`，供封面回填 `otaku-covers4` 使用）；`/opt/otaku/main-src` = main
+   固定 commit（供本导出使用，`f67d97f`）。**#222 合并后应收敛为一处**，否则两份代码
+   会各自漂移。
 
 ## 七、边界
 
