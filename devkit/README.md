@@ -15,7 +15,7 @@ python scripts/devtest.py --rerun-failed   # 只重跑上次失败的用例（�
 python scripts/devtest.py --retry 1        # 失败用例复跑一次，复跑通过则标「疑似不稳定」
 python scripts/devtest.py --slow 5         # 顺便列最慢的 5 个用例
 python scripts/devtest.py --json           # 机器可读（stdout 只有 JSON）
-python scripts/devtest.py --inventory      # 三栈测试实时清点
+python scripts/devtest.py --inventory      # 各栈测试实时清点
 python scripts/devtest.py --stats          # 原始输出 vs 卡片的字节数对比
 python -m devkit serve --port 8787         # 本地看板
 ```
@@ -59,6 +59,11 @@ Python 2 项  1 失败  1.1s
 **跳过 ≠ 通过。** 工具链缺失、JAVA_HOME 没配、什么都没跑成，一律显式说明并让退出码
 变成 `2`，绝不在结论里写「全部通过」。
 
+**工具自己也要能被验证。** devkit 很长一段时间是零测试：改它的代码，工具只会回一句
+「无单测覆盖，改了请手跑」——等于自证空白。改工具的人（或智能体）拿不到反馈，下次就
+更不会跑，这个环是负向的。现在 devkit 的 `.py` 一改，会多出一栈「工具」跑它自己的测试。
+这里不做 import 级精确选跑：总量二十来条、两秒跑完，省下的时间不抵多一层推导的出错风险。
+
 ## 目录
 
 | 文件 | 职责 |
@@ -70,6 +75,7 @@ Python 2 项  1 失败  1.1s
 | `cache.py` / `state.py` | 结果缓存；上次结果、失败基线、运行历史 |
 | `cli.py` | 参数与输出（终端 / JSON 两套） |
 | `server.py` + `ui/` | 本地看板：只读 `/api/state`，预设动作 `/api/run` |
+| `tests/` | devkit 自己的测试（改动 devkit 时由「工具」栈跑） |
 
 运行数据在 `devkit/.state/`（缓存、`last.json`、`runs/`），**已 gitignore**，不入库。
 
@@ -84,8 +90,9 @@ python -m devkit serve --port 8787     # http://127.0.0.1:8787
 
 ## 接新的栈或新的项目
 
-- 新栈：在 `select.py` 加选择器、在 `run.py` 的 `STACK_DIR` 登记目录、在 `report.py` 加
-  一个解析器（若该栈能出 JUnit XML，直接复用 `parse_junit_xml`）。
+- 新栈：在 `select.py` 加选择器并登记到 `STACKS` / `STACK_LABELS`、在 `run.py` 的
+  `STACK_DIR` 登记目录、在 `report.py` 加一个解析器（若该栈能出 JUnit XML，直接复用
+  `parse_junit_xml`）。漏了 `STACK_LABELS` 会被 `devkit/tests/test_cli.py` 当场拦下。
 - 换项目：`select.py` 顶部的路径常量是唯一与仓库强绑定的地方，搬走时改那一段。
 
 ## 已知限制

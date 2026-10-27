@@ -16,7 +16,12 @@ from pathlib import Path
 from . import card, cache, report, select, state
 from .report import StackReport
 
-STACK_DIR = {"java": select.JAVA_DIR, "py": select.PY_DIR, "dart": select.DART_DIR}
+# 缓存指纹按「该栈所有源码」算。self 用 devkit 而非仓库根：
+# 拿 ROOT 当基准会把 backend-java / app-client 全哈希进来，几万文件且过度失效。
+STACK_DIR = {
+    "java": select.JAVA_DIR, "py": select.PY_DIR,
+    "dart": select.DART_DIR, "self": select.DEVKIT_DIR,
+}
 TMP = cache.STATE_DIR / "tmp"
 
 
@@ -47,9 +52,12 @@ def _parse(stack: str, output: str, junit_path: str | None, started_at: float,
     if stack == "java":
         parsed = report.parse_surefire(
             select.JAVA_DIR / "target" / "surefire-reports", select.JAVA_DIR, since=started_at)
-    elif stack == "py":
+    elif stack in ("py", "self"):
+        # 两者的报告格式一样，差别只在于「路径相对谁」：py 相对 sync-python，
+        # 工具自身的测试相对仓库根。传错 base 会让文件:行错位。
+        base = select.PY_DIR if stack == "py" else select.ROOT
         if junit_path and Path(junit_path).exists():
-            parsed = report.parse_junit_xml(Path(junit_path), "py", select.PY_DIR)
+            parsed = report.parse_junit_xml(Path(junit_path), stack, base)
     else:
         parsed = report.parse_dart_json(output, select.DART_DIR)
 
@@ -95,10 +103,13 @@ def _report_from_dict(stack: str, data: dict) -> StackReport:
 
 
 def _retry_methods(stack: str, failed: list[report.Case]) -> dict:
-    """把失败用例换成「只跑它」的入参。py 走文件参数，java/dart 走 methods。"""
+    """把失败用例换成「只跑它」的入参。py/self 走文件参数，java/dart 走 methods。"""
     ids = [case.test_id for case in failed]
     if stack == "py":
         return {"files": [f"sync-python/{i}" for i in ids]}
+    if stack == "self":
+        # test_id 已经是相对仓库根的 `devkit/tests/x.py::test_y`
+        return {"files": ids}
     return {"methods": ids}
 
 
@@ -112,15 +123,16 @@ def run_stack(stack: str, entry: dict, opts: Options) -> dict:
     full = entry.get("mode") == "all"
     methods = opts.methods.get(stack) or []
 
-    if stack == "py" and methods:
-        files = [f"sync-python/{m}" for m in methods]
+    if stack in ("py", "self") and methods:
+        prefix = "sync-python/" if stack == "py" else ""
+        files = [f"{prefix}{m}" for m in methods]
         full = False
         methods = []
     if not full and not files and not methods:
         return {"status": "skipped", "detail": "没有相关测试文件", "stack": stack, "cached": False}
 
     junit_path = None
-    if stack == "py":
+    if stack in ("py", "self"):
         TMP.mkdir(parents=True, exist_ok=True)
         junit_path = str(TMP / f"pytest-{uuid.uuid4().hex[:8]}.xml")
 
@@ -156,7 +168,7 @@ def run_stack(stack: str, entry: dict, opts: Options) -> dict:
             retry_files = again.get("files", files)
             retry_methods = again.get("methods", [])
             retry_junit = None
-            if stack == "py":
+            if stack in ("py", "self"):
                 retry_junit = str(TMP / f"pytest-{uuid.uuid4().hex[:8]}.xml")
             retry_cmd, retry_cwd = select._command(
                 stack, retry_files, False, toolchain,
