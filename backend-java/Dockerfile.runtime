@@ -1,0 +1,40 @@
+# 运行时镜像：直接用已经构建好的 jar 打包，不在镜像里跑 Maven。
+#
+# 什么时候用它（而不是 Dockerfile）：
+#   生产机是 2 核 2 GB 这类小机器时，`Dockerfile` 的两段构建要在机器上装 JDK + Maven
+#   并下载整棵依赖树，既慢又容易把内存吃到 swap。改成本地/CI 出 jar、服务器只组装镜像，
+#   构建时间从「几分钟 + 几百 MB 下载」降到「几秒」。
+#
+# 用法：
+#   ./mvnw -B clean package -DskipTests                  # 出 jar（target/*.jar）
+#   docker build -f Dockerfile.runtime -t otaku-backend:latest .
+#   # 或者让 compose 用它：BACKEND_DOCKERFILE=Dockerfile.runtime
+#
+# 注意：jar 是**这个文件所在目录**的 target/ 里的；不在 target/ 里就先构建一次。
+
+FROM eclipse-temurin:17-jre-jammy
+WORKDIR /app
+
+# curl 只为 HEALTHCHECK 用；装完清缓存，别把镜像撑大。
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends curl \
+ && rm -rf /var/lib/apt/lists/*
+
+# 非 root 运行。封面缓存目录必须存在且可写，否则回源缓存会失败。
+RUN groupadd -r otaku \
+ && useradd -r -g otaku otaku \
+ && mkdir -p /app/data/covers \
+ && chown -R otaku:otaku /app
+
+# 只匹配 target/xxx.jar；target/xxx.jar.original 不会被带进来。
+COPY --chown=otaku:otaku target/*.jar /app/app.jar
+
+USER otaku
+EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=60s --retries=3 \
+  CMD curl -fsS http://127.0.0.1:8080/actuator/health || exit 1
+
+# MaxRAMPercentage 而不是固定 -Xmx：小机器上让 JVM 按容器实际限制算。
+# 容器设了 mem_limit 时这里算的是**限制值**，不是宿主机内存。
+ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75", "-jar", "/app/app.jar"]
