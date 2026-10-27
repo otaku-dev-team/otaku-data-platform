@@ -24,7 +24,7 @@ from datetime import datetime, timezone
 from typing import Any, Iterator, Sequence
 
 from .bangumi import BangumiArchiveSource
-from .config import SOURCE_BANGUMI, SOURCE_NAME, SyncConfig
+from .config import SOURCE_BANGUMI, SOURCE_NAME, SOURCE_VNDB, SyncConfig
 from .importer import ImportDeliveryError, JavaImporter
 from .models import (
     REASON_INTERNAL_ERROR,
@@ -37,6 +37,7 @@ import httpx
 
 from .source import FailedPage, OtakuSiteSource
 from .cleaning import validate, validate_article, validate_schedule
+from .sources.vndb import VndbSource
 
 # 服务端故障类拒绝码：条目本身没问题，是入库时撞上了服务端状况
 # （如并发导入时 DuplicateKeyException 被误归类，见 Issue #81）。
@@ -171,6 +172,33 @@ def _iter_items(
                 yield from source.iter_many(types, started, limit=limit)
         return
 
+    if config.source == SOURCE_VNDB:
+        # VNDB 与首站的抓取骨架不同：它没有「按类型分页」这个维度
+        # （kana 的 /vn 一次给全部视觉小说，work_type 固定为 game），
+        # 所以这里不走下面那个 for work_type in types 的循环，直接单流产出。
+        #
+        # base_url 用 config.vndb_base_url，**不是** config.source_base_url——
+        # 后者默认指向首站 Otaku，沿用它会把请求打到首站而不是 VNDB。
+        with VndbSource(
+            config.vndb_base_url,
+            timeout=config.timeout_seconds,
+            user_agent=config.user_agent,
+            page_size=config.source_page_size,
+            request_interval_seconds=config.request_interval_seconds,
+            max_pages=config.max_pages,
+            max_attempts=config.max_attempts,
+            backoff_seconds=config.backoff_seconds,
+        ) as source:
+            emitted = 0
+            for item in source.iter_work_items(started):
+                yield item
+                emitted += 1
+                if limit is not None and emitted >= limit:
+                    break
+        if failed_pages is not None:
+            failed_pages.extend(source.failed_pages)
+        return
+
     with OtakuSiteSource(
         config.source_base_url,
         timeout=config.timeout_seconds,
@@ -229,6 +257,11 @@ def run(
     else:
         types = list(work_types or config.work_types)
         only_pages = None
+    if config.source == SOURCE_VNDB:
+        # VNDB 只有视觉小说一种（work_type 固定 game），没有类型维度。
+        # 类型段只进 batch_id 与报告，写成首站那四个类型名会让人以为
+        # 这批数据按四类抓过——实际是单流全量。这里改成实际的 game。
+        types = ["game"]
     started = utc_now()
     out_dir = output_dir or config.output_dir
 

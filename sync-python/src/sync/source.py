@@ -161,19 +161,32 @@ class OtakuSiteSource:
             time.sleep(remaining)
         self._last_request_at = time.monotonic()
 
-    def _get(self, path: str, params: dict[str, Any] | None = None) -> httpx.Response:
-        """带退避重试的 GET。
+    def _request(
+        self,
+        method: str,
+        path: str,
+        params: dict[str, Any] | None = None,
+        json: dict[str, Any] | None = None,
+    ) -> httpx.Response:
+        """带退避重试的请求（GET / POST 通用）。
 
         来源站是公网服务：个别页要 30 秒以上（DB 慢查询）、偶发直接断连，
         这两种都是**瞬时**的，下一次往往就好了。抓取层原先没有任何重试，
         一次抖动就让整批全量抓取白跑——全量 90 页里碰上任意一页不稳定的概率
         接近 1。重试只针对可恢复的错误，400/404/422 这类立刻抛出。
+
+        抽成 `_request` 是为了让 POST 也能用同一套重试：第二站 VNDB 的
+        kana API 是 POST + 请求体分页，与首站的 GET 分页形态不同，
+        但「限流 + 退避 + 只重试可恢复错误」的规则应当完全一致，
+        不该为 POST 再写一套。
         """
         last_exc: Exception | None = None
         for attempt in range(1, self.max_attempts + 1):
             self._throttle()
             try:
-                resp = self._client.get(f"{self.base_url}{path}", params=params)
+                resp = self._client.request(
+                    method, f"{self.base_url}{path}", params=params, json=json
+                )
             except RETRYABLE_TRANSPORT as exc:
                 last_exc = exc
             else:
@@ -191,6 +204,10 @@ class OtakuSiteSource:
                 time.sleep(self.backoff_seconds * (2 ** (attempt - 1)))
         assert last_exc is not None
         raise last_exc
+
+    def _get(self, path: str, params: dict[str, Any] | None = None) -> httpx.Response:
+        """带退避重试的 GET。语义见 `_request`。"""
+        return self._request("GET", path, params=params)
 
     def fetch_page(
         self, work_type: str, page: int, page_size: int | None = None
