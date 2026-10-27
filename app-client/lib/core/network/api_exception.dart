@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:dio/dio.dart';
 
 /// 契约第 7 节的错误码。接口②③④ 共用同一个信封：
@@ -47,6 +49,7 @@ class ApiException implements Exception {
     required this.code,
     required this.message,
     this.statusCode,
+    this.retryAfter,
   });
 
   final ApiErrorCode code;
@@ -55,6 +58,12 @@ class ApiException implements Exception {
   final String message;
 
   final int? statusCode;
+
+  /// 429 时的 `Retry-After`（服务端说「过多久再来」）。
+  ///
+  /// 契约里这个头是强制的（`docs/openapi.yaml` 公共读限流那节），客户端不能自己拍一个
+  /// 固定退避时间——限流窗口是按 IP 的，别人打满了，我们等 1 秒也没用。
+  final Duration? retryAfter;
 
   /// 契约 6.2：详情 404 只提示并返回列表，**不自动重试**。
   bool get isNotFound =>
@@ -75,7 +84,7 @@ class ApiException implements Exception {
   String get userMessage => switch (code) {
     ApiErrorCode.network => '网络连接失败，请检查网络后重试',
     ApiErrorCode.timeout => '请求超时，请稍后重试',
-    ApiErrorCode.rateLimited => '请求太频繁了，请稍后再试',
+    ApiErrorCode.rateLimited => _rateLimitedMessage,
     ApiErrorCode.internal => '服务端出错了，请稍后重试',
     ApiErrorCode.workNotFound => '作品不存在',
     ApiErrorCode.articleNotFound => '资讯不存在',
@@ -86,11 +95,44 @@ class ApiException implements Exception {
     _ => message.isNotEmpty ? message : '出了点问题，请重试',
   };
 
+  /// 429 的提示要带上「等多久」：只说「稍后再试」，用户会立刻再点一次，
+  /// 而那正好又是窗口里的一次请求。
+  String get _rateLimitedMessage {
+    final wait = retryAfter;
+    if (wait == null || wait <= Duration.zero) return '请求太频繁了，请稍后再试';
+    final seconds = wait.inSeconds < 1 ? 1 : wait.inSeconds;
+    return '请求太频繁了，请 $seconds 秒后再试';
+  }
+
+  /// 解析 `Retry-After`：既可能是秒数（`120`），也可能是 HTTP-date
+  /// （`Wed, 21 Oct 2026 07:28:00 GMT`）。两种在 RFC 9110 里都合法，
+  /// 只认秒数会在某些网关后面退化成「永远不重试」。
+  static Duration? parseRetryAfter(String? raw) {
+    if (raw == null) return null;
+    final text = raw.trim();
+    if (text.isEmpty) return null;
+
+    final seconds = int.tryParse(text);
+    if (seconds != null) {
+      return seconds <= 0 ? Duration.zero : Duration(seconds: seconds);
+    }
+
+    try {
+      final at = HttpDate.parse(text);
+      final delta = at.difference(DateTime.now().toUtc());
+      return delta.isNegative ? Duration.zero : delta;
+    } on Object {
+      // 头写坏了：当作没给，交给上层用默认提示，不要因此把 429 说成别的错。
+      return null;
+    }
+  }
+
   /// 解析 `{"error": {"code": "...", "message": "..."}}`。
   /// 服务端还没按信封返回时（比如网关的 HTML 错误页）退化为按状态码推断。
   factory ApiException.fromResponse(Response<dynamic>? response) {
     final status = response?.statusCode;
     final body = response?.data;
+    final retryAfter = parseRetryAfter(response?.headers.value('retry-after'));
 
     if (body is Map) {
       final envelope = body['error'];
@@ -100,6 +142,7 @@ class ApiException implements Exception {
           code: ApiErrorCode.fromWire(envelope['code']),
           message: rawMessage is String ? rawMessage : '',
           statusCode: status,
+          retryAfter: retryAfter,
         );
       }
     }
@@ -120,6 +163,7 @@ class ApiException implements Exception {
       },
       message: 'HTTP $status',
       statusCode: status,
+      retryAfter: retryAfter,
     );
   }
 
