@@ -51,6 +51,7 @@ dependencies:
   # 不需要时区数据库（见 lib/features/reminders/local_reminder_scheduler.dart）。
   flutter_local_notifications: ^22.3.2
   timezone: ^0.11.2
+  webview_flutter: ^4.14.1
 
 dev_dependencies:
   flutter_test:

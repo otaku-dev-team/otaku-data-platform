@@ -122,6 +122,9 @@ APP_NAME=$(conf_get APP_NAME)
 BRAND_COMPANY=$(conf_get BRAND_COMPANY)
 APP_ID=$(conf_get APP_ID)
 API_BASE_URL=$(conf_get API_BASE_URL)
+# 可选：来源站地址（HTML 页面，给 App 内 WebView 登录 / 注册用）。
+# 不填不报错，只是登录页不显示站点入口——与不注入时的默认行为一致。
+SITE_BASE_URL=$(conf_get SITE_BASE_URL)
 
 case "$API_BASE_URL" in
   http://* | https://*) ;;
@@ -141,6 +144,13 @@ cmd+=("--dart-define=APP_NAME=$APP_NAME")
 cmd+=("--dart-define=SITE_ID=$SITE_ID")
 cmd+=("--dart-define=BRAND_COMPANY=$BRAND_COMPANY")
 cmd+=("--dart-define=API_BASE_URL=$API_BASE_URL")
+if [ -n "$SITE_BASE_URL" ]; then
+  case "$SITE_BASE_URL" in
+    http://* | https://*) ;;
+    *) die "SITE_BASE_URL 要以 http:// 或 https:// 开头，当前：$SITE_BASE_URL" ;;
+  esac
+  cmd+=("--dart-define=SITE_BASE_URL=$SITE_BASE_URL")
+fi
 if [ "$TARGET" = "apk" ]; then
   # Android 的系统级身份只能构建期定（applicationId 与 Launcher 名），见 site-branding.md §0。
   cmd+=("-PappName=$APP_NAME" "-PappId=$APP_ID")
@@ -149,6 +159,11 @@ fi
 say "站点：$SITE（$SITE_ID）"
 printf '[build_site] 应用名：%s ｜ 归属：%s ｜ 包名：%s\n' "$APP_NAME" "$BRAND_COMPANY" "$APP_ID"
 printf '[build_site] 后端：%s\n' "$API_BASE_URL"
+if [ -n "$SITE_BASE_URL" ]; then
+  printf '[build_site] 站点：%s（App 内登录 / 注册）\n' "$SITE_BASE_URL"
+else
+  say "站点地址未配置（SITE_BASE_URL）——App 内登录入口将不显示"
+fi
 printf '[build_site] 命令：'
 printf ' %q' "${cmd[@]}"
 printf '\n'

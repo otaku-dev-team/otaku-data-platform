@@ -46,4 +46,14 @@ abstract final class AppConfig {
     if (_baseUrlOverride.isNotEmpty) return _baseUrlOverride;
     return Platform.isAndroid ? 'http://10.0.2.2:8080' : 'http://127.0.0.1:8080';
   }
+
+  /// **来源站**地址（不是平台后端）。用于 App 内 WebView 承载站点登录 / 注册页。
+  ///
+  /// 与 [baseUrl] 是两件事：`baseUrl` 是我们自己的 `/api/**`，这个地址是网站的
+  /// HTML 页面（`/oauth/authorize`、`/login`、`/register`）。混用会把授权页
+  /// 打到平台后端上，得到一个 404 的空白 WebView。
+  ///
+  /// 空字符串 = 未配置 = 站点授权入口不可用（登录页隐藏它，不置灰）。
+  /// 由 `sites/<site>/site.conf` 的 `SITE_BASE_URL` 在构建期注入，见 `build_site.sh`。
+  static const String siteBaseUrl = String.fromEnvironment('SITE_BASE_URL');
 }
