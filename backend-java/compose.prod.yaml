@@ -80,6 +80,17 @@ services:
       #    留空会按请求 host 推导，前面有 Nginx 时推导出来的封面地址可能是 localhost
       OTAKU_PUBLIC_BASE_URL: ${OTAKU_PUBLIC_BASE_URL:-}
       OTAKU_COVER_CACHE_DIR: /app/data/covers
+      # ── 对外开放策略（Issue #188）────────────────────────────
+      # 允许跨域读 /api/** 的页面来源（逗号分隔）。留空 = 只放行 localhost 调试。
+      OTAKU_CORS_ALLOWED_ORIGINS: ${OTAKU_CORS_ALLOWED_ORIGINS:-}
+      # 公共读按 IP 限流（每分钟）；封面更严
+      OTAKU_RATE_LIMIT_ENABLED: ${OTAKU_RATE_LIMIT_ENABLED:-true}
+      OTAKU_RATE_LIMIT_PUBLIC_PER_MINUTE: ${OTAKU_RATE_LIMIT_PUBLIC_PER_MINUTE:-600}
+      OTAKU_RATE_LIMIT_COVER_PER_MINUTE: ${OTAKU_RATE_LIMIT_COVER_PER_MINUTE:-120}
+      # 上了 Nginx/反代后必须 true，否则所有请求都算到反代 IP
+      OTAKU_TRUST_FORWARDED_FOR: ${OTAKU_TRUST_FORWARDED_FOR:-false}
+      # 封面防盗链白名单（origin，逗号分隔）；留空 = 不限制（#189 的开关）
+      APP_COVER_ALLOWED_REFERERS: ${OTAKU_COVER_ALLOWED_REFERERS:-}
       # 让 Spring 认 X-Forwarded-Proto / -Host / -For（Nginx 会带过来）。
       # 不设的话 request.getScheme() 永远是 http，即使外面是 https——
       # 目前封面地址由 OTAKU_PUBLIC_BASE_URL 显式给，所以这条是**兜底**：

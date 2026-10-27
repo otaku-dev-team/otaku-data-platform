@@ -27,6 +27,11 @@ info:
     阶段 2 不提供自助注册、找回密码、refresh token、与来源站账号互通。
     本文件只描述请求与响应的**形状**；字段语义、可空规则、创建与更新规则以契约正文为准。
 
+    **公共读限流（Issue #188 形态 A）**：`/api/works`、`/api/tags`、`/api/schedule`、`/api/articles`
+    与 `/api/covers` 按来源 IP 限流（默认 600 次/分钟，封面 120 次/分钟）。
+    超限返回 `429 RATE_LIMITED` + `Retry-After`（秒），请按该值退避重试，不要立即重打。
+    CORS 只放行配置的来源站与本地调试来源；Web 端跨域被拒时表现为 `403`。
+
     三条边界：
     1. 数据单向流动：网站 → 平台 → 客户端，平台不回写网站。
     2. 只有 Java 写业务数据库；Python 只经接口②提交。
@@ -187,6 +192,7 @@ paths:
                         type: array
                         items: { $ref: "#/components/schemas/WorkSummary" }
         "400": { $ref: "#/components/responses/BadRequest" }
+        "429": { $ref: "#/components/responses/RateLimitedWithRetry" }
         "500": { $ref: "#/components/responses/InternalError" }
 
   /api/works/{work_id}:
@@ -207,6 +213,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Work" }
+        "429": { $ref: "#/components/responses/RateLimitedWithRetry" }
         "404": { $ref: "#/components/responses/NotFound" }
         "500": { $ref: "#/components/responses/InternalError" }
 
@@ -244,6 +251,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/RelatedWorks" }
+        "429": { $ref: "#/components/responses/RateLimitedWithRetry" }
         "404": { $ref: "#/components/responses/NotFound" }
         "500": { $ref: "#/components/responses/InternalError" }
 
@@ -281,6 +289,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/TagList" }
         "400": { $ref: "#/components/responses/BadRequest" }
+        "429": { $ref: "#/components/responses/RateLimitedWithRetry" }
         "500": { $ref: "#/components/responses/InternalError" }
 
   /api/schedule:
@@ -303,6 +312,7 @@ paths:
           description: 季度编码（如 202504）；省略取库内最新季度
           schema: { type: string, pattern: "^[0-9]{6}$", example: "202504" }
       responses:
+        "429": { $ref: "#/components/responses/RateLimitedWithRetry" }
         "200":
           description: 成功
           content:
@@ -318,6 +328,7 @@ paths:
       description: |
         全部可用季度，新的在前。给「切换季度」下拉用。库里没有任何档期时返回空数组。
       responses:
+        "429": { $ref: "#/components/responses/RateLimitedWithRetry" }
         "200":
           description: 成功，字符串数组（如 ["202504","202501"]），新的在前
           content:
@@ -363,6 +374,7 @@ paths:
               schema: { type: string, format: binary }
         "304":
           description: If-None-Match 命中，客户端复用本地缓存（无响应体）
+        "429": { $ref: "#/components/responses/RateLimitedWithRetry" }
         "404": { $ref: "#/components/responses/NotFound" }
         "500": { $ref: "#/components/responses/InternalError" }
 
@@ -506,6 +518,7 @@ paths:
           schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
           description: 每页条数，上限 50，超出按 50 截断
       responses:
+        "429": { $ref: "#/components/responses/RateLimitedWithRetry" }
         "200":
           description: 一页资讯
           content:
@@ -518,6 +531,7 @@ paths:
       summary: 全部分类（条数多的在前），给客户端的分类筛选用
       operationId: listArticleCategories
       responses:
+        "429": { $ref: "#/components/responses/RateLimitedWithRetry" }
         "200":
           description: 分类列表
           content:
@@ -545,6 +559,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ArticleDetail" }
+        "429": { $ref: "#/components/responses/RateLimitedWithRetry" }
         "404": { $ref: "#/components/responses/NotFound" }
 
   /internal/import/articles:
