@@ -579,7 +579,11 @@ def build_plan(changed: list[str], stacks: list[str]) -> dict:
     contract_changed = [f for f in changed if f in CONTRACT_FILES]
     if contract_changed:
         for stack, (files, reason) in _contract_selection().items():
-            entry = plan[stack]
+            entry = plan.get(stack)
+            if entry is None:
+                # 只跑部分栈（如 `--stack py`）时，其余栈不在计划里：
+                # 别为契约改动把它们补进来（会跑用户没要的栈），更别 KeyError。
+                continue
             merged = set(entry["files"]) | set(files)
             entry["files"] = sorted(merged)
             entry["mode"] = "files"
