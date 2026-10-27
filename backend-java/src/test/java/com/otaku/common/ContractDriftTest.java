@@ -67,9 +67,16 @@ class ContractDriftTest {
     void detailMatchesWork() throws IOException {
         WorkDto dto = new WorkDto(
                 "W-abc123", "anime", "街角魔族 2丁目", "简介", 2022,
+                null, // titleOriginal
+                null, // aliases
+                null, // media
+                null, // episodes
                 "http://localhost:8080/api/covers/W-abc123",
                 List.of("日常"),
                 new SourceRatingDto(new BigDecimal("7.80"), "0-10", "otaku_site"),
+                null, // staff
+                null, // characters
+                null, // studios
                 "bangumi", "subject-1", "https://bgm.tv/subject/1",
                 Instant.parse("2026-10-20T06:00:00Z"));
 
@@ -166,6 +173,9 @@ class ContractDriftTest {
     private static Map<String, Class<?>> responseTargets() {
         Map<String, Class<?>> targets = new java.util.LinkedHashMap<>();
         targets.put("RelatedWorks", com.otaku.work.dto.RelatedWorksDto.class);
+        // 档 B 关联数组的元素形状（#254 新增 schema）：数据接线归 #255，此处只钉形状
+        targets.put("WorkStaff", com.otaku.work.dto.WorkStaffDto.class);
+        targets.put("WorkCharacter", com.otaku.work.dto.WorkCharacterDto.class);
         // 标签词表（Issue #208）
         targets.put("TagList", com.otaku.work.dto.TagDtos.TagList.class);
         targets.put("TagItem", com.otaku.work.dto.TagDtos.TagItem.class);

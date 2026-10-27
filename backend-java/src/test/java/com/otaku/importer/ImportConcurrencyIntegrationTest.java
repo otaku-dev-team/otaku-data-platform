@@ -158,6 +158,13 @@ class ImportConcurrencyIntegrationTest {
                     null,
                     List.of(),
                     null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
                     null));
         }
         return items;

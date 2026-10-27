@@ -180,7 +180,7 @@ class WorkTagFilterIntegrationTest {
         return new ImportItem(
                 sourceId, "anime", title, null, null, 2022, tags,
                 rating == null ? null : new SourceRating(new BigDecimal(rating), "0-10", "otaku_site"),
-                null);
+                null, null, null, null, null, null, null, null);
     }
 
     private int tagRows(String sourceId) {

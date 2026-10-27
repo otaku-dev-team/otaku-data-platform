@@ -10,10 +10,14 @@ on:
     branches: [main]
     paths:
       - "backend-java/**"
+      - "docs/openapi.yaml"
+      - "docs/stage1-minimal-contract.md"
       - ".github/workflows/backend-java.yml"
   pull_request:
     paths:
       - "backend-java/**"
+      - "docs/openapi.yaml"
+      - "docs/stage1-minimal-contract.md"
       - ".github/workflows/backend-java.yml"
 
 permissions:

@@ -132,6 +132,6 @@ class SecondSourceIntegrationTest {
         return new ImportItem(
                 sourceId, workType, title, null, null, 2024, tags,
                 rating == null ? null : new SourceRating(new BigDecimal(rating), "0-10", "it-second-site"),
-                null);
+                null, null, null, null, null, null, null, null);
     }
 }

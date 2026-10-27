@@ -260,7 +260,7 @@ class TagEndpointsIntegrationTest {
                                            List<String> tags, String rating, int year) {
         return new ImportItem(sourceId, type, title, null, null, year, tags,
                 rating == null ? null : new SourceRating(new BigDecimal(rating), "0-10", "otaku_site"),
-                null);
+                null, null, null, null, null, null, null, null);
     }
 
     /** 词表里按顺序取出标签名，用于比对「截断」语义。 */

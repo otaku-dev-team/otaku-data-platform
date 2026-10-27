@@ -210,7 +210,7 @@ class WorkYearFilterIntegrationTest {
                 rating == null
                         ? null
                         : new ImportBatchRequest.SourceRating(new java.math.BigDecimal(rating), "0-10", "otaku_site"),
-                null);
+                null, null, null, null, null, null, null, null);
     }
 
     private void importBatch(ImportItem... items) {
