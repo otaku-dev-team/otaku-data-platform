@@ -55,6 +55,25 @@ python scripts/smoke.py --base-url <地址>          # 对比，退出码 0 无�
 - 密钥只进环境变量，绝不入库；
 - 不代合并别人的 PR；「确认」是知悉不是审批。
 
+## 推送总掉线（502 / CONNECT tunnel failed / schannel 中断）
+
+本机带全局 `HTTP_PROXY` 时，HTTPS 远端的推送（smart-HTTP 长上传）会被代理间歇 502 掐断，
+而 `api.github.com` 一直正常——所以 `gh pr` / `gh api` 能用、`git push` 老失败，不是权限问题，是传输通道问题。
+
+**根治：远端改走 SSH**（SSH 不经过 HTTP 代理，实测稳定；改完推送不再需要重试或退化到 API 兜底）。
+
+```bash
+ssh-keygen -t ed25519 -N "" -f ~/.ssh/github_otaku          # 本地专用钥，别复用部署钥
+gh api user/keys --method POST --input - <<<"{\"title\":\"$(hostname)\",\"key\":\"$(cat ~/.ssh/github_otaku.pub)\"}"
+git remote set-url origin git@github.com:otaku-dev-team/otaku-data-platform.git
+```
+
+- `~/.ssh/config` 里给 `Host github.com` 固定 `IdentityFile` + `ProxyCommand none`，避免被代理劫持；
+- 22 端口被墙时改走 `ssh.github.com:443`（同文件加一段 `Host ssh.github.com` / `Port 443`，远端换成该 Host）；
+- **本仓库禁用了 deploy key**（`POST /repos/:owner/:repo/keys` 会 422），只能用账号级 SSH key；
+- 只想临时确认哪条通道通：`curl -s -o /dev/null -w '%{http_code}' https://api.github.com/` 正常而
+  `https://github.com/` 超时，就走 SSH。
+
 ## 找东西
 
 | 想知道 | 看 |
