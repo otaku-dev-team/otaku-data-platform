@@ -61,6 +61,8 @@ tags:
     description: Issue #144。站主只能看/管自己站点的数据；路径与请求里都没有 site 参数，站点来自登录态
   - name: 内部站点
     description: 平台侧建站与开设站主；仅内网可用，站主后台里没有这些接口的调用点
+  - name: 推送设备
+    description: W1.3b：本人设备令牌登记与解绑，路径里永不出现 user_id
 
 security: []
 
@@ -777,6 +779,87 @@ paths:
           description: 已取消（或本来就没收藏）
         "401": { $ref: "#/components/responses/UnauthorizedSession" }
 
+  /api/me/devices:
+    post:
+      tags: [推送设备]
+      summary: 登记或更新本设备令牌（upsert）
+      operationId: registerDevice
+      description: |
+        **upsert 键是 `(user_id, device_id)`，不是 token**：token 会轮换，device_id 不会；
+        用 token 当键会在每次轮换时留下一条僵尸记录。
+
+        **token 全局唯一，跨账号转移**：同一台设备换账号登录时，新账号注册同一个 token，
+        旧账号那条**立即失效**。否则前一个用户退出登录后，这台设备仍会收到他的推送，
+        而通知会直接显示在锁屏上。与收藏按账号隔离是同一类问题，后果更直接。
+
+        token 轮换后重新 `POST` 即可覆盖（客户端在 provider 的 `onTokenRefresh` 时调）。
+
+        **响应永不回显 `token`**：那是凭据，客户端本来就有，回显只增加泄露面。
+
+        每账号最多登记 10 台设备，超出返回 `409 DEVICE_LIMIT_EXCEEDED`。
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DeviceRegistrationRequest" }
+      responses:
+        "201":
+          description: 新建
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Device" }
+        "200":
+          description: 已存在，更新成功
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Device" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/UnauthorizedSession" }
+        "409": { $ref: "#/components/responses/DeviceLimitExceeded" }
+
+    get:
+      tags: [推送设备]
+      summary: 列出本账号已登记的设备
+      operationId: listDevices
+      description: |
+        **不返回 `token`**。按 `created_at DESC` 排序。
+        客户端用它来展示「这台设备已登记推送」的状态。
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Device" }
+        "401": { $ref: "#/components/responses/UnauthorizedSession" }
+
+  /api/me/devices/{device_id}:
+    delete:
+      tags: [推送设备]
+      summary: 解绑本设备（幂等）
+      operationId: deleteDevice
+      description: |
+        记录不存在也返回 `204`（与收藏删除的幂等口径一致）。
+        客户端在登出时应先 `DELETE` 再撤销会话；**删失败不阻断登出**。
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: device_id
+          in: path
+          required: true
+          description: 客户端生成的安装级标识
+          schema: { type: string, maxLength: 64 }
+      responses:
+        "204":
+          description: 已解绑（或本来就没登记）
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/UnauthorizedSession" }
+
   /internal/accounts:
     post:
       tags: [内部账号]
@@ -1253,6 +1336,13 @@ components:
           schema: { $ref: "#/components/schemas/ErrorResponse" }
     ConflictUsername:
       description: 用户名已被占用（`USERNAME_TAKEN`）。大小写不敏感，`Alice` 与 `alice` 视为同名
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    DeviceLimitExceeded:
+      description: |
+        登记的推送设备数已达每账号上限（`DEVICE_LIMIT_EXCEEDED`）。
+        客户端应提示用户先解绑旧设备，而不是反复重试。
       content:
         application/json:
           schema: { $ref: "#/components/schemas/ErrorResponse" }
@@ -2416,3 +2506,58 @@ components:
         note:
           type: string
           description: 给平台运营看的说明（含"站点本身不受影响"等事实）
+    DeviceRegistrationRequest:
+      type: object
+      required: [device_id, platform, provider, token]
+      properties:
+        device_id:
+          type: string
+          maxLength: 64
+          description: |
+            客户端生成的**安装级**标识（重装后变）。不是 token——token 会轮换，
+            用它当 upsert 键会在每次轮换时留下一条僵尸记录。
+        platform:
+          type: string
+          enum: [android, windows, ios]
+        provider:
+          type: string
+          enum: [fcm, apns]
+          description: 推送服务商。`apns` 仅留位——本仓库没有 iOS 端
+        token:
+          type: string
+          maxLength: 512
+          description: |
+            provider 下发的令牌。**视同凭据**：服务端不回显、不进日志。
+            全局唯一，跨账号转移——别个账号注册同一个 token 时，本账号那条立即失效。
+        app_version:
+          type: string
+          maxLength: 32
+          nullable: true
+          description: 客户端版本，仅用于排查
+        enabled:
+          type: boolean
+          default: true
+          description: 是否启用推送。省略按 `true` 处理
+
+    Device:
+      type: object
+      description: |
+        已登记设备。**不含 `token`**——那是凭据，客户端本来就有，回显只增加泄露面。
+      required: [device_id, platform, provider, enabled, created_at, updated_at]
+      properties:
+        device_id:
+          type: string
+        platform:
+          type: string
+          enum: [android, windows, ios]
+        provider:
+          type: string
+          enum: [fcm, apns]
+        enabled:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
