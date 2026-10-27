@@ -201,7 +201,7 @@ paths:
       summary: 作品详情（接口④）
       operationId: getWork
       description: |
-        按 `work_id` 取全部 12 个字段。
+        按 `work_id` 取全部 16 个字段。
 
         `work_id` 一律当作**不透明字符串**：不解析其结构，不做数值比较。
         不存在与格式非法**都返回 404**，不用错误码区分"是否存在"。
@@ -1747,9 +1747,10 @@ components:
     Work:
       type: object
       description: |
-        详情。**全部 12 个字段**（含本阶段新增的可空 `source_url` 与 `release_year`）。
+        详情。**全部 16 个字段**（含本阶段新增的可空 `source_url` 与 `release_year`，
+        以及 2026-10-28 扩入的 4 个富字段 `title_original` / `aliases` / `media` / `episodes`）。
         列表项是 7 字段（含 `release_year`），不含
-        `summary` / `source` / `source_id` / `source_url` / `updated_at`。
+        `summary` / `source` / `source_id` / `source_url` / `updated_at` 与 4 个富字段。
       required: [work_id, work_type, title, source, source_id, updated_at]
       properties:
         work_id:
@@ -1775,6 +1776,41 @@ components:
             来源站年份原值。`null` = 来源未提供，不是 0 年。
             与 `main_rating` 一样，可空字段**以 `null` 出现而不是被省略**。
           example: 1995
+        title_original:
+          type: string
+          nullable: true
+          description: |
+            原名（来源语言的原文标题）。`null` = 来源没有，**不要用 `title` 回填**——
+            两者相同时来源本就会给同一个值，回填只会让「有没有原名」这件事失去信号。
+            实测非空率 81.3%（2026-10-28，首站 18,828 条）。
+          example: 新世紀エヴァンゲリオン
+        aliases:
+          type: array
+          nullable: true
+          items: { type: string }
+          description: |
+            别名 / 译名列表。**三态**与 `tags` 一致：`null` = 来源未提供（不覆盖已有值）；
+            `[]` = 明确没有别名；非空数组 = 有别名。
+            实测 99.5% 的记录有至少一个别名（2026-10-28），是富字段里填充最好的一项。
+          example: ["新世纪天鹰战士", "EVA"]
+        media:
+          type: string
+          nullable: true
+          description: |
+            媒介形态，**来源原值原样返回**：`TV` / `剧场版` / `OVA` / `Web` / `游戏` / `漫画` / `小说` 等，
+            中英混杂。平台**不做跨源枚举归一**——各站词表不同，强行归一等于替来源定义它自己的分类；
+            客户端需要图标/文案时自行映射，不认识的值按原样显示，不得丢弃。
+            实测非空率 93.4%（2026-10-28）。
+          example: TV
+        episodes:
+          type: integer
+          nullable: true
+          minimum: 1
+          maximum: 10000
+          description: |
+            话数 / 集数。`null` = 来源未提供（**不是 0 话**，也不代表「完结」）。
+            实测非空率 61.6%，取值范围 1–1960（2026-10-28）。
+          example: 26
         cover_url: { type: string, nullable: true, description: 平台后端代理+缓存地址（同列表项）；null 表示无封面 }
         tags:
           type: array
@@ -2005,11 +2041,15 @@ components:
     ImportItem:
       type: object
       description: |
-        提交项 9 个字段。`work_id` 由 Java 生成、`updated_at` 由 Java 维护、`source` 在批次级，
+        提交项 13 个字段。`work_id` 由 Java 生成、`updated_at` 由 Java 维护、`source` 在批次级，
         因此都不出现在条目里。
 
         `source_url` 与 `release_year` 都是**可选**字段：适配器能可靠确定时提供，
         确定不了就传 `null`（或不传），**不要猜**。平台原样入库，详情接口返回。
+
+        2026-10-28 扩入 4 个富字段（`title_original` / `aliases` / `media` / `episodes`）：
+        它们全部**可省略**，省略 = 保留库中原值（与 `release_year` 同一语义）；
+        传 `null` 同样不清空已有值。这样旧版同步器不改也能继续工作。
       required: [source_id, work_type, title]
       properties:
         source_id:
@@ -2059,6 +2099,39 @@ components:
             来源站**人读原页**地址（不是 `/api/...` 接口地址）。
             只接受 http/https；其它协议或超长值会被平台丢弃（不拒收整条，只把该字段置 null）。
           example: "http://154.8.194.198:8000/contents/476"
+        title_original:
+          type: string
+          nullable: true
+          maxLength: 500
+          description: |
+            原名。省略或 `null` = 本次没拿到（不覆盖已有值）。
+          example: 新世紀エヴァンゲリオン
+        aliases:
+          type: array
+          nullable: true
+          maxItems: 50
+          items: { type: string, maxLength: 200 }
+          description: |
+            别名列表。三态同 `tags`：省略/`null` = 本次没拿到（不覆盖）；`[]` = 明确没有别名（清空）。
+          example: ["新世纪天鹰战士", "EVA"]
+        media:
+          type: string
+          nullable: true
+          maxLength: 64
+          description: |
+            媒介形态，**来源原值**（TV / 剧场版 / OVA / Web / 游戏 / 漫画 / 小说 …）。
+            平台不做跨源枚举归一，也不做中文/英文转换。
+          example: TV
+        episodes:
+          type: integer
+          nullable: true
+          minimum: 1
+          maximum: 10000
+          description: |
+            话数。省略或 `null` = 本次没拿到（不覆盖已有值）。
+            越界（0 或 > 10000）整条拒收，错误码 `INVALID_EPISODES`——不静默置 null，
+            因为 `0 话` 与「未提供」在展示上含义完全不同。
+          example: 26
 
     ImportBatchResult:
       type: object
