@@ -38,6 +38,8 @@ public enum ErrorCode {
     USERNAME_TAKEN(HttpStatus.CONFLICT),
     /** 阶段 2：改状态时收藏已不存在（对应验收 C11，客户端应提示刷新而不是自动重新收藏）。 */
     COLLECTION_REQUIRED(HttpStatus.CONFLICT),
+    /** W1.3b：登记的推送设备数超过每账号上限（方案 §4.3 第 5 点）。 */
+    DEVICE_LIMIT_EXCEEDED(HttpStatus.CONFLICT),
     BATCH_TOO_LARGE(HttpStatus.PAYLOAD_TOO_LARGE),
     RATE_LIMITED(HttpStatus.TOO_MANY_REQUESTS),
     INTERNAL(HttpStatus.INTERNAL_SERVER_ERROR);

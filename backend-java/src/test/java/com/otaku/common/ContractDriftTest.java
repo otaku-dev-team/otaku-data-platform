@@ -2,6 +2,7 @@ package com.otaku.common;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.otaku.device.dto.DeviceDto;
 import com.otaku.work.WorkController;
 import com.otaku.work.dto.SourceRatingDto;
 import com.otaku.work.dto.WorkDto;
@@ -108,6 +109,19 @@ class ContractDriftTest {
     }
 
     @Test
+    @DisplayName("设备响应体永远不含 token——即使哪天契约被改成含 token，这条也不放行")
+    void deviceResponseNeverExposesToken() {
+        DeviceDto dto = new DeviceDto(
+                "3f2b9c1e", "android", "fcm", true,
+                Instant.parse("2026-10-25T12:00:00Z"),
+                Instant.parse("2026-10-25T12:00:00Z"));
+
+        assertThat(objectMapper.valueToTree(dto).has("token"))
+                .as("token 是凭据：客户端本来就有，回显只增加泄露面。字段集比对拦不住「契约和 DTO 一起加」，所以单独钉一条")
+                .isFalse();
+    }
+
+    @Test
     @DisplayName("其余对外 schema 一次性全扫：任何一个字段集对不上都失败，且一次列出全部问题")
     void everyResponseDtoMatchesContract() throws IOException {
         Map<String, Object> api = openapi();
@@ -195,6 +209,7 @@ class ContractDriftTest {
         // 平台侧状态流转（停用/启用站点与站主）的出参
         targets.put("SiteStatusChange", com.otaku.console.dto.InternalSiteDtos.SiteStatusChange.class);
         targets.put("SiteAdminStatusChange", com.otaku.console.dto.InternalSiteDtos.SiteAdminStatusChange.class);
+        targets.put("Device", com.otaku.device.dto.DeviceDto.class);
         return targets;
     }
 
@@ -215,6 +230,7 @@ class ContractDriftTest {
         targets.put("ConsoleUserStatusRequest", com.otaku.console.dto.ConsoleDtos.UserStatusRequest.class);
         targets.put("SiteCreateRequest", com.otaku.console.dto.InternalSiteDtos.SiteCreateRequest.class);
         targets.put("SiteAdminCreateRequest", com.otaku.console.dto.InternalSiteDtos.SiteAdminCreateRequest.class);
+        targets.put("DeviceRegistrationRequest", com.otaku.device.dto.DeviceRegistrationRequest.class);
         return targets;
     }
 
