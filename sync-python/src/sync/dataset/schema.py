@@ -28,7 +28,12 @@
 from __future__ import annotations
 
 #: 数据集格式版本。结构变更（增删列/改语义）必须递增，导入器据此拒收未知版本。
-DATASET_VERSION = "1"
+#:
+#: v1 → v2（2026-10-28）：新增 `people` 表（人物 / 公司实体），并把 `work_credits`
+#: 的取数从「整表照搬」改成「按 role 白名单过滤」。加表本身是增量变更，但同一份
+#: 映射文件里 credits 的口径也变了（从 40.8 万条变 18.3 万条），读方不能默认
+#: 「v1 的 credits 与 v2 的 credits 是同一批数据」，所以升版本而不是悄悄扩表。
+DATASET_VERSION = "2"
 
 #: 导出器自身版本，写进 meta 便于排查「哪个版本导出的坏数据」。
 EXPORTER_VERSION = "1.0.0"
@@ -118,6 +123,15 @@ CREATE TABLE work_facts (
     key       TEXT NOT NULL,
     value     TEXT NOT NULL,
     PRIMARY KEY (source_id, key)
+);
+
+-- 人物 / 公司实体。`work_credits.person_ref` 与 `work_cast.person_ref` 指向这里的 source_id。
+-- 没有实体的人名（Staff 侧大量如此，来自 infobox 文本解析）不进这张表，person_ref 留空。
+CREATE TABLE people (
+    source_id         TEXT PRIMARY KEY,
+    name              TEXT NOT NULL,
+    entity_type       TEXT,
+    bangumi_person_id TEXT
 );
 
 -- 制作人员
@@ -220,7 +234,7 @@ CREATE INDEX ix_schedules_season ON schedules(season_code);
 
 #: 数据集内所有表，顺序即导出顺序（父表先于子表，便于调试时用 sqlite 手查）。
 DATASET_TABLES = (
-    "works", "work_tags", "work_facts", "work_credits", "work_cast",
+    "works", "work_tags", "work_facts", "people", "work_credits", "work_cast",
     "work_studios", "work_relations", "series", "tags",
     "articles", "article_links", "schedules",
 )

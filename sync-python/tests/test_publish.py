@@ -429,3 +429,301 @@ def test_error_details_are_capped(tmp_path: Path) -> None:
     assert report.counts["rejected"] == 3
     assert len(report.errors) == 3
     assert report.errors[0].reason_code == "TITLE_TOO_LONG"
+
+
+# --------------------------------------------------------------- 档 B 关联数组
+
+
+def _add_relations(
+    path: Path,
+    credits: list[dict] | None = None,
+    cast: list[dict] | None = None,
+    studios: list[dict] | None = None,
+) -> None:
+    """往数据集里补关联表数据（模拟导出器写过之后的状态）。"""
+    conn = sqlite3.connect(path)
+    for row in credits or []:
+        conn.execute(
+            "INSERT INTO work_credits (source_id, role, name, person_ref, tier,"
+            " sort_order) VALUES (?,?,?,?,?,?)",
+            (
+                row["source_id"],
+                row["role"],
+                row["name"],
+                row.get("person_ref"),
+                row.get("tier", "main"),
+                row.get("sort_order", 0),
+            ),
+        )
+    for row in cast or []:
+        conn.execute(
+            "INSERT INTO work_cast (source_id, character, actor, person_ref,"
+            " relation, sort_order) VALUES (?,?,?,?,?,?)",
+            (
+                row["source_id"],
+                row["character"],
+                row["actor"],
+                row.get("person_ref"),
+                row.get("relation"),
+                row.get("sort_order", 0),
+            ),
+        )
+    for row in studios or []:
+        conn.execute(
+            "INSERT INTO work_studios (source_id, name) VALUES (?, ?)",
+            (row["source_id"], row["name"]),
+        )
+    conn.commit()
+    conn.close()
+
+
+def test_relation_arrays_flow_into_payload(tmp_path: Path) -> None:
+    """Staff / 角色声优 / 制作公司按作品聚合进一条载荷。"""
+    ds = make_dataset(tmp_path / "ds.db", [{"source_id": "W-1", "title": "甲"}])
+    _add_relations(
+        ds,
+        credits=[
+            {"source_id": "W-1", "role": "导演", "name": "山田", "sort_order": 0},
+            {"source_id": "W-1", "role": "脚本", "name": "伊藤",
+             "person_ref": "9001", "sort_order": 1},
+        ],
+        cast=[
+            {"source_id": "W-1", "character": "艾妲", "actor": "長谷川",
+             "relation": "配角", "person_ref": "7001", "sort_order": 0},
+        ],
+        studios=[{"source_id": "W-1", "name": "J.C.STAFF"}],
+    )
+
+    payload = _payloads(ds)["W-1"]
+
+    assert payload["staff"] == [
+        {"role": "导演", "name": "山田", "person_id": None},
+        {"role": "脚本", "name": "伊藤", "person_id": "9001"},
+    ]
+    assert payload["characters"] == [
+        {"name": "艾妲", "actor": "長谷川", "character_type": "配角",
+         "person_id": "7001"},
+    ]
+    assert payload["studios"] == ["J.C.STAFF"]
+
+
+def test_sort_order_keeps_source_ordering(tmp_path: Path) -> None:
+    """顺序按来源侧的 sort_order，不按名字重排——那是替来源决定谁更重要。"""
+    ds = make_dataset(tmp_path / "ds.db", [{"source_id": "W-1", "title": "甲"}])
+    _add_relations(
+        ds,
+        credits=[
+            {"source_id": "W-1", "role": "脚本", "name": "A", "sort_order": 5},
+            {"source_id": "W-1", "role": "导演", "name": "Z", "sort_order": 1},
+        ],
+    )
+
+    assert [s["name"] for s in _payloads(ds)["W-1"]["staff"]] == ["Z", "A"]
+
+
+def test_absent_relations_are_omitted_not_empty(tmp_path: Path) -> None:
+    """没有关联数据的作品**不发** `[]`。
+
+    `[]` 在契约里是「明确没有，清空已有值」。数据集里没有行分不清「确实没有」
+    与「源站没录」，误判就是不可逆的内容损失——所以宁可不覆盖。
+    """
+    ds = make_dataset(tmp_path / "ds.db", [{"source_id": "W-1", "title": "甲"}])
+
+    payload = _payloads(ds)["W-1"]
+
+    for key in ("staff", "characters", "studios"):
+        assert key not in payload
+
+
+def test_duplicate_relation_rows_are_collapsed(tmp_path: Path) -> None:
+    """源表没有唯一约束，同一个人同一职位可能有两行——载荷里只出一条。"""
+    ds = make_dataset(tmp_path / "ds.db", [{"source_id": "W-1", "title": "甲"}])
+    _add_relations(
+        ds,
+        credits=[
+            {"source_id": "W-1", "role": "导演", "name": "山田"},
+            {"source_id": "W-1", "role": "导演", "name": "山田"},
+        ],
+    )
+
+    assert len(_payloads(ds)["W-1"]["staff"]) == 1
+
+
+def test_rich_fields_flow_into_payload(tmp_path: Path) -> None:
+    """档 A 的 4 个富字段从数据集带进载荷。"""
+    ds = make_dataset(tmp_path / "ds.db", [{"source_id": "W-1", "title": "甲"}])
+    conn = sqlite3.connect(ds)
+    conn.execute(
+        "UPDATE works SET title_original=?, aliases_json=?, media=?, episodes=?"
+        " WHERE source_id='W-1'",
+        ("新世紀エヴァンゲリオン", '["天鹰战士", "EVA"]', "TV", 26),
+    )
+    conn.commit()
+    conn.close()
+
+    payload = _payloads(ds)["W-1"]
+
+    assert payload["title_original"] == "新世紀エヴァンゲリオン"
+    assert payload["aliases"] == ["天鹰战士", "EVA"]
+    assert payload["media"] == "TV"
+    assert payload["episodes"] == 26
+
+
+def test_broken_aliases_json_is_not_sent(tmp_path: Path) -> None:
+    """别名 JSON 解析失败就不发：`[]` 会清空已有别名，而我们并不知道有没有。"""
+    ds = make_dataset(tmp_path / "ds.db", [{"source_id": "W-1", "title": "甲"}])
+    conn = sqlite3.connect(ds)
+    conn.execute("UPDATE works SET aliases_json='{不是数组' WHERE source_id='W-1'")
+    conn.commit()
+    conn.close()
+
+    assert "aliases" not in _payloads(ds)["W-1"]
+
+
+# --------------------------------------------------------------- 档 B 关联数组
+
+
+def _add_relations(
+    path: Path,
+    credits: list[dict] | None = None,
+    cast: list[dict] | None = None,
+    studios: list[dict] | None = None,
+) -> None:
+    """往数据集里补关联表数据（模拟导出器写过之后的状态）。"""
+    conn = sqlite3.connect(path)
+    for row in credits or []:
+        conn.execute(
+            "INSERT INTO work_credits (source_id, role, name, person_ref, tier,"
+            " sort_order) VALUES (?,?,?,?,?,?)",
+            (
+                row["source_id"],
+                row["role"],
+                row["name"],
+                row.get("person_ref"),
+                row.get("tier", "main"),
+                row.get("sort_order", 0),
+            ),
+        )
+    for row in cast or []:
+        conn.execute(
+            "INSERT INTO work_cast (source_id, character, actor, person_ref,"
+            " relation, sort_order) VALUES (?,?,?,?,?,?)",
+            (
+                row["source_id"],
+                row["character"],
+                row["actor"],
+                row.get("person_ref"),
+                row.get("relation"),
+                row.get("sort_order", 0),
+            ),
+        )
+    for row in studios or []:
+        conn.execute(
+            "INSERT INTO work_studios (source_id, name) VALUES (?, ?)",
+            (row["source_id"], row["name"]),
+        )
+    conn.commit()
+    conn.close()
+
+
+def test_relation_arrays_flow_into_payload(tmp_path: Path) -> None:
+    """Staff / 角色声优 / 制作公司按作品聚合进一条载荷。"""
+    ds = make_dataset(tmp_path / "ds.db", [{"source_id": "W-1", "title": "甲"}])
+    _add_relations(
+        ds,
+        credits=[
+            {"source_id": "W-1", "role": "导演", "name": "山田", "sort_order": 0},
+            {"source_id": "W-1", "role": "脚本", "name": "伊藤",
+             "person_ref": "9001", "sort_order": 1},
+        ],
+        cast=[
+            {"source_id": "W-1", "character": "艾妲", "actor": "長谷川",
+             "relation": "配角", "person_ref": "7001", "sort_order": 0},
+        ],
+        studios=[{"source_id": "W-1", "name": "J.C.STAFF"}],
+    )
+
+    payload = _payloads(ds)["W-1"]
+
+    assert payload["staff"] == [
+        {"role": "导演", "name": "山田", "person_id": None},
+        {"role": "脚本", "name": "伊藤", "person_id": "9001"},
+    ]
+    assert payload["characters"] == [
+        {"name": "艾妲", "actor": "長谷川", "character_type": "配角",
+         "person_id": "7001"},
+    ]
+    assert payload["studios"] == ["J.C.STAFF"]
+
+
+def test_sort_order_keeps_source_ordering(tmp_path: Path) -> None:
+    """顺序按来源侧的 sort_order，不按名字重排——那是替来源决定谁更重要。"""
+    ds = make_dataset(tmp_path / "ds.db", [{"source_id": "W-1", "title": "甲"}])
+    _add_relations(
+        ds,
+        credits=[
+            {"source_id": "W-1", "role": "脚本", "name": "A", "sort_order": 5},
+            {"source_id": "W-1", "role": "导演", "name": "Z", "sort_order": 1},
+        ],
+    )
+
+    assert [s["name"] for s in _payloads(ds)["W-1"]["staff"]] == ["Z", "A"]
+
+
+def test_absent_relations_are_omitted_not_empty(tmp_path: Path) -> None:
+    """没有关联数据的作品**不发** `[]`。
+
+    `[]` 在契约里是「明确没有，清空已有值」。数据集里没有行分不清「确实没有」
+    与「源站没录」，误判就是不可逆的内容损失——所以宁可不覆盖。
+    """
+    ds = make_dataset(tmp_path / "ds.db", [{"source_id": "W-1", "title": "甲"}])
+
+    payload = _payloads(ds)["W-1"]
+
+    for key in ("staff", "characters", "studios"):
+        assert key not in payload
+
+
+def test_duplicate_relation_rows_are_collapsed(tmp_path: Path) -> None:
+    """源表没有唯一约束，同一个人同一职位可能有两行——载荷里只出一条。"""
+    ds = make_dataset(tmp_path / "ds.db", [{"source_id": "W-1", "title": "甲"}])
+    _add_relations(
+        ds,
+        credits=[
+            {"source_id": "W-1", "role": "导演", "name": "山田"},
+            {"source_id": "W-1", "role": "导演", "name": "山田"},
+        ],
+    )
+
+    assert len(_payloads(ds)["W-1"]["staff"]) == 1
+
+
+def test_rich_fields_flow_into_payload(tmp_path: Path) -> None:
+    """档 A 的 4 个富字段从数据集带进载荷。"""
+    ds = make_dataset(tmp_path / "ds.db", [{"source_id": "W-1", "title": "甲"}])
+    conn = sqlite3.connect(ds)
+    conn.execute(
+        "UPDATE works SET title_original=?, aliases_json=?, media=?, episodes=?"
+        " WHERE source_id='W-1'",
+        ("新世紀エヴァンゲリオン", '["天鹰战士", "EVA"]', "TV", 26),
+    )
+    conn.commit()
+    conn.close()
+
+    payload = _payloads(ds)["W-1"]
+
+    assert payload["title_original"] == "新世紀エヴァンゲリオン"
+    assert payload["aliases"] == ["天鹰战士", "EVA"]
+    assert payload["media"] == "TV"
+    assert payload["episodes"] == 26
+
+
+def test_broken_aliases_json_is_not_sent(tmp_path: Path) -> None:
+    """别名 JSON 解析失败就不发：`[]` 会清空已有别名，而我们并不知道有没有。"""
+    ds = make_dataset(tmp_path / "ds.db", [{"source_id": "W-1", "title": "甲"}])
+    conn = sqlite3.connect(ds)
+    conn.execute("UPDATE works SET aliases_json='{不是数组' WHERE source_id='W-1'")
+    conn.commit()
+    conn.close()
+
+    assert "aliases" not in _payloads(ds)["W-1"]
