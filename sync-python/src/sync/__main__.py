@@ -103,6 +103,31 @@ def build_parser() -> argparse.ArgumentParser:
         help="覆盖 VNDB kana API 地址（默认 https://api.vndb.org/kana）",
     )
     parser.add_argument("--java-base-url", default=None, help="覆盖 Java 后端地址")
+    # ---- 数据库直读（搬库）：把客户的库导成标准数据集，不在这里导入后端 ----
+    parser.add_argument(
+        "--export-dataset",
+        action="store_true",
+        help="从客户数据库导出标准数据集（产物供后续导入，不直接写后端）",
+    )
+    parser.add_argument(
+        "--source-db", default=None, help="源数据库文件（SQLite），--export-dataset 用"
+    )
+    parser.add_argument(
+        "--mapping", default=None, help="映射配置路径（mappings/*.json），--export-dataset 用"
+    )
+    parser.add_argument(
+        "--dataset-out", default=None, help="数据集输出路径，默认 runs/dataset.db"
+    )
+    parser.add_argument(
+        "--allow-breaking",
+        action="store_true",
+        help="越过破坏性结构变更继续导出（仅在确认映射已同步更新后使用）",
+    )
+    parser.add_argument(
+        "--no-snapshot",
+        action="store_true",
+        help="不建一致性快照，直接读源库（仅在源库静止时使用）",
+    )
     parser.add_argument(
         "--health",
         action="store_true",
@@ -119,8 +144,64 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _run_dataset_export(args) -> int:
+    """数据库直读导出。独立于抓取流程，不需要 SyncConfig（也就不碰站点地址/令牌）。"""
+    from .dataset import BreakingSchemaChange, export_dataset
+
+    if not args.source_db or not args.mapping:
+        print(
+            "错误：--export-dataset 需要 --source-db 与 --mapping",
+            file=sys.stderr,
+        )
+        return 2
+
+    out = args.dataset_out or "runs/dataset.db"
+    report_path = f"{out}.report.json"
+    try:
+        report = export_dataset(
+            args.source_db,
+            out,
+            args.mapping,
+            snapshot=not args.no_snapshot,
+            allow_breaking=args.allow_breaking,
+            report_path=report_path,
+        )
+    except BreakingSchemaChange as exc:
+        # 破坏性变更一律停在这里：宁可这轮没数据，也不让错主键的数据进导入器
+        print("导出中止：源库结构发生破坏性变更", file=sys.stderr)
+        for item in exc.items:
+            print(f"  - [{item['table']}] {item['detail']}", file=sys.stderr)
+        print(
+            "处置：核对客户库结构 → 更新映射文件 → 重跑。"
+            "确认无需改映射时可加 --allow-breaking 越过。",
+            file=sys.stderr,
+        )
+        return 3
+
+    print(f"数据集: {report.dataset_path}")
+    print(
+        f"来源: {report.source_id}  结构指纹: {report.source_fingerprint}  "
+        f"一致性快照: {'是' if report.snapshot_used else '否'}"
+    )
+    print("行数: " + "  ".join(f"{k}={v}" for k, v in report.row_counts.items()))
+    print(f"合计 {report.total_rows} 行，耗时 {report.elapsed_seconds:.1f}s")
+    if report.skipped_tables:
+        print(
+            "跳过: "
+            + "; ".join(f"{k}（{v}）" for k, v in report.skipped_tables.items())
+        )
+    if report.rejected:
+        print("拒绝: " + "; ".join(f"{k}={v}" for k, v in report.rejected.items()))
+    if report.warnings:
+        print(f"警告 {len(report.warnings)} 条，详见 {report_path}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+
+    if args.export_dataset:
+        return _run_dataset_export(args)
     if args.retry_failed and (args.articles or args.schedule):
         print(
             "错误：--retry-failed 目前只支持作品抓取，不与 --articles / --schedule 同用",
