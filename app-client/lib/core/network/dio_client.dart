@@ -24,7 +24,11 @@ Dio createDio({String? baseUrl}) {
     ),
   );
 
-  dio.interceptors.add(ErrorInterceptor());
+  // 429 的短等待自动重试走 `dio.fetch`：重发要重新经过令牌注入与日志拦截器，
+  // 不能拿旧的 RequestOptions 直接发——那样重试请求可能不带最新的 Bearer。
+  dio.interceptors.add(
+    ErrorInterceptor(retryFetch: (options) => dio.fetch(options)),
+  );
 
   // 性能统计开关关着时 noteRequest() 立刻返回，等于没有这个拦截器。
   if (FrameStats.enabled) {
