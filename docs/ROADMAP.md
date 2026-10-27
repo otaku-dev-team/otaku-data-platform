@@ -364,7 +364,7 @@
 |---|---|---|
 | W1.1 原生体验打磨 | 已交付 | #62（桌面差异清单收口）、#88、#89；A1–A3 逐条落地 |
 | W1.2 离线可用 | 已进 main（#136） | 列表 / 详情 / 推荐的缓存（在线优先，仅网络不可达才回退，404 不回退）；收藏离线只读并按账号隔离 |
-| W1.3 通知触达 | 一半已合 | 本地提醒（在追作品更新当天提醒）已随 #128 进 main；服务端推送要新增设备注册端点，属红线，方案 [`w1.3-notification-proposal.md`](w1.3-notification-proposal.md) 已进 main 留档（#126），待三人确认 |
+| W1.3 通知触达 | 本地已合 / 服务端端点已上线、客户端未接 | 本地提醒（在追作品更新当天提醒）已随 #128 进 main。服务端推送的落点 `/api/me/devices` + `user_device` 已随 #190 上线（迁移 `V11`，2026-10-27）；**客户端未接**——推送通道（FCM / 厂商通道）是新依赖，且当前唯一事件源「导入完成」对用户价值低，继续押后 |
 | W1.4 发现体验接入 | 已进 main（#136 / #137） | 标签筛选 #107、新番档期 #106、资讯 #112、首页聚合 #121、最近浏览 #122、搜索历史 + 设置 #123、标签跳转 + 清筛选 #130。自动化双端一致性验于 `sort_related_parity_test.dart`，结果记在 [`stage2-acceptance.md`](stage2-acceptance.md)「W1.4 发现体验接入的验收」 |
 | W1.5 呈现层数据适配 | D1 已完成 / D2 已完成 / D3 本日 | D1 封面占位三态已合；D2 无评分沉底解释已合（#114）；D3 跨源同名可辨识曾卡在契约上，zm 已在 #120 拍板放行，实现见 PR #143（列表透出 `source` + 封面来源角标） |
 
@@ -382,17 +382,20 @@
    **未做**：Android 深链回跳（需真机）与「断开与网站的连接」（等后端给平台代理端点）。
    该文给后端的三个输入仍待回：断开连接的代理端点 / `user` 响应带 `identity_source` /
    平台会话与站点令牌的寿命关系。
-3. **#125 人物页 / 详情页富字段**、**#126 服务端推送**：两份**方案已进 main 留档**
-   （[`person-studio-proposal.md`](person-studio-proposal.md) / [`w1.3-notification-proposal.md`](w1.3-notification-proposal.md)），
-   但**方案进 main ≠ 契约生效**——两份都明确标注「尚未生效，需三人确认」。
-   前者取决于数据主来源与「新增端点 + `Work` 详情字段扩容」的拍板（红线 1），
-   后者取决于设备注册端点的拍板（红线 1）。拆实现 PR 等拍板后再动。
+3. **#125 人物页 / 详情页富字段**：方案已进 main 留档
+   （[`person-studio-proposal.md`](person-studio-proposal.md)），**尚未生效**——取决于数据主来源
+   与「新增端点 + `Work` 详情字段扩容」的拍板（红线 1），拆实现 PR 等拍板后再动。
+   ~~#126 服务端推送~~：设备注册端点已由 zm 于 2026-10-26 拍板「现在做」，实现 #190 已合、
+   迁移 `V11__user_device.sql` 已上线；**客户端侧尚未接**（推送通道是新依赖，且唯一事件源
+   「导入完成」对用户价值低，押后）。方案仍留档在 [`w1.3-notification-proposal.md`](w1.3-notification-proposal.md)。
 4. ~~**B1 客户端能力承载清单**~~：已完成并进 main（[`client-capability-list.md`](client-capability-list.md)，
    首站 otaku_site 一版 + 三条判定原则），候选答案挂在 [`open-decisions.md`](open-decisions.md) B1 待拍板。
 5. ~~**品牌资源按站配置**（定位 §7.2 要求 2，§8.7 第 5 项）~~：已完成。
    应用名 / 归属方 / 站点标识走 `--dart-define`，Android 应用名与包名走 Gradle property，
    桌面窗口标题与设置页「品牌归属」随之生效；方案与交付 checklist 见
    [`site-branding.md`](site-branding.md)。图标与 Windows 包标识留待首次真实交付时手工替换（理由见该文档 §3）。
+   **2026-10-27 补齐**：`sites/<site>/site.conf` + `build_site.sh` / `.ps1` 一键出包（#219），
+   默认路径与覆盖路径都实测过；Android 的 `-P` 透传未实测（本轮不动安卓）。
 
 ### 8.7 W4 进度（@pyxz0 维护）
 
