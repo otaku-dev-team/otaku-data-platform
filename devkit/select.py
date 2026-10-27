@@ -36,7 +36,17 @@ DART_DIR = ROOT / "app-client"
 DART_LIB = DART_DIR / "lib"
 DART_TEST = DART_DIR / "test"
 
-STACKS = ("java", "py", "dart")
+# 工具自己的测试。以前 devkit 是零测试，改它只会得到一句「无单测覆盖」，
+# 于是「工具能验证自己」这件事永远不成立——改工具的人（人或智能体）拿不到任何反馈，
+# 下次就更不会跑。这一栈就是为了把这个环闭上。
+DEVKIT_DIR = ROOT / "devkit"
+DEVKIT_TEST = DEVKIT_DIR / "tests"
+
+STACKS = ("java", "py", "dart", "self")
+
+# 显示名。集中放这里而不是各显示层各写一份：加栈时漏改一处，要么 KeyError，
+# 要么屏幕上混着中文和代码名（"工具" 旁边冒出个 "self"）。
+STACK_LABELS = {"java": "Java", "py": "Python", "dart": "Dart", "self": "工具"}
 
 # 改了也不影响任何测试的路径。
 IGNORED_PREFIXES = (
@@ -396,6 +406,33 @@ def select_dart(changed: list[str]) -> tuple[list[str], dict[str, str], list[str
 
 
 # --------------------------------------------------------------------------
+# 工具自身：devkit 的代码改了就全跑它的测试
+# --------------------------------------------------------------------------
+#
+# 不做 import 级选跑：devkit 的测试总量是几十条、跑完一两秒，精确选跑省下的
+# 时间还不如多一层推导带来的出错风险。这里要的是「改了就有反馈」，不是省这点。
+
+
+def is_devkit_source(path: str) -> bool:
+    """devkit 的 Python 源码（含它自己的测试）。"""
+    return path.startswith("devkit/") and path.endswith(".py")
+
+
+def select_self(changed: list[str]) -> tuple[list[str], dict[str, str], list[str]]:
+    targets = sorted(p.relative_to(ROOT).as_posix() for p in DEVKIT_TEST.glob("test_*.py"))
+    touched = [path for path in changed if is_devkit_source(path)]
+    if not touched:
+        return [], {}, []
+    if not targets:
+        return [], {}, ["devkit 自身还没有测试：未知的改动只能靠人看"]
+    if len(touched) == 1:
+        reason = f"{touched[0]} 是工具自身代码"
+    else:
+        reason = f"工具自身代码改动 {len(touched)} 个"
+    return targets, {path: reason for path in targets}, []
+
+
+# --------------------------------------------------------------------------
 # 跨栈规则
 # --------------------------------------------------------------------------
 
@@ -419,6 +456,7 @@ def _run_targets():
         "java": sorted(p.relative_to(ROOT).as_posix() for p in JAVA_TEST.rglob("*Test.java")),
         "py": sorted(p.relative_to(ROOT).as_posix() for p in PY_TEST.glob("test_*.py")),
         "dart": sorted(p.relative_to(ROOT).as_posix() for p in DART_TEST.rglob("*_test.dart")),
+        "self": sorted(p.relative_to(ROOT).as_posix() for p in DEVKIT_TEST.glob("test_*.py")),
     }
 
 
@@ -451,6 +489,9 @@ def toolchain_detail(stack: str) -> tuple[list[str] | None, str]:
                 return [shell, (JAVA_DIR / "mvnw").as_posix()], ""
         return [str(wrapper)], ""
     if stack == "py":
+        return [sys.executable], ""
+    if stack == "self":
+        # 工具自己的测试也是 pytest，同一个解释器，工作目录是仓库根。
         return [sys.executable], ""
     if stack == "dart":
         found = shutil.which("flutter")
@@ -497,7 +538,8 @@ def _command(
             cmd.append("-Dtest=" + ",".join(classes))
             cmd.append("-DfailIfNoTests=false")
         return cmd, JAVA_DIR
-    if stack == "py":
+    if stack in ("py", "self"):
+        base = PY_DIR if stack == "py" else ROOT
         args = ["-m", "pytest", "-q", "-rf"]
         if junit_xml:
             # 不指定 --tb：`--tb=line` 会连 junitxml 里的 traceback 一起压掉，
@@ -506,8 +548,12 @@ def _command(
         else:
             args.append("--tb=line")
         if not full:
-            args += [(ROOT / f).relative_to(PY_DIR).as_posix() for f in files]
-        return [*toolchain, *args], PY_DIR
+            args += [(ROOT / f).relative_to(base).as_posix() for f in files]
+        elif stack == "self":
+            # 全量时也必须收窄到 devkit/tests：工作目录是仓库根，不传路径
+            # 会让 pytest 顺着往下把 sync-python/tests 一起收集，跑到别的栈去。
+            args.append(DEVKIT_TEST.relative_to(ROOT).as_posix())
+        return [*toolchain, *args], base
     args = ["test"]
     if dart_json:
         args += ["--reporter", "json"]
@@ -543,7 +589,7 @@ def _summarize(stack: str, output: str) -> list[str]:
             if _JAVA_KEEP.search(line) and not _JAVA_NOISE.match(line)
             and ("-- in " not in line or "FAILURE" in line or line.startswith("[ERROR]"))
         ]
-    elif stack == "py":
+    elif stack in ("py", "self"):
         kept = [line for line in lines if line.startswith(("FAILED", "ERROR", "===="))
                 or re.search(r"\d+ (passed|failed|error)", line)]
     else:
@@ -566,8 +612,16 @@ def build_plan(changed: list[str], stacks: list[str]) -> dict:
             files, reasons, notes = select_java(changed)
         elif stack == "py":
             files, reasons, notes = select_py(changed)
+        elif stack == "self":
+            files, reasons, notes = select_self(changed)
         else:
             files, reasons, notes = select_dart(changed)
+
+        if stack == "self" and not files and not notes:
+            # 与工具无关的改动不建这一栈：否则每次输出都会多一条
+            # 「工具: 无相关测试」，纯噪音，还容易让人以为跑了个寂寞。
+            continue
+
         plan[stack] = {
             "mode": "files" if files else "none",
             "files": files,
@@ -651,8 +705,11 @@ def inventory() -> dict:
     dart_tests = sum(
         len(re.findall(r"\btestWidgets?\(|\btest\(", _read(p))) for p in dart_files
     )
+    self_files = sorted(DEVKIT_TEST.glob("test_*.py"))
+    self_tests = sum(len(re.findall(r"^\s*def test_", _read(p), re.M)) for p in self_files)
     return {
         "java": {"files": len(java_classes), "tests": java_tests},
         "py": {"files": len(py_files), "tests": py_tests},
         "dart": {"files": len(dart_files), "tests": dart_tests, "note": "按 test(/testWidgets( 计数，含少数参数化调用"},
+        "self": {"files": len(self_files), "tests": self_tests},
     }

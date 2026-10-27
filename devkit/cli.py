@@ -14,7 +14,7 @@ import time
 
 from . import cache, card, run, select, state
 
-_NAMES = {"java": "Java", "py": "Python", "dart": "Dart"}
+_NAMES = select.STACK_LABELS
 
 
 _TOOL_PREFIXES = ("scripts/", "devkit/")
@@ -49,7 +49,13 @@ def classify_extras(changed: list[str]) -> tuple[list[str], list[str]]:
         if not path.startswith(select.IGNORED_PREFIXES)
         and not path.endswith(select.IGNORED_SUFFIXES)
     ]
-    tooling = [path for path in relevant if path.startswith(_TOOL_PREFIXES)]
+    # devkit 的 .py 现在由「工具」那一栈自己跑测试，不再算「无单测覆盖」。
+    # 以前这里把它一并算进来，等于告诉使用者「跑了也白跑」——正是这句提示
+    # 让人（和智能体）放弃用 devtest 验证工具改动。
+    tooling = [
+        path for path in relevant
+        if path.startswith(_TOOL_PREFIXES) and not select.is_devkit_source(path)
+    ]
     unmapped = [
         path for path in relevant
         if not path.startswith(("backend-java/", "sync-python/", "app-client/", *_TOOL_PREFIXES))
@@ -258,7 +264,7 @@ def main(argv: list[str] | None = None) -> int:
         print_plan(plan, base_note)
         if tooling:
             names = "、".join(tooling[:3]) + ("…" if len(tooling) > 3 else "")
-            print(f"  · 工具/脚本改动 {len(tooling)} 个（{names}）：无单测覆盖，改了请按用法手跑一次")
+            print(f"  · 脚本改动 {len(tooling)} 个（{names}）：devtest 覆盖不到，改完请单独手跑一次")
         for path in unmapped:
             print(f"  ! {path} 没有映射规则，拿不准请加 --all")
         if deploy:

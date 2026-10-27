@@ -10,6 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from .report import Case, Failure, StackReport
+from .select import STACK_LABELS
 
 _CONTEXT = 3          # 断言前后各带几行：多了是噪音，少了看不出意图
 _MAX_MESSAGE = 200
@@ -66,8 +67,7 @@ def badge(case: Case, previous: set[str]) -> str:
 
 
 def stack_line(report: StackReport, seconds: float, cached: bool = False) -> str:
-    names = {"java": "Java", "py": "Python", "dart": "Dart"}
-    name = names.get(report.stack, report.stack)
+    name = STACK_LABELS.get(report.stack, report.stack)
     if cached:
         return f"{name:<6} 跳过（同一状态上次已通过，{report.passed}/{report.total}）"
     if report.source == "console":
