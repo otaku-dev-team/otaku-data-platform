@@ -79,4 +79,39 @@ void main() {
     expect(find.byType(SourceBadge), findsOneWidget);
     expect(tester.getSize(find.byType(CoverImage)), const Size(200, 300));
   });
+
+  // 头图占位和大海报占位是两套画法：斜纹 + 首字在 64×88 上是「有内容但没配图」，
+  // 放大到整屏就是一块喧宾夺主的条纹布，首字被边缘裁掉后只剩两根笔画，
+  // 看着像渲染错位。下面两条钉住「头图不画字、海报要画字」这条分界。
+  testWidgets('头图占位不画首字（放大后笔画会被裁成两条竖线）', (tester) async {
+    await tester.pumpWidget(
+      wrap(
+        CoverImage.errorFallback(
+          width: 390,
+          height: 200,
+          label: '从',
+          style: CoverPlaceholderStyle.hero,
+        ),
+      ),
+    );
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('从'), findsNothing);
+  });
+
+  testWidgets('海报占位仍然画首字', (tester) async {
+    await tester.pumpWidget(
+      wrap(
+        CoverImage.errorFallback(
+          width: 148,
+          height: 222,
+          label: '从',
+          style: CoverPlaceholderStyle.poster,
+        ),
+      ),
+    );
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('从'), findsOneWidget);
+  });
 }

@@ -476,6 +476,9 @@ class _FeaturedHero extends ConsumerWidget {
                       height: double.infinity,
                       radius: 0,
                       placeholderLabel: firstChar,
+                      // 无封面时走深色渐变占位，而不是海报用的斜纹——
+                      // 斜纹放大到 1000px 宽会变成一块喧宾夺主的条纹布。
+                      placeholderStyle: CoverPlaceholderStyle.hero,
                     ),
                     // 底部压暗，保证白字在浅色封面上也能读。
                     const DecoratedBox(

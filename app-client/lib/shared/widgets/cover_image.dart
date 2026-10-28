@@ -4,6 +4,20 @@ import 'package:flutter/material.dart';
 import '../../core/theme/app_layout.dart';
 import 'source_badge.dart';
 
+/// 占位层的两种形态。
+///
+/// 同一套占位在小海报上好看、放到整屏头图上就难看：斜纹和首字在 64×88 是
+/// 「有内容但没配图」，放大到 1080×430 就变成一块喧宾夺主的条纹布。
+/// 所以按用途分两档，语义（没有封面 / 加载失败）完全一致，只是画法不同。
+enum CoverPlaceholderStyle {
+  /// 海报位（网格卡、列表磁贴、详情页小海报）：渐变 + 斜纹 + 首字。
+  poster,
+
+  /// 头图位（首页精选大图、详情页沉浸头图）：深色渐变 + 极淡首字水印，
+  /// 不画斜纹——它要当白字的背景，越安静越好。
+  hero,
+}
+
 /// 统一的封面展示。
 ///
 /// 契约 6.3：`cover_url` 为 `null` → 显示占位图，**不得空白、不得显示报错图**。
@@ -22,6 +36,7 @@ class CoverImage extends StatelessWidget {
     this.height = AppLayout.coverHeight,
     this.radius = 8,
     this.placeholderLabel,
+    this.placeholderStyle = CoverPlaceholderStyle.poster,
     this.source,
   });
 
@@ -33,6 +48,9 @@ class CoverImage extends StatelessWidget {
   /// 无封面时显示的字（取作品标题首字），形状对齐来源站的占位层。
   /// 传 `null` 则退回图标占位——详情页那种大图更适合图标 + 文字说明。
   final String? placeholderLabel;
+
+  /// 占位层的画法。头图位传 [CoverPlaceholderStyle.hero]。
+  final CoverPlaceholderStyle placeholderStyle;
 
   /// 来源站标识（W1.5 D3）。非空时在左下角贴一枚 [SourceBadge]：
   /// 只有跨源同名这条理由，够了才显示；`null` 表示来源没标注（含旧缓存）→ 不渲染。
@@ -66,8 +84,14 @@ class CoverImage extends StatelessWidget {
     required double width,
     required double height,
     String? label,
-  }) =>
-      _CoverFallback(width: width, height: height, loading: false, label: label);
+    CoverPlaceholderStyle style = CoverPlaceholderStyle.poster,
+  }) => _CoverFallback(
+    width: width,
+    height: height,
+    loading: false,
+    label: label,
+    style: style,
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -90,12 +114,14 @@ class CoverImage extends StatelessWidget {
                 width: width,
                 height: height,
                 label: placeholderLabel,
+                style: placeholderStyle,
               ),
             )
           : errorFallback(
               width: width,
               height: height,
               label: placeholderLabel,
+              style: placeholderStyle,
             );
 
     if (badge == null) {
@@ -150,6 +176,7 @@ class _CoverFallback extends StatelessWidget {
     required this.height,
     required this.loading,
     this.label,
+    this.style = CoverPlaceholderStyle.poster,
   });
 
   final double width;
@@ -159,6 +186,8 @@ class _CoverFallback extends StatelessWidget {
   final bool loading;
 
   final String? label;
+
+  final CoverPlaceholderStyle style;
 
   @override
   Widget build(BuildContext context) {
@@ -174,7 +203,18 @@ class _CoverFallback extends StatelessWidget {
 
     final text = label;
     if (text != null && text.isNotEmpty) {
-      return _PosterPlaceholder(width: width, height: height, label: text);
+      return switch (style) {
+        CoverPlaceholderStyle.poster => _PosterPlaceholder(
+          width: width,
+          height: height,
+          label: text,
+        ),
+        CoverPlaceholderStyle.hero => _HeroPlaceholder(
+          width: width,
+          height: height,
+          label: text,
+        ),
+      };
     }
 
     final compact = width < 96 || height < 96;
@@ -259,6 +299,75 @@ class _PosterPlaceholder extends StatelessWidget {
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+/// 头图位占位：深色渐变 + 一层极淡高光，不画斜纹、不画首字。
+///
+/// 头图是白字的背景，占位必须「安静」：色相由首字决定（同一部作品每次进来
+/// 颜色一致，不同作品之间又有区分），除此之外不加任何抢视线的元素。
+class _HeroPlaceholder extends StatelessWidget {
+  const _HeroPlaceholder({
+    required this.width,
+    required this.height,
+    required this.label,
+  });
+
+  final double width;
+  final double height;
+  final String label;
+
+  /// 全是深色系：头图上要压白字，浅底无论加多重的压暗层都读不清。
+  static const _palettes = <List<Color>>[
+    [Color(0xFF16324F), Color(0xFF2B5F7E)],
+    [Color(0xFF2A2144), Color(0xFF4B3A72)],
+    [Color(0xFF16352C), Color(0xFF2E6650)],
+    [Color(0xFF3E2330), Color(0xFF6B3B4C)],
+    [Color(0xFF2C2818), Color(0xFF584D2F)],
+    [Color(0xFF17333A), Color(0xFF2F5B63)],
+  ];
+
+  /// 自己算一遍码位和，不用 `String.hashCode`：后者不保证跨进程稳定，
+  /// 「同一部作品换次启动就换颜色」比没颜色更怪。
+  List<Color> get _palette {
+    var sum = 0;
+    for (final unit in label.codeUnits) {
+      sum = (sum * 31 + unit) & 0x3FFFFFFF;
+    }
+    return _palettes[sum % _palettes.length];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = _palette;
+
+    return SizedBox(
+      width: width,
+      height: height,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: colors,
+          ),
+        ),
+        // 不再画首字水印：字号放到这个量级，笔画被边缘裁掉后只剩两根竖线，
+        // 既认不出字又像渲染错位。改用一层极淡的径向高光，给平面一点体积。
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: RadialGradient(
+              center: const Alignment(0.65, -0.75),
+              radius: 1.2,
+              colors: [
+                Colors.white.withValues(alpha: 0.10),
+                Colors.white.withValues(alpha: 0),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

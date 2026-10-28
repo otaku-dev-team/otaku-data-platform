@@ -425,6 +425,8 @@ class _DetailHero extends StatelessWidget {
             height: double.infinity,
             radius: 0,
             placeholderLabel: firstChar,
+            // 整屏背景用深色渐变占位，斜纹只在下面那张小海报上用。
+            placeholderStyle: CoverPlaceholderStyle.hero,
           ),
           // 底部压暗：白字在浅色封面上也能读。
           const DecoratedBox(

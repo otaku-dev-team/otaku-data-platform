@@ -850,55 +850,93 @@ class _FilterRow extends StatelessWidget {
           final narrow = constraints.maxWidth < 560;
           final showChipCounts = !narrow;
           final showTotal = total != null;
+          final scheme = Theme.of(context).colorScheme;
           return Row(
             children: [
               Expanded(
-                child: ListView(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.only(
-                    left: AppLayout.pagePadding,
-                    right: 8,
-                  ),
+                child: Stack(
                   children: [
-                    _chip(
-                      context,
-                      label: '全部',
-                      type: null,
-                      showCount: showChipCounts,
-                    ),
-                    for (final type in WorkType.selectable)
-                      _chip(
-                        context,
-                        label: type.label,
-                        type: type,
-                        showCount: showChipCounts,
+                    ListView(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.only(
+                        left: AppLayout.pagePadding,
+                        right: 8,
                       ),
-                    // 标签入口放在 chips 末尾而不是 AppBar：AppBar 已经挤了
-                    // 刷新 / 资讯 / 收藏 / 新番 / 年份 / 排序 / 账号七个动作，
-                    // 在 800px 宽的窗口下会溢出（实测 6px）。
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: ActionChip(
-                        avatar: Icon(
-                          Icons.sell_outlined,
-                          size: 16,
-                          color: tags.isEmpty
-                              ? null
-                              : Theme.of(context).colorScheme.primary,
+                      children: [
+                        _chip(
+                          context,
+                          label: '全部',
+                          type: null,
+                          showCount: showChipCounts,
                         ),
-                        label: Text(
-                          tags.isEmpty ? '标签' : '标签 ${tags.length}',
+                        for (final type in WorkType.selectable)
+                          _chip(
+                            context,
+                            label: type.label,
+                            type: type,
+                            showCount: showChipCounts,
+                          ),
+                        // 标签入口放在 chips 末尾而不是 AppBar：AppBar 已经挤了
+                        // 刷新 / 资讯 / 收藏 / 新番 / 年份 / 排序 / 账号七个动作，
+                        // 在 800px 宽的窗口下会溢出（实测 6px）。
+                        Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: ActionChip(
+                            avatar: Icon(
+                              Icons.sell_outlined,
+                              size: 16,
+                              color: tags.isEmpty
+                                  ? null
+                                  : Theme.of(context).colorScheme.primary,
+                            ),
+                            label: Text(
+                              tags.isEmpty ? '标签' : '标签 ${tags.length}',
+                            ),
+                            visualDensity: VisualDensity.compact,
+                            onPressed: onTagsPressed,
+                          ),
                         ),
-                        visualDensity: VisualDensity.compact,
-                        onPressed: onTagsPressed,
-                      ),
+                      ],
                     ),
+                    // 窄屏胶囊可横滑，右缘加一层渐隐：不加时最后一枚会被
+                    // 硬切一半，紧跟着的「共 N 部」看着像它的后缀。宽度要
+                    // 够盖住整枚胶囊的右边缘，否则那条边还是直上直下的。
+                    if (narrow)
+                      Positioned(
+                        top: 0,
+                        bottom: 0,
+                        right: 0,
+                        child: IgnorePointer(
+                          child: Container(
+                            width: 28,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.centerLeft,
+                                end: Alignment.centerRight,
+                                colors: [
+                                  scheme.surface.withValues(alpha: 0),
+                                  scheme.surface.withValues(alpha: 0.9),
+                                  scheme.surface,
+                                ],
+                                stops: const [0, 0.5, 1],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),
-              if (showTotal)
+              if (showTotal) ...[
+                // 一道细分隔线：窄屏上胶囊是横滑的，总数紧贴其右缘时
+                // 会被读成最后一枚胶囊的后缀（「漫画 共 19.9 万」）。
+                Container(
+                  width: 1,
+                  height: 14,
+                  color: scheme.outlineVariant,
+                ),
                 Padding(
-                  padding: const EdgeInsets.only(right: 10),
+                  padding: const EdgeInsets.only(left: 10, right: 10),
                   child: Text(
                     _totalLabel(total!, narrow: narrow),
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -906,6 +944,7 @@ class _FilterRow extends StatelessWidget {
                     ),
                   ),
                 ),
+              ],
               Padding(
                 padding: const EdgeInsets.only(right: AppLayout.pagePadding),
                 child: _ViewSwitch(value: view, onChanged: onViewChanged),
