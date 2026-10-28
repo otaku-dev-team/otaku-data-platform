@@ -36,8 +36,10 @@ from .schema import (
 #: 不做隐式猜测——猜错比留空更糟。
 FIELD_TYPES = frozenset({
     "str", "text", "int", "float", "bool",
-    "json_list", "json_obj", "datetime", "enum",
+    "json_list", "json_obj", "datetime", "enum", "bracket_list",
 })
+#: ``bracket_list``：源列是 ``{\n[别名]\n}`` 这类括号包裹的多行文本（或只含一个
+#: 这种文本的 JSON 数组）时，拆成字符串数组。解析见 ``exporter._parse_bracket_list``。
 
 #: 缺列时的处置，三档。这套分级不是自创，是 Airbyte schema change management
 #: 的工业共识（新增列自动加 / 删列保留 / 类型变更记错 / 主键或 cursor 消失暂停）：

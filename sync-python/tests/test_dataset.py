@@ -191,6 +191,68 @@ def test_full_export_counts_and_meta(tmp_path):
     assert not list(tmp_path.glob("*.tmp"))
 
 
+def test_alias_blob_is_split_into_clean_names(tmp_path):
+    """源站别名列是「JSON 数组里套一坨 {\\n[别名]\\n}」文本，必须拆成干净数组。
+
+    线上实测 18,828 行 100% 是这个形状（Issue #273）：``json_list`` 只能解到最外层
+    数组，于是整坨文本被当成一个别名下发，客户端渲染会直接露出 ``{`` ``[`` ``}``。
+    """
+    src = make_source(tmp_path / "site.db")
+    out = tmp_path / "dataset.db"
+    conn = sqlite3.connect(src)
+    conn.execute(
+        "update contents set aliases = ? where id = 1",
+        (json.dumps(["{\n[New Century Evangelion]\n[新世纪天鹰战士]\n[EVA]\n}"]),),
+    )
+    conn.commit()
+    conn.close()
+
+    export_dataset(src, out, MAPPING, snapshot=True)
+
+    conn = sqlite3.connect(out)
+    raw = conn.execute(
+        "select aliases_json from works where source_id='1'"
+    ).fetchone()[0]
+    conn.close()
+    assert json.loads(raw) == ["New Century Evangelion", "新世纪天鹰战士", "EVA"]
+
+
+def test_empty_alias_blob_stays_null_not_a_blank_entry(tmp_path):
+    """``{\\n}`` 这种空壳不能变成一条空白别名——否则界面上会出现一个空条目。"""
+    src = make_source(tmp_path / "site.db")
+    out = tmp_path / "dataset.db"
+    conn = sqlite3.connect(src)
+    conn.execute(
+        "update contents set aliases = ? where id = 1",
+        (json.dumps(["{\n}"]),),
+    )
+    conn.commit()
+    conn.close()
+
+    export_dataset(src, out, MAPPING, snapshot=True)
+
+    conn = sqlite3.connect(out)
+    value = conn.execute(
+        "select aliases_json from works where source_id='1'"
+    ).fetchone()[0]
+    conn.close()
+    assert value is None
+
+
+def test_bracket_list_accepts_raw_text_without_json_wrapper():
+    """客户自建站可能直接存那坨文本，不套 JSON 数组——一样要认。"""
+    from sync.dataset.exporter import _parse_bracket_list
+
+    assert _parse_bracket_list("{\n[航海王]\n[ONE PIECE]\n}") == ["航海王", "ONE PIECE"]
+    assert _parse_bracket_list('{\n[Bocchi the "Guitar Hero" Rock Story]\n}') == [
+        'Bocchi the "Guitar Hero" Rock Story'
+    ]
+    # 重复的别名只留一次，空壳返回空列表
+    assert _parse_bracket_list("{\n[EVA]\n[EVA]\n}") == ["EVA"]
+    assert _parse_bracket_list("{\n}") == []
+    assert _parse_bracket_list(None) == []
+
+
 def test_missing_optional_column_degrades_instead_of_failing(tmp_path):
     """客户删掉一个富列：整批照常导出，只少了那个字段。"""
     src = make_source(tmp_path / "site.db")

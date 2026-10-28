@@ -34,7 +34,7 @@
         {"target": "source_url", "column": "source_url", "type": "str"},
         {"target": "title_original", "column": "title_original", "type": "str"},
         {"target": "summary_original", "column": "summary_original", "type": "text"},
-        {"target": "aliases_json", "column": "aliases", "type": "json_list"},
+        {"target": "aliases_json", "column": "aliases", "type": "bracket_list"},
         {"target": "rating_count", "column": "rating_count", "type": "int", "min": 0},
         {"target": "media", "column": "media", "type": "str"},
         {"target": "episodes", "column": "episodes", "type": "int", "min": 0, "max": 10000},
