@@ -11,6 +11,7 @@ import json
 import subprocess
 import sys
 import time
+import unicodedata
 
 from . import cache, card, run, select, state
 
@@ -149,11 +150,18 @@ def gate_failures(gate: dict | None) -> list[str]:
             if item.get("status") == "failed"]
 
 
+def _pad(text: str, width: int) -> str:
+    """按终端显示宽度补空格：CJK 占两格，否则「契约」和「站点隔离」这一列对不齐。"""
+    shown = sum(2 if unicodedata.east_asian_width(ch) in "WF" else 1 for ch in text)
+    return text + " " * max(0, width - shown)
+
+
 def print_gate(gate: dict) -> None:
     for name, item in gate.items():
         word = {"passed": "通过", "failed": "未通过"}.get(item["status"], "跳过")
         detail = f"  {item['detail']}" if item.get("detail") else ""
-        print(f"{_GATE_LABELS.get(name, name):<6} {word}  {item.get('seconds', 0)}s{detail}")
+        label = _pad(_GATE_LABELS.get(name, name), 10)
+        print(f"{label} {word}  {item.get('seconds', 0)}s{detail}")
 
 
 # --------------------------------------------------------------------------
