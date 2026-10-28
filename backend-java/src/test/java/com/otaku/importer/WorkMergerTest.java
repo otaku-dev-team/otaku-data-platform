@@ -42,7 +42,9 @@ class WorkMergerTest {
                                        String ratingValue, String coverUrl, Integer releaseYear) {
         BigDecimal rating = ratingValue == null ? null : new BigDecimal(ratingValue);
         return new NormalizedItem("476", "anime", title, summary, releaseYear,
-                null, null, null, null, coverUrl,
+                null, null, null, null,
+                null, null, null,
+                coverUrl,
                 tagsJson, rating,
                 rating == null ? null : "0-10",
                 rating == null ? null : "otaku_site", null);
@@ -60,6 +62,7 @@ class WorkMergerTest {
     private static NormalizedItem itemWithSourceUrl(String sourceUrl) {
         return new NormalizedItem("476", "anime", "原标题", null, null,
                 null, null, null, null,
+                null, null, null,
                 null, null, null, null, null, sourceUrl);
     }
 
