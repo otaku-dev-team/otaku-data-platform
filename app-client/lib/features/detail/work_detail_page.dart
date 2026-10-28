@@ -683,13 +683,20 @@ class _RecordPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final rows = <({String label, String value})>[
-      if (work.releaseYear != null) (label: '年份', value: '${work.releaseYear}'),
-      (label: '作品 ID', value: work.workId),
-      if (work.source.isNotEmpty) (label: '来源', value: work.source),
-      if (work.sourceId.isNotEmpty) (label: '来源 ID', value: work.sourceId),
+    final scheme = theme.colorScheme;
+    // `muted`：作品 ID / 来源 ID 是排障和反馈时才有用的技术标识，不是内容。
+    // 和年份、来源同权重摆着，读起来像一串噪音；保留（可选中复制），
+    // 但压小一档、调暗一层，让人一眼跳过。
+    final rows = <({String label, String value, bool muted})>[
+      if (work.releaseYear != null)
+        (label: '年份', value: '${work.releaseYear}', muted: false),
+      (label: '作品 ID', value: work.workId, muted: true),
+      if (work.source.isNotEmpty)
+        (label: '来源', value: work.source, muted: false),
+      if (work.sourceId.isNotEmpty)
+        (label: '来源 ID', value: work.sourceId, muted: true),
       if (work.updatedAt != null)
-        (label: '收录更新', value: _formatDate(work.updatedAt!)),
+        (label: '收录更新', value: _formatDate(work.updatedAt!), muted: false),
     ];
 
     return Container(
@@ -722,14 +729,21 @@ class _RecordPanel extends StatelessWidget {
                     child: Text(
                       row.label,
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
+                        color: row.muted
+                            ? scheme.onSurfaceVariant.withValues(alpha: 0.7)
+                            : scheme.onSurfaceVariant,
                       ),
                     ),
                   ),
                   Expanded(
                     child: SelectableText(
                       row.value,
-                      style: theme.textTheme.bodySmall,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: row.muted
+                            ? scheme.onSurfaceVariant.withValues(alpha: 0.8)
+                            : null,
+                        fontSize: row.muted ? 11 : null,
+                      ),
                     ),
                   ),
                 ],
