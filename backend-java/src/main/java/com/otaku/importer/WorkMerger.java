@@ -29,6 +29,7 @@ final class WorkMerger {
     static WorkRecord newRecord(NormalizedItem item, String workId, String source, LocalDateTime now) {
         return new WorkRecord(
                 null, workId, item.workType(), item.title(), item.summary(), item.releaseYear(),
+                item.titleOriginal(), item.aliasesJson(), item.media(), item.episodes(),
                 item.coverUrl(), null, null, item.tagsJson(),
                 item.ratingValue(), item.ratingScale(), item.ratingSource(),
                 source, item.sourceId(), item.sourceUrl(), now, now);
@@ -38,6 +39,11 @@ final class WorkMerger {
         String title = item.title() != null ? item.title() : old.title();
         String summary = item.summary() != null ? item.summary() : old.summary();
         Integer releaseYear = item.releaseYear() != null ? item.releaseYear() : old.releaseYear();
+        String titleOriginal = item.titleOriginal() != null ? item.titleOriginal() : old.titleOriginal();
+        // aliases 与 tags 同构三态：null 不覆盖、"[]" 清空、有值替换。
+        String aliasesJson = item.aliasesJson() != null ? item.aliasesJson() : old.aliasesJson();
+        String media = item.media() != null ? item.media() : old.media();
+        Integer episodes = item.episodes() != null ? item.episodes() : old.episodes();
         String cover = item.coverUrl() != null ? item.coverUrl() : old.coverSourceUrl();
         boolean coverChanged = !Objects.equals(cover, old.coverSourceUrl());
         String cacheKey = coverChanged ? null : old.coverCacheKey();
@@ -52,6 +58,10 @@ final class WorkMerger {
                 || !Objects.equals(title, old.title())
                 || !Objects.equals(summary, old.summary())
                 || !Objects.equals(releaseYear, old.releaseYear())
+                || !Objects.equals(titleOriginal, old.titleOriginal())
+                || !Objects.equals(aliasesJson, old.aliasesJson())
+                || !Objects.equals(media, old.media())
+                || !Objects.equals(episodes, old.episodes())
                 || !Objects.equals(tagsJson, old.tagsJson())
                 || !sameDecimal(ratingValue, old.ratingValue())
                 || !Objects.equals(ratingScale, old.ratingScale())
@@ -65,6 +75,7 @@ final class WorkMerger {
         LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
         return new MergeResult(new WorkRecord(
                 old.id(), old.workId(), old.workType(), title, summary, releaseYear,
+                titleOriginal, aliasesJson, media, episodes,
                 cover, cacheKey, cachedAt, tagsJson,
                 ratingValue, ratingScale, ratingSource,
                 old.source(), old.sourceId(), sourceUrl, old.createdAt(), now), true);

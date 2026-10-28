@@ -11,6 +11,9 @@ import java.time.LocalDateTime;
  *   "[]" = 明确无标签（可清空），见契约 2.3 与 4.4.3；
  * - coverSourceUrl 是来源站地址，永不出现在响应里；对外地址由 cover_url 重新拼；
  * - releaseYear 用包装类型 Integer：null = 来源未提供，不能退化成 0；
+ * - aliasesJson 与 tagsJson 同构：NULL = 未提供（更新不覆盖）、"[]" = 明确没有（可清空）；
+ * - media 保留来源原值，不做跨源枚举归一（各站词表不同，归一等于替来源定义分类）；
+ * - episodes 用包装类型：0 无意义（导入层整条拒收），null 才是「未提供」；
  * - 时间统一存 UTC 的 LocalDateTime，出参时转 Instant（带 Z 的 RFC 3339）。
  */
 public record WorkRecord(
@@ -20,6 +23,10 @@ public record WorkRecord(
         String title,
         String summary,
         Integer releaseYear,
+        String titleOriginal,
+        String aliasesJson,
+        String media,
+        Integer episodes,
         String coverSourceUrl,
         String coverCacheKey,
         LocalDateTime coverCachedAt,

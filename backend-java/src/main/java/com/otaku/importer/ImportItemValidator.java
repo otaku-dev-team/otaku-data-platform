@@ -21,6 +21,7 @@ final class ImportItemValidator {
     static final String TITLE_TOO_LONG = "TITLE_TOO_LONG";
     static final String INVALID_TYPE = "INVALID_TYPE";
     static final String INVALID_RELEASE_YEAR = "INVALID_RELEASE_YEAR";
+    static final String INVALID_EPISODES = "INVALID_EPISODES";
     static final String RATING_OUT_OF_SCALE = "RATING_OUT_OF_SCALE";
 
     static final int MAX_SOURCE_ID_LENGTH = 128;
@@ -30,6 +31,14 @@ final class ImportItemValidator {
     /** 与 Python 侧 `clean_year` 同一区间；越界说明数据没走清洗层，宁可拒收也不入库。 */
     static final int MIN_RELEASE_YEAR = 1900;
     static final int MAX_RELEASE_YEAR = 2100;
+
+    /**
+     * 话数区间（契约 ImportItem.episodes：minimum 1 / maximum 10000）。
+     * 越界整条拒收而不是置 null：`0 话` 与「未提供」在详情页含义完全不同，
+     * 静默置 null 会让「OVA 1 话」被当成「话数未知」展示。
+     */
+    static final int MIN_EPISODES = 1;
+    static final int MAX_EPISODES = 10000;
 
     private ImportItemValidator() {
     }
@@ -68,6 +77,12 @@ final class ImportItemValidator {
             return Optional.of(new Problem(INVALID_RELEASE_YEAR,
                     "release_year 应为 " + MIN_RELEASE_YEAR + "–" + MAX_RELEASE_YEAR
                             + "，实际 " + releaseYear));
+        }
+
+        Integer episodes = item.episodes();
+        if (episodes != null && (episodes < MIN_EPISODES || episodes > MAX_EPISODES)) {
+            return Optional.of(new Problem(INVALID_EPISODES,
+                    "episodes 应为 " + MIN_EPISODES + "–" + MAX_EPISODES + "，实际 " + episodes));
         }
 
         SourceRating rating = item.mainRating();

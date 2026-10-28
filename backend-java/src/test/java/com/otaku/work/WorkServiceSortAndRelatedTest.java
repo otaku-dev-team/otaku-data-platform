@@ -333,6 +333,7 @@ class WorkServiceSortAndRelatedTest {
             long id, String workId, String title, String tagsJson, BigDecimal rating) {
         return new WorkRecord(
                 id, workId, "anime", title, null, 2022,
+                null, null, null, null,
                 "https://example.invalid/cover.jpg", null, null,
                 tagsJson,
                 rating, "0-10", "otaku_site",

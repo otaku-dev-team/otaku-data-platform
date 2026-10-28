@@ -58,6 +58,11 @@ public class ImportService {
     private static final int MAX_SOURCE_URL_LENGTH = 1024;
     private static final int MAX_SOURCE_LENGTH = 64;
     private static final int RATING_SCALE_DIGITS = 2;
+    /** 详情富字段的列宽（#250）：与 V14 迁移、契约 maxLength 三者一致，超长按「没拿到」处理。 */
+    private static final int MAX_TITLE_ORIGINAL_LENGTH = 500;
+    private static final int MAX_MEDIA_LENGTH = 64;
+    private static final int MAX_ALIAS_LENGTH = 200;
+    private static final int MAX_ALIASES = 50;
 
     private final WorkRepository workRepository;
     private final ImportBatchRepository batchRepository;
@@ -244,6 +249,45 @@ public class ImportService {
         return new ItemOutcome(ImportItemResult.UPDATED, current.workId());
     }
 
+    /**
+     * 详情富字段（#250）：超长按「本次没拿到」处理并置 null，不拒整条——
+     * 与 source_url 同一口径（契约：maxLength 是客户端约束，平台侧宁可缺字段也不存半截值）。
+     */
+    private static String normalizeBoundedText(String raw, int maxLength) {
+        String text = normalizeText(raw);
+        return text != null && text.length() > maxLength ? null : text;
+    }
+
+    /**
+     * 别名三态（契约 aliases：省略/null 不覆盖、[] 清空、非空替换）：
+     * 去空白、去重（保序）、逐条丢弃超 200 字符、整体截到 50 条（契约 maxItems）。
+     * 若输入非空但清洗后一条不剩，视为「本次没拿到」（null）而不是「明确没有」——
+     * 后者会清空库里已有的好数据，代价比缺字段大得多。
+     */
+    private static String normalizeAliases(java.util.List<String> aliases) {
+        if (aliases == null) {
+            return null;
+        }
+        if (aliases.isEmpty()) {
+            return "[]";
+        }
+        LinkedHashSet<String> cleaned = new java.util.LinkedHashSet<>();
+        for (String alias : aliases) {
+            if (alias == null) {
+                continue;
+            }
+            String text = alias.trim();
+            if (text.isEmpty() || text.length() > MAX_ALIAS_LENGTH) {
+                continue;
+            }
+            cleaned.add(text);
+            if (cleaned.size() >= MAX_ALIASES) {
+                break;
+            }
+        }
+        return cleaned.isEmpty() ? null : com.otaku.common.TagsJson.write(List.copyOf(cleaned));
+    }
+
     private NormalizedItem normalize(ImportItem item, String batchSource) {
         String title = item.title() == null ? null : item.title().trim();
         String summary = normalizeText(item.summary());
@@ -261,7 +305,12 @@ public class ImportService {
         }
 
         return new NormalizedItem(item.sourceId() == null ? null : item.sourceId().trim(),
-                item.workType(), title, summary, item.releaseYear(), coverUrl, tagsJson,
+                item.workType(), title, summary, item.releaseYear(),
+                normalizeBoundedText(item.titleOriginal(), MAX_TITLE_ORIGINAL_LENGTH),
+                normalizeAliases(item.aliases()),
+                normalizeBoundedText(item.media(), MAX_MEDIA_LENGTH),
+                item.episodes(),
+                coverUrl, tagsJson,
                 ratingValue, ratingScale, ratingSource,
                 normalizeSourceUrl(item.sourceUrl()));
     }
