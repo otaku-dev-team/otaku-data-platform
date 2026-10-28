@@ -109,7 +109,8 @@ class CountCacheIntegrationTest {
                     null,
                     List.of(),
                     null,
-                    null));
+                    null,
+                    null, null, null, null, null, null, null));
         }
         importService.importBatch(new ImportBatchRequest(
                 BATCH_PREFIX + tag, "otaku_site", null, items));

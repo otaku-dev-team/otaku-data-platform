@@ -181,9 +181,16 @@ public class WorkService {
                 record.title(),
                 record.summary(),
                 record.releaseYear(),
+                null, // titleOriginal — 档 A 数据接线归 #250
+                null, // aliases
+                null, // media
+                null, // episodes
                 coverUrl(record),
                 parseTags(record.tagsJson()),
                 toRating(record),
+                null, // staff — 档 B 数据接线归 #255
+                null, // characters
+                null, // studios
                 record.source(),
                 record.sourceId(),
                 record.sourceUrl(),

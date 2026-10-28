@@ -19,11 +19,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ImportItemValidatorTest {
 
     private static ImportItem item(String sourceId, String type, String title, SourceRating rating) {
-        return new ImportItem(sourceId, type, title, null, null, null, List.of(), rating, null);
+        return new ImportItem(sourceId, type, title, null, null, null, List.of(), rating, null,
+                null, null, null, null, null, null, null);
     }
 
     private static ImportItem itemWithYear(Integer releaseYear) {
-        return new ImportItem("476", "anime", "街角魔族", null, null, releaseYear, List.of(), null, null);
+        return new ImportItem("476", "anime", "街角魔族", null, null, releaseYear, List.of(), null, null,
+                null, null, null, null, null, null, null);
     }
 
     private static SourceRating rating(String value) {
