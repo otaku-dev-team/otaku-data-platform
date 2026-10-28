@@ -24,16 +24,6 @@ abstract final class AppConfig {
   /// 20 条一页看完 1 万条要 500 次串行请求，50 条则是 200 次。
   static const int pageSize = maxPageSize;
 
-  /// 第一阶段单站点。只用于日志与 Mock，**请求不带站点参数**（契约第 9 节）。
-  ///
-  /// 可用 `--dart-define=SITE_ID=<站点>` 覆盖（私有化交付时换站）。
-  /// 与 [`SiteBranding`](site_branding.dart) 的品牌归属同源，避免
-  /// 「关于页显示 A、请求带 B」这种分裂。
-  static const String siteId = String.fromEnvironment(
-    'SITE_ID',
-    defaultValue: 'otaku_site',
-  );
-
   /// 应用版本，设置页「关于」里显示。
   ///
   /// **与 `pubspec.yaml` 的 `version:` 手工对齐**。没有引 `package_info_plus`：
