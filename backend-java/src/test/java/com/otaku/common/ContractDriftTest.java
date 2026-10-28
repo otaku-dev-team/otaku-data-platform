@@ -235,6 +235,8 @@ class ContractDriftTest {
     private static Map<String, Class<?>> requestTargets() {
         Map<String, Class<?>> targets = new java.util.LinkedHashMap<>();
         targets.put("LoginRequest", com.otaku.auth.dto.LoginRequest.class);
+        // 站点授权票据交换（#242）：请求体只有 ticket，站点令牌与 secret 都不出现在契约里
+        targets.put("SiteLoginRequest", com.otaku.auth.dto.SiteLoginRequest.class);
         targets.put("CreateAccountRequest", com.otaku.account.dto.CreateAccountRequest.class);
         targets.put("CollectionUpdateRequest", com.otaku.collection.dto.CollectionUpdateRequest.class);
         targets.put("ImportBatchRequest", com.otaku.importer.dto.ImportBatchRequest.class);

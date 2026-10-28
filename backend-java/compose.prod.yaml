@@ -95,6 +95,12 @@ services:
       # 接新来源站时把它的 host:port 加进 .env 的 OTAKU_COVER_ALLOWED_HOSTS；
       # Bangumi 镜像 = bgmimg.anibt.net:443（封面回填 #222 写入的 URL 来自它）。
       OTAKU_COVER_ALLOWED_HOSTS: ${OTAKU_COVER_ALLOWED_HOSTS:-154.8.194.198:8000,bgmimg.anibt.net:443}
+      # ── 站点 OAuth 令牌交换代理（Issue #242）──────────────────
+      # 站点根地址；留空 = 站点登录未配置（POST /api/auth/site-login 返回 503）。
+      OTAKU_SITE_OAUTH_BASE_URL: ${OTAKU_SITE_OAUTH_BASE_URL:-}
+      OTAKU_SITE_OAUTH_CLIENT_ID: ${OTAKU_SITE_OAUTH_CLIENT_ID:-otaku-app-client}
+      # client_secret **只从服务器 .env 注入**（契约 §7）：不进仓库、不进镜像、不落日志。
+      OTAKU_SITE_OAUTH_CLIENT_SECRET: ${OTAKU_SITE_OAUTH_CLIENT_SECRET:-}
       # 让 Spring 认 X-Forwarded-Proto / -Host / -For（Nginx 会带过来）。
       # 不设的话 request.getScheme() 永远是 http，即使外面是 https——
       # 目前封面地址由 OTAKU_PUBLIC_BASE_URL 显式给，所以这条是**兜底**：

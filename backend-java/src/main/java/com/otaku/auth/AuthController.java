@@ -2,6 +2,7 @@ package com.otaku.auth;
 
 import com.otaku.auth.dto.LoginRequest;
 import com.otaku.auth.dto.SessionResponse;
+import com.otaku.auth.dto.SiteLoginRequest;
 import com.otaku.auth.dto.UserDto;
 import com.otaku.user.UserRecord;
 import jakarta.servlet.http.HttpServletRequest;
@@ -23,14 +24,27 @@ import org.springframework.web.bind.annotation.RestController;
 public class AuthController {
 
     private final AuthService authService;
+    private final SiteLoginService siteLoginService;
 
-    public AuthController(AuthService authService) {
+    public AuthController(AuthService authService, SiteLoginService siteLoginService) {
         this.authService = authService;
+        this.siteLoginService = siteLoginService;
     }
 
     @PostMapping("/login")
     public SessionResponse login(@RequestBody LoginRequest request) {
         return authService.login(request);
+    }
+
+    /**
+     * 站点授权票据换平台会话（契约 identity-linkup-contract.md §2，Issue #242）。
+     *
+     * <p>失败口径：票据/凭据问题一律 401（客户端引导重走授权），
+     * 站点侧故障 503 {@code SITE_UNAVAILABLE}（重走授权无用）。票据一次性，不落库。
+     */
+    @PostMapping("/site-login")
+    public SessionResponse siteLogin(@RequestBody SiteLoginRequest request) {
+        return siteLoginService.siteLogin(request);
     }
 
     @GetMapping("/me")
