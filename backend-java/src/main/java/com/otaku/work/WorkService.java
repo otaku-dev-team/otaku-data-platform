@@ -53,13 +53,16 @@ public class WorkService {
     private final PublicUrlResolver publicUrlResolver;
     private final ObjectMapper objectMapper;
     private final CountCache countCache;
+    private final WorkRelationRepository relationRepository;
 
     public WorkService(WorkRepository repository, PublicUrlResolver publicUrlResolver,
-                       ObjectMapper objectMapper, CountCache countCache) {
+                       ObjectMapper objectMapper, CountCache countCache,
+                       WorkRelationRepository relationRepository) {
         this.repository = repository;
         this.publicUrlResolver = publicUrlResolver;
         this.objectMapper = objectMapper;
         this.countCache = countCache;
+        this.relationRepository = relationRepository;
     }
 
     /**
@@ -188,9 +191,9 @@ public class WorkService {
                 coverUrl(record),
                 parseTags(record.tagsJson()),
                 toRating(record),
-                null, // staff — 档 B 数据接线归 #255
-                null, // characters
-                null, // studios
+                emptyToNull(relationRepository.findStaff(record.id())),
+                emptyToNull(relationRepository.findCharacters(record.id())),
+                emptyToNull(relationRepository.findStudios(record.id())),
                 record.source(),
                 record.sourceId(),
                 record.sourceUrl(),
@@ -227,6 +230,15 @@ public class WorkService {
             return null;
         }
         return new SourceRatingDto(record.ratingValue(), record.ratingScale(), record.ratingSource());
+    }
+
+    /**
+     * 关系三块：库里没有就返回 null，**不编造空数组**（#255 验收口径）——
+     * `null` 表达「这个来源没有这类数据」，`[]` 会被客户端理解成「明确没有」，
+     * 但两者对客户端展示等价，而 null 更诚实。
+     */
+    private static <T> List<T> emptyToNull(List<T> list) {
+        return list == null || list.isEmpty() ? null : list;
     }
 
     /**

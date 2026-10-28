@@ -71,6 +71,7 @@ public class ImportService {
     private final ObjectMapper objectMapper;
     private final CountCache countCache;
     private final TagCache tagCache;
+    private final com.otaku.work.WorkRelationRepository relationRepository;
 
     public ImportService(WorkRepository workRepository,
                          ImportBatchRepository batchRepository,
@@ -78,7 +79,8 @@ public class ImportService {
                          TransactionTemplate transactionTemplate,
                          ObjectMapper objectMapper,
                          CountCache countCache,
-                         TagCache tagCache) {
+                         TagCache tagCache,
+                         com.otaku.work.WorkRelationRepository relationRepository) {
         this.workRepository = workRepository;
         this.batchRepository = batchRepository;
         this.idGenerator = idGenerator;
@@ -86,6 +88,7 @@ public class ImportService {
         this.objectMapper = objectMapper;
         this.countCache = countCache;
         this.tagCache = tagCache;
+        this.relationRepository = relationRepository;
     }
 
     public ImportBatchResult importBatch(ImportBatchRequest request) {
@@ -235,18 +238,57 @@ public class ImportService {
                 return updateExisting(existing.get(), item);
             }
             WorkRecord created = WorkMerger.newRecord(item, idGenerator.nextWorkId(), source, nowUtc());
-            workRepository.insert(created);
+            long workRef = workRepository.insert(created);
+            applyRelations(workRef, item);
             return new ItemOutcome(ImportItemResult.INSERTED, created.workId());
         });
     }
 
     private ItemOutcome updateExisting(WorkRecord current, NormalizedItem item) {
         WorkMerger.MergeResult merged = WorkMerger.merge(current, item);
-        if (!merged.changed()) {
+        // 关系三块在独立的表里，WorkMerger 看不到它们——必须单独比对，
+        // 否则「只改了 staff」会被判成 unchanged，静默丢掉这次更新。
+        boolean relationsChanged = relationsChanged(current.id(), item);
+        if (!merged.changed() && !relationsChanged) {
             return new ItemOutcome(ImportItemResult.UNCHANGED, current.workId());
         }
-        workRepository.updateContent(merged.work());
+        if (merged.changed()) {
+            workRepository.updateContent(merged.work());
+        }
+        if (relationsChanged) {
+            applyRelations(current.id(), item);
+        }
+        if (relationsChanged && !merged.changed()) {
+            // 只有关系数据变了：updated_at 也要推进，否则详情页看不出内容更新过。
+            workRepository.touch(current.id(), nowUtc());
+        }
         return new ItemOutcome(ImportItemResult.UPDATED, current.workId());
+    }
+
+    /** 三块关系是否与库里不同；null（未提供）一律视为「不变」。 */
+    private boolean relationsChanged(long workRef, NormalizedItem item) {
+        if (item.staff() != null
+                && !item.staff().equals(relationRepository.findStaff(workRef))) {
+            return true;
+        }
+        if (item.characters() != null
+                && !item.characters().equals(relationRepository.findCharacters(workRef))) {
+            return true;
+        }
+        return item.studios() != null
+                && !item.studios().equals(relationRepository.findStudios(workRef));
+    }
+
+    private void applyRelations(long workRef, NormalizedItem item) {
+        if (item.staff() != null) {
+            relationRepository.replaceStaff(workRef, item.staff());
+        }
+        if (item.characters() != null) {
+            relationRepository.replaceCharacters(workRef, item.characters());
+        }
+        if (item.studios() != null) {
+            relationRepository.replaceStudios(workRef, item.studios());
+        }
     }
 
     /**
@@ -256,6 +298,70 @@ public class ImportService {
     private static String normalizeBoundedText(String raw, int maxLength) {
         String text = normalizeText(raw);
         return text != null && text.length() > maxLength ? null : text;
+    }
+
+    /**
+     * 制作人员清洗（契约 WorkStaff：role ≤64、name ≤200）：
+     * 空条目与超长条目逐条丢弃（超长按「这条不能用」，不是截断成半个人名）；
+     * 输入非空但全被丢弃 → null（本次没拿到），不是 []——否则会静默清空好数据。
+     */
+    private static List<com.otaku.work.dto.WorkStaffDto> cleanStaff(
+            List<com.otaku.work.dto.WorkStaffDto> staff) {
+        if (staff == null || staff.isEmpty()) {
+            return staff;
+        }
+        List<com.otaku.work.dto.WorkStaffDto> cleaned = new ArrayList<>(staff.size());
+        for (com.otaku.work.dto.WorkStaffDto entry : staff) {
+            if (entry == null) {
+                continue;
+            }
+            String role = normalizeText(entry.role());
+            String name = normalizeText(entry.name());
+            if (role == null || name == null || role.length() > 64 || name.length() > 200) {
+                continue;
+            }
+            String personId = normalizeBoundedText(entry.personId(), 64);
+            cleaned.add(new com.otaku.work.dto.WorkStaffDto(role, name, personId));
+        }
+        return cleaned.isEmpty() ? null : List.copyOf(cleaned);
+    }
+
+    /** 角色声优清洗（契约 WorkCharacter：name/actor ≤200，character_type ≤16）。 */
+    private static List<com.otaku.work.dto.WorkCharacterDto> cleanCharacters(
+            List<com.otaku.work.dto.WorkCharacterDto> characters) {
+        if (characters == null || characters.isEmpty()) {
+            return characters;
+        }
+        List<com.otaku.work.dto.WorkCharacterDto> cleaned = new ArrayList<>(characters.size());
+        for (com.otaku.work.dto.WorkCharacterDto entry : characters) {
+            if (entry == null) {
+                continue;
+            }
+            String name = normalizeText(entry.name());
+            String actor = normalizeText(entry.actor());
+            if (name == null || actor == null || name.length() > 200 || actor.length() > 200) {
+                continue;
+            }
+            cleaned.add(new com.otaku.work.dto.WorkCharacterDto(name, actor,
+                    normalizeBoundedText(entry.characterType(), 16),
+                    normalizeBoundedText(entry.personId(), 64)));
+        }
+        return cleaned.isEmpty() ? null : List.copyOf(cleaned);
+    }
+
+    /** 制作公司清洗：去空白、去重保序、超 200 字符丢弃；全被丢弃按「没拿到」处理。 */
+    private static List<String> cleanStudios(List<String> studios) {
+        if (studios == null || studios.isEmpty()) {
+            return studios;
+        }
+        LinkedHashSet<String> cleaned = new LinkedHashSet<>();
+        for (String studio : studios) {
+            String name = normalizeText(studio);
+            if (name != null && name.length() <= 200) {
+                cleaned.add(name);
+            }
+        }
+        return cleaned.isEmpty() ? null : List.copyOf(cleaned);
     }
 
     /**
@@ -310,6 +416,9 @@ public class ImportService {
                 normalizeAliases(item.aliases()),
                 normalizeBoundedText(item.media(), MAX_MEDIA_LENGTH),
                 item.episodes(),
+                cleanStaff(item.staff()),
+                cleanCharacters(item.characters()),
+                cleanStudios(item.studios()),
                 coverUrl, tagsJson,
                 ratingValue, ratingScale, ratingSource,
                 normalizeSourceUrl(item.sourceUrl()));

@@ -51,7 +51,9 @@ class WorkServiceSortAndRelatedTest {
 
     @BeforeEach
     void setUp() {
-        service = new WorkService(repository, publicUrlResolver, new ObjectMapper(), new CountCache());
+        service = new WorkService(repository, publicUrlResolver, new ObjectMapper(), new CountCache(),
+                new WorkRelationRepository(org.mockito.Mockito.mock(org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate.class),
+                        org.mockito.Mockito.mock(org.springframework.jdbc.core.JdbcTemplate.class)));
     }
 
     @Test

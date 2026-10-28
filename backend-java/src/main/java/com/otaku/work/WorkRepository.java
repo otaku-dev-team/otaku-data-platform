@@ -67,7 +67,7 @@ public class WorkRepository {
         return rows.stream().findFirst();
     }
 
-    public void insert(WorkRecord record) {
+    public long insert(WorkRecord record) {
         String sql = """
                 INSERT INTO work (work_id, work_type, title, summary, release_year,
                                   title_original, aliases, media, episodes,
@@ -91,6 +91,13 @@ public class WorkRepository {
         }
         replaceTags(key.longValue(), record.tagsJson(), record.workType(),
                 record.ratingValue(), record.releaseYear());
+        return key.longValue();
+    }
+
+    /** 只推进 updated_at：关系数据（staff/characters/studios）变了、内容字段没变时用。 */
+    public void touch(long id, LocalDateTime now) {
+        jdbc.update("UPDATE work SET updated_at = :now WHERE id = :id",
+                new MapSqlParameterSource().addValue("id", id).addValue("now", now));
     }
 
     /** 只更新内容字段；work_id / source / source_id / created_at 永不变。 */

@@ -27,7 +27,8 @@ class WorkCountCacheTest {
     private final WorkRepository repository = mock(WorkRepository.class);
     private final CountCache cache = new CountCache();
     private final WorkService service = new WorkService(
-            repository, mock(PublicUrlResolver.class), new ObjectMapper(), cache);
+            repository, mock(PublicUrlResolver.class), new ObjectMapper(), cache,
+            mock(WorkRelationRepository.class));
 
     private void stubCount(long total) {
         when(repository.count(any(), any(), any(), any(), any())).thenReturn(total);
