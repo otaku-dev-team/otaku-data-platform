@@ -6,15 +6,15 @@ import 'source_badge.dart';
 
 /// 占位层的两种形态。
 ///
-/// 同一套占位在小海报上好看、放到整屏头图上就难看：斜纹和首字在 64×88 是
-/// 「有内容但没配图」，放大到 1080×430 就变成一块喧宾夺主的条纹布。
+/// 同一套占位在小海报上好看、放到整屏头图上就难看：小尺寸的渐变 + 首字是
+/// 「有内容但没配图」，放大到整屏就变成一块喧宾夺主的色块。
 /// 所以按用途分两档，语义（没有封面 / 加载失败）完全一致，只是画法不同。
 enum CoverPlaceholderStyle {
-  /// 海报位（网格卡、列表磁贴、详情页小海报）：渐变 + 斜纹 + 首字。
+  /// 海报位（网格卡、列表磁贴、详情页小海报）：浅蓝灰渐变 + 首字水印。
   poster,
 
-  /// 头图位（首页精选大图、详情页沉浸头图）：深色渐变 + 极淡首字水印，
-  /// 不画斜纹——它要当白字的背景，越安静越好。
+  /// 头图位（首页精选大图、详情页沉浸头图）：深色渐变 + 极淡高光，
+  /// 不画字——它要当白字的背景，越安静越好。
   hero,
 }
 
@@ -25,7 +25,7 @@ enum CoverPlaceholderStyle {
 ///
 /// 三种缺失状态要能区分开，否则 bangumi 那批「本来就没有封面」的条目
 /// 会被误读成「图片加载失败」：
-/// - 没有封面 → 品牌色渐变 + 作品首字（尺寸够时改成图标 +「暂无封面」）
+/// - 没有封面 → 浅蓝灰渐变 + 作品首字（尺寸够时改成图标 +「暂无封面」）
 /// - 正在加载 → 纯骨架，无渐变无文字，避免和「本来就没有」混淆
 /// - 加载失败 → 与「没有封面」同款，因为契约不允许出现破图
 class CoverImage extends StatelessWidget {
@@ -247,10 +247,13 @@ class _CoverFallback extends StatelessWidget {
   }
 }
 
-/// 海报占位层：渐变底 + 斜纹 + 标题首字。
+/// 海报占位层：很淡的蓝灰渐变 + 标题首字。
 ///
-/// 抄的是来源站 `.work-cover`：纯色块在大面积上看着像"加载失败"，
-/// 加一层 135° 斜纹和首字，观感上是"这张卡有内容但没配图"。
+/// 早先抄的是来源站 `.work-cover`（饱和蓝 + 135° 斜纹 + 大首字）。问题是
+/// bangumi 那批条目**大多本来就没有封面**，「高分作品」一排三张全是斜纹时
+/// 整块比正文还抢眼，看起来更像加载失败。现在压成接近纸面的浅蓝灰渐变，
+/// 首字调到半透明做水印：一眼能看出「这张有内容、只是没配图」，又不会
+/// 把视线从标题上拽走。加载态仍是纯灰块，两者依旧区分得开。
 class _PosterPlaceholder extends StatelessWidget {
   const _PosterPlaceholder({
     required this.width,
@@ -278,22 +281,18 @@ class _PosterPlaceholder extends StatelessWidget {
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [Color(0xFFD6ECFF), Color(0xFF85CDFF), Color(0xFFAAECE6)],
-                stops: [0, 0.58, 1],
+                colors: [Color(0xFFE9F2FB), Color(0xFFD5E5F4)],
               ),
             ),
-            child: CustomPaint(
-              painter: const _StripePainter(),
-              child: Center(
-                child: Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: side * 0.24,
-                    fontWeight: FontWeight.w800,
-                    // 站点 --on-bright-soft：rgba(10, 45, 66, 0.72)
-                    color: const Color(0xB80A2D42),
-                    height: 1,
-                  ),
+            child: Center(
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: side * 0.3,
+                  fontWeight: FontWeight.w700,
+                  // 站点 --on-bright-soft 压低到 45%：水印而不是标题。
+                  color: const Color(0x730A2D42),
+                  height: 1,
                 ),
               ),
             ),
@@ -371,26 +370,4 @@ class _HeroPlaceholder extends StatelessWidget {
       ),
     );
   }
-}
-
-class _StripePainter extends CustomPainter {
-  const _StripePainter();
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.18)
-      ..strokeWidth = 6;
-    // 135° 斜纹，周期 20px，与站点 repeating-linear-gradient 一致。
-    for (var x = -size.height; x < size.width + size.height; x += 26) {
-      canvas.drawLine(
-        Offset(x, size.height),
-        Offset(x + size.height, 0),
-        paint,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _StripePainter oldDelegate) => false;
 }
