@@ -25,6 +25,7 @@ class WorkMergerTest {
                                    Integer releaseYear) {
         BigDecimal rating = ratingValue == null ? null : new BigDecimal(ratingValue);
         return new WorkRecord(1L, "W-test", "anime", "原标题", summary, releaseYear,
+                null, null, null, null,
                 "http://154.8.194.198:8000/media/full/cover_1.jpg", "cache-key", T,
                 tagsJson, rating,
                 rating == null ? null : "0-10",
@@ -40,7 +41,8 @@ class WorkMergerTest {
     private static NormalizedItem item(String title, String summary, String tagsJson,
                                        String ratingValue, String coverUrl, Integer releaseYear) {
         BigDecimal rating = ratingValue == null ? null : new BigDecimal(ratingValue);
-        return new NormalizedItem("476", "anime", title, summary, releaseYear, coverUrl,
+        return new NormalizedItem("476", "anime", title, summary, releaseYear,
+                null, null, null, null, coverUrl,
                 tagsJson, rating,
                 rating == null ? null : "0-10",
                 rating == null ? null : "otaku_site", null);
@@ -49,14 +51,16 @@ class WorkMergerTest {
     /** 只带 source_url 的旧记录，其余可空字段都为 null，便于隔离验证。 */
     private static WorkRecord workWithSourceUrl(String sourceUrl) {
         return new WorkRecord(1L, "W-test", "anime", "原标题", null, null,
+                null, null, null, null,
                 "http://154.8.194.198:8000/media/full/cover_1.jpg", "cache-key", T,
                 null, null, null, null, "otaku_site", "476", sourceUrl, T, T);
     }
 
     /** 带 source_url 的条目，其余字段与 {@link #item} 一致。 */
     private static NormalizedItem itemWithSourceUrl(String sourceUrl) {
-        return new NormalizedItem("476", "anime", "原标题", null, null, null, null,
-                null, null, null, sourceUrl);
+        return new NormalizedItem("476", "anime", "原标题", null, null,
+                null, null, null, null,
+                null, null, null, null, null, sourceUrl);
     }
 
     @Test

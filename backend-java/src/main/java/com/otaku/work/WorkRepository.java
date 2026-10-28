@@ -30,6 +30,7 @@ public class WorkRepository {
 
     private static final String COLUMNS = """
             id, work_id, work_type, title, summary, release_year,
+            title_original, aliases, media, episodes,
             cover_source_url, cover_cache_key, cover_cached_at,
             tags, rating_value, rating_scale, rating_source,
             source, source_id, source_url, created_at, updated_at
@@ -69,10 +70,12 @@ public class WorkRepository {
     public void insert(WorkRecord record) {
         String sql = """
                 INSERT INTO work (work_id, work_type, title, summary, release_year,
+                                  title_original, aliases, media, episodes,
                                   cover_source_url, cover_cache_key, cover_cached_at,
                                   tags, rating_value, rating_scale, rating_source,
                                   source, source_id, source_url, created_at, updated_at)
                 VALUES (:workId, :workType, :title, :summary, :releaseYear,
+                        :titleOriginal, :aliasesJson, :media, :episodes,
                         :coverSourceUrl, :coverCacheKey, :coverCachedAt,
                         :tagsJson, :ratingValue, :ratingScale, :ratingSource,
                         :source, :sourceId, :sourceUrl, :createdAt, :updatedAt)
@@ -96,6 +99,10 @@ public class WorkRepository {
                 UPDATE work SET title = :title,
                                 summary = :summary,
                                 release_year = :releaseYear,
+                                title_original = :titleOriginal,
+                                aliases = :aliasesJson,
+                                media = :media,
+                                episodes = :episodes,
                                 cover_source_url = :coverSourceUrl,
                                 cover_cache_key = :coverCacheKey,
                                 cover_cached_at = :coverCachedAt,
@@ -342,6 +349,10 @@ public class WorkRepository {
                 .addValue("title", record.title())
                 .addValue("summary", record.summary())
                 .addValue("releaseYear", record.releaseYear())
+                .addValue("titleOriginal", record.titleOriginal())
+                .addValue("aliasesJson", record.aliasesJson())
+                .addValue("media", record.media())
+                .addValue("episodes", record.episodes())
                 .addValue("coverSourceUrl", record.coverSourceUrl())
                 .addValue("coverCacheKey", record.coverCacheKey())
                 .addValue("coverCachedAt", record.coverCachedAt())
@@ -363,6 +374,10 @@ public class WorkRepository {
                 rs.getString("summary"),
                 // 必须用 getObject：getInt 会把 NULL 读成 0，等于凭空造出一个"公元 0 年"。
                 rs.getObject("release_year", Integer.class),
+                rs.getString("title_original"),
+                TagsJson.canonical(rs.getString("aliases")),
+                rs.getString("media"),
+                rs.getObject("episodes", Integer.class),
                 rs.getString("cover_source_url"),
                 rs.getString("cover_cache_key"),
                 rs.getObject("cover_cached_at", LocalDateTime.class),

@@ -181,10 +181,10 @@ public class WorkService {
                 record.title(),
                 record.summary(),
                 record.releaseYear(),
-                null, // titleOriginal — 档 A 数据接线归 #250
-                null, // aliases
-                null, // media
-                null, // episodes
+                record.titleOriginal(),
+                parseAliases(record.aliasesJson()),
+                record.media(),
+                record.episodes(),
                 coverUrl(record),
                 parseTags(record.tagsJson()),
                 toRating(record),
@@ -227,6 +227,22 @@ public class WorkService {
             return null;
         }
         return new SourceRatingDto(record.ratingValue(), record.ratingScale(), record.ratingSource());
+    }
+
+    /**
+     * 别名三态里 `[]` 与 `null` 必须区分：`[]` 表示「明确没有别名」，
+     * 客户端据此显示「无别名」而不是「暂未收录」。解析失败按 null（缺数据）处理。
+     */
+    private List<String> parseAliases(String aliasesJson) {
+        if (aliasesJson == null || aliasesJson.isBlank()) {
+            return null;
+        }
+        try {
+            return objectMapper.readValue(aliasesJson, TAG_LIST);
+        } catch (Exception ex) {
+            log.warn("aliases 解析失败，按 null 返回：{}", ex.getClass().getSimpleName());
+            return null;
+        }
     }
 
     private List<String> parseTags(String tagsJson) {
