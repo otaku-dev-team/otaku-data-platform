@@ -237,32 +237,36 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
           appBar: AppBar(
             title: const Text('作品库'),
             actions: [
-              // 桌面端没有下拉手势，刷新得有个按钮（§6「刷新」一行）。
-              // 手机端保持只有下拉刷新：多一个按钮只是挤占 AppBar。
-              if (PlatformInfo.isDesktop)
+              // 手机端这三个入口底栏已经有了（资讯 / 收藏 / 新番），
+              // AppBar 再放一份不只是重复：真机 1080×2400 实测，
+              // 标题「作品库」被挤成「作...」。桌面没有底栏，保留这三个入口。
+              if (PlatformInfo.isDesktop) ...[
+                // 桌面端没有下拉手势，刷新得有个按钮（§6「刷新」一行）。
+                // 手机端保持只有下拉刷新：多一个按钮只是挤占 AppBar。
                 IconButton(
                   tooltip: '刷新（Ctrl+R）',
                   onPressed: () =>
                       ref.read(contentsControllerProvider.notifier).refresh(),
                   icon: const Icon(Icons.refresh_rounded),
                 ),
-              IconButton(
-                tooltip: '最新资讯',
-                onPressed: () => context.push(RoutePaths.articles),
-                icon: const Icon(Icons.newspaper_outlined),
-              ),
-              IconButton(
-                tooltip: '我的收藏',
-                onPressed: () => context.push(RoutePaths.collections),
-                icon: const Icon(Icons.bookmark_border_rounded),
-              ),
-              // 每日新番入口。与收藏并列而不是塞进筛选栏：筛选栏已经
-              // 被类型 chips 和排序占满，再放一个入口会把 chips 挤没。
-              IconButton(
-                tooltip: '每日新番',
-                onPressed: () => context.push(RoutePaths.schedule),
-                icon: const Icon(Icons.calendar_today_outlined),
-              ),
+                IconButton(
+                  tooltip: '最新资讯',
+                  onPressed: () => context.push(RoutePaths.articles),
+                  icon: const Icon(Icons.newspaper_outlined),
+                ),
+                IconButton(
+                  tooltip: '我的收藏',
+                  onPressed: () => context.push(RoutePaths.collections),
+                  icon: const Icon(Icons.bookmark_border_rounded),
+                ),
+                // 每日新番入口。与收藏并列而不是塞进筛选栏：筛选栏已经
+                // 被类型 chips 和排序占满，再放一个入口会把 chips 挤没。
+                IconButton(
+                  tooltip: '每日新番',
+                  onPressed: () => context.push(RoutePaths.schedule),
+                  icon: const Icon(Icons.calendar_today_outlined),
+                ),
+              ],
               // 年份筛选。与排序并列：两个都是「对整个结果集生效」的条件，
               // 塞进类型 chips 那条横向列表会被挤到看不见。
               _YearMenu(
@@ -840,8 +844,12 @@ class _FilterRow extends StatelessWidget {
       height: 52,
       child: LayoutBuilder(
         builder: (context, constraints) {
-          // 窄屏优先保住胶囊和视图开关，结果数最先让位。
-          final showTotal = total != null && constraints.maxWidth >= 560;
+          // 窄屏上胶囊只留文字：每个都带 5 位数会占满一行，剩下的类型
+          // 全靠横滑找。数量挪到右侧只显示一条总数，宽屏再恢复站点那种
+          // 「类型 + 数量」的胶囊。
+          final narrow = constraints.maxWidth < 560;
+          final showChipCounts = !narrow;
+          final showTotal = total != null;
           return Row(
             children: [
               Expanded(
@@ -852,9 +860,19 @@ class _FilterRow extends StatelessWidget {
                     right: 8,
                   ),
                   children: [
-                    _chip(context, label: '全部', type: null),
+                    _chip(
+                      context,
+                      label: '全部',
+                      type: null,
+                      showCount: showChipCounts,
+                    ),
                     for (final type in WorkType.selectable)
-                      _chip(context, label: type.label, type: type),
+                      _chip(
+                        context,
+                        label: type.label,
+                        type: type,
+                        showCount: showChipCounts,
+                      ),
                     // 标签入口放在 chips 末尾而不是 AppBar：AppBar 已经挤了
                     // 刷新 / 资讯 / 收藏 / 新番 / 年份 / 排序 / 账号七个动作，
                     // 在 800px 宽的窗口下会溢出（实测 6px）。
@@ -882,7 +900,7 @@ class _FilterRow extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.only(right: 10),
                   child: Text(
-                    '共 $total 部',
+                    _totalLabel(total!, narrow: narrow),
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
@@ -899,13 +917,23 @@ class _FilterRow extends StatelessWidget {
     );
   }
 
+  /// 窄屏用「万」压缩位数：`19.8 万` 比 `198100` 短一半，又不丢量级。
+  /// 小数字保持 `共 3 部`——测试钉的就是这个格式。
+  static String _totalLabel(int total, {required bool narrow}) {
+    if (!narrow || total < 10000) return '共 $total 部';
+    final wan = total / 10000;
+    final text = wan >= 100 ? wan.toStringAsFixed(0) : wan.toStringAsFixed(1);
+    return '共 $text 万';
+  }
+
   Widget _chip(
     BuildContext context, {
     required String label,
     required WorkType? type,
+    bool showCount = true,
   }) {
     final isSelected = selected == type;
-    final count = counts?.countOf(type);
+    final count = showCount ? counts?.countOf(type) : null;
 
     return Padding(
       padding: const EdgeInsets.only(right: 8, top: 8, bottom: 8),

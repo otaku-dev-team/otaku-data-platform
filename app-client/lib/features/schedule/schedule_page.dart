@@ -102,12 +102,18 @@ class SchedulePage extends ConsumerWidget {
         onRefresh: () async => ref.invalidate(scheduleProvider),
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
-          children: const [
-            SizedBox(height: 72),
+          children: [
+            const SizedBox(height: 72),
             EmptyState(
               icon: Icons.event_busy_outlined,
               title: '还没有档期数据',
               message: '等同步任务跑完就有了，也可以下拉刷新试试',
+              // 空态给一个明确出口：下拉手势不是所有人都知道。
+              action: FilledButton.tonalIcon(
+                onPressed: () => ref.invalidate(scheduleProvider),
+                icon: const Icon(Icons.refresh_rounded),
+                label: const Text('刷新'),
+              ),
             ),
           ],
         ),

@@ -143,6 +143,13 @@ class _ArticleListPageState extends ConsumerState<ArticleListPage> {
             message: category == null
                 ? '等同步任务跑完就有了'
                 : '换个分类看看，或点「全部」看所有资讯',
+            // 空态给一个明确出口：桌面端没有下拉手势，手机端也未必想得到。
+            action: FilledButton.tonalIcon(
+              onPressed: () =>
+                  ref.read(articleListControllerProvider.notifier).refresh(),
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text('刷新'),
+            ),
           ),
         ],
       ),
