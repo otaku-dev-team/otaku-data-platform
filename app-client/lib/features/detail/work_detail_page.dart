@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/network/api_exception.dart';
+import '../../core/platform_info.dart';
 import '../../core/router/route_paths.dart';
 import '../../core/theme/app_layout.dart';
 import '../../core/theme/app_theme.dart';
@@ -226,6 +227,32 @@ class _DetailBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 手机端：整屏宽的沉浸式头图，下面才是标签 / 收藏 / 简介。
+    // 桌面端保持原来的「封面 + 标题/信息」两栏（窄窗口退化为单列）——
+    // 桌面首屏更看重信息密度，不套头图。
+    if (!PlatformInfo.isDesktop) {
+      return SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _DetailHero(work: work),
+            Padding(
+              padding: const EdgeInsets.all(AppLayout.pagePadding),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _DetailInfo(work: work, onTag: onTag),
+                  const SizedBox(height: 24),
+                  _RecordPanel(work: work),
+                  RelatedWorksSection(workId: work.workId),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(AppLayout.pagePadding),
       child: Column(
@@ -283,7 +310,6 @@ class _Headline extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final tags = work.tags;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -314,13 +340,38 @@ class _Headline extends StatelessWidget {
               ),
           ],
         ),
+        const SizedBox(height: 16),
+        _DetailInfo(work: work, onTag: onTag),
+      ],
+    );
+  }
+}
+
+/// 标签 / 收藏 / 简介。
+///
+/// 手机端放在头图下方，桌面端放在标题与元信息下方——两种形态共用这一份，
+/// 否则「收藏按钮」和「简介」会在两端各写一遍、逐渐长歪。
+class _DetailInfo extends StatelessWidget {
+  const _DetailInfo({required this.work, required this.onTag});
+
+  final Work work;
+
+  final ValueChanged<String> onTag;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final tags = work.tags;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
         if (tags != null) ...[
-          const SizedBox(height: 12),
           // 标签可点：列表卡片上的标签早就能这么用（#107），同一批标签在
           // 详情页却是死文字——同一个东西两处行为不一致，用户会以为详情页坏了。
           TagChips(tags: tags, maxVisible: 10, onTag: onTag),
+          const SizedBox(height: 16),
         ],
-        const SizedBox(height: 16),
         _CollectBar(work: work),
         const SizedBox(height: 20),
         const Divider(height: 1),
@@ -334,6 +385,107 @@ class _Headline extends StatelessWidget {
         const SizedBox(height: 8),
         _SummaryBlock(text: work.summary),
       ],
+    );
+  }
+}
+
+/// 手机端沉浸式头图：封面铺满、底部压暗，海报 + 标题 + 元信息浮在上面。
+///
+/// 只用于手机端（桌面端仍是「封面 + 标题」的常规两栏）。标题最多三行，
+/// 长标题不会把海报挤出屏幕；无封面时 `CoverImage` 的占位 + 压暗层
+/// 仍然保证白字可读。
+class _DetailHero extends StatelessWidget {
+  const _DetailHero({required this.work});
+
+  final Work work;
+
+  static const double _height = 300;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final firstChar = work.title.characters.isEmpty
+        ? null
+        : work.title.characters.first;
+    final rating = work.mainRating;
+    final meta = [
+      work.workType.label,
+      if (work.releaseYear != null) '${work.releaseYear}',
+      if (rating != null) '★ ${rating.value.toStringAsFixed(1)}',
+    ].join(' · ');
+
+    return SizedBox(
+      height: _height,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          CoverImage(
+            url: work.coverUrl,
+            width: double.infinity,
+            height: double.infinity,
+            radius: 0,
+            placeholderLabel: firstChar,
+          ),
+          // 底部压暗：白字在浅色封面上也能读。
+          const DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Color(0x000B1620), Color(0xF20B1620)],
+                stops: [0.2, 1],
+              ),
+            ),
+          ),
+          Positioned(
+            left: AppLayout.pagePadding,
+            right: AppLayout.pagePadding,
+            bottom: 16,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(AppLayout.innerRadius),
+                  child: CoverImage(
+                    url: work.coverUrl,
+                    width: 86,
+                    height: 129,
+                    radius: 0,
+                    placeholderLabel: firstChar,
+                    source: work.source,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        work.title,
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.headlineSmall?.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          height: 1.25,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        meta,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: Colors.white.withValues(alpha: 0.85),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

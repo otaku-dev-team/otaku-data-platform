@@ -9,8 +9,10 @@ import '../../core/theme/app_layout.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/models/article.dart';
 import '../../data/models/schedule.dart';
+import '../../data/models/work_summary.dart';
 import '../../data/models/work_type.dart';
 import '../../shared/widgets/account_menu.dart';
+import '../../shared/widgets/cover_image.dart';
 import '../../shared/widgets/compact_work_card.dart';
 import '../../shared/widgets/desktop_nav_shell.dart';
 import '../../shared/widgets/mobile_nav_bar.dart';
@@ -72,6 +74,7 @@ class HomePage extends ConsumerWidget {
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.only(top: 12, bottom: 24),
               children: const [
+                _FeaturedHero(),
                 _RecentViewsSection(),
                 _TypeBrowseSection(),
                 _TodayScheduleSection(),
@@ -389,6 +392,145 @@ class _RecentViewsSection extends ConsumerWidget {
     );
     if (confirmed != true) return;
     ref.read(recentViewsProvider.notifier).clear();
+  }
+}
+
+/// 首页顶部「高分精选」大图卡。
+///
+/// 参考资讯类 / 番剧类客户端的 breaking banner：整行大图 + 底部渐变压暗 +
+/// 标题与元信息。**只在手机端出现**——桌面首屏已经有侧栏和更宽的横排，
+/// 再加一块大图会把首屏撑满。
+///
+/// 数据复用「高分作品」的第一条，不新开请求：首页是入口，不值得为一张
+/// banner 多打一次接口。加载中给同高占位，避免数据到位后整页往下跳。
+class _FeaturedHero extends ConsumerWidget {
+  const _FeaturedHero();
+
+  static const double _height = 200;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (PlatformInfo.isDesktop) return const SizedBox.shrink();
+
+    final theme = Theme.of(context);
+    final topRated = ref.watch(homeTopRatedProvider);
+    final radius = BorderRadius.circular(AppTheme.cardRadius);
+    const padding = EdgeInsets.fromLTRB(
+      AppLayout.pagePadding,
+      4,
+      AppLayout.pagePadding,
+      4,
+    );
+
+    if (!topRated.hasValue) {
+      return Padding(
+        padding: padding,
+        child: Container(
+          height: _height,
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceContainerHighest,
+            borderRadius: radius,
+          ),
+        ),
+      );
+    }
+
+    final items = topRated.value ?? const <WorkSummary>[];
+    if (items.isEmpty) return const SizedBox.shrink();
+
+    final work = items.first;
+    final rating = work.mainRating;
+    final meta = [
+      work.workType.label,
+      if (work.releaseYear != null) '${work.releaseYear}',
+      if (rating != null) '★ ${rating.value.toStringAsFixed(1)}',
+    ].join(' · ');
+    final firstChar = work.title.characters.isEmpty
+        ? null
+        : work.title.characters.first;
+
+    return Padding(
+      padding: padding,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: radius,
+          border: Border.all(color: AppTheme.borderColor(context), width: 0.5),
+          boxShadow: AppTheme.cardShadow,
+        ),
+        child: ClipRRect(
+          borderRadius: radius,
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () => context.push(RoutePaths.workDetail(work.workId)),
+              child: SizedBox(
+                height: _height,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    // 头图背景不贴来源角标：它会被压在标题/元信息上，
+                    // 而且这张图的职责是氛围，不是「这条来自哪」。
+                    CoverImage(
+                      url: work.coverUrl,
+                      width: double.infinity,
+                      height: double.infinity,
+                      radius: 0,
+                      placeholderLabel: firstChar,
+                    ),
+                    // 底部压暗，保证白字在浅色封面上也能读。
+                    const DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [Color(0x000B1620), Color(0xE60B1620)],
+                          stops: [0.35, 1],
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      left: 16,
+                      right: 16,
+                      bottom: 14,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '高分精选',
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: Colors.white.withValues(alpha: 0.75),
+                              letterSpacing: 1,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            work.title,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.titleLarge?.copyWith(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                              height: 1.25,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            meta,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: Colors.white.withValues(alpha: 0.85),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 
