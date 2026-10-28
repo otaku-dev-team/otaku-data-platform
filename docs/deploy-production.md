@@ -660,3 +660,37 @@ df -h
 - 线上的演示账号 `console-demo-user`（`site_key=otaku`）只是为了让站主后台有数据可看，
   不再需要时按 `/internal/accounts` 的账号删除流程处理（直接删 `app_user` 行即可，注意先清 `user_session`）；
 - 站主账号密码只存在服务器 `/opt/otaku/backend/.console-demo-credentials`（600），**不入库、不入仓库**。
+
+
+### 11.8 站点 OAuth 令牌交换代理上线（Issue #242）
+
+新增端点 `POST /api/auth/site-login`（契约 `identity-linkup-contract.md` §2）。**不配环境变量时它返回 503，对线上零影响**——可以随任意一次发版带上去，等 secret 到位再打开。
+
+三步：
+
+1. 服务器 `/opt/otaku/backend/.env` 加三行（secret 由站点单独注入，**绝不提交仓库**）：
+
+   ```
+   OTAKU_SITE_OAUTH_BASE_URL=<站点根地址，带协议不带尾斜杠>
+   OTAKU_SITE_OAUTH_CLIENT_ID=otaku-app-client
+   OTAKU_SITE_OAUTH_CLIENT_SECRET=<站点分配的正式 secret>
+   OTAKU_SITE_OAUTH_IDENTITY_SOURCE=otaku_site   # 写入 app_user.identity_source 的站名
+   ```
+
+2. 重建镜像（改了 `application.yml` 与 `compose.prod.yaml`，`restart` 不够）：
+
+   ```bash
+   docker compose -f compose.prod.yaml up -d --build backend
+   ```
+
+3. 验证：
+
+   | 检查 | 期望 |
+   |---|---|
+   | `docker exec otaku-backend env \| grep OTAKU_SITE_OAUTH` | 四项都在（只确认存在，不打印 secret 值） |
+   | `POST /api/auth/site-login` 空 ticket | 400 `BAD_REQUEST` |
+   | `POST /api/auth/site-login` 假 ticket | 401 `INVALID_CREDENTIALS`（站点拒绝 → 归一，**不带站点 detail**） |
+   | 站点不可达时 | 503 `SITE_UNAVAILABLE`（不是 401） |
+   | 真 ticket（联调） | 200，`token` 可访问 `GET /api/auth/me`；`app_user` 多一行 `identity_source='otaku_site'` |
+
+**别忘了**：迁移到 V13（Flyway 自动）；导入/回填长任务期间不要直接重启，按 §11.2 第 5 条先 `kill -STOP` 再重建。

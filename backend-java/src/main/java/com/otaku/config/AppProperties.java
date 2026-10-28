@@ -18,6 +18,8 @@ public class AppProperties {
 
     private final Cover cover = new Cover();
 
+    private final SiteOauth siteOauth = new SiteOauth();
+
     public String getInternalToken() {
         return internalToken;
     }
@@ -36,6 +38,10 @@ public class AppProperties {
 
     public Cover getCover() {
         return cover;
+    }
+
+    public SiteOauth getSiteOauth() {
+        return siteOauth;
     }
 
     public static class Cover {
@@ -133,6 +139,86 @@ public class AppProperties {
 
         public void setAllowedReferers(List<String> allowedReferers) {
             this.allowedReferers = allowedReferers == null ? new ArrayList<>() : allowedReferers;
+        }
+    }
+
+    /** 站点 OAuth 令牌交换代理配置（Issue #242，契约 identity-linkup-contract.md §2 / §7）。 */
+    public static class SiteOauth {
+
+        /** 站点根地址，如 https://example.com。为空 = 站点登录未配置（端点返回 503）。 */
+        private String baseUrl = "";
+
+        /** 站点分配的 client_id。 */
+        private String clientId = "otaku-app-client";
+
+        /**
+         * 站点分配的 client_secret。**只从环境变量注入**（契约 §7）：
+         * 绝不入库、不落日志、不回显、不进任何仓库文件与文档。
+         * 为空 = 未配置，端点返回 503（fail-closed）。
+         */
+        private String clientSecret = "";
+
+        /**
+         * 身份来源标识，写入 app_user.identity_source（契约 §3 的映射锚之一）。
+         *
+         * <p>刻意**不给默认值**：站名是部署事实，不是代码常量——写死就等于把首站焊进核心代码，
+         * 接第二站时得改代码（单站隔离校验 scripts/check-site-isolation.py 会直接拦）。
+         * 为空 = 站点登录未配置，端点 503（与 base-url / secret 同一口径）。
+         */
+        private String identitySource = "";
+
+        /** 调站点 /api/auth/token 的超时。 */
+        private Duration timeout = Duration.ofSeconds(10);
+
+        /** 站点令牌有效期。站点侧固定 3600 秒，这里只是记录到期时间用。 */
+        private Duration tokenTtl = Duration.ofSeconds(3600);
+
+        public String getBaseUrl() {
+            return baseUrl;
+        }
+
+        public void setBaseUrl(String baseUrl) {
+            this.baseUrl = baseUrl == null ? "" : baseUrl.trim();
+        }
+
+        public String getClientId() {
+            return clientId;
+        }
+
+        public void setClientId(String clientId) {
+            this.clientId = clientId == null ? "" : clientId.trim();
+        }
+
+        public String getClientSecret() {
+            return clientSecret;
+        }
+
+        public void setClientSecret(String clientSecret) {
+            this.clientSecret = clientSecret == null ? "" : clientSecret.trim();
+        }
+
+        public String getIdentitySource() {
+            return identitySource;
+        }
+
+        public void setIdentitySource(String identitySource) {
+            this.identitySource = identitySource == null ? "" : identitySource.trim();
+        }
+
+        public Duration getTimeout() {
+            return timeout;
+        }
+
+        public void setTimeout(Duration timeout) {
+            this.timeout = timeout;
+        }
+
+        public Duration getTokenTtl() {
+            return tokenTtl;
+        }
+
+        public void setTokenTtl(Duration tokenTtl) {
+            this.tokenTtl = tokenTtl;
         }
     }
 }

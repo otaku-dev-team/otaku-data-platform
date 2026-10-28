@@ -636,6 +636,55 @@ paths:
         "429": { $ref: "#/components/responses/RateLimited" }
         "500": { $ref: "#/components/responses/InternalError" }
 
+  /api/auth/site-login:
+    post:
+      tags: [账号]
+      summary: 站点授权票据换平台会话（令牌交换代理）
+      operationId: siteLogin
+      description: |
+        阶段 2 账号绑定（Issue #242，契约 identity-linkup-contract.md §2）。
+
+        App 先用系统浏览器打开站点 `/oauth/authorize`，回跳拿到一次性 `ticket`，再调本端点。
+        **`client_secret` 只在平台后端**，客户端全程不见站点令牌。
+
+        成功后的 `token` 与此前 `/api/auth/login` 发出的会话完全等价（同表、同 30 天 TTL、只存哈希）。
+
+        **不落 ticket、不落站点令牌原文**：只存 `SHA-256(站点 access_token)` 与到期时间；
+        `user.display_name` 透出站点昵称仅供本次展示，不落库、不再分发（契约 §7）。
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SiteLoginRequest" }
+      responses:
+        "200":
+          description: 交换成功。`token` 只在此处返回一次，客户端自行安全保存
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401":
+          description: |
+            站点拒绝了本次授权（`INVALID_CREDENTIALS`）：票据过期、已被用过、`client_secret` 错。
+            客户端应引导用户**重走一次授权**，不要静默重试。
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: 该站点身份映射的平台账号已被禁用（`USER_DISABLED`），不发放会话
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "503":
+          description: |
+            站点侧暂不可用（`SITE_UNAVAILABLE`）：超时 / 5xx / 未配置。
+            **不要引导重走授权**——重走也会失败，提示稍后再试即可。
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
   /api/auth/me:
     get:
       tags: [账号]
@@ -2400,6 +2449,17 @@ components:
           description: 客户端自报的设备标识，仅用于展示与排查，不参与鉴权
           example: android
 
+    SiteLoginRequest:
+      type: object
+      required: [ticket]
+      properties:
+        ticket:
+          type: string
+          minLength: 1
+          description: |
+            站点 `/oauth/authorize` 回跳带回的一次性票据（120 秒有效）。
+            平台后端不落库、不打日志，用完即废。
+
     CreateAccountRequest:
       type: object
       required: [username, password]
@@ -2436,7 +2496,10 @@ components:
         display_name:
           type: string
           nullable: true
-          description: 首期不提供，恒为 `null`；客户端回落到 `username`
+          description: |
+            平台账号恒为 `null`，客户端回落到 `username`。
+            站点登录（`POST /api/auth/site-login`）的 200 响应里会带上站点昵称，
+            仅供本次展示、不落库；同一账号后续 `/api/auth/me` 仍为 `null`。
         created_at:
           type: string
           format: date-time

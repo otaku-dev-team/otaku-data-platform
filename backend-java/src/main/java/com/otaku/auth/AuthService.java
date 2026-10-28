@@ -150,6 +150,17 @@ public class AuthService {
                 user.createdAt() == null ? null : user.createdAt().toInstant(ZoneOffset.UTC));
     }
 
+    /**
+     * 为已确认身份的账号开一条会话（站点登录 #242 复用）。
+     *
+     * <p>与口令登录共用 {@link #startSession}：同样的 30 天 TTL、同样只存哈希、
+     * 一次登录一条会话。调用方必须先自行完成身份确认——
+     * 这里不做任何凭据校验，只负责发会话。
+     */
+    public SessionResponse openSession(UserRecord user, String deviceLabel) {
+        return startSession(user, deviceLabel);
+    }
+
     private SessionResponse startSession(UserRecord user, String deviceLabel) {
         String token = SessionTokens.newToken();
         LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);

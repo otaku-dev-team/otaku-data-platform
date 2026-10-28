@@ -42,6 +42,14 @@ public enum ErrorCode {
     DEVICE_LIMIT_EXCEEDED(HttpStatus.CONFLICT),
     BATCH_TOO_LARGE(HttpStatus.PAYLOAD_TOO_LARGE),
     RATE_LIMITED(HttpStatus.TOO_MANY_REQUESTS),
+    /**
+     * 阶段 2 账号绑定（#242）：站点侧暂不可用（超时 / 5xx / 未配置）。
+     *
+     * <p>与 {@link #INVALID_CREDENTIALS} 分开：票据失效等**授权失败**用 401，
+     * 客户端引导重走授权就能解决；站点本身挂了/超时重走授权也没用，
+     * 用 503 让客户端提示「稍后再试」，避免把用户推进必然失败的重试循环。
+     */
+    SITE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE),
     INTERNAL(HttpStatus.INTERNAL_SERVER_ERROR);
 
     private final HttpStatus status;

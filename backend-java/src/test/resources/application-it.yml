@@ -24,3 +24,7 @@ app:
   cover:
     # 放 target 下，避免在仓库里留运行产物
     cache-dir: target/it-covers
+
+  site-oauth:
+    # 集成测试固定用首站标识；核心代码里不出现该常量（单站隔离校验）
+    identity-source: otaku_site
