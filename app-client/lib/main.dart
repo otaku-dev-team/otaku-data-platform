@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:hive_ce_flutter/hive_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';
 
@@ -20,6 +21,13 @@ const String _windowHeightKey = 'window.height';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Hive 必须先初始化：所有盒子（作品缓存 / 收藏缓存 / 浏览历史 / 偏好）
+  // 都靠它拿到存储路径。少了这一步 `openBox` 会抛错，各个持有者
+  // 会 `catch` 后静默降级成内存实现——表面上一切正常，但冷启后
+  // 主题、搜索历史、追番提醒开关、离线缓存**全部丢失**。
+  // 这个坑单测发现不了：测试自己 `Hive.init(tempDir)`，走的不是生产入口。
+  await Hive.initFlutter();
 
   // window_manager 只有桌面端有实现，Android 上调用会报插件缺失。
   if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {

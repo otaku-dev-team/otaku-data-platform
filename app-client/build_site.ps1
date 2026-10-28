@@ -15,6 +15,9 @@ param(
     [string]$Site,
     [ValidateSet('windows', 'apk')][string]$Target = 'windows',
     [ValidateSet('debug', 'profile', 'release')][string]$BuildMode = 'release',
+    # 默认出「真数据」包：注入 USE_MOCK=false。App 的默认值是 true（开发期走
+    # assets/mock 夹具），出包时不覆盖就会得到「装得上但全是假数据」的包。
+    [switch]$Mock,
     [switch]$DryRun,
     [switch]$List,
     [switch]$Help
@@ -67,6 +70,7 @@ if ($Help) {
   -Site       必填。sites\<键>\site.conf 里的站点
   -Target     windows（默认）| apk
   -BuildMode  debug | profile | release（默认）
+  -Mock       出 Mock 数据版（默认注真实后端：USE_MOCK=false）
   -DryRun     只打印命令，不构建
   -List       列出已有站点
 '@
@@ -118,7 +122,8 @@ $flutterArgs = @(
     "--dart-define=APP_NAME=$appName",
     "--dart-define=SITE_ID=$siteId",
     "--dart-define=BRAND_COMPANY=$brandCompany",
-    "--dart-define=API_BASE_URL=$apiBaseUrl"
+    "--dart-define=API_BASE_URL=$apiBaseUrl",
+    "--dart-define=USE_MOCK=$($Mock.ToString().ToLower())"
 )
 if ($siteBaseUrl) {
     $flutterArgs += "--dart-define=SITE_BASE_URL=$siteBaseUrl"
@@ -130,7 +135,7 @@ if ($Target -eq 'apk') {
 
 Write-Say "站点：$Site（$siteId）"
 Write-Say "应用名：$appName ｜ 归属：$brandCompany ｜ 包名：$appId"
-Write-Say "后端：$apiBaseUrl"
+Write-Say "后端：$apiBaseUrl（USE_MOCK=$($Mock.ToString().ToLower())）"
 if ($siteBaseUrl) {
     Write-Say "站点：$siteBaseUrl（App 内登录 / 注册）"
 } else {

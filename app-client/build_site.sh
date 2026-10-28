@@ -28,6 +28,10 @@ SITE=""
 TARGET="windows"
 MODE="release"
 DRY_RUN=0
+# 默认出「真数据」包：注入 USE_MOCK=false。App 的默认值是 true（开发期走
+# assets/mock 夹具），出包时不覆盖就会得到「装得上但全是假数据」的包——
+# 真机走查会把它误当成后端数据。要 Mock 包显式加 --mock。
+USE_MOCK=false
 
 say() { printf '[build_site] %s\n' "$*"; }
 die() {
@@ -46,6 +50,7 @@ usage() {
   --site <键>          必填。sites/<键>/site.conf 里的站点
   --target <平台>      windows（默认）| apk
   --build-mode <模式>  debug | profile | release（默认）
+  --mock               出 Mock 数据版（默认注真实后端：USE_MOCK=false）
   --dry-run            只打印将要执行的命令，不构建
   --list               列出已有站点
   -h, --help           显示本帮助
@@ -79,6 +84,7 @@ while [ $# -gt 0 ]; do
     --target=*) TARGET="${1#*=}"; shift ;;
     --build-mode) MODE="${2:-}"; shift 2 ;;
     --build-mode=*) MODE="${1#*=}"; shift ;;
+    --mock) USE_MOCK=true; shift ;;
     --dry-run) DRY_RUN=1; shift ;;
     --list) say "已有站点："; list_sites; exit 0 ;;
     -h | --help) usage; exit 0 ;;
@@ -144,6 +150,7 @@ cmd+=("--dart-define=APP_NAME=$APP_NAME")
 cmd+=("--dart-define=SITE_ID=$SITE_ID")
 cmd+=("--dart-define=BRAND_COMPANY=$BRAND_COMPANY")
 cmd+=("--dart-define=API_BASE_URL=$API_BASE_URL")
+cmd+=("--dart-define=USE_MOCK=$USE_MOCK")
 if [ -n "$SITE_BASE_URL" ]; then
   case "$SITE_BASE_URL" in
     http://* | https://*) ;;
@@ -158,7 +165,7 @@ fi
 
 say "站点：$SITE（$SITE_ID）"
 printf '[build_site] 应用名：%s ｜ 归属：%s ｜ 包名：%s\n' "$APP_NAME" "$BRAND_COMPANY" "$APP_ID"
-printf '[build_site] 后端：%s\n' "$API_BASE_URL"
+printf '[build_site] 后端：%s（USE_MOCK=%s）\n' "$API_BASE_URL" "$USE_MOCK"
 if [ -n "$SITE_BASE_URL" ]; then
   printf '[build_site] 站点：%s（App 内登录 / 注册）\n' "$SITE_BASE_URL"
 else
