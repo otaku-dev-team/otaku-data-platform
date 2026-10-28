@@ -10,6 +10,7 @@ import '../../shared/widgets/desktop_nav_shell.dart';
 import '../../shared/widgets/mobile_nav_bar.dart';
 import '../../shared/widgets/empty_state.dart';
 import '../../shared/widgets/error_state.dart';
+import '../../shared/widgets/scroll_edge_fade.dart';
 import 'article_card.dart';
 import 'article_controller.dart';
 
@@ -178,6 +179,9 @@ class _ArticleListPageState extends ConsumerState<ArticleListPage> {
           final item = data.items[index];
           return ArticleCard(
             article: item,
+            // 第一条走头条版式：一屏之内先给一条「今天的重点」，
+            // 剩下的按时间排。资讯类列表全是同规格小卡时没有主次。
+            featured: index == 0,
             onTap: () => context.push(RoutePaths.articleDetail(item.articleId)),
           );
         },
@@ -242,23 +246,27 @@ class _CategoryRow extends StatelessWidget {
     if (categories.isEmpty) return const SizedBox.shrink();
     return SizedBox(
       height: 52,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.only(
-          left: AppLayout.pagePadding,
-          right: AppLayout.pagePadding,
+      // 分类数量不定，横滑时最后一枚会被硬切；右缘渐隐让「还能滑」
+      // 这件事看起来是有意为之（作品库筛选栏同一处处理）。
+      child: ScrollEdgeFade(
+        child: ListView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.only(
+            left: AppLayout.pagePadding,
+            right: AppLayout.pagePadding,
+          ),
+          children: [
+            _chip(context, label: '全部', count: total, isSelected: selected == null, onTap: () => onSelected(null)),
+            for (final category in categories)
+              _chip(
+                context,
+                label: category.name,
+                count: category.count,
+                isSelected: selected == category.name,
+                onTap: () => onSelected(category.name),
+              ),
+          ],
         ),
-        children: [
-          _chip(context, label: '全部', count: total, isSelected: selected == null, onTap: () => onSelected(null)),
-          for (final category in categories)
-            _chip(
-              context,
-              label: category.name,
-              count: category.count,
-              isSelected: selected == category.name,
-              onTap: () => onSelected(category.name),
-            ),
-        ],
       ),
     );
   }

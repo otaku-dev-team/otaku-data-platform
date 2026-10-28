@@ -10,6 +10,7 @@ import '../../shared/widgets/desktop_nav_shell.dart';
 import '../../shared/widgets/mobile_nav_bar.dart';
 import '../../shared/widgets/empty_state.dart';
 import '../../shared/widgets/error_state.dart';
+import '../../shared/widgets/scroll_edge_fade.dart';
 import '../../shared/widgets/tag_chips.dart';
 import 'schedule_controller.dart';
 
@@ -210,26 +211,28 @@ class _WeekdayChips extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.fromLTRB(
-        AppLayout.pagePadding,
-        8,
-        AppLayout.pagePadding,
-        8,
-      ),
-      child: Row(
-        children: [
-          for (final weekday in SchedulePage._chips)
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: ChoiceChip(
-                label: Text(weekday.label),
-                selected: selected == weekday,
-                onSelected: (_) => onSelected(weekday),
+    return ScrollEdgeFade(
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.fromLTRB(
+          AppLayout.pagePadding,
+          8,
+          AppLayout.pagePadding,
+          8,
+        ),
+        child: Row(
+          children: [
+            for (final weekday in SchedulePage._chips)
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: ChoiceChip(
+                  label: Text(weekday.label),
+                  selected: selected == weekday,
+                  onSelected: (_) => onSelected(weekday),
+                ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }

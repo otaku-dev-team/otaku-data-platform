@@ -257,6 +257,12 @@ void main() {
     expect(find.byType(ArticleCard), findsNWidgets(2));
     // 章程 G3：有原文就给入口，没有就整块不渲染（不是一个点不动的按钮）。
     expect(find.text('在来源站查看'), findsOneWidget);
+
+    // 只有第一条走头条版式：一屏之内先给一条重点，其余按时间排。
+    // 版式是 ArticleCard 的一个开关，条数与可点区域都不变。
+    final cards = tester.widgetList<ArticleCard>(find.byType(ArticleCard)).toList();
+    expect(cards[0].featured, isTrue);
+    expect(cards[1].featured, isFalse);
     expect(tester.takeException(), isNull);
   });
 
