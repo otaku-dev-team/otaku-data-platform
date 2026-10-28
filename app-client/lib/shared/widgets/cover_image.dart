@@ -98,25 +98,50 @@ class CoverImage extends StatelessWidget {
               label: placeholderLabel,
             );
 
+    if (badge == null) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(radius),
+        child: cover,
+      );
+    }
+
     return ClipRRect(
       borderRadius: BorderRadius.circular(radius),
-      child: badge == null
-          ? cover
-          : Stack(
-              children: [
-                Positioned.fill(child: cover),
-                // 贴角而不是占一行：这里的高度（尤其是网格卡片）是按字号量死的，
-                // 多一行会把正文挤出卡片。
-                Positioned.directional(
-                  textDirection: Directionality.of(context),
-                  start: 6,
-                  bottom: 6,
-                  child: SourceBadge(source: badge),
-                ),
-              ],
+      child: _boxIfSized(
+        Stack(
+          children: [
+            Positioned.fill(child: cover),
+            // 贴角而不是占一行：这里的高度（尤其是网格卡片）是按字号量死的，
+            // 多一行会把正文挤出卡片。
+            Positioned.directional(
+              textDirection: Directionality.of(context),
+              start: 6,
+              bottom: 6,
+              child: SourceBadge(source: badge),
             ),
+          ],
+        ),
+      ),
     );
   }
+
+  /// 给徽章层补一个尺寸框：只有 **宽高都有限** 时才补。
+  ///
+  /// [Stack] 自己不带尺寸，它要靠 `Positioned.fill` 的子节点或父级约束才有界。
+  /// 横向条（`CompactWorkCard`）和列表行（`WorkListTile`）是把 [CoverImage]
+  /// 直接放进 `Column` / `Row` 的——这两条轴向上的交叉约束是**无界**的，
+  /// Stack 拿不到有限尺寸就会抛 `A Stack requires bounded constraints`，
+  /// 整张卡片渲染不出来（首页「高分作品」在真数据下曾整块空白，
+  /// 因为只有真数据才带 `source`，假数据不走这一层）。
+  ///
+  /// 网格那条路（`WorkCard` / 收藏卡）传的是 `double.infinity`，父级还有一层
+  /// [AspectRatio] 兜着，约束本来就有界；这里要是也套框，反而会在无界父级下
+  /// 报 "BoxConstraints forces an infinite height"。所以按 {有限} 分流：
+  /// 有限 → 自己给框；无限 → 交给父级。
+  Widget _boxIfSized(Widget child) =>
+      width.isFinite && height.isFinite
+          ? SizedBox(width: width, height: height, child: child)
+          : child;
 }
 
 class _CoverFallback extends StatelessWidget {
