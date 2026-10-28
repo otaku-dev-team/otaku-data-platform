@@ -25,7 +25,6 @@ backend-java/src/main/resources/application.yml::154.8.194.198   # 首站回源�
 # ── 客户端：站点键的构建期默认值 ──────────────────────────────────
 # 客户端是「构建期烘焙单站」的形态（定位「产品要求 1」），所以这里出现站名
 # 本身是设计的一部分；要改的是取值来源（--dart-define），不是删掉这个字段。
-app-client/lib/core/config/app_config.dart::otaku_site              # siteKey 的 dart-define 默认值
 app-client/lib/data/datasources/auth_mock_data_source.dart::otaku_site  # mock 数据源，仅本地/演示用
 
 # ── 同步：首站专用的抓取配置 ──────────────────────────────────────
