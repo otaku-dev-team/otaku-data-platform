@@ -1,9 +1,14 @@
 # 站点品牌配置（应用名 / 归属方 / 包名）
 
-> 状态：**已实现（客户端侧）**。回应 ROADMAP §8.7 第 5 项（归属 riceyu02 / W1）、
+> 状态：**构建侧保留，客户端品牌显示已移除**（2026-10-28）。回应 ROADMAP §8.7 第 5 项（归属 riceyu02 / W1）、
 > 定位 §7.2 产品要求 2「每站一个独立客户端、品牌归属网站，品牌资源要能按站点区分」。
 >
-> 主责：@riceyu02｜日期：2026-10-25
+> 主责：@riceyu02｜日期：2026-10-25｜最后更新：2026-10-28
+>
+> **2026-10-28 变更**：安卓端定位为个人向、不参与公司/商业交付，客户端 Dart 侧的品牌显示已移除——
+> 设置页「品牌归属」区块删除，桌面窗口标题固定为 `Otaku`，`site_branding.dart` 与
+> `AppConfig.siteId` 一并删除。**构建侧（`build_site.*` + `sites/<site>/site.conf`）保留**，
+> 真机一键出包不受影响；`APP_NAME` / `SITE_ID` / `BRAND_COMPANY` 仍会注入，但客户端已不再读取。
 
 ---
 
@@ -11,7 +16,7 @@
 
 | 类别 | 包含 | 什么时候定 | 怎么改 |
 |---|---|---|---|
-| **运行时可定** | 应用内显示的应用名、桌面窗口标题、设置页「品牌归属」 | 每次启动 | `--dart-define` |
+| ~~运行时可定~~ | ~~应用内显示的应用名、桌面窗口标题、设置页「品牌归属」~~ **已于 2026-10-28 移除** | — | — |
 | **只能构建期定** | Android `applicationId` 与 app label、桌面包标识 / 公司名 / 图标 | 每次构建 | Gradle property + 资源替换 |
 
 **为什么必须分开**：`applicationId` 是系统里「这个 App 是谁」的身份，Launcher 会缓存
@@ -30,18 +35,14 @@ label 与图标——运行时改它们，下次启动系统就认不出自己�
 
 | 品牌项 | 位置 | 注入方式 | 默认值 |
 |---|---|---|---|
-| 应用名（Dart 侧） | `lib/core/config/site_branding.dart` | `--dart-define=APP_NAME=…` | `Otaku` |
-| 站点标识 | `lib/core/config/app_config.dart`（`AppConfig.siteId`） | `--dart-define=SITE_ID=…` | `otaku_site` |
-| 归属方 | `site_branding.dart` | `--dart-define=BRAND_COMPANY=…` | `com.otaku` |
-| 桌面窗口标题 | `main.dart` 的 `WindowOptions.title` | 跟随 `APP_NAME` | `Otaku · otaku_site` |
-| 设置页「品牌归属」 | `settings_page.dart` 关于区 | 跟随 `SITE_ID` | 显示 `otaku_site` |
 | Android 应用名 | `AndroidManifest.xml` 的 `@string/app_name`，值来自 `build.gradle.kts` 的 `resValue` | `-PappName=…` | `Otaku` |
 | Android 包名 | `build.gradle.kts` 的 `applicationId` | `-PappId=…` | `com.otaku.app` |
 | 图标（Android mipmap / Windows ico） | 资源文件 | **手工替换**（见 §3） | 首站图标 |
 | 以上全部（一把出包） | `build_site.sh` / `build_site.ps1` | `sites/<site>/site.conf` | 日常 `flutter run` 不受影响 |
 
-**默认不传任何参数时，行为与实现前完全一致**——`test/site_branding_test.dart` 钉住了这一点。
-日常开发不需要关心这套机制，它是交付时才用的。
+**客户端 Dart 侧已不再读取品牌配置**（2026-10-28）：`APP_NAME` / `SITE_ID` / `BRAND_COMPANY`
+仍由脚本注入，但只影响 Android 系统级身份（label / 包名），应用内不再显示品牌归属，
+桌面窗口标题固定为 `Otaku`。日常开发不需要关心这套机制，它是交付时才用的。
 
 ---
 
@@ -75,11 +76,12 @@ Windows 上等价写法：`.\build_site.ps1 -Site acme`（参数同名，读同�
 
 ### 2.3 脚本替你保证的三件事
 
-`APP_NAME` + `-PappName`、`SITE_ID`、`API_BASE_URL` 必须一起换，少一个的后果：
+`APP_NAME` + `-PappName`、`API_BASE_URL` 必须一起换，少一个的后果：
 
-1. `APP_NAME` + `-PappName`（Dart 侧标题与 Android Launcher 名）；
-2. `SITE_ID`（设置页与日志里这个客户端服务谁）；
-3. `API_BASE_URL`（连哪个后端——这个本来就是联调必需项）。
+1. `APP_NAME` + `-PappName`（Android Launcher 名；桌面窗口标题已固定为 `Otaku`，不随站点变）；
+2. `API_BASE_URL`（连哪个后端——这个本来就是联调必需项）。
+
+`SITE_ID` / `BRAND_COMPANY` 仍保留在 `site.conf` 与脚本注入中，但客户端已不读取（2026-10-28）。
 
 **包名 `-PappId` 要不要换**：同一台设备上要**同时装**两个站的客户端才需要换；
 只装一个可以沿用。换与不换的代价见 §3。
@@ -114,8 +116,8 @@ Windows 上等价写法：`.\build_site.ps1 -Site acme`（参数同名，读同�
 已验（2026-10-27）：
 
 - `flutter analyze` 干净；
-- `test/site_branding_test.dart` 5 项：默认应用名 / 站点标识同源 / 归属方 /
-  窗口标题格式 / 版权行；
+- ~~`test/site_branding_test.dart` 5 项~~ **该测试已随客户端品牌移除而删除（2026-10-28）**；
+  同日 `settings_page_test.dart` 9 项全过（「关于」页断言未受影响）；
 - **默认路径**：`./build_site.sh --site otaku` 与 `--build-mode debug` 都真跑过，
   产物在 `build/windows/x64/runner/{Debug,Release}/otaku_app.exe`；
   debug 的品牌自检命中 `kernel_blob.bin`、release 命中 `app.so`；
