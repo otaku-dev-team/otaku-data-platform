@@ -11,14 +11,22 @@ class TagChips extends StatelessWidget {
     super.key,
     required this.tags,
     this.maxVisible = 4,
+    this.showOverflowCount = false,
     this.onTag,
     this.selectedTags = const <String>{},
   });
 
   final List<String>? tags;
 
-  /// 来源每条最多 5 个，超出部分不展示，避免卡片被撑高。
+  /// 最多展示几个。超出部分默认直接不展示，避免卡片被撑高。
   final int maxVisible;
+
+  /// 超出 [maxVisible] 时，最后一个位置换成 `+N`。
+  ///
+  /// 用在**高度固定、不能换行**的位置（列表磁贴的单行标签区）：直接裁掉
+  /// 会让用户以为标签就这些，而且断在半个字上像渲染坏了。
+  /// 详情页这类可以自然换行的地方保持 `false`，没必要藏。
+  final bool showOverflowCount;
 
   /// 点了某个标签就回调它；`null` 表示纯展示。
   final ValueChanged<String>? onTag;
@@ -37,7 +45,11 @@ class TagChips extends StatelessWidget {
 
     final scheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
-    final visible = values.take(maxVisible);
+    final limit = showOverflowCount && values.length > maxVisible
+        ? (maxVisible > 1 ? maxVisible - 1 : 0)
+        : maxVisible;
+    final visible = values.take(limit);
+    final hidden = values.length - limit;
 
     return Wrap(
       spacing: 6,
@@ -50,6 +62,15 @@ class TagChips extends StatelessWidget {
             scheme: scheme,
             selected: selectedTags.contains(tag),
             onTap: onTag,
+          ),
+        // `+N` 只是提示还有多少，不参与筛选，所以不给 onTap。
+        if (hidden > 0)
+          _Tag(
+            label: '+$hidden',
+            textStyle: textTheme.labelSmall,
+            scheme: scheme,
+            selected: false,
+            onTap: null,
           ),
       ],
     );

@@ -91,24 +91,23 @@ class WorkListTile extends ConsumerWidget {
                     ],
                   ),
                   const SizedBox(height: 8),
-                  // 列表视图比网格宽，标签多给几个；仍然只占一行，超出裁掉。
+                  // 列表视图比网格宽，但标签仍只占一行（行高稳定）。
+                  // 超出部分用 `+N` 标出来，而不是硬裁——硬裁断在半个字上，
+                  // 看起来像渲染坏了，用户也不知道后面还有。
                   SizedBox(
                     height: 22,
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      physics: const NeverScrollableScrollPhysics(),
-                      child: TagChips(
-                        tags: work.tags,
-                        maxVisible: 5,
-                        onTag: (tag) => ref
-                            .read(contentsFilterProvider.notifier)
-                            .toggleTag(tag),
-                        selectedTags: ref
-                            .watch(
-                              contentsFilterProvider.select((f) => f.tags),
-                            )
-                            .toSet(),
-                      ),
+                    child: TagChips(
+                      tags: work.tags,
+                      maxVisible: 4,
+                      showOverflowCount: true,
+                      onTag: (tag) => ref
+                          .read(contentsFilterProvider.notifier)
+                          .toggleTag(tag),
+                      selectedTags: ref
+                          .watch(
+                            contentsFilterProvider.select((f) => f.tags),
+                          )
+                          .toSet(),
                     ),
                   ),
                 ],
