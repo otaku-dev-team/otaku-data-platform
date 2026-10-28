@@ -185,6 +185,8 @@ PYTHONPATH=src python -m sync --source bangumi --archive <dump.zip> \
 | `OTAKU_MAX_ATTEMPTS` | `3` | 最大尝试次数 |
 | `OTAKU_BACKOFF_SECONDS` | `2` | 重试间隔 |
 | `OTAKU_OUTPUT_DIR` | `runs` | 产物目录 |
+| `OTAKU_BANGUMI_API_BASE` | `https://api.bgm.tv` | Bangumi 只读 API 根，封面回填用；不可达时指镜像 |
+| `OTAKU_BANGUMI_TOKEN` | 无 | Bangumi 只读令牌（镜像一般免令牌），**不得写入仓库** |
 
 ## 定时化与运行检查
 
@@ -218,6 +220,42 @@ python -m sync --retry-failed runs/run-2026-10-26T03-00-00.json   # 指定报告
 - 只支持作品抓取，与 `--articles` / `--schedule` 同用会明确报错。
 
 判定与退出码均有测试覆盖：`pytest tests/test_check_run_report.py`。
+
+### 补封面（`--backfill-covers`）
+
+bangumi 那 55.6 万条的档案**不含 `images` 字段**（上游没给），所以常规导入只能把
+`cover_url` 写成 `null`，列表里几乎全是占位图。补法是回上游按 subject id 逐条取图链：
+
+```bash
+# 1) 先预演：只查不写，看清这批能补上多少张
+python -m sync --source bangumi --archive /path/dump.zip --backfill-covers --cover-limit 50
+
+# 2) 确认无误再真正写入（写的是 cover_url，其余字段不动）
+python -m sync --source bangumi --archive /path/dump.zip --backfill-covers --apply
+
+# 3) 只补上次网络失败的
+python -m sync --source bangumi --archive /path/dump.zip --backfill-covers --apply --cover-retry-failed
+```
+
+- **不新增后端接口**：`WorkMerger` 只会覆盖“本次出现且非 null”的字段，所以回填载荷只带
+  `source_id` / `work_type` / `title` / `cover_url`，其余为 `null` = 保留原值，summary / tags /
+  评分不会被冲掉；封面变化时后端会自动清缓存键，下次访问重新回源。
+- **进度落 sqlite**（默认 `<out>/cover-index.sqlite`）：55.6 万条按 1 req/s 是按天计的作业，
+  进程必然被打断。每条处理完就地改状态（`pending` → `filled` / `missing` / `error`），
+  重跑从 `pending` 继续，已完成的不会重复请求、不会重复写入。
+- **顺序按热度降序**（`favorite` 各状态计数之和），先让最可能被点到的作品有图；
+  `--cover-order archive` 可改回按 id 升序。
+- **限流默认 0.25s（≈4 req/s），并发默认 8**。这两个数是分开的：**间隔是总速率上限，
+  并发只是把单次请求的延迟（实测 1.1–3.8 秒）藏起来**。图床对并发敏感，实测 8–12 稳定，
+  **开到 32 会换来 429 和断连，比串行还慢**；真被限流就调大 `--cover-interval`，别调并发。
+- **每条只发一次请求**：只取 `images.large` 的**地址**写进库，图片本身由后端
+  `/api/covers/{id}` 按需回源并落盘缓存，不在这里下载——这是与「逐条把原图也下下来」的做法
+  最大的差别（后者每条要两次往返 + 几百 KB~1MB 流量）。
+- 图链尺寸优先 `large` 原图：镜像图床只放行原图路径，`/r/800/`、`/r/400/` 这类缩略一律 403
+  （2026-10-19 实测），按缩略优先跑会每条都拿 403。
+
+`--bangumi-api-base` / `OTAKU_BANGUMI_API_BASE` 可指到可达的镜像；`OTAKU_BANGUMI_TOKEN`
+仅官方 API 需要，**只从环境变量读，不入库、不打日志**。
 
 ### 跑同步前先自检（`--health`）
 

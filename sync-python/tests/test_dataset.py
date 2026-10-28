@@ -382,3 +382,73 @@ def test_missing_entities_table_degrades_instead_of_failing(tmp_path):
     assert "people" in report.skipped_tables
     assert any(d.get("table") == "people" and d.get("kind") == "table_missing"
                for d in report.degraded)
+
+
+BANGUMI_MAPPING = Path(__file__).resolve().parents[1] / "src/sync/dataset/mappings/otaku-bangumi.json"
+
+
+def test_bangumi_mapping_loads_and_covers_every_dataset_table():
+    m = DatasetMapping.load(BANGUMI_MAPPING)
+    assert m.source_id == "otaku-bangumi"
+    from sync.dataset.schema import DATASET_TABLES
+    assert {t.target for t in m.tables} == set(DATASET_TABLES)
+
+
+def test_bangumi_mapping_rekeys_everything_by_bangumi_id(tmp_path):
+    """发布目标是 bangumi 目录：source_id 一律换成 contents.bangumi_id，封面刻意留空。
+
+    后端现存行的 source_id 是 bangumi subject id，与源站 content id 不同源
+    （线上实证：数据集 100=星际拓荒，后端 100=xxxHOLiC(11)）。照搬源站键会把
+    staff 写到同号的陌生作品上。封面不映射则让 publish 载荷里 cover_url 为
+    null——三态语义下 null=不覆盖，#222 回填通道写的封面得以保留。
+    """
+    src = make_source(tmp_path / "site.db")
+    out = tmp_path / "dataset.db"
+    report = export_dataset(src, out, BANGUMI_MAPPING, snapshot=True)
+
+    assert report.row_counts["works"] == 3
+    conn = sqlite3.connect(out)
+    # source_id = bangumi_id（fixture 100/101/102），不再是源站 content id
+    assert {r[0] for r in conn.execute("select source_id from works")} == {"100", "101", "102"}
+    # 封面刻意不映射
+    assert all(r[0] is None for r in conn.execute("select cover_url from works"))
+    # 子表跟着一起换键
+    assert conn.execute("select source_id from work_credits").fetchall() == [("100",)]
+    assert conn.execute("select source_id from work_cast").fetchall() == [("100",)]
+    assert conn.execute("select source_id from work_studios").fetchall() == [("100",)]
+    assert conn.execute("select source_id from work_facts").fetchall() == [("100",)]
+    assert conn.execute(
+        "select source_id, related_source_id from work_relations"
+    ).fetchall() == [("100", "101")]
+    assert {r[0] for r in conn.execute("select source_id from work_tags")} == {"100", "101"}
+    conn.close()
+
+
+def test_bangumi_mapping_credits_whitelist_matches_otaku_mapping(tmp_path):
+    """换键不许换口径：两份映射的 credits 白名单必须产出同一批 (role, name)。"""
+    src = make_source(tmp_path / "site.db")
+    conn = sqlite3.connect(src)
+    conn.executemany(
+        "insert into content_credits(content_id, person_id, role, name, tier, sort_order)"
+        " values (?,?,?,?,?,?)",
+        [
+            (2, 1, "原画", "某原画", "long", 10),
+            (2, 2, "作画监督", "某监督", "long", 11),
+            (2, 3, "发售日", "2020-01-01", "main", 12),
+            (2, 4, "版本:东立版", "台版", "main", 13),
+        ],
+    )
+    conn.commit()
+    conn.close()
+
+    out_a = tmp_path / "a.db"
+    out_b = tmp_path / "b.db"
+    export_dataset(src, out_a, MAPPING, snapshot=True)
+    export_dataset(src, out_b, BANGUMI_MAPPING, snapshot=True)
+
+    ca, cb = sqlite3.connect(out_a), sqlite3.connect(out_b)
+    roles_a = {(r[0], r[1]) for r in ca.execute("select role, name from work_credits")}
+    roles_b = {(r[0], r[1]) for r in cb.execute("select role, name from work_credits")}
+    ca.close()
+    cb.close()
+    assert roles_a == roles_b == {("导演", "庵野秀明"), ("作画监督", "某监督")}

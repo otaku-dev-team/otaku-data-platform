@@ -1,0 +1,165 @@
+{
+  "dataset_version": "2",
+  "source_id": "otaku-bangumi",
+  "_notes": [
+    "与 otaku.json 同一个源库，但 source_id 一律取 contents.bangumi_id（覆盖率 100%，2026-10-28 实测）。",
+    "用途：把数据集发布到以 bangumi subject id 为主键的后端目录（backend_source='bangumi'），",
+    "让 staff/characters/studios 直接挂在用户实际浏览的作品行上，不产生第二份目录。",
+    "封面刻意不映射：后端行的 cover 由 #222 回填通道维护（按 images.common 优先级取），数据集若带 image_url 会按三态「非空=整体替换」把回填结果覆盖掉，故留空（null=不覆盖）。",
+    "works.source_url 仍取源站人读页：契约约定 source_url=网站人读页 /contents/{id}，",
+    "bangumi_id 与源站 content id 不同源，用本映射重键后 source_url 恰好指向正确的原页。",
+    "people / series 保持源站自身 id：它们是数据集内部引用（person_ref / series_key），后端本期不消费。",
+    "articles / article_links / schedules 本期不经数据集发布，保持原样。",
+    "其余口径（credits 白名单、on_missing 三档）与 otaku.json 完全一致，见其 _notes。"
+  ],
+  "tables": [
+    {
+      "target": "works",
+      "mode": "table",
+      "source": "contents",
+      "key": "bangumi_id",
+      "fields": [
+        {"target": "source_id", "column": "bangumi_id", "type": "str", "required": true, "on_missing": "break"},
+        {"target": "work_type", "column": "type", "type": "enum", "required": true, "on_missing": "reject",
+         "enum_map": {
+           "动画": "anime", "漫画": "comic", "游戏": "game", "轻小说": "novel",
+           "anime": "anime", "comic": "comic", "game": "game", "novel": "novel"
+         }},
+        {"target": "title", "column": "title", "type": "str", "required": true, "on_missing": "reject"},
+        {"target": "summary", "column": "summary", "type": "text"},
+        {"target": "release_year", "column": "year", "type": "int", "min": 1900, "max": 2100},
+        {"target": "rating_value", "column": "rating", "type": "float", "min": 0, "max": 10},
+        {"target": "rating_scale", "const": "0-10", "type": "str"},
+        {"target": "source_url", "column": "source_url", "type": "str"},
+        {"target": "title_original", "column": "title_original", "type": "str"},
+        {"target": "summary_original", "column": "summary_original", "type": "text"},
+        {"target": "aliases_json", "column": "aliases", "type": "json_list"},
+        {"target": "rating_count", "column": "rating_count", "type": "int", "min": 0},
+        {"target": "media", "column": "media", "type": "str"},
+        {"target": "episodes", "column": "episodes", "type": "int", "min": 0, "max": 10000},
+        {"target": "source_material", "column": "source_material", "type": "str"},
+        {"target": "series_key", "column": "series_id", "type": "str"}
+      ]
+    },
+    {
+      "target": "work_tags",
+      "mode": "query",
+      "required_sources": ["content_tags", "tags", "contents"],
+      "sql": "select cast(c.bangumi_id as text) as source_id, t.name as name from content_tags ct join tags t on t.id = ct.tag_id join contents c on c.id = ct.content_id"
+    },
+    {
+      "target": "work_facts",
+      "mode": "query",
+      "required_sources": ["content_facts", "contents"],
+      "sql": "select cast(c.bangumi_id as text) as source_id, f.key as key, f.value as value from content_facts f join contents c on c.id = f.content_id"
+    },
+    {
+      "target": "people",
+      "mode": "table",
+      "source": "entities",
+      "key": "id",
+      "fields": [
+        {"target": "source_id", "column": "id", "type": "str", "required": true, "on_missing": "break"},
+        {"target": "name", "column": "name", "type": "str", "required": true, "on_missing": "reject"},
+        {"target": "entity_type", "column": "entity_type", "type": "str"},
+        {"target": "bangumi_person_id", "column": "bangumi_person_id", "type": "str"}
+      ]
+    },
+    {
+      "target": "work_credits",
+      "mode": "query",
+      "required_sources": ["content_credits", "contents"],
+      "sql": "select cast(c.bangumi_id as text) as source_id, cr.role as role, cr.name as name, cast(cr.person_id as text) as person_ref, cr.tier, cr.sort_order from content_credits cr join contents c on c.id = cr.content_id where (cr.tier = 'main' and cr.role not like '版本:%' and cr.role not in ('发售日','作者','连载杂志','ISBN-10','ISBN-13','册数','链接','出版社','开始','结束','页数','价格','装帧','尺寸')) or cr.role in ('作画监督','总作画监督','演出','分镜','机械作画监督','动作作画监督') order by c.bangumi_id, cr.sort_order"
+    },
+    {
+      "target": "work_cast",
+      "mode": "query",
+      "required_sources": ["content_cast", "contents"],
+      "sql": "select cast(c.bangumi_id as text) as source_id, cc.character as character, cc.actor as actor, cast(cc.person_id as text) as person_ref, cc.relation, cc.sort_order from content_cast cc join contents c on c.id = cc.content_id order by c.bangumi_id, cc.sort_order"
+    },
+    {
+      "target": "work_studios",
+      "mode": "query",
+      "required_sources": ["content_studios", "contents"],
+      "sql": "select cast(c.bangumi_id as text) as source_id, cs.name as name from content_studios cs join contents c on c.id = cs.content_id order by c.bangumi_id"
+    },
+    {
+      "target": "work_relations",
+      "mode": "query",
+      "required_sources": ["content_relations", "contents"],
+      "sql": "select cast(cf.bangumi_id as text) as source_id, cast(ct.bangumi_id as text) as related_source_id, cr.relation_type as relation from content_relations cr join contents cf on cf.id = cr.from_content_id join contents ct on ct.id = cr.to_content_id"
+    },
+    {
+      "target": "series",
+      "mode": "table",
+      "source": "series",
+      "key": "id",
+      "fields": [
+        {"target": "series_key", "column": "id", "type": "str", "required": true, "on_missing": "reject"},
+        {"target": "name", "column": "name", "type": "str", "required": true, "on_missing": "reject"}
+      ]
+    },
+    {
+      "target": "tags",
+      "mode": "table",
+      "source": "tags",
+      "key": "name",
+      "fields": [
+        {"target": "name", "column": "name", "type": "str", "required": true, "on_missing": "reject"}
+      ]
+    },
+    {
+      "target": "articles",
+      "mode": "table",
+      "source": "articles",
+      "key": "id",
+      "filter": "is_published = 1",
+      "fields": [
+        {"target": "source_id", "column": "id", "type": "str", "required": true, "on_missing": "break"},
+        {"target": "title", "column": "title", "type": "str", "required": true, "on_missing": "reject"},
+        {"target": "summary", "column": "summary", "type": "text"},
+        {"target": "body", "column": "body", "type": "text"},
+        {"target": "category", "column": "category", "type": "str"},
+        {"target": "subcategory", "column": "subcategory", "type": "str"},
+        {"target": "event_type", "column": "event_type", "type": "str"},
+        {"target": "published_at", "column": "published_at", "type": "datetime"},
+        {"target": "source_name", "column": "source", "type": "str"},
+        {"target": "source_url", "column": "original_url", "type": "str"},
+        {"target": "cover_url", "column": "image_url", "type": "str"},
+        {"target": "is_adult", "column": "is_adult", "type": "bool"},
+        {"target": "source_updated_at", "column": "updated_at", "type": "datetime"}
+      ]
+    },
+    {
+      "target": "article_links",
+      "mode": "query",
+      "required_sources": ["article_content_links"],
+      "sql": "select article_id as article_source_id, content_id as work_source_id from article_content_links"
+    },
+    {
+      "target": "schedules",
+      "mode": "table",
+      "source": "anime_schedules",
+      "key": "id",
+      "fields": [
+        {"target": "source_id", "column": "id", "type": "str", "required": true, "on_missing": "break"},
+        {"target": "season_code", "column": "season_code", "type": "str"},
+        {"target": "title_main", "column": "title_main", "type": "str"},
+        {"target": "title_cn", "column": "title_cn", "type": "str"},
+        {"target": "title_jp", "column": "title_jp", "type": "str"},
+        {"target": "weekday", "column": "weekday", "type": "int", "min": 1, "max": 7},
+        {"target": "broadcast_time", "column": "broadcast_time", "type": "str"},
+        {"target": "broadcast_note", "column": "broadcast_note", "type": "str"},
+        {"target": "air_date", "column": "air_date", "type": "str"},
+        {"target": "box_office", "column": "box_office", "type": "str"},
+        {"target": "work_type", "column": "work_type", "type": "str"},
+        {"target": "work_tags_json", "column": "work_tags", "type": "str"},
+        {"target": "image_url", "column": "image_url", "type": "str"},
+        {"target": "platforms_json", "column": "platforms", "type": "json_list"},
+        {"target": "source_url", "column": "source_url", "type": "str"},
+        {"target": "content_source_id", "column": "content_id", "type": "str"},
+        {"target": "source_updated_at", "column": "last_synced_at", "type": "datetime"}
+      ]
+    }
+  ]
+}

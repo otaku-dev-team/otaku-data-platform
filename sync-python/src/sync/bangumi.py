@@ -143,6 +143,15 @@ def _subject_iterator(archive_path: str) -> Iterator[dict[str, Any]]:
                 yield json.loads(line)
 
 
+def iter_subjects(archive_path: str) -> Iterator[dict[str, Any]]:
+    """公开的档案逐行迭代器（原始 dict，未做 WorkItem 映射）。
+
+    给需要档案原始字段、但不走常规映射的作业用——封面回填要读 `favorite`
+    算热度、要读 `images` 判断有没有图，这些字段都不进 WorkItem。
+    """
+    return _subject_iterator(archive_path)
+
+
 class BangumiArchiveSource:
     """从本地 Bangumi 档案读取作品。
 
