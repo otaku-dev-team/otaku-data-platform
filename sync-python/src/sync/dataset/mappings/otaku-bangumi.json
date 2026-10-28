@@ -9,6 +9,7 @@
     "works.source_url 仍取源站人读页：契约约定 source_url=网站人读页 /contents/{id}，",
     "bangumi_id 与源站 content id 不同源，用本映射重键后 source_url 恰好指向正确的原页。",
     "people / series 保持源站自身 id：它们是数据集内部引用（person_ref / series_key），后端本期不消费。",
+    "aliases 走 bracket_list：源列是「JSON 数组里套一坨 {\\n[别名]\\n}」文本（18,828 行 100% 命中），用 json_list 会把整坨当成一个别名，客户端会露出花括号；空壳 {\\n} 直接置 null，避免出现空白别名条目。",
     "articles / article_links / schedules 本期不经数据集发布，保持原样。",
     "其余口径（credits 白名单、on_missing 三档）与 otaku.json 完全一致，见其 _notes。"
   ],
@@ -33,7 +34,7 @@
         {"target": "source_url", "column": "source_url", "type": "str"},
         {"target": "title_original", "column": "title_original", "type": "str"},
         {"target": "summary_original", "column": "summary_original", "type": "text"},
-        {"target": "aliases_json", "column": "aliases", "type": "json_list"},
+        {"target": "aliases_json", "column": "aliases", "type": "bracket_list"},
         {"target": "rating_count", "column": "rating_count", "type": "int", "min": 0},
         {"target": "media", "column": "media", "type": "str"},
         {"target": "episodes", "column": "episodes", "type": "int", "min": 0, "max": 10000},

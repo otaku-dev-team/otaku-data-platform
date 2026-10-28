@@ -188,6 +188,14 @@ def coerce(value: Any, spec: FieldSpec) -> tuple[Any, str | None]:
             return spec.default, ISSUE_INVALID
         return _check_range(num, spec)
 
+    if ftype == "bracket_list":
+        items = _parse_bracket_list(value)
+        if not items:
+            # 拆不出来或本来就没有：按「没有」处理，不算脏数据。
+            # 空壳（"{}\n"）也是这个分支，否则会渲染出一个空洞的别名条目。
+            return spec.default, None
+        return json.dumps(items, ensure_ascii=False), None
+
     if ftype in ("json_list", "json_obj"):
         parsed = value
         if isinstance(value, (str, bytes)):
@@ -214,6 +222,51 @@ def coerce(value: Any, spec: FieldSpec) -> tuple[Any, str | None]:
         return spec.default, f"{ISSUE_UNKNOWN_ENUM}:{key}"
 
     return value, ISSUE_INVALID  # pragma: no cover - FIELD_TYPES 已穷举
+
+
+def _parse_bracket_list(value: Any) -> list[str]:
+    """把 ``{\\n[别名一]\\n[别名二]\\n}`` 这种括号包裹的多行文本拆成字符串列表。
+
+    来源形态有两种，都要认：
+
+    1. 源列是 **JSON 数组，但数组里只有一个元素**，元素本身才是那坨文本——
+       首站的 ``contents.aliases`` 就是 ``'["{\\n[EVA]\\n[新世纪福音战士]\\n}"]'``，
+       18,828 行 100% 是这个形状。``json_list`` 只能解析到最外层数组，
+       于是整坨文本变成一个元素，直接下发的话客户端会看到 ``{`` ``[`` ``}``；
+    2. 源列直接就是那坨文本（客户自建站常见）。
+
+    两种都先归一成文本，再按行拆：去 ``{`` ``}`` 行、去每行的 ``[`` ``]``、
+    丢空行、按原顺序去重。拆不出东西就返回空列表，由调用方按「没有」处理。
+    """
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple)):
+        text = "\n".join(str(item) for item in value)
+    elif isinstance(value, bytes):
+        text = value.decode("utf-8", "replace")
+    else:
+        text = str(value)
+
+    stripped = text.strip()
+    if stripped.startswith("["):
+        try:
+            parsed = json.loads(stripped)
+        except (TypeError, ValueError):
+            parsed = None
+        if isinstance(parsed, (list, tuple)):
+            text = "\n".join(str(item) for item in parsed)
+        elif isinstance(parsed, str):
+            text = parsed
+
+    items: list[str] = []
+    for line in str(text).splitlines():
+        line = line.strip()
+        if line in ("{", "}"):
+            continue
+        line = line.strip("[]").strip()
+        if line and line not in items:
+            items.append(line)
+    return items
 
 
 def _check_range(num: float, spec: FieldSpec) -> tuple[Any, str | None]:
