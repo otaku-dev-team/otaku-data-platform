@@ -46,6 +46,9 @@ app:
     base-url: ${OTAKU_SITE_OAUTH_BASE_URL:}
     client-id: ${OTAKU_SITE_OAUTH_CLIENT_ID:otaku-app-client}
     client-secret: ${OTAKU_SITE_OAUTH_CLIENT_SECRET:}
+    # 写入 app_user.identity_source 的来源标识。**不给默认值**：站名是部署事实，
+    # 写死等于把首站焊进核心代码（单站隔离校验会拦）。留空 = 站点登录未配置 → 503。
+    identity-source: ${OTAKU_SITE_OAUTH_IDENTITY_SOURCE:}
     timeout: 10s
     # 站点令牌有效期（站点侧固定 3600 秒），只用于记录 site_token_expires_at。
     token-ttl: 3600s

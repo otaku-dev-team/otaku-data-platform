@@ -158,6 +158,15 @@ public class AppProperties {
          */
         private String clientSecret = "";
 
+        /**
+         * 身份来源标识，写入 app_user.identity_source（契约 §3 的映射锚之一）。
+         *
+         * <p>刻意**不给默认值**：站名是部署事实，不是代码常量——写死就等于把首站焊进核心代码，
+         * 接第二站时得改代码（单站隔离校验 scripts/check-site-isolation.py 会直接拦）。
+         * 为空 = 站点登录未配置，端点 503（与 base-url / secret 同一口径）。
+         */
+        private String identitySource = "";
+
         /** 调站点 /api/auth/token 的超时。 */
         private Duration timeout = Duration.ofSeconds(10);
 
@@ -186,6 +195,14 @@ public class AppProperties {
 
         public void setClientSecret(String clientSecret) {
             this.clientSecret = clientSecret == null ? "" : clientSecret.trim();
+        }
+
+        public String getIdentitySource() {
+            return identitySource;
+        }
+
+        public void setIdentitySource(String identitySource) {
+            this.identitySource = identitySource == null ? "" : identitySource.trim();
         }
 
         public Duration getTimeout() {

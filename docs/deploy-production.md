@@ -674,6 +674,7 @@ df -h
    OTAKU_SITE_OAUTH_BASE_URL=<站点根地址，带协议不带尾斜杠>
    OTAKU_SITE_OAUTH_CLIENT_ID=otaku-app-client
    OTAKU_SITE_OAUTH_CLIENT_SECRET=<站点分配的正式 secret>
+   OTAKU_SITE_OAUTH_IDENTITY_SOURCE=otaku_site   # 写入 app_user.identity_source 的站名
    ```
 
 2. 重建镜像（改了 `application.yml` 与 `compose.prod.yaml`，`restart` 不够）：
@@ -686,7 +687,7 @@ df -h
 
    | 检查 | 期望 |
    |---|---|
-   | `docker exec otaku-backend env \| grep OTAKU_SITE_OAUTH` | 三项都在（只确认存在，不打印 secret 值） |
+   | `docker exec otaku-backend env \| grep OTAKU_SITE_OAUTH` | 四项都在（只确认存在，不打印 secret 值） |
    | `POST /api/auth/site-login` 空 ticket | 400 `BAD_REQUEST` |
    | `POST /api/auth/site-login` 假 ticket | 401 `INVALID_CREDENTIALS`（站点拒绝 → 归一，**不带站点 detail**） |
    | 站点不可达时 | 503 `SITE_UNAVAILABLE`（不是 401） |

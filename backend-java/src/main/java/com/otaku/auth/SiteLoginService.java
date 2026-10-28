@@ -44,7 +44,6 @@ import java.util.HexFormat;
 @Service
 public class SiteLoginService {
 
-    static final String IDENTITY_SOURCE = "otaku_site";
     private static final Logger log = LoggerFactory.getLogger(SiteLoginService.class);
     private static final int USERNAME_MAX = 32;
     private static final String USERNAME_PREFIX = "site_";
@@ -76,13 +75,20 @@ public class SiteLoginService {
             throw ApiException.badRequest("缺少站点授权票据");
         }
 
+        String identitySource = properties.getSiteOauth().getIdentitySource();
+        if (!StringUtils.hasText(identitySource)) {
+            // 与 base-url / secret 同一口径：没配齐就是「站点登录未配置」，503 而不是放行。
+            log.warn("site-oauth identity-source 未配置，拒绝站点登录");
+            throw new ApiException(ErrorCode.SITE_UNAVAILABLE, "站点登录暂不可用，请稍后再试");
+        }
+
         SiteTokenResponse site = exchange(ticket);
 
         LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
         String tokenHash = SessionTokens.hash(site.accessToken());
         LocalDateTime tokenExpiresAt = now.plus(properties.getSiteOauth().getTokenTtl());
 
-        long userPk = findOrCreateMapping(site, tokenHash, tokenExpiresAt, now);
+        long userPk = findOrCreateMapping(identitySource, site, tokenHash, tokenExpiresAt, now);
         UserRecord user = userRepository.findById(userPk)
                 .orElseThrow(() -> new ApiException(ErrorCode.INTERNAL, "站点映射账号读取失败"));
 
@@ -105,9 +111,9 @@ public class SiteLoginService {
         }
     }
 
-    private long findOrCreateMapping(SiteTokenResponse site, String tokenHash,
+    private long findOrCreateMapping(String identitySource, SiteTokenResponse site, String tokenHash,
                                      LocalDateTime tokenExpiresAt, LocalDateTime now) {
-        var existing = identityRepository.findMapping(IDENTITY_SOURCE, site.externalUserId());
+        var existing = identityRepository.findMapping(identitySource, site.externalUserId());
         if (existing.isPresent()) {
             SiteIdentityRepository.SiteIdentityMapping mapping = existing.get();
             if (!mapping.active()) {
@@ -117,8 +123,8 @@ public class SiteLoginService {
             identityRepository.updateSiteToken(mapping.userPk(), tokenHash, tokenExpiresAt, now);
             return mapping.userPk();
         }
-        long created = createSiteUser(site, tokenHash, tokenExpiresAt, now);
-        log.info("site identity mapped: source={} user={}", IDENTITY_SOURCE, site.externalUserId());
+        long created = createSiteUser(identitySource, site, tokenHash, tokenExpiresAt, now);
+        log.info("site identity mapped: source={} user={}", identitySource, site.externalUserId());
         return created;
     }
 
@@ -126,18 +132,18 @@ public class SiteLoginService {
      * 新建映射账号。并发下两个请求同时走到这里时，uk_identity 兜底：
      * 后到的 INSERT 撞唯一键，重查一遍拿到同一行（幂等，不报错）。
      */
-    private long createSiteUser(SiteTokenResponse site, String tokenHash,
+    private long createSiteUser(String identitySource, SiteTokenResponse site, String tokenHash,
                                 LocalDateTime tokenExpiresAt, LocalDateTime now) {
         String username = candidateUsername(site.externalUserId());
         // 站点账号没有口令，塞一个不可能被猜中的随机摘要占位（列 NOT NULL）。
         String unusablePasswordHash = passwordEncoder.encode(randomHex(32));
         try {
             return identityRepository.insertSiteUser(idGenerator.nextUserId(), username,
-                    unusablePasswordHash, IDENTITY_SOURCE, site.externalUserId(),
+                    unusablePasswordHash, identitySource, site.externalUserId(),
                     tokenHash, tokenExpiresAt, now);
         } catch (DuplicateKeyException ex) {
             // 并发首登：映射行已被并发请求建出，直接复用。
-            return identityRepository.findMapping(IDENTITY_SOURCE, site.externalUserId())
+            return identityRepository.findMapping(identitySource, site.externalUserId())
                     .orElseThrow(() -> ex)
                     .userPk();
         }
