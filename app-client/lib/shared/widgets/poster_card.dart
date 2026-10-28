@@ -53,27 +53,8 @@ class _PosterCardShellState extends State<PosterCardShell> {
                     : AppTheme.borderColor(context),
               ),
               boxShadow: _hovered
-                  ? const [
-                      BoxShadow(
-                        color: Color(0x2E143652),
-                        blurRadius: 38,
-                        spreadRadius: -10,
-                        offset: Offset(0, 16),
-                      ),
-                      BoxShadow(
-                        color: Color(0x14143652),
-                        blurRadius: 12,
-                        spreadRadius: -4,
-                        offset: Offset(0, 4),
-                      ),
-                    ]
-                  : const [
-                      BoxShadow(
-                        color: Color(0x0D143652),
-                        blurRadius: 3,
-                        offset: Offset(0, 1),
-                      ),
-                    ],
+                  ? AppTheme.cardShadowHover
+                  : AppTheme.cardShadow,
             ),
             child: Material(
               color: Colors.transparent,

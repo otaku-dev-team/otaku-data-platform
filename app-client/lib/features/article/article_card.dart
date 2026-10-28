@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/theme/app_layout.dart';
+import '../../core/theme/app_theme.dart';
 import '../../data/models/article.dart';
 import 'article_meta_line.dart';
 
@@ -24,12 +26,22 @@ class ArticleCard extends StatelessWidget {
     final scheme = theme.colorScheme;
     final cover = article.coverUrl;
 
+    // 与作品卡同一套容器：卡片白底 + 0.5 描边 + 卡圆角 + 极轻阴影。
+    // 阴影走 Material 的 elevation 而不是再包一层 Container：
+    // 这里没有 hover 变换，不需要 PosterCardShell 那套。
     return Material(
-      color: scheme.surfaceContainerLow,
-      borderRadius: BorderRadius.circular(12),
+      color: AppTheme.cardColor(context),
+      elevation: 1,
+      shadowColor: const Color(0x2E143652),
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppTheme.cardRadius),
+        side: BorderSide(color: AppTheme.borderColor(context), width: 0.5),
+      ),
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppTheme.cardRadius),
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: Row(
@@ -37,7 +49,9 @@ class ArticleCard extends StatelessWidget {
             children: [
               if (cover != null) ...[
                 ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(
+                    AppLayout.innerRadius,
+                  ),
                   child: Image.network(
                     cover,
                     width: 96,

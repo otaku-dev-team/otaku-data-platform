@@ -6,6 +6,7 @@ import '../../core/network/api_exception.dart';
 import '../../core/platform_info.dart';
 import '../../core/router/route_paths.dart';
 import '../../core/theme/app_layout.dart';
+import '../../core/theme/app_theme.dart';
 import '../../data/models/article.dart';
 import '../../data/models/schedule.dart';
 import '../../data/models/work_type.dart';
@@ -504,10 +505,18 @@ class _TodayScheduleCard extends StatelessWidget {
     return SizedBox(
       width: 196,
       child: Material(
-        color: scheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(AppLayout.cardRadius),
+        // 与作品卡 / 资讯卡同一套容器：白底 + 0.5 描边 + 卡圆角 + 极轻阴影。
+        color: AppTheme.cardColor(context),
+        elevation: 1,
+        shadowColor: const Color(0x2E143652),
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppTheme.cardRadius),
+          side: BorderSide(color: AppTheme.borderColor(context), width: 0.5),
+        ),
+        clipBehavior: Clip.antiAlias,
         child: InkWell(
-          borderRadius: BorderRadius.circular(AppLayout.cardRadius),
+          borderRadius: BorderRadius.circular(AppTheme.cardRadius),
           // 未命中本地作品：整卡不可点，并说明原因——不给死链。
           onTap: entry.isLinked
               ? () => context.push(RoutePaths.workDetail(entry.workId!))

@@ -1,3 +1,5 @@
+import 'app_theme.dart';
+
 /// 布局尺寸。桌面端与手机端共用一套数值，避免各页面自己写 padding。
 abstract final class AppLayout {
   const AppLayout._();
@@ -15,7 +17,13 @@ abstract final class AppLayout {
   static const double twoColumnBreakpoint = 720;
 
   static const double pagePadding = 16;
-  static const double cardRadius = 12;
+
+  /// 卡片圆角。**唯一来源是 [AppTheme.cardRadius]**，这里只是布局层的别名——
+  /// 此前两处各写一个值（16 / 12），网格卡与横向卡的圆角对不上。
+  static const double cardRadius = AppTheme.cardRadius;
+
+  /// 卡片内部缩略图 / 封面的圆角。比卡片小一档，内外两层才不会贴在一起。
+  static const double innerRadius = 12;
 
   /// 达到这个宽度后，桌面端在左侧常驻 [NavigationRail]。
   ///

@@ -47,7 +47,7 @@ class WorkListTile extends ConsumerWidget {
               url: work.coverUrl,
               width: AppLayout.coverWidth,
               height: AppLayout.coverHeight,
-              radius: 8,
+              radius: AppLayout.innerRadius,
               placeholderLabel: firstChar,
               source: work.source,
             ),

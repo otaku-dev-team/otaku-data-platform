@@ -41,6 +41,28 @@ abstract final class AppTheme {
   /// 卡片圆角 = 站点 `--radius-lg`。
   static const double cardRadius = 16;
 
+  /// 卡片默认阴影：只做一点点浮起。深色主题里阴影几乎不可见，
+  /// 真正分层靠描边，所以两套主题共用这一份，不各写一套。
+  static const List<BoxShadow> cardShadow = [
+    BoxShadow(color: Color(0x0D143652), blurRadius: 3, offset: Offset(0, 1)),
+  ];
+
+  /// 桌面 hover 的阴影（鼠标才有意义，手机不触发）。
+  static const List<BoxShadow> cardShadowHover = [
+    BoxShadow(
+      color: Color(0x2E143652),
+      blurRadius: 38,
+      spreadRadius: -10,
+      offset: Offset(0, 16),
+    ),
+    BoxShadow(
+      color: Color(0x14143652),
+      blurRadius: 12,
+      spreadRadius: -4,
+      offset: Offset(0, 4),
+    ),
+  ];
+
   static ThemeData light() => _build(Brightness.light);
 
   static ThemeData dark() => _build(Brightness.dark);

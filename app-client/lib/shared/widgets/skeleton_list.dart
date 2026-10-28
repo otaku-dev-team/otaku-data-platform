@@ -148,7 +148,7 @@ class _SkeletonRow extends StatelessWidget {
         const _Bar(
           width: AppLayout.coverWidth,
           height: AppLayout.coverHeight,
-          radius: 8,
+          radius: AppLayout.innerRadius,
         ),
         const SizedBox(width: 12),
         Expanded(
