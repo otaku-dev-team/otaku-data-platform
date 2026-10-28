@@ -62,21 +62,41 @@ mysql -u root otaku < scripts/data-coverage.sql
 
 - bangumi 84.3% / otaku_site 100%，已可用，不列为工作项。
 
-### 4.4 接口与字段定义（先定，回填执行暂缓）
+### 4.4 接口与字段定义（已实现，2026-10-27）
+
+> **状态更新（2026-10-27）**：服务器与全量数据到位后，回填**已实现并在生产跑起来了**（PR #222）。
+> 实现落在 sync 侧 `sync --backfill-covers`（`sync-python/src/sync/covers.py`），**未新增后端接口、未改契约**：
+> `WorkMerger` 只覆盖「本次出现且非 null」的字段，所以回填载荷只带 `source_id` / `work_type` /
+> `title` / `cover_url`，其余为 `null` = 保留原值，复用接口②。
+> 关键差异与落地口径见本节末尾「**实现后的修正**」。
 
 > 决策（zm 2026-10-22 深夜）：封面回填的**实际执行**先不做——当前没有服务器、开发机资源不够（`source='bangumi'` 约 56 万条需走 Bangumi API 限流回填，开发机扛不住）。**但接口与字段现在就定**，等服务器 / 资源到位即可直接实现，不阻塞设计。
 
 **字段（先定）**
 - 回填目标字段：已有 `cover_source_url`（由导入管线写入，无需新增列）。
 - 来源映射：`source = 'bangumi'` 且 `source_id` 即 Bangumi 条目 id（subject id）→ 直接拿 `source_id` 调 Bangumi API，无需额外存 `bangumi_id`。
-- Bangumi 取值字段：官方 `/v0/subjects/{id}` 响应的 `images` 对象 → 取值优先级 `images.common` → `images.large` → `images.medium`（`common` 为列表缩略图最合适尺寸）；缺失 / `null` 则不写。
-- 幂等规则：仅当 `cover_source_url IS NULL` 才写入；已有值**绝不覆盖**；不触碰 `source` / `source_id` / 其它字段；同 `source_id` 重跑结果恒定。
+- Bangumi 取值字段：官方 `/v0/subjects/{id}` 响应的 `images` 对象 → **实际取值优先级 `images.large` → `images.common` → `images.medium`**（与本节初稿相反，见下方修正）；缺失 / `null` 则不写。
+- 幂等规则：`cover_source_url` 为空的才需要补；已补过的**不再重复请求、不再重复写入**（进度落 sqlite 索引，状态机 `pending` → `filled` / `missing` / `error`）；不触碰 `source` / `source_id` / 其它字段；同 `source_id` 重跑结果恒定。
 
 **接口（先定，留桩）**
 - 环境变量：`OTAKU_BANGUMI_TOKEN`（只读 API 令牌）。**硬约束：绝不入库、绝不打日志、绝不回显**。
 - 只读客户端抽象（签名级定义，未实现执行）：`BangumiCoverClient.get_images(subject_id: str) -> str | None`，内置限流（≤ 2 req/s，尊重 429/Retry-After），只读不写。
 - 回填命令（定义为 `--backfill-covers`，**默认 `--dry-run` 仅统计候选数、不调 API 不写库**；无令牌直接退出并提示）：真实回填路径已设计但**暂缓执行**，待服务器 / 资源到位再开。
 - 写入通道：复用现有导入管线的幂等 merge（与首次导入同口径），不走旁路直写，保证 LWW 与字段不串。
+
+**实现后的修正（2026-10-27，以实测为准）**
+
+| 项 | §4.4 初稿 | 实际实现 | 原因 |
+| --- | --- | --- | --- |
+| 图链尺寸 | `common` → `large` → `medium` | **`large` → `common` → `medium`** | 镜像图床 `bgmimg.anibt.net` 只放行原图路径，`/r/800/`、`/r/400/` 等缩略路径一律 403（2026-10-19 实测）。按初稿顺序跑会每条都拿 403，线上 4449 部作品长期没封面就是这么来的 |
+| 上游地址 | 官方 `api.bgm.tv` | 官方 + `OTAKU_BANGUMI_API_BASE` 可指镜像（线上用 `https://bgmapi.anibt.net`） | 官方 API 在机房**不可达**（实测 40 秒超时，Network unreachable） |
+| 默认行为 | `--dry-run` 只统计候选数、**不调 API** | 预演**照常调 API**、只统计不写库（`--apply` 才写） | 不调 API 的预演无法回答真正要问的问题：这批到底能补上多少张 |
+| 处理顺序 | 未定义 | 默认按**热度降序**（档案 `favorite` 各状态计数之和） | 全量按天计，先让最可能被点到的作品有图 |
+| 限流 | ≤ 2 req/s | 默认 **0.25s 间隔（≈4 req/s）+ 8 并发** | 间隔是总速率上限，并发只藏延迟。2026-10-27 交叉验证：图床 8 并发稳定、>12 开始 429/断连，故并发封在 8–12；被限流调间隔而不是调并发 |
+| 每条请求数 | 未区分 | **每条只 1 次请求**（只取图链地址，不下载图片） | 图片由后端 `/api/covers/{id}` 按需回源 + 落盘缓存。逐条把原图也下下来是 2 次往返 + 数百 KB 流量，实测这才是「10 秒/条」的主要来源 |
+| 服务侧白名单 | 未涉及 | `app.cover.allowed-hosts` 需含 `bgmimg.anibt.net:443` | 封面回源白名单 fail-closed，漏配的表现是封面全 404 |
+
+档案侧实测（2026-10-27，官方 `dump-2026-10-20`）：`subject.jsonlines` 697,963 行，落入契约四类 **557,847** 条，其余 140,116 条为音乐 / 三次元 / 画集等排除项——这才是回填的真实分母。
 
 ## 5. 验收口径
 
@@ -86,7 +106,7 @@ mysql -u root otaku < scripts/data-coverage.sql
 
 ## 6. 当前阻塞与需团队拍板的事项
 
-1. **封面方向已定 A，但回填执行暂缓**：A（Bangumi API）为选定方向，令牌来源已知（官网开发者工具 / 镜像站）、接口与字段已先定（§4.4）。**实际回填不现在做**——无服务器 + 开发机资源不够（约 56 万条限流回填扛不住）。等服务器 / 资源到位即可按 §4.4 直接实现，不阻塞设计。密钥不入库硬约束不变。
+1. **封面方向 A 已落地（2026-10-27 起在生产回填）**：A（Bangumi API）为选定方向，实现见 §4.4，命令 `sync --backfill-covers`（预演默认、`--apply` 才写），进度落 sqlite 索引可断点续跑。56 万条按 1 req/s 是按天计的作业，不阻塞上线；密钥不入库硬约束不变。
 2. **B 已排除（不可得）**：Bangumi 含 `images` 的数据集不可得（无可公开获取、合规可对外用的含图档案）→ B 路线关闭。封面补全仅剩 **A（API，待资源）** 与 **C（接受 + 客户端兜底）** 两条路径。
 3. **评分**：默认不补，已在 §4.2 写死。
 

@@ -22,7 +22,9 @@ import os
 import sys
 
 from .bangumi import BangumiArchiveSource, WORK_TYPE_LABELS
-from .config import VALID_SOURCES, SyncConfig
+from .config import DEFAULT_COVER_INTERVAL_SECONDS, VALID_SOURCES, SyncConfig
+from .covers import run_backfill as run_cover_backfill
+from .covers import summarize as summarize_cover_backfill
 from .health import format_results, run_health
 from .pipeline import run, run_articles, run_schedule, summarize
 from .source import FailedPage
@@ -158,7 +160,48 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--apply",
         action="store_true",
-        help="数据集提交时真正写入后端；不加则只预演",
+        help="真正写入：数据集提交到后端 / 封面回填写 cover_url；不加则只预演",
+    )
+    parser.add_argument(
+        "--backfill-covers",
+        action="store_true",
+        help="封面回填：按档案里的 bangumi id 回上游取图链补 cover_url（默认只预演，见 --apply）",
+    )
+    parser.add_argument(
+        "--cover-index",
+        default=None,
+        help="封面回填的 sqlite 进度索引路径，默认 <out>/cover-index.sqlite",
+    )
+    parser.add_argument(
+        "--cover-limit", type=int, default=None, help="封面回填本次最多处理多少条"
+    )
+    parser.add_argument(
+        "--cover-order",
+        choices=["popularity", "archive"],
+        default="popularity",
+        help="处理顺序：popularity=热度降序（默认，先补最可能被点到的）；archive=按 id 升序",
+    )
+    parser.add_argument(
+        "--cover-interval",
+        type=float,
+        default=None,
+        help="封面回填的请求间隔秒数，默认 0.25（≈4 req/s，这是总速率上限；被 429 就调大它）",
+    )
+    parser.add_argument(
+        "--cover-retry-failed",
+        action="store_true",
+        help="封面回填时把上次网络失败的行一起重试（默认只处理未处理的）",
+    )
+    parser.add_argument(
+        "--cover-workers",
+        type=int,
+        default=None,
+        help="封面回填的并发窗口，默认 8（实测 8-12 稳定，>12 会 429 或断连，别往上开）",
+    )
+    parser.add_argument(
+        "--bangumi-api-base",
+        default=None,
+        help="覆盖 Bangumi API 根（默认 https://api.bgm.tv，不可达时指镜像）",
     )
     parser.add_argument(
         "--health",
@@ -419,6 +462,7 @@ def main(argv: list[str] | None = None) -> int:
         sample_method=args.sample,
         source_base_url=args.source_base_url,
         vndb_base_url=args.vndb_base_url,
+        bangumi_api_base_url=args.bangumi_api_base,
         java_base_url=args.java_base_url,
     )
 
@@ -446,6 +490,53 @@ def main(argv: list[str] | None = None) -> int:
         # 静默忽略 --type 会让人以为筛了类型，实际拉的是全量——直接报错说清。
         print(
             "错误：--source vndb 不支持 --type（VNDB 只有视觉小说一种，work_type 固定为 game）",
+            file=sys.stderr,
+        )
+        return 2
+
+    if args.backfill_covers:
+        if args.work_types:
+            # 类型在索引阶段已经筛过（默认四类全要），运行期再筛会让「这次的 limit」
+            # 含义变得不确定：是每个类型 N 条还是总共 N 条？不如不让传。
+            print(
+                "错误：--backfill-covers 不接受 --type（类型在 --cover-limit 之前就筛好了）",
+                file=sys.stderr,
+            )
+            return 2
+        if config.source != "bangumi":
+            print(
+                "错误：--backfill-covers 只对 --source bangumi 有意义"
+                "（档案不含 images 字段，才需要回上游补）",
+                file=sys.stderr,
+            )
+            return 2
+        report = run_cover_backfill(
+            config,
+            apply=args.apply,
+            index_path=args.cover_index,
+            limit=args.cover_limit,
+            order=args.cover_order,
+            interval_seconds=(
+                args.cover_interval
+                if args.cover_interval is not None
+                else DEFAULT_COVER_INTERVAL_SECONDS
+            ),
+            workers=(
+                args.cover_workers
+                if args.cover_workers is not None
+                else config.cover_workers
+            ),
+            retry_failed=args.cover_retry_failed,
+            report_dir=args.out,
+        )
+        print(summarize_cover_backfill(report))
+        return 0
+
+    if args.apply:
+        # 走到这里说明 --import-dataset / --backfill-covers 都没给，--apply 没有合法同伴。
+        print(
+            "错误：--apply 只与 --backfill-covers 或 --import-dataset 同用"
+            "（常规同步用 --dry-run 的相反面）",
             file=sys.stderr,
         )
         return 2

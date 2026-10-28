@@ -10,6 +10,19 @@ DEFAULT_SOURCE_BASE_URL = "http://154.8.194.198:8000"
 # 首站 Otaku，若 VNDB 分支沿用它，请求会打到首站而不是 VNDB。
 # 契约第 4.6 节允许 source 取值自由（不设白名单），加 vndb 不改接口②③④。
 DEFAULT_VNDB_BASE_URL = "https://api.vndb.org/kana"
+# Bangumi 只读 API 根。封面回填用（档案不含 images 字段，只能回上游按 id 取）。
+# 国内/机房直连 api.bgm.tv 常不可达（实测超时），线上可指到可用镜像：
+#   OTAKU_BANGUMI_API_BASE=https://bgmapi.anibt.net
+# 令牌只在官方 API 需要；镜像一般免令牌。硬约束：令牌只从环境变量读，绝不入库、不打印。
+DEFAULT_BANGUMI_API_BASE_URL = "https://api.bgm.tv"
+# 封面回填的默认请求间隔。**这是我们自己的限流上限，不是上游给的**：
+# 上游没有正式配额，但 2026-10-27 一次交叉验证给出可参考的实测包线——
+# 8 并发稳定、>12 并发开始出现 429 / 连接中断（反而比串行慢）。
+# 0.25s ≈ 4 req/s 是「够快又不至于被掐」的档位；真被 429 就把间隔调大，别调并发。
+DEFAULT_COVER_INTERVAL_SECONDS = 0.25
+# 封面回填的并发窗口。只影响「同时在飞的请求数」，**总速率由上面的间隔决定**。
+# 别为了快把它开到 32：图床对并发敏感，实测 8–12 是稳定范围，再高会 429 或断连。
+DEFAULT_COVER_WORKERS = 8
 # 来源站四类合计约 1.8 万条（动画 10917 / 漫画 2428 / 游戏 2464 / 轻小说 2109）。
 # 默认全量同步四类：只同步 anime 是第一阶段联调用的临时设定，
 # 留在默认值里会让"客户端内容只有几百条"看起来像是数据不够，实际是没同步。
@@ -44,6 +57,12 @@ class SyncConfig:
     # VNDB 单独一份地址。与 source_base_url 分开是因为两者指向不同的站：
     # source_base_url 默认是首站 Otaku，VNDB 的是 kana API，混用会打错站。
     vndb_base_url: str = DEFAULT_VNDB_BASE_URL
+    # Bangumi 只读 API 根，供封面回填使用；与来源站地址无关，故独立一份。
+    bangumi_api_base_url: str = DEFAULT_BANGUMI_API_BASE_URL
+    # 只读令牌，可空（镜像免令牌）。绝不打印、绝不落盘。
+    bangumi_token: str | None = None
+    # 封面回填的并发窗口（总速率另由 --cover-interval 控制）。
+    cover_workers: int = DEFAULT_COVER_WORKERS
     java_base_url: str = "http://localhost:8080"
     internal_token: str | None = None
     work_types: tuple[str, ...] = DEFAULT_WORKS
@@ -73,6 +92,11 @@ class SyncConfig:
         raw = {
             "source_base_url": os.getenv("OTAKU_SOURCE_BASE_URL", DEFAULT_SOURCE_BASE_URL),
             "vndb_base_url": os.getenv("OTAKU_VNDB_BASE_URL", DEFAULT_VNDB_BASE_URL),
+            "bangumi_api_base_url": os.getenv(
+                "OTAKU_BANGUMI_API_BASE", DEFAULT_BANGUMI_API_BASE_URL
+            ),
+            "bangumi_token": os.getenv("OTAKU_BANGUMI_TOKEN"),
+            "cover_workers": int(os.getenv("OTAKU_COVER_WORKERS", str(DEFAULT_COVER_WORKERS))),
             "java_base_url": os.getenv("OTAKU_JAVA_BASE_URL", "http://localhost:8080"),
             "internal_token": os.getenv("OTAKU_INTERNAL_TOKEN"),
             "work_types": work_types,
