@@ -12,6 +12,7 @@ import '../../data/models/work_type.dart';
 import '../../shared/widgets/account_menu.dart';
 import '../../shared/widgets/compact_work_card.dart';
 import '../../shared/widgets/desktop_nav_shell.dart';
+import '../../shared/widgets/mobile_nav_bar.dart';
 import '../../shared/widgets/desktop_shortcuts.dart';
 import '../article/article_card.dart';
 import '../contents/contents_controller.dart';
@@ -41,6 +42,7 @@ class HomePage extends ConsumerWidget {
       child: DesktopShortcuts(
         onRefresh: () => _refresh(ref),
         child: Scaffold(
+          bottomNavigationBar: MobileNavBar.forScaffold(context),
           appBar: AppBar(
             title: const Text('首页'),
             actions: [

@@ -4,13 +4,14 @@ import 'package:go_router/go_router.dart';
 import '../../core/platform_info.dart';
 import '../../core/router/route_paths.dart';
 import '../../core/theme/app_layout.dart';
+import 'main_nav_destination.dart';
 
 /// 桌面端外壳：窗口够宽时在左侧常驻一条 [NavigationRail]。
 ///
 /// 只做容器，页面的 `Scaffold` 原封不动留在内层——AppBar、SnackBar 都归页面自己管，
 /// 侧栏不碰业务状态。
 ///
-/// 三条边界：
+/// 四条边界：
 /// 1. **按平台判断，不只看宽度**。手机横屏也能超过 600，但 §6 里这是平台差异，
 ///    不是纯响应式差异，所以先判平台再判宽度。
 /// 2. **图标 + tooltip，不显示文字标签**。列表页 AppBar 的标题也叫「作品库」，
@@ -46,42 +47,22 @@ class DesktopNavShell extends StatelessWidget {
 
   Widget _buildRail(BuildContext context) {
     final location = _locationOf(context);
-    // 首页必须**精确相等**判定：它的路径是 `/`，用 startsWith 会把
-    // 所有路由都算成首页（`/works`.startsWith('/') 为真）。
-    final onHome = location == RoutePaths.home;
-    final onCollections = location.startsWith(RoutePaths.collections);
-    final onSchedule = location.startsWith(RoutePaths.schedule);
-    final onArticles = location.startsWith(RoutePaths.articles);
-    final onContents = location.startsWith(RoutePaths.contents);
+    final current = MainNavDestination.fromLocation(location);
     final onSettings = location.startsWith(RoutePaths.settings);
 
     return NavigationRail(
       // 路由不认识时（比如测试里单独 pump 某页）五项都不选中，
       // 而不是默认高亮第一项——高亮错了比不亮更误导。
-      // 顺序与下面的 destinations 一致：首页 / 作品库 / 资讯 / 收藏 / 新番。
-      selectedIndex: onHome
-          ? 0
-          : onContents
-          ? 1
-          : onArticles
-          ? 2
-          : onCollections
-          ? 3
-          : onSchedule
-          ? 4
-          : null,
+      // 顺序与 [MainNavDestination] 一致：首页 / 作品库 / 资讯 / 收藏 / 新番。
+      selectedIndex: current == null
+          ? null
+          : MainNavDestination.values.indexOf(current),
       labelType: NavigationRailLabelType.none,
       groupAlignment: -0.85,
       onDestinationSelected: (index) {
         final router = GoRouter.maybeOf(context);
         if (router == null) return;
-        router.go(switch (index) {
-          0 => RoutePaths.home,
-          1 => RoutePaths.contents,
-          2 => RoutePaths.articles,
-          3 => RoutePaths.collections,
-          _ => RoutePaths.schedule,
-        });
+        router.go(MainNavDestination.values[index].path);
       },
       destinations: const [
         NavigationRailDestination(

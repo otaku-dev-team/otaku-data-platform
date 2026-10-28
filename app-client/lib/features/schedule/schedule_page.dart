@@ -7,6 +7,7 @@ import '../../core/router/route_paths.dart';
 import '../../core/theme/app_layout.dart';
 import '../../data/models/schedule.dart';
 import '../../shared/widgets/desktop_nav_shell.dart';
+import '../../shared/widgets/mobile_nav_bar.dart';
 import '../../shared/widgets/empty_state.dart';
 import '../../shared/widgets/error_state.dart';
 import '../../shared/widgets/tag_chips.dart';
@@ -44,6 +45,7 @@ class SchedulePage extends ConsumerWidget {
     // 进来后侧栏直接消失——外壳是每页自己套的，不是路由级的。
     return DesktopNavShell(
       child: Scaffold(
+        bottomNavigationBar: MobileNavBar.forScaffold(context),
         appBar: AppBar(
           title: const Text('每日新番'),
         actions: [
