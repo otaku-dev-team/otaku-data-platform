@@ -7,6 +7,7 @@ import '../../core/router/route_paths.dart';
 import '../../core/theme/app_layout.dart';
 import '../../data/models/article.dart';
 import '../../shared/widgets/desktop_nav_shell.dart';
+import '../../shared/widgets/mobile_nav_bar.dart';
 import '../../shared/widgets/empty_state.dart';
 import '../../shared/widgets/error_state.dart';
 import 'article_card.dart';
@@ -57,6 +58,7 @@ class _ArticleListPageState extends ConsumerState<ArticleListPage> {
 
     return DesktopNavShell(
       child: Scaffold(
+        bottomNavigationBar: MobileNavBar.forScaffold(context),
         appBar: AppBar(
           title: const Text('最新资讯'),
           actions: [

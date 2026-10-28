@@ -9,6 +9,7 @@ import '../../data/models/collection_entry.dart';
 import '../../data/repositories/work_repository.dart' show Fetched;
 import '../../shared/widgets/account_menu.dart';
 import '../../shared/widgets/desktop_nav_shell.dart';
+import '../../shared/widgets/mobile_nav_bar.dart';
 import '../../shared/widgets/desktop_shortcuts.dart';
 import '../../shared/widgets/collection_status_menu.dart';
 import '../../shared/widgets/cover_image.dart';
@@ -41,6 +42,7 @@ class CollectionPage extends ConsumerWidget {
             ? () => ref.read(collectionControllerProvider.notifier).refresh()
             : null,
         child: Scaffold(
+          bottomNavigationBar: MobileNavBar.forScaffold(context),
           appBar: AppBar(
             title: const Text('我的收藏'),
             actions: [

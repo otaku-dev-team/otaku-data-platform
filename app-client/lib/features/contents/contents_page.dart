@@ -14,6 +14,7 @@ import '../../data/models/work_sort.dart';
 import '../../data/models/work_type.dart';
 import '../../shared/widgets/account_menu.dart';
 import '../../shared/widgets/desktop_nav_shell.dart';
+import '../../shared/widgets/mobile_nav_bar.dart';
 import '../../shared/widgets/desktop_shortcuts.dart';
 import '../../shared/widgets/empty_state.dart';
 import '../../shared/widgets/error_state.dart';
@@ -232,6 +233,7 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
           return true;
         },
         child: Scaffold(
+          bottomNavigationBar: MobileNavBar.forScaffold(context),
           appBar: AppBar(
             title: const Text('作品库'),
             actions: [
