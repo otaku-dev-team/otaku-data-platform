@@ -198,12 +198,17 @@ Android 侧同一份清单已用**模拟器**走完一轮（见 §6 的第二条
 | 通知**实际弹出与送达** | 模拟器上 `flutter_local_notifications` 能排程、能建通道，但通知栏的展示与点击回跳在真机通知系统上才有意义 | 真机开提醒 → 等到点 → 看通知栏 → 点进去应跳档期页 |
 | **重启后闹钟重注册** | `ScheduledNotificationBootReceiver` 要 `BOOT_COMPLETED` 广播。模拟器重启慢且广播时序不稳 | 真机重启 → 打开 App → `dumpsys alarm` 应看到重排的闹钟 |
 | 站点登录**完整闭环** | 需要真实站点账号（密码只在站点页面输入，客户端不碰） | 真机上用站点账号登录 → 应回到 App 并落到收藏页 |
-| 系统浏览器授权的**回跳** | `site_auth_bootstrap` 走系统浏览器 → 回跳 App 的那条链路 | 真机登录后锁屏或切浏览器再回 App |
+| ~~系统浏览器授权的**回跳**~~ | **已过时**：Issue #238 / PR #243 起改为 App 内 WebView，回跳由 `onNavigationRequest` / `onUrlChange` 在 WebView 内拦截 | 见 [`real-device-acceptance-2026-10-28.md`](real-device-acceptance-2026-10-28.md) |
 | **厂商推送通道** | 国内 Android 无 GMS，FCM 不可用；设备注册端点 #190 已在，客户端未接 | 属另一个工作流（`w1.3-notification-proposal.md`），不在本轮 |
 | 息屏 / 切后台 / 内存紧张 | 模拟器不真正息屏 | 真机把 App 切后台再回，观察状态恢复 |
 
 **判定**：Android 侧**模拟器可验的部分全部通过**；唯一的阻断项（无主导航）已修。
 上面 6 项留待真机，不阻塞 W1.4 收口。
+
+> **2026-10-28 真机复测**：已在 Redmi 23013RK75C / Android 15 上走查 14 项通过，
+> 并修掉两处只有真机能暴露的问题（出包默认 Mock、Hive 未初始化）。
+> 通知送达 / 重启闹钟仍被「后端档期与收藏为空」阻塞，站点登录闭环需真实账号。
+> 详见 [`real-device-acceptance-2026-10-28.md`](real-device-acceptance-2026-10-28.md)。
 
 ---
 
