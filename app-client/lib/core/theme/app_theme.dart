@@ -92,7 +92,9 @@ abstract final class AppTheme {
       colorScheme: scheme,
       scaffoldBackgroundColor: scheme.surface,
       appBarTheme: AppBarTheme(
-        backgroundColor: isDark ? darkCard : card,
+        // 与页面同色而不是纯白：白条压在浅蓝底上会切出一条明显的横缝，
+        // 首页尤其突兀（顶上一条白、下面一片浅蓝）。分层交给卡片和描边。
+        backgroundColor: isDark ? darkSurface : surface,
         surfaceTintColor: Colors.transparent,
         scrolledUnderElevation: 0,
         foregroundColor: scheme.onSurface,

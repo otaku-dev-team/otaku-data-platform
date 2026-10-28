@@ -7,7 +7,6 @@ import '../../core/network/api_exception.dart';
 import '../../core/platform_info.dart';
 import '../../core/router/route_paths.dart';
 import '../../core/theme/app_layout.dart';
-import '../../core/theme/app_theme.dart';
 import '../../data/models/collection_entry.dart';
 import '../../data/models/work.dart';
 import '../../data/repositories/work_repository.dart';
@@ -33,7 +32,8 @@ import 'work_detail_controller.dart';
 /// - `summary` 为 null → "暂无简介"，超长时折叠；
 /// - `main_rating`、`tags` 为空 → 对应区块不渲染。
 ///
-/// 版面按站点的详情页顺序摆：封面 + 标题 + 分类评分 → 简介 → 收录信息。
+/// 版面顺序：封面 + 标题 + 分类评分 → 简介 → 相关作品。
+/// （收录信息那一段已下线：作品 ID / 来源 ID 是排障用的，不给用户看。）
 /// 站点还有原名、别名、年份、话数、制作、导演、声优、系列、相关推荐，
 /// 这些字段平台契约里都还没有，**这里不摆空位**——空占位比少显示更误导。
 class WorkDetailPage extends ConsumerStatefulWidget {
@@ -242,8 +242,10 @@ class _DetailBody extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _DetailInfo(work: work, onTag: onTag),
-                  const SizedBox(height: 24),
-                  _RecordPanel(work: work),
+                  const SizedBox(height: 20),
+                  // 收录信息（作品 ID / 来源 ID / 收录更新）不再展示：
+                  // 那是溯源和排障用的，普通用户看完这部作品并不需要知道
+                  // 它在库里叫什么编号。需要时从接口和日志里查。
                   RelatedWorksSection(workId: work.workId),
                 ],
               ),
@@ -289,9 +291,8 @@ class _DetailBody extends StatelessWidget {
             },
           ),
           const SizedBox(height: 24),
-          _RecordPanel(work: work),
-          // 相关推荐排在最后：正文与收录信息才是这页的主角，推荐是延伸阅读。
-          // 拿不到或没标签时组件自己渲染成 SizedBox.shrink()，这里不用判空。
+          // 相关推荐：正文之后唯一的延伸阅读。收录信息已不再展示（见手机端
+          // 那段注释）。拿不到或没标签时组件自己渲染成 SizedBox.shrink()。
           RelatedWorksSection(workId: work.workId),
         ],
       ),
@@ -673,101 +674,6 @@ class _CollectPlaceholder extends StatelessWidget {
   }
 }
 
-/// 收录信息。站点这一块放的是原名 / 话数 / 制作 / 放送 / 声优，
-/// 平台目前只有溯源类字段，所以只摆**确实有值**的行，缺失的整行不出现。
-class _RecordPanel extends StatelessWidget {
-  const _RecordPanel({required this.work});
-
-  final Work work;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    // `muted`：作品 ID / 来源 ID 是排障和反馈时才有用的技术标识，不是内容。
-    // 和年份、来源同权重摆着，读起来像一串噪音；保留（可选中复制），
-    // 但压小一档、调暗一层，让人一眼跳过。
-    final rows = <({String label, String value, bool muted})>[
-      if (work.releaseYear != null)
-        (label: '年份', value: '${work.releaseYear}', muted: false),
-      (label: '作品 ID', value: work.workId, muted: true),
-      if (work.source.isNotEmpty)
-        (label: '来源', value: work.source, muted: false),
-      if (work.sourceId.isNotEmpty)
-        (label: '来源 ID', value: work.sourceId, muted: true),
-      if (work.updatedAt != null)
-        (label: '收录更新', value: _formatDate(work.updatedAt!), muted: false),
-    ];
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-      decoration: BoxDecoration(
-        color: AppTheme.cardColor(context),
-        borderRadius: BorderRadius.circular(AppLayout.cardRadius),
-        border: Border.all(color: AppTheme.borderColor(context)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '收录信息',
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 6),
-          // 站点资料区是「左标签右值」的两列排布，这里沿用同一套读法。
-          for (final row in rows)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  SizedBox(
-                    width: 88,
-                    child: Text(
-                      row.label,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: row.muted
-                            ? scheme.onSurfaceVariant.withValues(alpha: 0.7)
-                            : scheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: SelectableText(
-                      row.value,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: row.muted
-                            ? scheme.onSurfaceVariant.withValues(alpha: 0.8)
-                            : null,
-                        fontSize: row.muted ? 11 : null,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          const SizedBox(height: 10),
-          Text(
-            '资料整理自 ${work.source.isEmpty ? '来源站点' : work.source}，仅作展示与学习用途。',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  static String _formatDate(DateTime value) {
-    final local = value.toLocal();
-    final month = local.month.toString().padLeft(2, '0');
-    final day = local.day.toString().padLeft(2, '0');
-    return '${local.year}-$month-$day';
-  }
-}
 
 /// 简介。`null` → "暂无简介"；超长 → 折叠 8 行，可展开。
 class _SummaryBlock extends StatefulWidget {

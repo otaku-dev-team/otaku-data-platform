@@ -18,6 +18,7 @@ import '../../shared/widgets/desktop_nav_shell.dart';
 import '../../shared/widgets/mobile_nav_bar.dart';
 import '../../shared/widgets/desktop_shortcuts.dart';
 import '../article/article_card.dart';
+import '../contents/catalog_counts.dart';
 import '../contents/contents_controller.dart';
 import '../recent/recent_views_controller.dart';
 import 'home_controller.dart';
@@ -47,7 +48,11 @@ class HomePage extends ConsumerWidget {
         child: Scaffold(
           bottomNavigationBar: MobileNavBar.forScaffold(context),
           appBar: AppBar(
-            title: const Text('首页'),
+            // 标题不再是「首页」两个字：底部导航已经写着首页，AppBar 再写
+            // 一遍只是重复；换成品牌行 + 日期，首屏才有落地页的样子。
+            toolbarHeight: 66,
+            titleSpacing: AppLayout.pagePadding,
+            title: const _HomeBrand(),
             actions: [
               // 桌面端没有下拉手势，刷新得有个按钮（与列表页同一处理）。
               if (PlatformInfo.isDesktop)
@@ -72,8 +77,9 @@ class HomePage extends ConsumerWidget {
             child: ListView(
               // 内容不足一屏时也要能下拉：否则短屏/大字号下刷新手势失效。
               physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.only(top: 12, bottom: 24),
+              padding: const EdgeInsets.only(top: 4, bottom: 24),
               children: const [
+                _SearchEntry(),
                 _FeaturedHero(),
                 _RecentViewsSection(),
                 _TypeBrowseSection(),
@@ -107,6 +113,159 @@ class HomePage extends ConsumerWidget {
 
   static Future<void> _settle(Future<Object?> future) =>
       future.then<void>((_) {}, onError: (Object _, StackTrace _) {});
+}
+
+/// 顶部品牌行：应用标识 + 日期，右侧设置与账号由 AppBar actions 提供。
+///
+/// 参考 banguLite / AFAN 这类追番客户端的首页：顶部不放一个孤零零的页面名，
+/// 而是一块带身份感的抬头（标识 + 今天几号）。AppBar 底色已经和页面同色，
+/// 这块抬头是首屏唯一「像页头」的东西。
+class _HomeBrand extends StatelessWidget {
+  const _HomeBrand();
+
+  static const _weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final now = DateTime.now();
+    final date = '${now.month} 月 ${now.day} 日 · ${_weekdays[now.weekday - 1]}';
+
+    return Row(
+      children: [
+        Container(
+          width: 34,
+          height: 34,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(11),
+            // 品牌蓝 → 站点那抹青，和封面占位、渐变头图同一族色。
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [AppTheme.brand, AppTheme.accent],
+            ),
+          ),
+          child: const Text(
+            'O',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              height: 1,
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        // AppBar 里标题的宽度是抢来的（右边还有设置与账号），所以这一列
+        // 必须能收缩：不包 Flexible，窄屏上两行文字会把工具条挤出 33px。
+        Flexible(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Otaku',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.2,
+                  height: 1.1,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                date,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// 首页搜索入口。
+///
+/// 搜索本身在作品库里（那边有输入框和筛选），这里只做「一眼能看到入口」：
+/// 资讯/番剧类 App 的首屏几乎都在顶部放一条搜索框，缺了它首页像一个静态目录。
+class _SearchEntry extends StatelessWidget {
+  const _SearchEntry();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppLayout.pagePadding,
+        8,
+        AppLayout.pagePadding,
+        2,
+      ),
+      child: Material(
+        color: AppTheme.cardColor(context),
+        clipBehavior: Clip.antiAlias,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppLayout.cardRadius),
+          side: BorderSide(color: AppTheme.borderColor(context), width: 0.5),
+        ),
+        child: InkWell(
+          onTap: () => context.go(RoutePaths.contents),
+          child: SizedBox(
+            height: 46,
+            child: Row(
+              children: [
+                const SizedBox(width: 14),
+                Icon(
+                  Icons.search_rounded,
+                  size: 20,
+                  color: scheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    '搜索作品名或标签',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+                Container(
+                  margin: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 9,
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: scheme.primary.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    '去搜索',
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: scheme.primary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 /// 区块外壳：统一宽度与左右留白。
@@ -148,11 +307,23 @@ class _SectionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.only(bottom: 10),
       child: Row(
         children: [
+          // 色条：六个区块标题字号一样、颜色一样，光靠字幕分不出段与段。
+          // 一条 3px 的品牌色立柱把每段的起点标出来，比加粗或放大安静。
+          Container(
+            width: 3,
+            height: 15,
+            decoration: BoxDecoration(
+              color: scheme.primary,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(width: 8),
           Text(
             title,
             style: theme.textTheme.titleMedium?.copyWith(
@@ -570,6 +741,8 @@ class _FeaturedHero extends ConsumerWidget {
 class _TypeBrowseSection extends ConsumerWidget {
   const _TypeBrowseSection();
 
+  static const double _gap = 10;
+
   static IconData _iconOf(WorkType type) => switch (type) {
     WorkType.anime => Icons.movie_outlined,
     WorkType.comic => Icons.auto_stories_outlined,
@@ -578,33 +751,152 @@ class _TypeBrowseSection extends ConsumerWidget {
     WorkType.unknown => Icons.category_outlined,
   };
 
+  /// 每种类型一个色相。分类入口是首页唯一「按类逛」的入口，四个都涂同一个
+  /// 品牌蓝的话分不出来；这几个色都与品牌蓝相邻（靛/紫/粉/青），放在一起
+  /// 不打架。图标与浅色底共用同一个色值，深浅主题都成立。
+  static Color _colorOf(WorkType type) => switch (type) {
+    WorkType.anime => const Color(0xFF4F6BFF),
+    WorkType.comic => const Color(0xFFF2749B),
+    WorkType.game => const Color(0xFF8B5CF6),
+    WorkType.novel => const Color(0xFF12B3A6),
+    WorkType.unknown => const Color(0xFF8A94A6),
+  };
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // 数量只是辅助信息：拿不到就只画标题，不占位、不显示 0。
+    final counts = ref.watch(catalogCountsProvider).value;
+
     return _Section(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const _SectionHeader(title: '分类浏览'),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final type in WorkType.selectable)
-                ActionChip(
-                  avatar: Icon(_iconOf(type), size: 16),
-                  label: Text(type.label),
-                  onPressed: () {
-                    ref.read(contentsFilterProvider.notifier).showType(type);
-                    context.go(RoutePaths.contents);
-                  },
-                ),
-            ],
+          LayoutBuilder(
+            builder: (context, constraints) {
+              // 手机两列、宽屏一行四个：四个胶囊式小按钮在手机上一眼找不到，
+              // 版面上也压不住首屏。
+              final columns = constraints.maxWidth >= 560 ? 4 : 2;
+              final tileWidth =
+                  (constraints.maxWidth - _gap * (columns - 1)) / columns;
+              return Wrap(
+                spacing: _gap,
+                runSpacing: _gap,
+                children: [
+                  for (final type in WorkType.selectable)
+                    SizedBox(
+                      width: tileWidth,
+                      child: _TypeTile(
+                        key: ValueKey('home-type-${type.value}'),
+                        type: type,
+                        icon: _iconOf(type),
+                        color: _colorOf(type),
+                        count: counts?.countOf(type),
+                        onTap: () {
+                          ref
+                              .read(contentsFilterProvider.notifier)
+                              .showType(type);
+                          context.go(RoutePaths.contents);
+                        },
+                      ),
+                    ),
+                ],
+              );
+            },
           ),
           const SizedBox(height: 20),
         ],
       ),
     );
   }
+}
+
+/// 分类磁贴：彩色图标块 + 类型名 + 数量。
+class _TypeTile extends StatelessWidget {
+  const _TypeTile({
+    super.key,
+    required this.type,
+    required this.icon,
+    required this.color,
+    required this.count,
+    required this.onTap,
+  });
+
+  final WorkType type;
+  final IconData icon;
+  final Color color;
+  final int? count;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return Material(
+      color: AppTheme.cardColor(context),
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppLayout.cardRadius),
+        side: BorderSide(color: AppTheme.borderColor(context), width: 0.5),
+      ),
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 14, 12, 14),
+          child: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(icon, size: 24, color: color),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      type.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    if (count != null) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        '${formatCompactCount(count!)} 部',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 数量压缩：198100 → 19.8 万。分类磁贴一行只有 ~120px，五位数字放不下。
+String formatCompactCount(int value) {
+  if (value < 10000) return '$value';
+  final wan = value / 10000;
+  return '${wan.toStringAsFixed(wan >= 100 ? 0 : 1)} 万';
 }
 
 /// 本日新番：横向一排，点已收录的进详情。

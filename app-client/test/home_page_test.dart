@@ -251,9 +251,10 @@ void main() {
   testWidgets('落地页就是首页，四块内容都在', (tester) async {
     await pumpApp(tester, app());
 
-    // 侧栏也有一个「首页」标签（`labelType: none` 不画出来，但仍在树里），
-    // 所以标题要限定在 AppBar 上找，否则会一次命中两个。
-    expect(find.widgetWithText(AppBar, '首页'), findsOneWidget);
+    // 顶部不再是页面名「首页」，而是品牌行（底部导航已经写着首页）。
+    expect(find.text('Otaku'), findsOneWidget);
+    // 搜索入口：看作品要能一眼找到入口，不能只藏在作品库里。
+    expect(find.text('搜索作品名或标签'), findsOneWidget);
     expect(find.text('分类浏览'), findsOneWidget);
     expect(find.text('本日新番'), findsOneWidget);
     expect(find.text('高分作品'), findsOneWidget);
@@ -382,9 +383,9 @@ void main() {
   testWidgets('点分类入口跳到列表页', (tester) async {
     await pumpApp(tester, app());
 
-    // 「漫画」在首页出现两次（分类入口 + 高分卡片的类型标签），
-    // 必须限定在 chip 上点，否则点到卡片里去了。
-    await tester.tap(find.widgetWithText(ActionChip, '漫画'));
+    // 「漫画」在首页出现两次（分类磁贴 + 高分卡片的类型标签），
+    // 必须按磁贴的 key 点，否则点到卡片里去了。
+    await tester.tap(find.byKey(const ValueKey('home-type-comic')));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
 

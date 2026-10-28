@@ -328,7 +328,9 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('详情页列出收录信息，缺失的行不占位', (tester) async {
+  // 收录信息（作品 ID / 来源 ID / 收录更新）已经下线：那是溯源与排障用的，
+  // 用户看一部作品不需要知道它在库里的编号。这条钉住「不要再搬回来」。
+  testWidgets('详情页不再展示收录信息', (tester) async {
     tester.view.physicalSize = const Size(800, 1400);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -339,12 +341,10 @@ void main() {
     );
     await settle(tester);
 
-    expect(find.text('收录信息'), findsOneWidget);
-    // 作品 ID / 来源 / 来源 ID / 收录更新 四行都来自假数据源。
-    expect(find.text('W-1'), findsOneWidget);
-    expect(find.text('otaku_site'), findsOneWidget);
-    expect(find.text('662'), findsOneWidget);
-    expect(find.text('2026-10-19'), findsOneWidget);
+    expect(find.text('收录信息'), findsNothing);
+    expect(find.text('作品 ID'), findsNothing);
+    expect(find.text('来源 ID'), findsNothing);
+    expect(find.text('W-1'), findsNothing);
     // 假数据没有封面、没有评分、没有标签：不该凭空出现「0.0」或空标签区。
     expect(find.text('0.0'), findsNothing);
     expect(tester.takeException(), isNull);
