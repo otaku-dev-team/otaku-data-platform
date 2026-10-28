@@ -310,6 +310,41 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  // 上面那条只断言「卡片在树里」（findsWidgets），而「在树里」不等于「有尺寸」——
+  // 零宽度的卡片同样能被找到，#246 就是这么漏过的。这里量真实尺寸。
+  for (final size in const [Size(390, 844), Size(1105, 762)]) {
+    testWidgets('「高分作品」的卡片有实际尺寸 @ ${size.width.toInt()}x${size.height.toInt()}',
+        (tester) async {
+      await tester.binding.setSurfaceSize(size);
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            ...authOverrides(),
+            workDataSourceProvider.overrideWithValue(
+              _RealWorkSource(_loadRealWorks('real_works_by_rating')),
+            ),
+            articleDataSourceProvider.overrideWithValue(_FakeArticleSource()),
+            scheduleDataSourceProvider.overrideWithValue(_FakeScheduleSource()),
+            homeTodayWeekdayProvider.overrideWithValue(1),
+          ],
+          child: const OtakuApp(),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+
+      final cards = find.byType(CompactWorkCard);
+      expect(cards, findsWidgets);
+      final rect = tester.getRect(cards.first);
+      // 148 是设计宽度；允许文本缩放带来的高度差，但宽度必须是正数。
+      expect(rect.width, greaterThan(0),
+          reason: '卡片宽度为 0 就是「整块空白」的成因');
+      expect(rect.height, greaterThan(0));
+    });
+  }
+
   testWidgets('本日新番取的是「今天」那一组，不是全部', (tester) async {
     await pumpApp(tester, app(weekday: 1));
     expect(find.text('周一新番甲'), findsOneWidget);
