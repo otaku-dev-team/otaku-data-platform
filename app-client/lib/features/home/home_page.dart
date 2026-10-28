@@ -196,6 +196,7 @@ class _SectionBody extends StatelessWidget {
     required this.onRetry,
     required this.isEmpty,
     required this.emptyText,
+    required this.emptyIcon,
     required this.skeletonHeight,
     required this.child,
   });
@@ -208,6 +209,7 @@ class _SectionBody extends StatelessWidget {
   final VoidCallback onRetry;
   final bool isEmpty;
   final String emptyText;
+  final IconData emptyIcon;
   final double skeletonHeight;
   final Widget child;
 
@@ -219,7 +221,7 @@ class _SectionBody extends StatelessWidget {
     if (isLoading && !hasValue) {
       return _SkeletonBlock(height: skeletonHeight);
     }
-    if (isEmpty) return _EmptyLine(text: emptyText);
+    if (isEmpty) return _EmptyCard(text: emptyText, icon: emptyIcon);
     return child;
   }
 }
@@ -275,26 +277,50 @@ class _InlineError extends StatelessWidget {
   }
 }
 
-/// 空态：一行灰字。
+/// 空态：一张很轻的小卡（图标 + 一句说明）。
 ///
 /// 首页的空态**不整块隐藏**：「今天没有排期」是信息，"本日新番"整块消失
 /// 只会让人以为页面坏了或者自己在别的地方。要说清楚，而不是不说。
-class _EmptyLine extends StatelessWidget {
-  const _EmptyLine({required this.text});
+///
+/// 从「一行灰字」改成卡片：这三个空块（本日新番 / 高分作品 / 最新资讯）
+/// 在这版真数据下全都会出现，一行浮在留白里的灰字看着像没加载完；
+/// 给个卡片边界，视觉上才是「这里确实没有内容」。
+class _EmptyCard extends StatelessWidget {
+  const _EmptyCard({required this.text, required this.icon});
 
   final String text;
+  final IconData icon;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      child: Text(
-        text,
-        style: theme.textTheme.bodySmall?.copyWith(
-          color: theme.colorScheme.onSurfaceVariant,
-        ),
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+      decoration: BoxDecoration(
+        color: AppTheme.cardColor(context),
+        borderRadius: BorderRadius.circular(AppLayout.cardRadius),
+        border: Border.all(color: AppTheme.borderColor(context), width: 0.5),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            icon,
+            size: 18,
+            color: scheme.onSurfaceVariant.withValues(alpha: 0.7),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              text,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -614,6 +640,7 @@ class _TodayScheduleSection extends ConsumerWidget {
             onRetry: () => ref.invalidate(homeTodayScheduleProvider),
             isEmpty: items.isEmpty,
             emptyText: '今天没有排期',
+            emptyIcon: Icons.event_busy_outlined,
             skeletonHeight: cardHeight,
             child: SizedBox(
               height: cardHeight,
@@ -746,6 +773,7 @@ class _TopRatedSection extends ConsumerWidget {
             onRetry: () => ref.invalidate(homeTopRatedProvider),
             isEmpty: items.isEmpty,
             emptyText: '还没有可推荐的作品',
+            emptyIcon: Icons.auto_awesome_outlined,
             skeletonHeight: stripHeight,
             child: SizedBox(
               height: stripHeight,
@@ -791,6 +819,7 @@ class _LatestArticlesSection extends ConsumerWidget {
             onRetry: () => ref.invalidate(homeLatestArticlesProvider),
             isEmpty: items.isEmpty,
             emptyText: '暂无资讯',
+            emptyIcon: Icons.newspaper_outlined,
             skeletonHeight:
                 _skeletonItemHeight * HomeLimits.latestArticles + 16,
             child: Column(
