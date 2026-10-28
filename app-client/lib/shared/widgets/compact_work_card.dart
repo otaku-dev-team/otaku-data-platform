@@ -41,6 +41,17 @@ class CompactWorkCard extends StatelessWidget {
         ? null
         : work.title.characters.first;
 
+    final titleStyle = theme.textTheme.bodyMedium?.copyWith(
+      fontWeight: FontWeight.w600,
+      height: 1.35,
+    );
+    // 标题固定占两行的高度：横排里有的标题一行、有的两行，不固定的话
+    // 评分行会一张高一张低，整条带子底部参差（首页「最近浏览」实测最明显）。
+    final scaler = MediaQuery.textScalerOf(context);
+    final titleLineHeight = scaler.scale(
+      (titleStyle?.fontSize ?? 14) * (titleStyle?.height ?? 1.35),
+    );
+
     return SizedBox(
       width: width,
       child: InkWell(
@@ -58,13 +69,13 @@ class CompactWorkCard extends StatelessWidget {
               source: work.source,
             ),
             const SizedBox(height: 6),
-            Text(
-              work.title,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-                height: 1.35,
+            SizedBox(
+              height: titleLineHeight * 2,
+              child: Text(
+                work.title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: titleStyle,
               ),
             ),
             const SizedBox(height: 4),
