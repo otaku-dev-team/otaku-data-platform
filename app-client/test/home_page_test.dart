@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -162,6 +165,53 @@ const _networkError = ApiException(
   message: '网络不可用',
 );
 
+/// 从真后端响应原文读出来的列表（`test/fixtures/real_*.json`，
+/// 拉取方式见 `docs/w1-real-data-probe.md` §1）。
+///
+/// 手写假对象测不出这一条：真数据每个条目都带 `source`，会触发封面的来源徽章层，
+/// 而徽章层是一个 Stack——横向条把封面直接放进 Column，Stack 拿不到有限约束就会
+/// 整块画不出来。这段就是为了让这类「只有真数据才成立」的问题有处可钉。
+PagedResult<WorkSummary> _loadRealWorks(String name) {
+  final json = jsonDecode(
+    File('test/fixtures/$name.json').readAsStringSync(),
+  ) as Map<String, dynamic>;
+  final items = (json['items'] as List)
+      .map((e) => WorkSummary.fromJson(e as Map<String, dynamic>))
+      .toList(growable: false);
+  return PagedResult<WorkSummary>(
+    items: items,
+    total: json['total'] as int,
+    page: json['page'] as int,
+    pageSize: json['page_size'] as int,
+    totalPages: json['total_pages'] as int,
+  );
+}
+
+class _RealWorkSource implements WorkDataSource {
+  _RealWorkSource(this.page);
+
+  final PagedResult<WorkSummary> page;
+
+  @override
+  Future<PagedResult<WorkSummary>> fetchWorks({
+    WorkType? type,
+    String? query,
+    WorkSort sort = WorkSort.id,
+    int page = 1,
+    int pageSize = 20,
+    List<String>? tags,
+    int? year,
+  }) async =>
+      this.page;
+
+  @override
+  Future<Work> fetchDetail(String workId) async => throw UnimplementedError();
+
+  @override
+  Future<RelatedWorks> fetchRelated(String workId, {int limit = 6}) async =>
+      const RelatedWorks(basisTags: [], items: []);
+}
+
 void main() {
   Widget app({
     WorkDataSource? work,
@@ -227,6 +277,36 @@ void main() {
 
     expect(find.text('分类浏览'), findsOneWidget);
     expect(find.text('本日新番'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('真实评分数据：手机宽度下「高分作品」把卡片画出来', (tester) async {
+    // 数据是 `real_works_by_rating.json`——真后端 sort=rating 的响应原文，
+    // 每条都带 `source`（ bangumi ）。这正是首页「高分作品」在真机上整块空白的
+    // 触发条件：徽章层是个 Stack，横向条的 Column 给不出有限约束就整张卡渲染失败。
+    // 假数据没有 source，所以上面那几条用例测不出这个。
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          ...authOverrides(),
+          workDataSourceProvider.overrideWithValue(
+            _RealWorkSource(_loadRealWorks('real_works_by_rating')),
+          ),
+          articleDataSourceProvider.overrideWithValue(_FakeArticleSource()),
+          scheduleDataSourceProvider.overrideWithValue(_FakeScheduleSource()),
+          homeTodayWeekdayProvider.overrideWithValue(1),
+        ],
+        child: const OtakuApp(),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(find.text('高分作品'), findsOneWidget);
+    expect(find.byType(CompactWorkCard), findsWidgets);
     expect(tester.takeException(), isNull);
   });
 
