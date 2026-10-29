@@ -217,8 +217,14 @@ def test_alias_blob_is_split_into_clean_names(tmp_path):
     assert json.loads(raw) == ["New Century Evangelion", "新世纪天鹰战士", "EVA"]
 
 
-def test_empty_alias_blob_stays_null_not_a_blank_entry(tmp_path):
-    """``{\\n}`` 这种空壳不能变成一条空白别名——否则界面上会出现一个空条目。"""
+def test_empty_alias_blob_becomes_empty_list_not_null(tmp_path):
+    """``{\n}`` 空壳要落成 ``[]``（「明确没有别名」），不能是 null（「不覆盖」）。
+
+    后端三态里 null = 本次没拿到、不覆盖旧值。空壳如果下发 null，库里之前灌进去的
+    脏值 ``["{\n}"]`` 就永远洗不掉——重灌一遍数据也清不干净（Issue #273 复现：
+    12,027 条更新后仍有 6,594 条留着花括号）。落成 ``[]`` 才会被真正清空，
+    同时也不会渲染出一个空白别名条目。
+    """
     src = make_source(tmp_path / "site.db")
     out = tmp_path / "dataset.db"
     conn = sqlite3.connect(src)
@@ -226,6 +232,29 @@ def test_empty_alias_blob_stays_null_not_a_blank_entry(tmp_path):
         "update contents set aliases = ? where id = 1",
         (json.dumps(["{\n}"]),),
     )
+    conn.commit()
+    conn.close()
+
+    export_dataset(src, out, MAPPING, snapshot=True)
+
+    conn = sqlite3.connect(out)
+    value = conn.execute(
+        "select aliases_json from works where source_id='1'"
+    ).fetchone()[0]
+    conn.close()
+    assert value == "[]"
+
+
+def test_null_alias_column_stays_null_so_it_does_not_overwrite(tmp_path):
+    """源列本来就是 NULL（源站没给这个字段）→ 仍然下发 null，不许当成「清空」。
+
+    这是上一支测试的反面：``{\n}``（有值但没有别名）落 ``[]``，``NULL``（压根没数据）
+    必须落 null。两者混成一种，要么脏值洗不掉，要么把库里已有的好别名清空。
+    """
+    src = make_source(tmp_path / "site.db")
+    out = tmp_path / "dataset.db"
+    conn = sqlite3.connect(src)
+    conn.execute("update contents set aliases = NULL where id = 1")
     conn.commit()
     conn.close()
 

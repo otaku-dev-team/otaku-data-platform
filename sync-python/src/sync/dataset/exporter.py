@@ -190,11 +190,15 @@ def coerce(value: Any, spec: FieldSpec) -> tuple[Any, str | None]:
 
     if ftype == "bracket_list":
         items = _parse_bracket_list(value)
-        if not items:
-            # 拆不出来或本来就没有：按「没有」处理，不算脏数据。
-            # 空壳（"{}\n"）也是这个分支，否则会渲染出一个空洞的别名条目。
-            return spec.default, None
-        return json.dumps(items, ensure_ascii=False), None
+        if items:
+            return json.dumps(items, ensure_ascii=False), None
+        # 源列**有值**但拆不出别名（典型是空壳 `{\n}`）：这是源站明确说「没有别名」，
+        # 必须写成 `[]`（后端三态里的「清空」），不能落到默认的 null（「不覆盖」）。
+        # 用 null 的话，库里之前灌进去的脏值（`["{\n}"]`）永远洗不掉——
+        # 后端按契约「null 不覆盖」会一直留着它，客户端就会露出花括号。#273
+        # 源列本身是 NULL / 空串时在上面就被短路成 default 了，走不到这里，
+        # 也就是「源站没给这个字段」仍然是 null，不会误清库里已有的好别名。
+        return "[]", None
 
     if ftype in ("json_list", "json_obj"):
         parsed = value
