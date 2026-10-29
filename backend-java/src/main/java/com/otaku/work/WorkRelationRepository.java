@@ -8,7 +8,9 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 详情页三块关系数据（Issue #255）：制作人员 / 角色声优 / 制作公司。
@@ -91,6 +93,62 @@ public class WorkRelationRepository {
         plainJdbc.batchUpdate(
                 "INSERT INTO work_characters (work_ref, name, actor, character_type, person_id, sort_order)"
                         + " VALUES (?, ?, ?, ?, ?, ?)", rows);
+    }
+
+    /** 关系里被引用到的人：{@code person_id} + 该处出现的名字。 */
+    public record PersonRef(String sourceId, String name) {
+    }
+
+    /** 与 {@code people.name} 列宽一致；超长的不是人名，按「没拿到」跳过而不是截断。 */
+    private static final int MAX_PERSON_NAME = 200;
+
+    /**
+     * 把关系里引用到的人补进 {@code people}（Issue #271）。**只补不覆盖**。
+     *
+     * <p>为什么必须补：{@code work_staff.person_id} / {@code work_characters.person_id} 是
+     * 「指向人物」的外键语义，但 {@code people} 一直空着——19,399 个被引用的 id 全是悬空的，
+     * 人物页/人物跳转一查就是 404。这里在写关系的同一个事务里把壳建出来。
+     *
+     * <p>为什么 {@code INSERT IGNORE}：人物将来有自己的富字段通道（生日、头像、简介），
+     * 那是另一条路；这条只保证「引用不断链」，绝不能把已有的规范名覆盖成某部作品的 credits 写法。
+     * 幂等也靠它——重复导入同一批不会增行。
+     *
+     * <p>名字取 credits（制作人员用 {@code staff.name}、角色用 {@code characters.actor}），
+     * 因为 person_id 在 characters 上指的是**声优**，不是角色。
+     *
+     * @return 实际新插入的行数（被忽略的重复不计）
+     */
+    public int ensurePeople(String source, List<PersonRef> refs) {
+        if (refs == null || refs.isEmpty()) {
+            return 0;
+        }
+        // 同一部作品里一个人可能挂多个职位（作画监督 + 原画）：先去重，别让同一条 INSERT 撞自己。
+        Map<String, String> unique = new LinkedHashMap<>();
+        for (PersonRef ref : refs) {
+            if (ref == null || ref.sourceId() == null || ref.sourceId().isBlank()) {
+                continue;
+            }
+            String name = ref.name() == null ? null : ref.name().trim();
+            if (name == null || name.isEmpty() || name.length() > MAX_PERSON_NAME) {
+                continue;
+            }
+            unique.putIfAbsent(ref.sourceId().trim(), name);
+        }
+        if (unique.isEmpty()) {
+            return 0;
+        }
+        List<Object[]> rows = new ArrayList<>(unique.size());
+        unique.forEach((id, name) -> rows.add(new Object[]{source, id, name, "person"}));
+        int[] affected = plainJdbc.batchUpdate(
+                "INSERT IGNORE INTO people (source, source_id, name, entity_type) VALUES (?, ?, ?, ?)",
+                rows);
+        int inserted = 0;
+        for (int count : affected) {
+            if (count > 0) {
+                inserted += count;
+            }
+        }
+        return inserted;
     }
 
     /** 整体替换制作公司。 */

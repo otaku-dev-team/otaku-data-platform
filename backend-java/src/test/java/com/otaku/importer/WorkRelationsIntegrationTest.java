@@ -64,6 +64,8 @@ class WorkRelationsIntegrationTest {
         jdbc.update("DELETE FROM import_batch_run WHERE batch_id LIKE ?", BATCH_PREFIX + "%");
         jdbc.update("DELETE FROM import_batch WHERE batch_id LIKE ?", BATCH_PREFIX + "%");
         jdbc.update("DELETE FROM work WHERE source_id LIKE ?", ID_PREFIX + "%");
+        // people 是全局表（uk: source + source_id），不跟着 work 级联，必须单独清。
+        jdbc.update("DELETE FROM people WHERE source_id LIKE ?", ID_PREFIX + "%");
     }
 
     @Test
@@ -185,6 +187,64 @@ class WorkRelationsIntegrationTest {
         assertThat(elapsedMillis)
                 .as("逐条 insert 会到小时级；这里只要求「不是逐条」这个量级")
                 .isLessThan(60_000);
+    }
+
+    @Test
+    @DisplayName("people 补壳：staff 取 name、characters 取 actor——person_id 在角色上指声优，不是角色")
+    void importCreatesPeopleShells() {
+        String sourceId = ID_PREFIX + "people";
+        importService.importBatch(batch("p1", List.of(item(sourceId, "EVA 补人",
+                List.of(new WorkStaffDto("原作", "庵野秀明", ID_PREFIX + "p-staff-1")),
+                List.of(new WorkCharacterDto("碇シンジ", "緒方恵美", "主角", ID_PREFIX + "p-cast-1")),
+                null))));
+
+        assertThat(peopleName(ID_PREFIX + "p-staff-1"))
+                .as("制作人员的人名取 staff.name").isEqualTo("庵野秀明");
+        assertThat(peopleName(ID_PREFIX + "p-cast-1"))
+                .as("角色行的 person_id 指声优，名字必须取 actor 而不是角色名").isEqualTo("緒方恵美");
+        assertThat(jdbc.queryForObject("SELECT entity_type FROM people WHERE source_id = ?",
+                String.class, ID_PREFIX + "p-cast-1")).isEqualTo("person");
+    }
+
+    @Test
+    @DisplayName("people 补壳幂等且不覆盖：重放不增行，已有规范名不被 credits 写法改写")
+    void peopleShellsAreIdempotentAndNeverOverwrite() {
+        String keepId = ID_PREFIX + "p-keep";
+        jdbc.update("INSERT IGNORE INTO people (source, source_id, name, entity_type)"
+                + " VALUES (?, ?, ?, 'person')", SOURCE, keepId, "庵野秀明（规范名）");
+        String sourceId = ID_PREFIX + "people-idem";
+        ImportBatchRequest request = batch("p2", List.of(item(sourceId, "EVA 幂等",
+                List.of(new WorkStaffDto("原作", "庵野 秀明", keepId)), null, null)));
+
+        importService.importBatch(request);
+        importService.importBatch(request);
+
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM people WHERE source_id = ?",
+                Integer.class, keepId)).as("重放不增行").isEqualTo(1);
+        assertThat(peopleName(keepId)).as("已有的人名不能被 credits 覆盖").isEqualTo("庵野秀明（规范名）");
+    }
+
+    @Test
+    @DisplayName("同一个人挂多个职位只建一行；没名字的引用跳过（不留半截名）")
+    void duplicateAndNamelessRefsAreHandled() {
+        String sourceId = ID_PREFIX + "people-dedup";
+        String dupId = ID_PREFIX + "p-dup";
+        String blankId = ID_PREFIX + "p-blank";
+        importService.importBatch(batch("p3", List.of(item(sourceId, "EVA 去重",
+                List.of(new WorkStaffDto("作画监督", "本田雄", dupId),
+                        new WorkStaffDto("原画", "本田雄", dupId),
+                        new WorkStaffDto("色彩设计", "   ", blankId)),
+                null, null))));
+
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM people WHERE source_id = ?",
+                Integer.class, dupId)).as("同一人多个职位只建一行").isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM people WHERE source_id = ?",
+                Integer.class, blankId)).as("没名字就建不出人，跳过而不是存空名").isZero();
+    }
+
+    private String peopleName(String sourceId) {
+        return jdbc.queryForObject("SELECT name FROM people WHERE source = ? AND source_id = ?",
+                String.class, SOURCE, sourceId);
     }
 
     /** 详情三块的小包装，只在本测试里用。 */
