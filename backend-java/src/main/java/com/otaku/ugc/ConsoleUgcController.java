@@ -4,6 +4,10 @@ import com.otaku.common.PageResponse;
 import com.otaku.console.ConsoleAuthFilter;
 import com.otaku.console.ConsolePrincipal;
 import com.otaku.console.dto.ConsoleDtos;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -53,6 +57,30 @@ public class ConsoleUgcController {
             @RequestAttribute(ConsoleAuthFilter.ATTRIBUTE_PRINCIPAL) ConsolePrincipal principal,
             @PathVariable("commentId") String commentId) {
         return service.publish(principal, commentId);
+    }
+
+    /**
+     * 导出本站评论（CSV，UTF-8 带 BOM，Excel 直接打开不乱码）。
+     *
+     * <p>走 {@code GET} 是因为导出是幂等读操作；审计由服务层写（谁导了多少条）。
+     */
+    @GetMapping("/ugc/export")
+    public ResponseEntity<byte[]> export(
+            @RequestAttribute(ConsoleAuthFilter.ATTRIBUTE_PRINCIPAL) ConsolePrincipal principal,
+            @RequestParam(name = "status", required = false) String status) {
+        var result = service.exportCsv(principal, status);
+        // BOM：没有它，Excel 打开 UTF-8 CSV 会把中文显示成乱码。
+        byte[] body = ("\uFEFF" + result.csv()).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        return ResponseEntity.ok()
+                .contentType(new MediaType("text", "csv", java.nio.charset.StandardCharsets.UTF_8))
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        ContentDisposition.attachment()
+                                .filename("ugc-" + principal.siteKey() + "-"
+                                        + java.time.LocalDate.now() + ".csv")
+                                .build().toString())
+                .header("X-Export-Rows", String.valueOf(result.rows()))
+                .header("X-Export-Truncated", String.valueOf(result.truncated()))
+                .body(body);
     }
 
     @GetMapping("/ugc/reports")
