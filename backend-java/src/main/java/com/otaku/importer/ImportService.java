@@ -14,7 +14,10 @@ import com.otaku.importer.dto.ImportItemResult;
 import com.otaku.work.CountCache;
 import com.otaku.work.TagCache;
 import com.otaku.work.WorkRecord;
+import com.otaku.work.WorkRelationRepository;
 import com.otaku.work.WorkRepository;
+import com.otaku.work.dto.WorkCharacterDto;
+import com.otaku.work.dto.WorkStaffDto;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DuplicateKeyException;
@@ -268,16 +271,16 @@ public class ImportService {
         return transactionTemplate.execute(status -> {
             Optional<WorkRecord> existing = workRepository.findBySourceKey(source, item.sourceId());
             if (existing.isPresent()) {
-                return updateExisting(existing.get(), item);
+                return updateExisting(source, existing.get(), item);
             }
             WorkRecord created = WorkMerger.newRecord(item, idGenerator.nextWorkId(), source, nowUtc());
             long workRef = workRepository.insert(created);
-            applyRelations(workRef, item);
+            applyRelations(source, workRef, item);
             return new ItemOutcome(ImportItemResult.INSERTED, created.workId());
         });
     }
 
-    private ItemOutcome updateExisting(WorkRecord current, NormalizedItem item) {
+    private ItemOutcome updateExisting(String source, WorkRecord current, NormalizedItem item) {
         WorkMerger.MergeResult merged = WorkMerger.merge(current, item);
         // 关系三块在独立的表里，WorkMerger 看不到它们——必须单独比对，
         // 否则「只改了 staff」会被判成 unchanged，静默丢掉这次更新。
@@ -289,7 +292,7 @@ public class ImportService {
             workRepository.updateContent(merged.work());
         }
         if (relationsChanged) {
-            applyRelations(current.id(), item);
+            applyRelations(source, current.id(), item);
         }
         if (relationsChanged && !merged.changed()) {
             // 只有关系数据变了：updated_at 也要推进，否则详情页看不出内容更新过。
@@ -312,7 +315,7 @@ public class ImportService {
                 && !item.studios().equals(relationRepository.findStudios(workRef));
     }
 
-    private void applyRelations(long workRef, NormalizedItem item) {
+    private void applyRelations(String source, long workRef, NormalizedItem item) {
         if (item.staff() != null) {
             relationRepository.replaceStaff(workRef, item.staff());
         }
@@ -322,6 +325,33 @@ public class ImportService {
         if (item.studios() != null) {
             relationRepository.replaceStudios(workRef, item.studios());
         }
+        ensurePeople(source, item);
+    }
+
+    /**
+     * 关系里引用到的人要在 {@code people} 里有壳（Issue #271）——否则 {@code person_id} 是悬空的，
+     * 人物页一查就是 404，客户端也没法做人物跳转。
+     *
+     * <p>只补不覆盖（{@code INSERT IGNORE}）：将来人物详情走自己的富字段通道，
+     * 这条通道只负责「别断链」，不能把已有的规范名改写成某部作品的 credits 写法。
+     *
+     * <p>名字来源要分清：{@code staff.person_id} 指制作人员本人（用 {@code name}），
+     * 而 {@code characters.person_id} 指的是**声优**（用 {@code actor}，不是角色名）。
+     * 弄反了会在人物页看到一堆角色名当人名。
+     */
+    private void ensurePeople(String source, NormalizedItem item) {
+        List<WorkRelationRepository.PersonRef> refs = new ArrayList<>();
+        if (item.staff() != null) {
+            for (WorkStaffDto staff : item.staff()) {
+                refs.add(new WorkRelationRepository.PersonRef(staff.personId(), staff.name()));
+            }
+        }
+        if (item.characters() != null) {
+            for (WorkCharacterDto character : item.characters()) {
+                refs.add(new WorkRelationRepository.PersonRef(character.personId(), character.actor()));
+            }
+        }
+        relationRepository.ensurePeople(source, refs);
     }
 
     /**
