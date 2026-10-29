@@ -18,6 +18,7 @@ import com.otaku.work.WorkRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DuplicateKeyException;
+import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -53,6 +54,11 @@ public class ImportService {
 
     static final int MAX_ITEMS_PER_BATCH = 500;
     private static final int MAX_BATCH_ID_LENGTH = 128;
+
+    /** 写一条最多尝试几次：一次正常 + 两次重试，够扛住 5 路并发抢同一行。 */
+    private static final int MAX_WRITE_ATTEMPTS = 3;
+    /** 锁冲突退避的基数：每次重试等 BASE × 尝试次数（20ms、40ms）。 */
+    private static final long BACKOFF_MILLIS = 20L;
 
     /** 与 work.source_url 列宽一致；超长直接丢弃，不截断（契约不允许存半截地址）。 */
     private static final int MAX_SOURCE_URL_LENGTH = 1024;
@@ -209,7 +215,7 @@ public class ImportService {
     }
 
     /**
-     * 单条写入。并发撞唯一键时**换一个新事务重做一次**，而不是在本事务里再查一次。
+     * 单条写入。并发撞唯一键 / 死锁 / 锁等待超时时**换一个新事务重做**，而不是在本事务里再查一次。
      *
      * <p>为什么不能在本事务里再查（issue #81）：MySQL 默认隔离级别是 REPEATABLE READ，
      * 事务的第一次一致性读就把快照钉死了。这里撞唯一键意味着对方已经提交，
@@ -217,16 +223,43 @@ public class ImportService {
      * 于是"查不到、又插不进"，只能抛出去被归类成 {@code INTERNAL_ERROR / rejected}。
      * 换事务后新快照能看到对方提交的行，走正常的更新分支。
      *
-     * <p>只重试一次：重试时对方已提交，必然命中更新分支；若仍失败，说明是别的问题
-     * （例如 work_id 撞车后依然冲突），继续重试没有意义，交回上层按坏记录处理。
+     * <p>死锁 / 锁等待超时（{@link PessimisticLockingFailureException}）是同一类问题的另一种表现：
+     * 多路并发写同一个 {@code (source, source_id)} 时 MySQL 会挑一方当牺牲者，
+     * 被挑中的那个此前直接变成 {@code INTERNAL_ERROR / rejected}（2026-10-29 CI 实测复现：
+     * 5 路并发写同一批，1 条被判 {@code 入库失败：CannotAcquireLockException}）。
+     * 事务已经回滚、锁已经放掉，换新事务重来就能排到后面正常执行，所以这两类一起重试。
+     *
+     * <p>重试有上限：唯一键冲突重试后对方必然已提交，一般一次就够；
+     * 锁冲突要"让一拍"，线性退避 20ms / 40ms，避免两方同时再撞一次。
+     * 超过上限说明不是单纯的并发拥挤，继续重试没有意义，交回上层按坏记录处理。
      */
     private ItemOutcome apply(String source, NormalizedItem item) {
+        for (int attempt = 1; ; attempt++) {
+            try {
+                return applyOnce(source, item);
+            } catch (DuplicateKeyException conflict) {
+                if (attempt >= MAX_WRITE_ATTEMPTS) {
+                    throw conflict;
+                }
+                log.info("并发撞唯一键（对方已提交），换新事务重试第 {} 次：source={} source_id={}",
+                        attempt, source, item.sourceId());
+            } catch (PessimisticLockingFailureException lock) {
+                if (attempt >= MAX_WRITE_ATTEMPTS) {
+                    throw lock;
+                }
+                log.info("并发抢锁失败（{}），退避后重试第 {} 次：source={} source_id={}",
+                        lock.getClass().getSimpleName(), attempt, source, item.sourceId());
+                backoff(attempt);
+            }
+        }
+    }
+
+    /** 线性退避：20ms、40ms。锁冲突要的是「让一拍」，不是指数退避。 */
+    private static void backoff(int attempt) {
         try {
-            return applyOnce(source, item);
-        } catch (DuplicateKeyException conflict) {
-            log.info("并发撞唯一键（对方已提交），换新事务重试一次：source={} source_id={}",
-                    source, item.sourceId());
-            return applyOnce(source, item);
+            Thread.sleep(BACKOFF_MILLIS * attempt);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
         }
     }
 
