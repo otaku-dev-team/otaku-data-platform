@@ -40,6 +40,11 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
+        <!-- 指标暴露（#286）：只加 registry，不引 Prometheus 服务；端点一样走内部令牌守卫。 -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+        </dependency>
 
         <!-- 只用 BCrypt 口令散列，不引入完整的 Spring Security 过滤器链 -->
         <dependency>

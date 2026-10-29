@@ -83,10 +83,26 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        # metrics / prometheus 只对持有内部令牌的调用方开放（见 InternalTokenFilter）：
+        # 8080 是公网可达的，把 QPS 与错误率裸奔出去没必要。
+        include: health,info,metrics,prometheus
   endpoint:
     health:
       show-details: always
+  prometheus:
+    metrics:
+      export:
+        # Boot 3.5 起指标导出默认关（management.defaults.metrics.export.enabled=false），
+        # 不显式打开就只有端点空壳、没有 prometheus 这个 endpoint。
+        enabled: true
+  metrics:
+    tags:
+      # 多实例时用来区分来源；现在只有一个实例，但标签一开始就带上，将来加实例不用改看板。
+      application: ${spring.application.name:backend-java}
+    distribution:
+      percentiles-histogram:
+        # 只有直方图才能算 p95/p99。平均延迟会掩盖长尾，而长尾才是用户感知到的「卡」。
+        http.server.requests: true
 
 logging:
   level:
