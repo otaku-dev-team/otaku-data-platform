@@ -315,11 +315,12 @@ class UgcIntegrationTest {
     }
 
     @Test
-    @DisplayName("导出 CSV：表头齐全、逗号/引号/换行被正确转义、只含本站")
+    @DisplayName("导出 CSV：表头齐全、逗号/引号/换行被正确转义、只含本站、回复带 parent_id")
     void exportCsvEscapesAndIsolates() {
-        service.create(alice, new UgcCommentRequest(workId, "普通,带逗号"));
+        UgcCommentDto floor = service.create(alice, new UgcCommentRequest(workId, "普通,带逗号"));
         service.create(alice, new UgcCommentRequest(workId, "带\"引号\"的内容"));
         service.create(alice, new UgcCommentRequest(workId, "第一行\n第二行"));
+        service.create(bob, new UgcCommentRequest(workId, "一条回复", floor.commentId()));
         // 别的站的评论：直接插库（业务入口会拦跨站），只为验证导出不漏本站以外
         jdbc.update("""
                 INSERT INTO ugc_comment (site_key, work_id, user_id, body, status, created_at, updated_at)
@@ -328,13 +329,20 @@ class UgcIntegrationTest {
 
         var exported = consoleUgcService.exportCsv(consoleAdmin(SITE), "all");
 
-        assertThat(exported.rows()).isEqualTo(3);
+        assertThat(exported.rows()).isEqualTo(4);
         assertThat(exported.truncated()).isFalse();
-        assertThat(exported.csv()).startsWith("comment_id,work_id,work_title,author,status,created_at,body");
+        assertThat(exported.csv()).startsWith(
+                "comment_id,parent_id,work_id,work_title,author,status,created_at,body");
         assertThat(exported.csv()).contains("\"普通,带逗号\"");
         assertThat(exported.csv()).contains("\"带\"\"引号\"\"的内容\"");
         assertThat(exported.csv()).contains("\"第一行\n第二行\"");
         assertThat(exported.csv()).as("别站的数据不能出现在本站导出里").doesNotContain("别的站的内容");
+
+        String replyLine = java.util.Arrays.stream(exported.csv().split("\r\n"))
+                .filter(line -> line.contains("it-ugc-bob"))
+                .findFirst().orElseThrow();
+        assertThat(replyLine.split(",")[1])
+                .as("回复行的 parent_id 应指向主评论").isEqualTo(floor.commentId());
     }
 
     @Test
@@ -347,6 +355,165 @@ class UgcIntegrationTest {
                 "SELECT COUNT(*) FROM console_audit WHERE action = 'ugc.export' AND target_id = ?",
                 Integer.class, SITE);
         assertThat(audited).isEqualTo(1);
+    }
+
+    // ---- 回复（B2c②）：只允许一层 ----
+
+    @Test
+    @DisplayName("回复挂在顶层下：total 只算顶层，回复按最早在前内嵌")
+    void repliesAreNestedUnderFloor() {
+        UgcCommentDto floor = service.create(alice, new UgcCommentRequest(workId, "主评论"));
+        service.create(bob, new UgcCommentRequest(workId, "第一回复", floor.commentId()));
+        service.create(bob, new UgcCommentRequest(workId, "第二回复", floor.commentId()));
+
+        PageResponse<UgcCommentDto> page = service.list(workId, 1, 20);
+
+        assertThat(page.total()).as("回复不计入顶层 total").isEqualTo(1);
+        UgcCommentDto got = page.items().get(0);
+        assertThat(got.replyCount()).isEqualTo(2);
+        assertThat(got.replies()).extracting(UgcCommentDto::body)
+                .as("对话顺序：最早在前").containsExactly("第一回复", "第二回复");
+        assertThat(got.replies()).allSatisfy(r ->
+                assertThat(r.parentId()).isEqualTo(floor.commentId()));
+        assertThat(got.parentId()).as("顶层评论没有父").isNull();
+    }
+
+    @Test
+    @DisplayName("回复预览最多 3 条，reply_count 仍是全量")
+    void replyPreviewIsCappedButCountIsNot() {
+        UgcCommentDto floor = service.create(alice, new UgcCommentRequest(workId, "主评论"));
+        for (int i = 1; i <= 4; i++) {
+            service.create(alice, new UgcCommentRequest(workId, "回复 " + i, floor.commentId()));
+        }
+
+        UgcCommentDto got = service.list(workId, 1, 20).items().get(0);
+        assertThat(got.replyCount()).isEqualTo(4);
+        assertThat(got.replies()).as("内嵌只给前 3 条，剩下的走 replies 端点").hasSize(3);
+        assertThat(got.replies()).extracting(UgcCommentDto::body)
+                .containsExactly("回复 1", "回复 2", "回复 3");
+    }
+
+    @Test
+    @DisplayName("replies 端点：按对话顺序分页，total 是该楼的回复数")
+    void repliesEndpointPaginatesInConversationOrder() {
+        UgcCommentDto floor = service.create(alice, new UgcCommentRequest(workId, "主评论"));
+        for (int i = 1; i <= 5; i++) {
+            service.create(bob, new UgcCommentRequest(workId, "回复 " + i, floor.commentId()));
+        }
+
+        PageResponse<UgcCommentDto> first = service.listReplies(workId, floor.commentId(), 1, 3);
+        assertThat(first.total()).isEqualTo(5);
+        assertThat(first.items()).extracting(UgcCommentDto::body)
+                .containsExactly("回复 1", "回复 2", "回复 3");
+
+        PageResponse<UgcCommentDto> second = service.listReplies(workId, floor.commentId(), 2, 3);
+        assertThat(second.items()).extracting(UgcCommentDto::body)
+                .containsExactly("回复 4", "回复 5");
+    }
+
+    @Test
+    @DisplayName("只支持一层：回复一条回复直接 400，说清楚是用法错误")
+    void cannotReplyToReply() {
+        UgcCommentDto floor = service.create(alice, new UgcCommentRequest(workId, "主评论"));
+        UgcCommentDto reply = service.create(bob,
+                new UgcCommentRequest(workId, "一条回复", floor.commentId()));
+
+        assertThatThrownBy(() -> service.create(alice,
+                new UgcCommentRequest(workId, "回复的回复", reply.commentId())))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("只支持回复主评论");
+    }
+
+    @Test
+    @DisplayName("回复别的作品的评论：404，不泄露那条评论存不存在")
+    void cannotReplyAcrossWorks() {
+        importService.importBatch(new ImportBatchRequest(
+                BATCH_PREFIX + "2", SOURCE, null,
+                List.of(new ImportItem("ugc-work-2", "anime", "另一部作品", null, null, null,
+                        List.of(), null, null, null, null, null, null, null, null, null))));
+        String otherWork = workRepository.findBySourceKey(SOURCE, "ugc-work-2").orElseThrow().workId();
+        UgcCommentDto elsewhere = service.create(alice,
+                new UgcCommentRequest(otherWork, "别处的评论"));
+
+        assertThatThrownBy(() -> service.create(alice,
+                new UgcCommentRequest(workId, "跨作品回复", elsewhere.commentId())))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("不存在");
+    }
+
+    @Test
+    @DisplayName("回复被隐藏的评论：404（那条楼已经不在公开列表里，不能往上挂）")
+    void cannotReplyToHiddenFloor() {
+        UgcCommentDto floor = service.create(alice, new UgcCommentRequest(workId, "会被隐藏"));
+        consoleUgcService.hide(consoleAdmin(SITE), floor.commentId());
+
+        assertThatThrownBy(() -> service.create(bob,
+                new UgcCommentRequest(workId, "回复隐藏楼", floor.commentId())))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("不存在");
+    }
+
+    @Test
+    @DisplayName("先审后发：回复落 pending，公开列表看不到，reply_count 也不计")
+    void pendingReplyIsInvisible() {
+        UgcCommentDto floor = service.create(alice, new UgcCommentRequest(workId, "主评论"));
+        jdbc.update("UPDATE site SET ugc_moderation = 'pre' WHERE site_key = ?", SITE);
+
+        UgcCommentDto reply = service.create(bob,
+                new UgcCommentRequest(workId, "待审回复", floor.commentId()));
+        assertThat(reply.status()).isEqualTo("pending");
+
+        UgcCommentDto got = service.list(workId, 1, 20).items().get(0);
+        assertThat(got.replyCount()).isZero();
+        assertThat(got.replies()).isEmpty();
+        assertThat(service.listReplies(workId, floor.commentId(), 1, 20).total()).isZero();
+    }
+
+    @Test
+    @DisplayName("撤回楼层：顶层评论连同回复一起软删，行还在（可追溯）")
+    void deletingFloorCascadesToReplies() {
+        UgcCommentDto floor = service.create(alice, new UgcCommentRequest(workId, "主评论"));
+        service.create(bob, new UgcCommentRequest(workId, "回复一", floor.commentId()));
+        service.create(bob, new UgcCommentRequest(workId, "回复二", floor.commentId()));
+
+        service.deleteOwn(alice, floor.commentId());
+
+        assertThat(service.list(workId, 1, 20).total()).isZero();
+        Integer rows = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM ugc_comment WHERE site_key = ? AND status = 'deleted'",
+                Integer.class, SITE);
+        assertThat(rows).as("三层都软删，但行保留").isEqualTo(3);
+    }
+
+    @Test
+    @DisplayName("删一条回复只影响自己：主评论仍在，另一条回复仍在")
+    void deletingReplyDoesNotTouchFloor() {
+        UgcCommentDto floor = service.create(alice, new UgcCommentRequest(workId, "主评论"));
+        UgcCommentDto first = service.create(bob,
+                new UgcCommentRequest(workId, "回复一", floor.commentId()));
+        service.create(bob, new UgcCommentRequest(workId, "回复二", floor.commentId()));
+
+        service.deleteOwn(bob, first.commentId());
+
+        PageResponse<UgcCommentDto> page = service.list(workId, 1, 20);
+        assertThat(page.total()).isEqualTo(1);
+        assertThat(page.items().get(0).replyCount()).isEqualTo(1);
+        assertThat(page.items().get(0).replies()).extracting(UgcCommentDto::body)
+                .containsExactly("回复二");
+    }
+
+    @Test
+    @DisplayName("回复与顶层共用限流额度，不能靠回复绕过")
+    void repliesShareRateLimit() {
+        UgcCommentDto floor = service.create(alice, new UgcCommentRequest(workId, "主评论"));
+        for (int i = 2; i <= UgcService.RATE_LIMIT; i++) {
+            service.create(alice, new UgcCommentRequest(workId, "刷 " + i, floor.commentId()));
+        }
+
+        assertThatThrownBy(() -> service.create(alice,
+                new UgcCommentRequest(workId, "第 6 条", floor.commentId())))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("发言太快");
     }
 
     private boolean featuresEnabled() {

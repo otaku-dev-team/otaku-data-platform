@@ -70,6 +70,20 @@ public class UgcController {
         return service.list(workId, page, pageSize);
     }
 
+    /**
+     * 某条顶层评论下的全部回复（对话顺序：最早在前）。
+     *
+     * <p>列表接口只内嵌最早 3 条，剩下的走这里；`comment_id` 是回复的目标，不是回复本身。
+     */
+    @GetMapping("/api/works/{workId}/comments/{commentId}/replies")
+    public PageResponse<UgcCommentDto> listReplies(
+            @PathVariable("workId") String workId,
+            @PathVariable("commentId") String commentId,
+            @RequestParam(name = "page", defaultValue = "1") int page,
+            @RequestParam(name = "page_size", defaultValue = "20") int pageSize) {
+        return service.listReplies(workId, commentId, page, pageSize);
+    }
+
     @PostMapping("/api/me/comments")
     @ResponseStatus(HttpStatus.CREATED)
     public UgcCommentDto create(

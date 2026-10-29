@@ -280,11 +280,13 @@ paths:
   /api/works/{work_id}/comments:
     get:
       tags: [社区]
-      summary: 作品评论列表（平台代存 UGC，B1）
+      summary: 作品评论列表（顶层评论，内嵌回复预览）
       operationId: listWorkComments
       description: |
-        作品页评论区：只返回 `published` 的评论，**最新在前**。
+        作品页评论区：只返回**顶层评论**，最新在前；每条带 `reply_count` 与最早 3 条回复预览。
 
+        - `total` 是**顶层评论数**，不含回复——否则「20 条里 18 条是回复」会让翻页手感莫名其妙；
+        - 完整回复走 `GET /api/works/{work_id}/comments/{comment_id}/replies`；
         - 作品不存在或 `work_id` 格式非法 → `404`（与详情一致）；
         - 作品存在但还没有评论 → `200` + `total: 0` + 空数组，不是 404；
         - `page_size` 上限 50，超出按 50 截断，不报错；
@@ -294,6 +296,43 @@ paths:
         平台对来源站数据只读的红线不变。
       parameters:
         - $ref: "#/components/parameters/WorkId"
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: page_size
+          in: query
+          description: 每页条数，上限 50
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UgcCommentPage" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimitedWithRetry" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /api/works/{work_id}/comments/{comment_id}/replies:
+    get:
+      tags: [社区]
+      summary: 某条顶层评论下的全部回复（对话顺序）
+      operationId: listCommentReplies
+      description: |
+        回复列表：只要 `published`，**最早在前**（对话顺序，与顶层列表的「最新在前」相反——
+        读回复是顺着聊下来的，倒序会看不懂谁在回谁）。
+
+        - `comment_id` 是**顶层评论**的 id，不是回复自己的 id；
+        - 该评论不存在 / 不在本作品下 / 不是顶层 / 非 `published` → `404`；
+        - 还没有回复 → `200` + `total: 0` + 空数组；
+        - 未登录也能读。
+      parameters:
+        - $ref: "#/components/parameters/WorkId"
+        - name: comment_id
+          in: path
+          required: true
+          schema: { type: string }
+          description: 顶层评论 id
         - name: page
           in: query
           schema: { type: integer, minimum: 1, default: 1 }
@@ -2499,8 +2538,15 @@ components:
     UgcComment:
       type: object
       description: |
-        一条作品评论。字段刻意少：作者 id、站点键、状态机都是内部实现，
+        一条作品评论**或回复**。字段刻意少：作者 id、站点键、状态机都是内部实现，
         暴露出去只会让客户端跟着我们改名。
+
+        B2c 起一条评论可能是回复（`parent_id` 非空）。回复**只有一层**：`parent_id`
+        永远指向顶层评论，不会出现「回复的回复」——所以客户端不需要递归渲染。
+
+        三个新字段的取值规则：
+        - 顶层评论：`parent_id = null`，`reply_count` 是已发布回复总数，`replies` 是前 3 条预览；
+        - 回复：`parent_id` 指向顶层评论，`reply_count = null`，`replies = []`。
       required: [comment_id, work_id, author, body, status, created_at]
       properties:
         comment_id:
@@ -2530,6 +2576,25 @@ components:
           format: date-time
           description: 发表时间（UTC，RFC 3339）
           example: "2026-10-29T05:10:00Z"
+        parent_id:
+          type: string
+          nullable: true
+          description: 回复的目标顶层评论 id；顶层评论为 `null`
+          example: "1024"
+        reply_count:
+          type: integer
+          nullable: true
+          minimum: 0
+          description: |
+            该顶层评论下**已发布**的回复总数（不含待审/已隐藏/已删）。
+            只有顶层评论有值；回复为 `null`。
+          example: 3
+        replies:
+          type: array
+          description: |
+            内嵌的回复预览：**最早在前**，最多 3 条。只有顶层评论有值；回复为 `[]`。
+            完整回复走 `GET /api/works/{work_id}/comments/{comment_id}/replies`。
+          items: { $ref: "#/components/schemas/UgcComment" }
 
     UgcCommentPage:
       type: object
@@ -2558,6 +2623,15 @@ components:
           maxLength: 1000
           description: 纯文本；去首尾空白后为空 → 400
           example: "第三集的作画真是顶。"
+        parent_id:
+          type: string
+          nullable: true
+          description: |
+            要回复的顶层评论 id。省略或 `null` = 发顶层评论。
+
+            校验：父评论必须在本作品下、状态为 `published`；指向一条回复 → **400**
+            （只支持一层）；不存在 / 跨作品 / 待审 / 已隐藏 / 已删 → **404**，不泄露状态。
+          example: "1024"
 
     SiteFeatures:
       type: object

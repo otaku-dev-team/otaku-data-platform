@@ -13,8 +13,8 @@ import java.util.List;
  */
 final class UgcCsvExporter {
 
-    static final String[] HEADER = {"comment_id", "work_id", "work_title", "author", "status",
-            "created_at", "body"};
+    static final String[] HEADER = {"comment_id", "parent_id", "work_id", "work_title", "author",
+            "status", "created_at", "body"};
 
     private UgcCsvExporter() {
     }
@@ -24,6 +24,8 @@ final class UgcCsvExporter {
         csv.append(String.join(",", HEADER)).append("\r\n");
         for (UgcRepository.ConsoleRow row : rows) {
             csv.append(escape(String.valueOf(row.id()))).append(',')
+                    // 顶层评论留空、回复填父 id：站主拿到文件能自己重建楼层，不必回来问我们
+                    .append(escape(row.parentId() == null ? "" : String.valueOf(row.parentId()))).append(',')
                     .append(escape(row.workId())).append(',')
                     .append(escape(row.workTitle())).append(',')
                     .append(escape(row.username())).append(',')
