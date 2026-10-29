@@ -23,6 +23,10 @@ public class ConsoleAuditRepository {
     static final String ACTION_ADMIN_ENABLE = "admin.enable";
     static final String ACTION_USER_DISABLE = "user.disable";
     static final String ACTION_USER_ENABLE = "user.enable";
+    /** UGC 审核（#240 B2）：隐藏/恢复一条评论，以及站主开关的变更都要留痕。public 供 ugc 包引用。 */
+    public static final String ACTION_UGC_HIDE = "ugc.hide";
+    public static final String ACTION_UGC_PUBLISH = "ugc.publish";
+    public static final String ACTION_UGC_SETTING = "ugc.setting";
 
     private final NamedParameterJdbcTemplate jdbc;
 

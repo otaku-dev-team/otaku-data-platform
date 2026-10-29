@@ -2,6 +2,7 @@ package com.otaku.ugc;
 
 import com.otaku.auth.AuthFilter;
 import com.otaku.common.PageResponse;
+import com.otaku.ugc.dto.SiteFeaturesDto;
 import com.otaku.ugc.dto.UgcCommentDto;
 import com.otaku.ugc.dto.UgcCommentRequest;
 import com.otaku.user.UserRecord;
@@ -34,9 +35,22 @@ import org.springframework.web.bind.annotation.RestController;
 public class UgcController {
 
     private final UgcService service;
+    private final UgcSettingsRepository settings;
 
-    public UgcController(UgcService service) {
+    public UgcController(UgcService service, UgcSettingsRepository settings) {
         this.service = service;
+        this.settings = settings;
+    }
+
+    /**
+     * 本站能力开关：客户端据此决定「内置评论区」还是「跳原页」。
+     * 单站实例按「恰好一个 active 站点」解析；解析不出（0 个或多个）按未开启返回（fail-closed）。
+     */
+    @GetMapping("/api/site/features")
+    public SiteFeaturesDto features() {
+        return new SiteFeaturesDto(settings.singleActiveSite()
+                .map(settings::isEnabled)
+                .orElse(false));
     }
 
     @GetMapping("/api/works/{workId}/comments")

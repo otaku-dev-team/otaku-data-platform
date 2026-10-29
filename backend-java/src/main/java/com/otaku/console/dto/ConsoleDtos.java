@@ -217,4 +217,27 @@ public final class ConsoleDtos {
             String retryHint
     ) {
     }
+
+    /**
+     * 后台看到的评论一行。比客户端多作品标题与状态：
+     * 审核时「这条评论挂在哪个作品下」和「现在是什么状态」比正文还重要。
+     */
+    public record UgcItem(
+            String commentId,
+            String workId,
+            String workTitle,
+            String author,
+            String body,
+            String status,
+            java.time.Instant createdAt
+    ) {
+    }
+
+    /** 本站 UGC 开关。默认关：开不开由站主决定（合规责任在网站）。 */
+    public record UgcSetting(boolean enabled) {
+    }
+
+    /** 改开关的请求体；{@code enabled} 必填，缺省不当作 false——那会静默关掉功能。 */
+    public record UgcSettingUpdate(Boolean enabled) {
+    }
 }
