@@ -201,11 +201,30 @@ void main() {
 
       expect(find.byType(NavigationBar), findsOneWidget);
       // 用图标类型判定，不用文字——底栏的文字标签默认只有选中项显示。
-      expect(find.byIcon(Icons.home_rounded), findsOneWidget);
-      expect(find.byIcon(Icons.grid_view_outlined), findsOneWidget);
-      expect(find.byIcon(Icons.newspaper_outlined), findsOneWidget);
-      expect(find.byIcon(Icons.bookmark_border_rounded), findsOneWidget);
-      expect(find.byIcon(Icons.calendar_today_outlined), findsOneWidget);
+      //
+      // ⚠️ 必须限定在底栏**内部**找：作品库 AppBar 也有一个同款书签图标
+      // （`contents_page.dart` 的收藏入口），整页找会命中两个，
+      // 于是这条断言变成「首页有几个书签图标」而不是「底栏有五个目的地」。
+      final inBar = find.descendant(
+        of: find.byType(NavigationBar),
+        matching: find.byIcon(Icons.home_rounded),
+      );
+      expect(inBar, findsOneWidget);
+      for (final icon in [
+        Icons.grid_view_outlined,
+        Icons.newspaper_outlined,
+        Icons.bookmark_border_rounded,
+        Icons.calendar_today_outlined,
+      ]) {
+        expect(
+          find.descendant(
+            of: find.byType(NavigationBar),
+            matching: find.byIcon(icon),
+          ),
+          findsOneWidget,
+          reason: '底栏每个目的地各一个（$icon）',
+        );
+      }
     });
 
     testWidgets('当前页对应的那一项是选中态', (tester) async {
@@ -227,11 +246,21 @@ void main() {
       await tester.pumpWidget(appAt(RoutePaths.home));
       await tester.pumpAndSettle();
 
-      expect(find.widgetWithText(AppBar, '首页'), findsOneWidget);
+      // 起点是首页：不再断言 AppBar 标题是「首页」——首页改版后标题换成了
+      // 品牌行（标识 + Otaku + 日期），钉标题等于钉品牌样式，一改版就红。
+      // 底栏的选中项才是「现在在首页」这件事的可靠表达。
+      final startBar = tester.widget<NavigationBar>(find.byType(NavigationBar));
+      expect(startBar.selectedIndex, 0, reason: '起点在首页（底栏第一项）');
 
       // 收藏页此前在手机上**完全没有入口**（首页上没有，作品库 AppBar 里有个
       // 书签图标）——这条钉的就是「从首页一步能到收藏」。
-      await tester.tap(find.byIcon(Icons.bookmark_border_rounded));
+      // 同样限定在底栏内：否则点到的可能是作品库 AppBar 那个书签。
+      await tester.tap(
+        find.descendant(
+          of: find.byType(NavigationBar),
+          matching: find.byIcon(Icons.bookmark_border_rounded),
+        ),
+      );
       await tester.pumpAndSettle();
 
       expect(find.widgetWithText(AppBar, '我的收藏'), findsOneWidget);
