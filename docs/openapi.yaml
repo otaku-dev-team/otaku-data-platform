@@ -1316,6 +1316,46 @@ paths:
         "429": { $ref: "#/components/responses/RateLimitedWithRetry" }
         "500": { $ref: "#/components/responses/InternalError" }
 
+  /api/console/ugc/export:
+    get:
+      tags: [站主后台]
+      summary: 导出本站评论（CSV）
+      operationId: exportConsoleUgc
+      description: |
+        数据交还客户：把本站评论导成 CSV（UTF-8 带 BOM，Excel 直接打开不乱码）。
+
+        - 按登录站主的站点过滤，**不接受站点参数**；
+        - `status` 可选 `published` / `pending` / `hidden` / `deleted` / `all`（缺省 = 全部）；
+        - 上限 **5 万行**：超过时正常返回前 5 万行并把 `X-Export-Truncated` 置为 `true`（**不报错**，
+          站主要的是「能拿到数据」，报错只会让他反复重试）；
+        - 每行字段按 RFC 4180 转义（逗号、引号、换行都安全）；响应头 `X-Export-Rows` 是本文件行数；
+        - 导出会写审计 `ugc.export`（谁在什么时候导了多少条）。
+      security:
+        - consoleAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string, enum: [published, pending, hidden, deleted, all] }
+      responses:
+        "200":
+          description: CSV 文件
+          headers:
+            X-Export-Rows:
+              schema: { type: integer }
+              description: 本次导出的行数
+            X-Export-Truncated:
+              schema: { type: boolean }
+              description: 是否因为 5 万行上限被截断
+            Content-Disposition:
+              schema: { type: string }
+              description: attachment; filename="ugc-<site_key>-<yyyy-MM-dd>.csv"
+          content:
+            text/csv:
+              schema: { type: string }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
   /api/console/ugc/reports:
     get:
       tags: [站主后台]

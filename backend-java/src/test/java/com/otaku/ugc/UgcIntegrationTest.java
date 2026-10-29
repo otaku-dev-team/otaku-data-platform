@@ -314,6 +314,41 @@ class UgcIntegrationTest {
                 .hasMessageContaining("自己的评论");
     }
 
+    @Test
+    @DisplayName("导出 CSV：表头齐全、逗号/引号/换行被正确转义、只含本站")
+    void exportCsvEscapesAndIsolates() {
+        service.create(alice, new UgcCommentRequest(workId, "普通,带逗号"));
+        service.create(alice, new UgcCommentRequest(workId, "带\"引号\"的内容"));
+        service.create(alice, new UgcCommentRequest(workId, "第一行\n第二行"));
+        // 别的站的评论：直接插库（业务入口会拦跨站），只为验证导出不漏本站以外
+        jdbc.update("""
+                INSERT INTO ugc_comment (site_key, work_id, user_id, body, status, created_at, updated_at)
+                VALUES (?, ?, ?, '别的站的内容', 'published', NOW(3), NOW(3))
+                """, OTHER_SITE, workId, outsider.id());
+
+        var exported = consoleUgcService.exportCsv(consoleAdmin(SITE), "all");
+
+        assertThat(exported.rows()).isEqualTo(3);
+        assertThat(exported.truncated()).isFalse();
+        assertThat(exported.csv()).startsWith("comment_id,work_id,work_title,author,status,created_at,body");
+        assertThat(exported.csv()).contains("\"普通,带逗号\"");
+        assertThat(exported.csv()).contains("\"带\"\"引号\"\"的内容\"");
+        assertThat(exported.csv()).contains("\"第一行\n第二行\"");
+        assertThat(exported.csv()).as("别站的数据不能出现在本站导出里").doesNotContain("别的站的内容");
+    }
+
+    @Test
+    @DisplayName("导出写审计：谁在什么时候导了多少条")
+    void exportIsAudited() {
+        service.create(alice, new UgcCommentRequest(workId, "导出审计"));
+        consoleUgcService.exportCsv(consoleAdmin(SITE), "all");
+
+        Integer audited = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM console_audit WHERE action = 'ugc.export' AND target_id = ?",
+                Integer.class, SITE);
+        assertThat(audited).isEqualTo(1);
+    }
+
     private boolean featuresEnabled() {
         // 与 UgcController.features() 同一口径
         return settings.singleActiveSite().map(settings::isEnabled).orElse(false);

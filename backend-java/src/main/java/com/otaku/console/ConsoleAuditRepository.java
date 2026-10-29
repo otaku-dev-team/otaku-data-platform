@@ -30,6 +30,8 @@ public class ConsoleAuditRepository {
     /** 举报处置：resolve = 采纳并隐藏评论；dismiss = 驳回。 */
     public static final String ACTION_UGC_REPORT_RESOLVE = "ugc.report_resolve";
     public static final String ACTION_UGC_REPORT_DISMISS = "ugc.report_dismiss";
+    /** 导出本站 UGC（CSV）：数据外带要留痕，谁在什么时候导了多少条。 */
+    public static final String ACTION_UGC_EXPORT = "ugc.export";
 
     private final NamedParameterJdbcTemplate jdbc;
 

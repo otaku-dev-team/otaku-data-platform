@@ -33,6 +33,8 @@ public class ConsoleUgcService {
     private static final Set<String> REPORT_FILTERABLE = Set.of("open", "resolved", "dismissed");
     private static final Set<String> MODERATION_MODES = Set.of("post", "pre");
     private static final int MAX_PAGE_SIZE = 50;
+    /** 导出上限：够覆盖单站现阶段数据量，又不至于一次请求吃穿内存。 */
+    private static final int MAX_EXPORT_ROWS = 50_000;
 
     private final UgcRepository ugcRepository;
     private final UgcReportRepository reportRepository;
@@ -182,6 +184,33 @@ public class ConsoleUgcService {
                         row.workTitle(), row.author(), row.body(), row.reason(), row.status(),
                         row.createdAt() == null ? null : row.createdAt().toInstant(ZoneOffset.UTC)))
                 .orElseThrow(() -> new ApiException(ErrorCode.COMMENT_NOT_FOUND, "举报不存在"));
+    }
+
+    /**
+     * 导出本站评论为 CSV（数据交还客户）。
+     *
+     * <p>上限 5 万行：够覆盖任何单站现阶段的数据量，又不会让一次请求把内存吃穿。
+     * 超过上限时正常返回前 5 万行并标记 {@code truncated=true}——**不报错**，
+     * 因为站主要的是「能拿到数据」，报错只会让他反复重试。
+     */
+    public ExportResult exportCsv(ConsolePrincipal principal, String status) {
+        ConsoleScope scope = scopeResolver.resolve(principal);
+        String filter = normalizeFilter(status);
+        List<UgcRepository.ConsoleRow> rows =
+                ugcRepository.findForConsole(scope.siteKey(), filter, MAX_EXPORT_ROWS, 0);
+        long total = ugcRepository.countForConsole(scope.siteKey(), filter);
+        boolean truncated = total > rows.size();
+
+        auditRepository.record(scope.siteKey(), principal.adminId(),
+                ConsoleAuditRepository.ACTION_UGC_EXPORT, "ugc_comment", scope.siteKey(),
+                "导出 " + rows.size() + " 条（status=" + (filter == null ? "all" : filter) + "）",
+                LocalDateTime.now(ZoneOffset.UTC));
+        log.info("站主 {} 导出站点 {} 的 UGC：{} 条，truncated={}",
+                principal.adminId(), scope.siteKey(), rows.size(), truncated);
+        return new ExportResult(UgcCsvExporter.toCsv(rows), rows.size(), truncated);
+    }
+
+    public record ExportResult(String csv, int rows, boolean truncated) {
     }
 
     private static String normalizeReportFilter(String status) {
