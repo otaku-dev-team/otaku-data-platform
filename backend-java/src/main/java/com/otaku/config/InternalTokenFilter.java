@@ -20,13 +20,18 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 
 /**
- * 内部导入接口的令牌校验，只拦 /internal/**。
+ * 内部接口的令牌校验，拦 {@code /internal/**} 与指标端点（{@code /actuator/metrics}、
+ * {@code /actuator/prometheus}）。
  *
  * 设计要点：
  * - 令牌只从配置/环境变量读取，绝不落日志（下面只打印路径与来源 IP）；
  * - 常数时间比较，避免按字节计时推断令牌；
  * - 未配置令牌时一律拒绝（安全默认），而不是放行；
  * - 与面向客户端的接口分开认证：客户端不持有这个令牌，见 backend-java/README.md 的边界。
+ *
+ * <p>为什么指标也要令牌：8080 是公网可达的，{@code /actuator/prometheus} 会暴露每个端点的
+ * QPS、错误率与延迟分布——排障需要它，但没必要让外面看得见。{@code /actuator/health} 保持公开：
+ * 巡检脚本与负载均衡探针都要用，且它只回 UP/DOWN。
  */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE + 10)
@@ -48,10 +53,17 @@ public class InternalTokenFilter extends OncePerRequestFilter {
         }
     }
 
+    /** 指标端点：{@code /actuator/metrics} 与它的子路径、以及 {@code /actuator/prometheus}。 */
+    private static boolean isMetricsPath(String path) {
+        return path.equals("/actuator/prometheus")
+                || path.equals("/actuator/metrics")
+                || path.startsWith("/actuator/metrics/");
+    }
+
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getRequestURI().substring(request.getContextPath().length());
-        return !path.startsWith("/internal/");
+        return !path.startsWith("/internal/") && !isMetricsPath(path);
     }
 
     @Override
