@@ -393,9 +393,14 @@
    **未做**：Android 深链回跳（需真机）与「断开与网站的连接」（等后端给平台代理端点）。
    该文给后端的三个输入仍待回：断开连接的代理端点 / `user` 响应带 `identity_source` /
    平台会话与站点令牌的寿命关系。
-3. **#125 人物页 / 详情页富字段**：方案已进 main 留档
-   （[`person-studio-proposal.md`](person-studio-proposal.md)），**尚未生效**——取决于数据主来源
-   与「新增端点 + `Work` 详情字段扩容」的拍板（红线 1），拆实现 PR 等拍板后再动。
+3. **#125 人物页 / 详情页富字段**：#125 已关闭，方案留档在
+   [`person-studio-proposal.md`](person-studio-proposal.md)。
+   后端富字段（原名 / 别名 / 媒介 / 话数，#250）与关系四表（staff / characters /
+   studios，#255）**已上线**；**客户端详情页两区块待合**（PR #296，Issue #256）——
+   此前没做是因为 10-28 的样本取自灌库前的空库，实测误判成「数据几乎没有」，
+   生产真实覆盖是动画 staff 35% / characters 30% / studios 20%。
+   ⚠️ 人物页本身（B2）**仍不在本期**：`person_id` 在 Staff 侧实测 0% 有值，
+   客户端不做跳转，等 B2 落地再一起开。
    ~~#126 服务端推送~~：设备注册端点已由 zm 于 2026-10-26 拍板「现在做」，实现 #190 已合、
    迁移 `V11__user_device.sql` 已上线；**客户端侧尚未接**（推送通道是新依赖，且唯一事件源
    「导入完成」对用户价值低，押后）。方案仍留档在 [`w1.3-notification-proposal.md`](w1.3-notification-proposal.md)。
