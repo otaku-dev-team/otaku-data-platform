@@ -448,7 +448,9 @@ Java 侧 DTO 类名可自定，但 JSON 键名以本文为准。
 
 **列表返回字段（固定）**：`work_id`、`work_type`、`title`、`release_year`、`cover_url`、`tags`、`main_rating`、`source`（共 8 个），另加分页字段 `total`、`page`、`page_size`、`total_pages`。**不返回** `summary`、`source_id`、`updated_at`、`source_url`——需要简介或回流入口请按 `work_id` 拉详情。
 
-**详情返回字段（固定）**：第 2.1 节全部字段（含 `summary`、`source`、`source_id`、`updated_at`、`source_url`、`release_year`，2026-10-28 扩入的 `title_original` / `aliases` / `media` / `episodes`，以及 `staff` / `characters` / `studios` 三个关联数组）。
+**详情返回字段（固定）**：第 2.1 节全部字段（含 `summary`、`source`、`source_id`、`updated_at`、`source_url`、`release_year`，2026-10-28 扩入的 `title_original` / `aliases` / `media` / `episodes`，`staff` / `characters` / `studios` 三个关联数组，以及 2026-10-29 扩入的 `deleted`）。
+
+> **已下架（`deleted: true`）怎么处理（2026-10-29 定案）**：源站删掉的作品后端**软删**（`work.deleted_at`），**不物理删、不返 404**。列表 / 搜索 / 标签 / 年份四个面完全不返回它；详情仍返回 `200`，`deleted` 为 `true`。客户端在收藏、历史等**引用型列表**里要显示「已下架」占位，而不是移除条目——移除会让用户以为自己的收藏丢了；详情页要有终点态（横幅 + 不可再操作），不能白屏。
 
 ### 6.1 作品列表
 

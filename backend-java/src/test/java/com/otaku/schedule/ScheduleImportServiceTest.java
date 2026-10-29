@@ -105,7 +105,7 @@ class ScheduleImportServiceTest {
         when(workRepository.findBySourceKey("otaku_site", "7267"))
                 .thenReturn(Optional.of(new WorkRecord(
                         1L, "W-linked", "anime", "已收录", null, null, null, null, null, null, null, null, null, null,
-                        null, null, null, "otaku_site", "7267", null, null, null)));
+                        null, null, null, "otaku_site", "7267", null, null, null, null)));
 
         ImportBatchResult result = service.importSchedules(request(item("469", 1, "7267", List.of("科幻"))));
 

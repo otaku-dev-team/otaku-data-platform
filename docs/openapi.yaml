@@ -417,6 +417,48 @@ paths:
         "429": { $ref: "#/components/responses/RateLimitedWithRetry" }
         "500": { $ref: "#/components/responses/InternalError" }
 
+  /internal/import/deletions:
+    post:
+      tags: [内部导入]
+      summary: 软删一批作品（接口④）
+      operationId: submitDeletions
+      description: |
+        Python 同步作业专用，不对外暴露。
+
+        **软删，不物理删**：只打 `deleted_at` 时间戳。收藏、历史、外部引用都还指着这行，
+        物理删等于替用户删数据，也没法在源站误删/回滚时恢复。
+
+        下架之后：列表 / 搜索 / 标签 / 年份四个面全部**过滤掉**，详情仍返回
+        `200 + deleted: true`（**不是 404**）。
+
+        幂等：已软删的计 `already_deleted`，库里没有的计 `unknown`，**都不整批失败**——
+        重发是常态，一批里有几条对不上不该让整批卡住。
+
+        边界：只删 `source` 指定的这个来源的行，绝不跨来源删（否则一个站的数据能删掉另一个站的）。
+        单批上限 500 条，超出返回 `413 BATCH_TOO_LARGE`。
+
+        复活不走这里：源站又把作品放回来时走接口②，upsert 命中软删行会把 `deleted_at` 置空。
+        删除名单应当由 sync 侧的内容指纹对比产出，且**只在整轮抓取无失败页时**才允许提交——
+        否则一次网络抖动就能删掉一批。
+      security:
+        - internalToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DeletionRequest" }
+      responses:
+        "200":
+          description: 处理完成，三个计数见响应体
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeletionResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "413": { $ref: "#/components/responses/BatchTooLarge" }
+        "429": { $ref: "#/components/responses/RateLimitedWithRetry" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
   /internal/import/batches/{batch_id}:
     get:
       tags: [内部导入]
@@ -1796,7 +1838,7 @@ components:
     Work:
       type: object
       description: |
-        详情。**全部 19 个字段**（含本阶段新增的可空 `source_url` 与 `release_year`，
+        详情。**全部 20 个字段**（含本阶段新增的可空 `source_url` 与 `release_year`，
         2026-10-28 扩入的 4 个富字段 `title_original` / `aliases` / `media` / `episodes`，
         以及 3 个关联数组 `staff` / `characters` / `studios`）。
         列表项是 7 字段（含 `release_year`），不含
@@ -1925,6 +1967,17 @@ components:
           type: string
           format: date-time
           description: 该记录最后一次变更时间，由 Java 维护，RFC 3339
+        deleted:
+          type: boolean
+          description: |
+            是否已下架（软删，2026-10-29 增）。`false` = 正常。
+
+            源站删掉的作品**不物理删**：收藏、历史、外部引用都还指着它。下架后：
+
+            - 列表 / 搜索 / 标签筛选 / 年份筛选**完全不返回**它；
+            - 详情仍返回 `200`，本字段为 `true`——客户端应显示「已下架」占位，
+              **不要**当成 404 处理，否则用户会以为自己的收藏丢了；
+            - 已下架的作品不再提供阅读/收藏等操作入口；再次被同步到会自动复活（本字段转回 `false`）。
 
     WorkStaff:
       type: object
@@ -1982,6 +2035,70 @@ components:
           description: |
             声优的人物实体标识。与 `WorkStaff.person_id` 不同，这一侧实测 **100% 有值**，
             但人物页端点落地前客户端仍不得跳转。
+
+    DeletionRequest:
+      type: object
+      description: |
+        软删请求。`source` + `items[].source_id` 与接口②的唯一键同源，直接对应 `work` 行。
+      required: [source, batch_id, items]
+      properties:
+        source:
+          type: string
+          maxLength: 64
+          description: 来源标识；只影响这个来源的行
+          example: bangumi
+        batch_id:
+          type: string
+          maxLength: 128
+          description: 批次标识，供重放与排障，与接口②同名同义
+          example: del-2026-10-29
+        items:
+          type: array
+          minItems: 1
+          maxItems: 500
+          items:
+            type: object
+            required: [source_id]
+            properties:
+              source_id:
+                type: string
+                maxLength: 128
+                example: "265"
+              reason:
+                type: string
+                nullable: true
+                description: 删除原因，**只入日志不入库**（没有查询方，不占业务表列）
+                example: absent_from_snapshot
+
+    DeletionResult:
+      type: object
+      description: |
+        软删结果。三个计数分开是为了对账：`accepted` 是这次真删的，`already_deleted`
+        是重发命中，`unknown` 是键对不上（数据集与后端 id 体系错位时会突然变大）。
+      required: [batch_id, accepted, already_deleted, unknown]
+      properties:
+        batch_id:
+          type: string
+          example: del-2026-10-29
+        accepted:
+          type: integer
+          description: 本次真正标记为下架的行数
+          example: 12
+        already_deleted:
+          type: integer
+          description: 之前就已经软删的行数（重发是常态，不算错）
+          example: 3
+        unknown:
+          type: integer
+          description: |
+            库里没有这个 `(source, source_id)` 的数量：从没导过、或早已被清理。
+            **不算错、不整批失败**，但持续变大说明两端 id 体系对歪了。
+          example: 1
+        deleted_at:
+          type: string
+          format: date-time
+          description: 本次操作使用的下架时间（UTC，RFC 3339）；已软删的行保留首次下架时间，不会被刷新
+          example: "2026-10-29T04:30:00Z"
 
     SchedulePage:
       type: object

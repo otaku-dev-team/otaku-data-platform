@@ -3,6 +3,7 @@ package com.otaku.common;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.otaku.device.dto.DeviceDto;
+import com.otaku.importer.dto.DeletionResult;
 import com.otaku.work.WorkController;
 import com.otaku.work.dto.SourceRatingDto;
 import com.otaku.work.dto.WorkDto;
@@ -78,9 +79,19 @@ class ContractDriftTest {
                 null, // characters
                 null, // studios
                 "bangumi", "subject-1", "https://bgm.tv/subject/1",
-                Instant.parse("2026-10-20T06:00:00Z"));
+                Instant.parse("2026-10-20T06:00:00Z"),
+                false); // deleted
 
         assertSameFields("Work", objectMapper.valueToTree(dto));
+    }
+
+    @Test
+    @DisplayName("软删结果字段集 == 契约 DeletionResult")
+    void deletionResultMatchesContract() throws IOException {
+        DeletionResult dto = new DeletionResult("del-2026-10-29", 12, 3, 1,
+                java.time.OffsetDateTime.parse("2026-10-29T04:30:00Z"));
+
+        assertSameFields("DeletionResult", objectMapper.valueToTree(dto));
     }
 
     @Test
@@ -228,6 +239,8 @@ class ContractDriftTest {
         targets.put("SiteStatusChange", com.otaku.console.dto.InternalSiteDtos.SiteStatusChange.class);
         targets.put("SiteAdminStatusChange", com.otaku.console.dto.InternalSiteDtos.SiteAdminStatusChange.class);
         targets.put("Device", com.otaku.device.dto.DeviceDto.class);
+        // 软删结果（#249）：三个计数分开是为了对账，形状必须钉住
+        targets.put("DeletionResult", com.otaku.importer.dto.DeletionResult.class);
         return targets;
     }
 
@@ -240,6 +253,7 @@ class ContractDriftTest {
         targets.put("CreateAccountRequest", com.otaku.account.dto.CreateAccountRequest.class);
         targets.put("CollectionUpdateRequest", com.otaku.collection.dto.CollectionUpdateRequest.class);
         targets.put("ImportBatchRequest", com.otaku.importer.dto.ImportBatchRequest.class);
+        targets.put("DeletionRequest", com.otaku.importer.dto.DeletionRequest.class);
         targets.put("ImportItem", com.otaku.importer.dto.ImportBatchRequest.ImportItem.class);
         targets.put("ScheduleImportRequest", com.otaku.schedule.dto.ScheduleImportRequest.class);
         targets.put("ScheduleImportItem", com.otaku.schedule.dto.ScheduleImportRequest.ScheduleImportItem.class);
