@@ -342,4 +342,19 @@ public class UgcRepository {
                 .addValue("since", since), Integer.class);
         return count == null ? 0 : count;
     }
+
+    /**
+     * 物理删除「撤回超过保留期」的评论（留存策略，见 docs/ugc-retention-proposal.md）。
+     *
+     * <p>只删 {@code status = 'deleted'}：published / pending / hidden 一律不动——那些还有产品意义，
+     * 清掉等于替站主删内容。撤回时间取 {@code updated_at}（删除动作会更新它）。
+     *
+     * <p>为什么整批按时间而不是逐站点：保留期是平台级配置，与站点无关；
+     * 站点下线是另一条路径（导出 → 校验 → 按 site_key 删除），不要混用。
+     */
+    public int purgeDeletedBefore(LocalDateTime cutoff) {
+        return jdbc.update("""
+                DELETE FROM ugc_comment WHERE status = 'deleted' AND updated_at < :cutoff
+                """, new MapSqlParameterSource().addValue("cutoff", cutoff));
+    }
 }
