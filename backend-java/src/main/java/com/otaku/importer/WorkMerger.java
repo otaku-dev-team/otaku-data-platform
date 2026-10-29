@@ -14,7 +14,9 @@ import java.util.Objects;
  * - tags 三态：null 不覆盖、[] 清空、有值替换；
  * - work_id / source / source_id / created_at 永不变；
  * - updated_at 只在内容真的变化时推进——否则验收 D2 的 unchanged 计数会变成 updated；
- * - 封面地址变了要清掉本地缓存键，强制下次重新回源。
+ * - 封面地址变了要清掉本地缓存键，强制下次重新回源；
+ * - 软删行被重新写入 = 复活（#249）：deleted_at 置空，哪怕内容一模一样也要算 changed，
+ *   否则会出现「重新导入了却搜不到」，而且不报任何错。
  *
  * 这是一个纯函数，不碰数据库，所以能用单元测试把上面每条规则钉住。
  */
@@ -32,7 +34,7 @@ final class WorkMerger {
                 item.titleOriginal(), item.aliasesJson(), item.media(), item.episodes(),
                 item.coverUrl(), null, null, item.tagsJson(),
                 item.ratingValue(), item.ratingScale(), item.ratingSource(),
-                source, item.sourceId(), item.sourceUrl(), now, now);
+                source, item.sourceId(), item.sourceUrl(), now, now, null);
     }
 
     static MergeResult merge(WorkRecord old, NormalizedItem item) {
@@ -54,7 +56,11 @@ final class WorkMerger {
         String ratingSource = item.ratingSource() != null ? item.ratingSource() : old.ratingSource();
         String sourceUrl = item.sourceUrl() != null ? item.sourceUrl() : old.sourceUrl();
 
-        boolean changed = coverChanged
+        // 软删行（#249）收到同一条数据的写入 = 源站又有了它，必须复活：
+        // 只把 deleted_at 置空并推进 updated_at，内容字段本身可能一个都没变。
+        boolean resurrected = old.deletedAt() != null;
+        boolean changed = resurrected
+                || coverChanged
                 || !Objects.equals(title, old.title())
                 || !Objects.equals(summary, old.summary())
                 || !Objects.equals(releaseYear, old.releaseYear())
@@ -78,7 +84,7 @@ final class WorkMerger {
                 titleOriginal, aliasesJson, media, episodes,
                 cover, cacheKey, cachedAt, tagsJson,
                 ratingValue, ratingScale, ratingSource,
-                old.source(), old.sourceId(), sourceUrl, old.createdAt(), now), true);
+                old.source(), old.sourceId(), sourceUrl, old.createdAt(), now, null), true);
     }
 
     private static boolean sameDecimal(BigDecimal left, BigDecimal right) {

@@ -30,7 +30,7 @@ class WorkMergerTest {
                 tagsJson, rating,
                 rating == null ? null : "0-10",
                 rating == null ? null : "otaku_site",
-                "otaku_site", "476", null, T, T);
+                "otaku_site", "476", null, T, T, null);
     }
 
     private static NormalizedItem item(String title, String summary, String tagsJson,
@@ -55,7 +55,7 @@ class WorkMergerTest {
         return new WorkRecord(1L, "W-test", "anime", "原标题", null, null,
                 null, null, null, null,
                 "http://154.8.194.198:8000/media/full/cover_1.jpg", "cache-key", T,
-                null, null, null, null, "otaku_site", "476", sourceUrl, T, T);
+                null, null, null, null, "otaku_site", "476", sourceUrl, T, T, null);
     }
 
     /** 带 source_url 的条目，其余字段与 {@link #item} 一致。 */

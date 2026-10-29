@@ -12,7 +12,9 @@ import java.math.BigDecimal;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -33,7 +35,7 @@ public class WorkRepository {
             title_original, aliases, media, episodes,
             cover_source_url, cover_cache_key, cover_cached_at,
             tags, rating_value, rating_scale, rating_source,
-            source, source_id, source_url, created_at, updated_at
+            source, source_id, source_url, created_at, updated_at, deleted_at
             """;
 
     /** 同一份列表加表别名，供两段式查询的外层用；从 COLUMNS 生成，不会与它走样。 */
@@ -73,12 +75,12 @@ public class WorkRepository {
                                   title_original, aliases, media, episodes,
                                   cover_source_url, cover_cache_key, cover_cached_at,
                                   tags, rating_value, rating_scale, rating_source,
-                                  source, source_id, source_url, created_at, updated_at)
+                                  source, source_id, source_url, created_at, updated_at, deleted_at)
                 VALUES (:workId, :workType, :title, :summary, :releaseYear,
                         :titleOriginal, :aliasesJson, :media, :episodes,
                         :coverSourceUrl, :coverCacheKey, :coverCachedAt,
                         :tagsJson, :ratingValue, :ratingScale, :ratingSource,
-                        :source, :sourceId, :sourceUrl, :createdAt, :updatedAt)
+                        :source, :sourceId, :sourceUrl, :createdAt, :updatedAt, :deletedAt)
                 """;
         // 需要自增主键回填 work_tag.work_ref，所以走 KeyHolder 而不是普通 update。
         KeyHolder keyHolder = new GeneratedKeyHolder();
@@ -118,6 +120,7 @@ public class WorkRepository {
                                 rating_scale = :ratingScale,
                                 rating_source = :ratingSource,
                                 source_url = :sourceUrl,
+                                deleted_at = :deletedAt,
                                 updated_at = :updatedAt
                 WHERE id = :id
                 """;
@@ -211,7 +214,10 @@ public class WorkRepository {
                         + " JOIN work w ON w.id = t.work_ref WHERE t.tag = :tag");
                 appendConditions(inner, params, workType, titlePattern, minRating, year);
             } else {
-                inner = new StringBuilder("SELECT t.work_ref AS id FROM work_tag t WHERE t.tag = :tag");
+                // JOIN work 只为过滤软删（#249）：排序仍走 work_tag 索引，
+                // 命中行数受 LIMIT 约束，正常情况只多几次主键点查。
+                inner = new StringBuilder("SELECT t.work_ref AS id FROM work_tag t"
+                        + " JOIN work w ON w.id = t.work_ref WHERE t.tag = :tag");
                 appendTagConditions(inner, params, workType, minRating, year);
             }
             inner.append(" ORDER BY ").append(effective.orderByOnTagTable("t"));
@@ -241,10 +247,9 @@ public class WorkRepository {
                                                 BigDecimal minRating, Integer year) {
         params.addValue("tags", tags);
         params.addValue("tagCount", tags.size());
-        StringBuilder sql = new StringBuilder("SELECT t.work_ref AS id FROM work_tag t");
-        if (titlePattern != null) {
-            sql.append(" JOIN work w ON w.id = t.work_ref");
-        }
+        // 总是 JOIN work：软删过滤必须落在内层（#249），否则 LIMIT 分页会把已删行算进窗口。
+        StringBuilder sql = new StringBuilder("SELECT t.work_ref AS id FROM work_tag t"
+                + " JOIN work w ON w.id = t.work_ref");
         sql.append(" WHERE t.tag IN (:tags)");
         appendTagConditions(sql, params, workType, minRating, year);
         if (titlePattern != null) {
@@ -254,9 +259,11 @@ public class WorkRepository {
         return sql;
     }
 
-    /** 落在 {@code work_tag} 冗余列上的过滤条件（类型 / 评分下限）。 */
+    /** 落在 {@code work_tag} 冗余列上的过滤条件（类型 / 评分下限），外加软删过滤。 */
     private static void appendTagConditions(StringBuilder sql, MapSqlParameterSource params,
                                             String workType, BigDecimal minRating, Integer year) {
+        // 调用方保证已 JOIN work w（见 findPage/count 各分支），这里才能过滤软删。
+        sql.append(" AND w.deleted_at IS NULL");
         if (workType != null) {
             sql.append(" AND t.work_type = :workType");
             params.addValue("workType", workType);
@@ -285,6 +292,7 @@ public class WorkRepository {
     public List<WorkRecord> findRelated(long excludeId, String tagsJson, int limit) {
         String sql = "SELECT " + COLUMNS + " FROM work"
                 + " WHERE id <> :excludeId"
+                + " AND deleted_at IS NULL"
                 + " AND tags IS NOT NULL"
                 + " AND JSON_OVERLAPS(tags, CAST(:tagsJson AS JSON))"
                 + " ORDER BY rating_value DESC, id DESC"
@@ -293,6 +301,51 @@ public class WorkRepository {
                 .addValue("excludeId", excludeId)
                 .addValue("tagsJson", tagsJson)
                 .addValue("limit", limit), MAPPER);
+    }
+
+    /**
+     * 一批 {@code (source, source_id)} 里哪些存在、哪些已经软删（#249 删除端点的对账用）。
+     *
+     * <p>一次 IN 查询而不是逐条点查：单批最多 500 条，逐条就是 500 次往返。
+     * 返回「存在 → 是否已删」；不在结果里的就是库里没有（unknown）。
+     */
+    public Map<String, Boolean> deletedState(String source, List<String> sourceIds) {
+        Map<String, Boolean> state = new HashMap<>();
+        if (sourceIds.isEmpty()) {
+            return state;
+        }
+        jdbc.query("SELECT source_id, deleted_at FROM work"
+                        + " WHERE source = :source AND source_id IN (:ids)",
+                new MapSqlParameterSource().addValue("source", source).addValue("ids", sourceIds),
+                (org.springframework.jdbc.core.RowCallbackHandler) rs ->
+                        state.put(rs.getString("source_id"),
+                                rs.getObject("deleted_at", LocalDateTime.class) != null));
+        return state;
+    }
+
+    /**
+     * 批量软删。**幂等**：已软删的行不再改时间戳，保留首次下架时间；
+     * 所以重发同一批不会把「下架时间」刷新成重发时间，也不会影响 {@code already_deleted} 的计数口径。
+     */
+    public int markDeleted(String source, List<String> sourceIds, LocalDateTime now) {
+        if (sourceIds.isEmpty()) {
+            return 0;
+        }
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("source", source)
+                .addValue("ids", sourceIds)
+                .addValue("now", now);
+        int updated = jdbc.update("UPDATE work SET deleted_at = :now"
+                + " WHERE source = :source AND source_id IN (:ids) AND deleted_at IS NULL", params);
+        if (updated == 0) {
+            return 0;
+        }
+        // 下架后要从标签反查表里摘掉：标签词表与计数是直接扫 work_tag 的
+        // （TagRepository），留着会让已下架作品继续出现在筛选结果和标签计数里。
+        // 复活时 updateContent → replaceTags 会按 tags 列重建，不会丢数据。
+        jdbc.update("DELETE t FROM work_tag t JOIN work w ON w.id = t.work_ref"
+                + " WHERE w.source = :source AND w.source_id IN (:ids) AND w.deleted_at IS NOT NULL", params);
+        return updated;
     }
 
     public long count(String workType, String titlePattern, List<String> tags, BigDecimal minRating,
@@ -310,7 +363,9 @@ public class WorkRepository {
                         + " JOIN work w ON w.id = t.work_ref WHERE t.tag = :tag");
                 appendConditions(sql, params, workType, titlePattern, minRating, year);
             } else {
-                sql = new StringBuilder("SELECT COUNT(*) FROM work_tag t WHERE t.tag = :tag");
+                // 与 findPage 同一口径：JOIN 只为过滤软删，计数与列表不能各说各话。
+                sql = new StringBuilder("SELECT COUNT(*) FROM work_tag t"
+                        + " JOIN work w ON w.id = t.work_ref WHERE t.tag = :tag");
                 appendTagConditions(sql, params, workType, minRating, year);
             }
         } else {
@@ -327,6 +382,8 @@ public class WorkRepository {
     private static void appendConditions(StringBuilder sql, MapSqlParameterSource params,
                                          String workType, String titlePattern, BigDecimal minRating,
                                          Integer year) {
+        // 软删行（#249）对外一律不可见：列表、搜索、标签、年份四个面都从这里过。
+        sql.append(" AND w.deleted_at IS NULL");
         if (workType != null) {
             sql.append(" AND w.work_type = :workType");
             params.addValue("workType", workType);
@@ -369,7 +426,8 @@ public class WorkRepository {
                 .addValue("ratingSource", record.ratingSource())
                 .addValue("source", record.source())
                 .addValue("sourceId", record.sourceId())
-                .addValue("sourceUrl", record.sourceUrl());
+                .addValue("sourceUrl", record.sourceUrl())
+                .addValue("deletedAt", record.deletedAt());
     }
 
     private static WorkRecord map(ResultSet rs, int rowNum) throws SQLException {
@@ -396,7 +454,8 @@ public class WorkRepository {
                 rs.getString("source_id"),
                 rs.getString("source_url"),
                 rs.getObject("created_at", LocalDateTime.class),
-                rs.getObject("updated_at", LocalDateTime.class)
+                rs.getObject("updated_at", LocalDateTime.class),
+                rs.getObject("deleted_at", LocalDateTime.class)
         );
     }
 }

@@ -142,6 +142,6 @@ class CoverServiceCacheTest {
                 null, null, null, null,
                 "http://127.0.0.1:" + server.getAddress().getPort() + "/cover.jpg",
                 null, null, null, null, null, null,
-                "otaku_site", "1", null, now, now);
+                "otaku_site", "1", null, now, now, null);
     }
 }

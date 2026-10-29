@@ -197,7 +197,8 @@ public class WorkService {
                 record.source(),
                 record.sourceId(),
                 record.sourceUrl(),
-                record.updatedAt() == null ? null : record.updatedAt().toInstant(ZoneOffset.UTC));
+                record.updatedAt() == null ? null : record.updatedAt().toInstant(ZoneOffset.UTC),
+                record.deletedAt() != null);
     }
 
     /** 封面地址永远指向本服务，客户端不直连来源站（契约 2.1、8.1）。 */

@@ -340,6 +340,6 @@ class WorkServiceSortAndRelatedTest {
                 tagsJson,
                 rating, "0-10", "otaku_site",
                 "otaku_site", "src-" + id, null,
-                NOW, NOW);
+                NOW, NOW, null);
     }
 }
