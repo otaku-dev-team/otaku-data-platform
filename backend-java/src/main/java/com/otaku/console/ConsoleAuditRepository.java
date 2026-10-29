@@ -27,6 +27,9 @@ public class ConsoleAuditRepository {
     public static final String ACTION_UGC_HIDE = "ugc.hide";
     public static final String ACTION_UGC_PUBLISH = "ugc.publish";
     public static final String ACTION_UGC_SETTING = "ugc.setting";
+    /** 举报处置：resolve = 采纳并隐藏评论；dismiss = 驳回。 */
+    public static final String ACTION_UGC_REPORT_RESOLVE = "ugc.report_resolve";
+    public static final String ACTION_UGC_REPORT_DISMISS = "ugc.report_dismiss";
 
     private final NamedParameterJdbcTemplate jdbc;
 

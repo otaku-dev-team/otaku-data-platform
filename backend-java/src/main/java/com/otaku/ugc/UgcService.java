@@ -103,7 +103,10 @@ public class UgcService {
                     "发言太快了，" + RATE_WINDOW_SECONDS + " 秒内最多 " + RATE_LIMIT + " 条");
         }
 
-        long id = repository.insert(siteKey, workId, user.id(), body, LocalDateTime.now(ZoneOffset.UTC));
+        // 发布策略：pre = 先审后发（落 pending，站主审核后才对外可见）；post = 先发后审（默认）。
+        String status = "pre".equals(settings.moderationMode(siteKey)) ? "pending" : "published";
+        long id = repository.insert(siteKey, workId, user.id(), body, status,
+                LocalDateTime.now(ZoneOffset.UTC));
         log.info("评论落库 site={} work={} user={} comment={}", siteKey, workId, user.userId(), id);
         return repository.findById(siteKey, id).map(UgcService::toDto)
                 .orElseThrow(() -> new IllegalStateException("评论刚插入却读不到：" + id));
@@ -134,6 +137,7 @@ public class UgcService {
                 row.workId(),
                 row.username(),
                 row.body(),
+                row.status(),
                 row.createdAt() == null ? null : row.createdAt().toInstant(ZoneOffset.UTC));
     }
 

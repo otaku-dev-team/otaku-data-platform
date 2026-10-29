@@ -249,6 +249,10 @@ class ContractDriftTest {
         targets.put("ConsoleUgcItem", com.otaku.console.dto.ConsoleDtos.UgcItem.class);
         targets.put("ConsoleUgcPage", PageResponse.class);
         targets.put("SiteUgcSetting", com.otaku.console.dto.ConsoleDtos.UgcSetting.class);
+        // 举报（#240 B2b）：工单回执与后台队列条目
+        targets.put("CommentReport", com.otaku.ugc.dto.CommentReportDto.class);
+        targets.put("ConsoleReportItem", com.otaku.console.dto.ConsoleDtos.ReportItem.class);
+        targets.put("ConsoleReportPage", PageResponse.class);
         return targets;
     }
 
@@ -264,6 +268,7 @@ class ContractDriftTest {
         targets.put("DeletionRequest", com.otaku.importer.dto.DeletionRequest.class);
         targets.put("UgcCommentRequest", com.otaku.ugc.dto.UgcCommentRequest.class);
         targets.put("SiteUgcSettingUpdate", com.otaku.console.dto.ConsoleDtos.UgcSettingUpdate.class);
+        targets.put("CommentReportRequest", com.otaku.ugc.dto.CommentReportRequest.class);
         targets.put("ImportItem", com.otaku.importer.dto.ImportBatchRequest.ImportItem.class);
         targets.put("ScheduleImportRequest", com.otaku.schedule.dto.ScheduleImportRequest.class);
         targets.put("ScheduleImportItem", com.otaku.schedule.dto.ScheduleImportRequest.ScheduleImportItem.class);

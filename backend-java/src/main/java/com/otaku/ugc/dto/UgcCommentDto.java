@@ -6,6 +6,9 @@ import java.time.Instant;
  * 一条评论（对外形状）。字段刻意少：客户端只需要能渲染一条评论，不需要作者 id、
  * 站点键、状态机——那些是内部实现，暴露出去只会让客户端跟着我们的状态改名。
  *
+ * <p>{@code status} 是评论状态：公开列表里只会出现 {@code published}；
+ * 发评论的响应可能是 {@code pending}（站点开了「先审后发」），客户端据此提示「待审核」。
+ *
  * <p>{@code author} 是用户名（不是昵称体系，B1 没有昵称）；已注销/被删用户的评论
  * 目前不会出现（用户删除不在本期），所以这里不做 null 兜底文案。
  */
@@ -14,6 +17,7 @@ public record UgcCommentDto(
         String workId,
         String author,
         String body,
+        String status,
         Instant createdAt
 ) {
 }

@@ -33,6 +33,25 @@ public class UgcSettingsRepository {
         return rows.stream().findFirst().orElse(false);
     }
 
+    /**
+     * 审核模式：post（先发后审，默认）/ pre（先审后发）。
+     * 读不到站点时按 post 处理——它不会把评论藏起来，最坏是「多露了一条」，好过整站评论消失。
+     */
+    public String moderationMode(String siteKey) {
+        List<String> rows = jdbc.queryForList(
+                "SELECT ugc_moderation FROM site WHERE site_key = :siteKey",
+                new MapSqlParameterSource("siteKey", siteKey), String.class);
+        return rows.stream().findFirst().filter("pre"::equals).orElse("post");
+    }
+
+    public void setModerationMode(String siteKey, String mode, LocalDateTime now) {
+        jdbc.update("UPDATE site SET ugc_moderation = :mode, updated_at = :now WHERE site_key = :siteKey",
+                new MapSqlParameterSource()
+                        .addValue("siteKey", siteKey)
+                        .addValue("mode", mode)
+                        .addValue("now", now));
+    }
+
     public void setEnabled(String siteKey, boolean enabled, LocalDateTime now) {
         jdbc.update("""
                 UPDATE site SET ugc_enabled = :enabled, updated_at = :now WHERE site_key = :siteKey

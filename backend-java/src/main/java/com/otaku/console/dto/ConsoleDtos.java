@@ -233,11 +233,28 @@ public final class ConsoleDtos {
     ) {
     }
 
-    /** 本站 UGC 开关。默认关：开不开由站主决定（合规责任在网站）。 */
-    public record UgcSetting(boolean enabled) {
+    /**
+     * 本站 UGC 配置。{@code enabled} 默认关：开不开由站主决定（合规责任在网站）；
+     * {@code moderation} 是发布策略（post 先发后审 / pre 先审后发）。
+     */
+    public record UgcSetting(boolean enabled, String moderation) {
     }
 
-    /** 改开关的请求体；{@code enabled} 必填，缺省不当作 false——那会静默关掉功能。 */
-    public record UgcSettingUpdate(Boolean enabled) {
+    /** 改配置的请求体；两个字段都可省略，但至少要给一个（都不给 = 没说要改什么）。 */
+    public record UgcSettingUpdate(Boolean enabled, String moderation) {
+    }
+
+    /** 后台看到的举报工单：把被举报的评论一起带出来，审核时不用再点进去查。 */
+    public record ReportItem(
+            String reportId,
+            String commentId,
+            String workId,
+            String workTitle,
+            String author,
+            String body,
+            String reason,
+            String status,
+            java.time.Instant createdAt
+    ) {
     }
 }

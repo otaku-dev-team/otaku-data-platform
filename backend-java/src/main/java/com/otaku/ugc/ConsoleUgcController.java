@@ -55,6 +55,31 @@ public class ConsoleUgcController {
         return service.publish(principal, commentId);
     }
 
+    @GetMapping("/ugc/reports")
+    public PageResponse<ConsoleDtos.ReportItem> reports(
+            @RequestAttribute(ConsoleAuthFilter.ATTRIBUTE_PRINCIPAL) ConsolePrincipal principal,
+            @RequestParam(name = "status", required = false) String status,
+            @RequestParam(name = "page", defaultValue = "1") int page,
+            @RequestParam(name = "page_size", defaultValue = "20") int pageSize) {
+        return service.listReports(principal, status, page, pageSize);
+    }
+
+    /** 采纳举报：隐藏评论 + 工单 resolved。 */
+    @PostMapping("/ugc/reports/{reportId}/resolve")
+    public ConsoleDtos.ReportItem resolveReport(
+            @RequestAttribute(ConsoleAuthFilter.ATTRIBUTE_PRINCIPAL) ConsolePrincipal principal,
+            @PathVariable("reportId") String reportId) {
+        return service.resolveReport(principal, reportId);
+    }
+
+    /** 驳回举报：只关工单，不动评论。 */
+    @PostMapping("/ugc/reports/{reportId}/dismiss")
+    public ConsoleDtos.ReportItem dismissReport(
+            @RequestAttribute(ConsoleAuthFilter.ATTRIBUTE_PRINCIPAL) ConsolePrincipal principal,
+            @PathVariable("reportId") String reportId) {
+        return service.dismissReport(principal, reportId);
+    }
+
     @GetMapping("/site/ugc")
     public ConsoleDtos.UgcSetting setting(
             @RequestAttribute(ConsoleAuthFilter.ATTRIBUTE_PRINCIPAL) ConsolePrincipal principal) {
@@ -65,6 +90,8 @@ public class ConsoleUgcController {
     public ConsoleDtos.UgcSetting updateSetting(
             @RequestAttribute(ConsoleAuthFilter.ATTRIBUTE_PRINCIPAL) ConsolePrincipal principal,
             @RequestBody ConsoleDtos.UgcSettingUpdate request) {
-        return service.updateSetting(principal, request == null ? null : request.enabled());
+        return service.updateSetting(principal,
+                request == null ? null : request.enabled(),
+                request == null ? null : request.moderation());
     }
 }
