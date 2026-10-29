@@ -2,11 +2,14 @@ package com.otaku.ugc;
 
 import com.otaku.auth.AuthFilter;
 import com.otaku.common.PageResponse;
+import com.otaku.ugc.dto.CommentReportDto;
+import com.otaku.ugc.dto.CommentReportRequest;
 import com.otaku.ugc.dto.SiteFeaturesDto;
 import com.otaku.ugc.dto.UgcCommentDto;
 import com.otaku.ugc.dto.UgcCommentRequest;
 import com.otaku.user.UserRecord;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -35,10 +38,13 @@ import org.springframework.web.bind.annotation.RestController;
 public class UgcController {
 
     private final UgcService service;
+    private final UgcReportService reportService;
     private final UgcSettingsRepository settings;
 
-    public UgcController(UgcService service, UgcSettingsRepository settings) {
+    public UgcController(UgcService service, UgcReportService reportService,
+                         UgcSettingsRepository settings) {
         this.service = service;
+        this.reportService = reportService;
         this.settings = settings;
     }
 
@@ -48,9 +54,12 @@ public class UgcController {
      */
     @GetMapping("/api/site/features")
     public SiteFeaturesDto features() {
-        return new SiteFeaturesDto(settings.singleActiveSite()
-                .map(settings::isEnabled)
-                .orElse(false));
+        var site = settings.singleActiveSite();
+        if (site.isEmpty()) {
+            return new SiteFeaturesDto(false, "post");
+        }
+        String key = site.get();
+        return new SiteFeaturesDto(settings.isEnabled(key), settings.moderationMode(key));
     }
 
     @GetMapping("/api/works/{workId}/comments")
@@ -67,6 +76,19 @@ public class UgcController {
             @RequestAttribute(AuthFilter.ATTRIBUTE_USER) UserRecord user,
             @RequestBody UgcCommentRequest request) {
         return service.create(user, request);
+    }
+
+    /**
+     * 举报一条评论。201 = 新建工单，200 = 之前举报过（同一人同一评论只有一张工单）。
+     * 举报不会自动隐藏评论：处置是站主的动作。
+     */
+    @PostMapping("/api/me/comment-reports")
+    public ResponseEntity<CommentReportDto> report(
+            @RequestAttribute(AuthFilter.ATTRIBUTE_USER) UserRecord user,
+            @RequestBody CommentReportRequest request) {
+        var outcome = reportService.report(user, request);
+        return ResponseEntity.status(outcome.created() ? HttpStatus.CREATED : HttpStatus.OK)
+                .body(outcome.report());
     }
 
     @DeleteMapping("/api/me/comments/{commentId}")

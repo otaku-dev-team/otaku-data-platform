@@ -1000,6 +1000,41 @@ paths:
         "429": { $ref: "#/components/responses/RateLimitedWithRetry" }
         "500": { $ref: "#/components/responses/InternalError" }
 
+  /api/me/comment-reports:
+    post:
+      tags: [社区]
+      summary: 举报一条评论（需登录）
+      operationId: reportWorkComment
+      description: |
+        提交举报工单。**不会自动隐藏评论**——处置是站主的动作，否则任何人一个点击就能下架内容。
+
+        - `201` = 新建工单；`200` = 之前举报过（同一人对同一条评论只有一张工单，不堆队列）；
+        - 不能举报自己的评论（`400`，自己的评论请用删除）；
+        - 理由 1–200 字纯文本，只给站主/平台处置时看，不对外展示。
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CommentReportRequest" }
+      responses:
+        "200":
+          description: 已存在工单（返回原工单）
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CommentReport" }
+        "201":
+          description: 工单已创建
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CommentReport" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimitedWithRetry" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
   /api/me/devices:
     post:
       tags: [推送设备]
@@ -1213,7 +1248,7 @@ paths:
       parameters:
         - name: status
           in: query
-          schema: { type: string, enum: [published, hidden, deleted, all] }
+          schema: { type: string, enum: [published, pending, hidden, deleted, all] }
         - name: page
           in: query
           schema: { type: integer, minimum: 1, default: 1 }
@@ -1279,6 +1314,85 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
         "429": { $ref: "#/components/responses/RateLimitedWithRetry" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /api/console/ugc/reports:
+    get:
+      tags: [站主后台]
+      summary: 举报工单队列
+      operationId: listConsoleUgcReports
+      description: |
+        按登录站主的站点过滤。`status` 可选 `open` / `resolved` / `dismissed` / `all`（缺省 = 全部），
+        最新在前。每条工单带被举报评论的正文、作者与作品标题，处置时不用再点进去查。
+      security:
+        - consoleAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string, enum: [open, resolved, dismissed, all] }
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: page_size
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConsoleReportPage" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimitedWithRetry" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /api/console/ugc/reports/{report_id}/resolve:
+    post:
+      tags: [站主后台]
+      summary: 采纳举报（隐藏评论 + 关单）
+      operationId: resolveConsoleUgcReport
+      description: |
+        两步在同一个事务里：把被举报评论置为 `hidden`，工单置为 `resolved`。
+        已处理的再点一次不改变处理人与时间（幂等）。写审计 `ugc.report_resolve`。
+      security:
+        - consoleAuth: []
+      parameters:
+        - name: report_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: 处理后的工单
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConsoleReportItem" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /api/console/ugc/reports/{report_id}/dismiss:
+    post:
+      tags: [站主后台]
+      summary: 驳回举报（不动评论）
+      operationId: dismissConsoleUgcReport
+      description: 只把工单标为 `dismissed`，**评论保持原状**。写审计 `ugc.report_dismiss`。
+      security:
+        - consoleAuth: []
+      parameters:
+        - name: report_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: 处理后的工单
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConsoleReportItem" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
         "500": { $ref: "#/components/responses/InternalError" }
 
   /api/console/site/ugc:
@@ -2347,7 +2461,7 @@ components:
       description: |
         一条作品评论。字段刻意少：作者 id、站点键、状态机都是内部实现，
         暴露出去只会让客户端跟着我们改名。
-      required: [comment_id, work_id, author, body, created_at]
+      required: [comment_id, work_id, author, body, status, created_at]
       properties:
         comment_id:
           type: string
@@ -2364,6 +2478,13 @@ components:
           maxLength: 1000
           description: 纯文本，客户端**不得**按 HTML/Markdown 渲染
           example: "第三集的作画真是顶。"
+        status:
+          type: string
+          enum: [published, pending, hidden, deleted]
+          description: |
+            评论状态。公开列表里只会是 `published`；发评论的响应可能是 `pending`
+            （站点开了「先审后发」），客户端应提示「提交成功，审核后显示」。
+          example: published
         created_at:
           type: string
           format: date-time
@@ -2400,12 +2521,19 @@ components:
 
     SiteFeatures:
       type: object
-      required: [ugc_enabled]
+      required: [ugc_enabled, ugc_moderation]
       properties:
         ugc_enabled:
           type: boolean
           description: 本站是否开启社区（作品评论）。`false` 时客户端跳来源站原页补位
           example: false
+        ugc_moderation:
+          type: string
+          enum: [post, pre]
+          description: |
+            发布策略。`post` = 先发后审（评论立刻可见）；`pre` = 先审后发
+            （新评论 `pending`，客户端提示「审核后显示」）。
+          example: post
 
     ConsoleUgcItem:
       type: object
@@ -2444,14 +2572,74 @@ components:
           type: boolean
           description: 本站社区开关。默认 `false`（合规责任在网站，开不开由站主决定）
           example: true
+        moderation:
+          type: string
+          enum: [post, pre]
+          description: 发布策略，含义同 `SiteFeatures.ugc_moderation`
+          example: post
 
     SiteUgcSettingUpdate:
       type: object
-      required: [enabled]
+      description: |
+        `enabled` 与 `moderation` 至少给一个：都不给等于「没说要改什么」，返回 400。
       properties:
         enabled:
           type: boolean
-          description: 必填；缺省不当作 false（那会静默关掉功能）
+          description: 可省略；给了才改
+        moderation:
+          type: string
+          enum: [post, pre]
+          description: 可省略；给了才改（post 先发后审 / pre 先审后发）
+
+    CommentReportRequest:
+      type: object
+      required: [comment_id, reason]
+      properties:
+        comment_id: { type: string, example: "1024" }
+        reason:
+          type: string
+          maxLength: 200
+          description: 纯文本，1–200 字；只给站主/平台看，不对外展示
+          example: "人身攻击"
+
+    CommentReport:
+      type: object
+      required: [report_id, comment_id, status]
+      properties:
+        report_id: { type: string, example: "7" }
+        comment_id: { type: string, example: "1024" }
+        status:
+          type: string
+          enum: [open, resolved, dismissed]
+          example: open
+
+    ConsoleReportItem:
+      type: object
+      required: [report_id, comment_id, work_id, work_title, author, body, reason, status, created_at]
+      properties:
+        report_id: { type: string, example: "7" }
+        comment_id: { type: string, example: "1024" }
+        work_id: { type: string, example: "W-8f3a91" }
+        work_title: { type: string, example: "骇客娃娃" }
+        author: { type: string, description: 被举报评论的作者, example: "kagamimi" }
+        body: { type: string, description: 被举报评论的正文, example: "..." }
+        reason: { type: string, description: 举报理由, example: "人身攻击" }
+        status:
+          type: string
+          enum: [open, resolved, dismissed]
+        created_at: { type: string, format: date-time }
+
+    ConsoleReportPage:
+      type: object
+      required: [total, page, page_size, total_pages, items]
+      properties:
+        total: { type: integer, example: 3 }
+        page: { type: integer, example: 1 }
+        page_size: { type: integer, example: 20 }
+        total_pages: { type: integer, example: 1 }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/ConsoleReportItem" }
 
     SchedulePage:
       type: object

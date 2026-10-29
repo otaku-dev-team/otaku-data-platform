@@ -7,6 +7,8 @@ import com.otaku.common.PageResponse;
 import com.otaku.importer.ImportService;
 import com.otaku.importer.dto.ImportBatchRequest;
 import com.otaku.importer.dto.ImportBatchRequest.ImportItem;
+import com.otaku.ugc.dto.CommentReportDto;
+import com.otaku.ugc.dto.CommentReportRequest;
 import com.otaku.ugc.dto.UgcCommentDto;
 import com.otaku.ugc.dto.UgcCommentRequest;
 import com.otaku.user.UserRecord;
@@ -59,6 +61,9 @@ class UgcIntegrationTest {
     private ConsoleUgcService consoleUgcService;
 
     @Autowired
+    private UgcReportService reportService;
+
+    @Autowired
     private UgcSettingsRepository settings;
 
     @Autowired
@@ -103,6 +108,7 @@ class UgcIntegrationTest {
     @AfterEach
     void cleanUp() {
         jdbc.update("DELETE FROM console_audit WHERE actor_admin_id LIKE 'it-ugc-%'");
+        jdbc.update("DELETE FROM ugc_report WHERE site_key IN (?, ?)", SITE, OTHER_SITE);
         jdbc.update("DELETE FROM ugc_comment WHERE site_key IN (?, ?)", SITE, OTHER_SITE);
         jdbc.update("DELETE FROM import_batch_run WHERE batch_id LIKE ?", BATCH_PREFIX + "%");
         jdbc.update("DELETE FROM import_batch WHERE batch_id LIKE ?", BATCH_PREFIX + "%");
@@ -208,9 +214,9 @@ class UgcIntegrationTest {
         jdbc.update("UPDATE site SET status = 'suspended' WHERE site_key = ?", OTHER_SITE);
         assertThat(featuresEnabled()).isTrue();
 
-        consoleUgcService.updateSetting(consoleAdmin(SITE), false);
+        consoleUgcService.updateSetting(consoleAdmin(SITE), false, null);
         assertThat(featuresEnabled()).isFalse();
-        consoleUgcService.updateSetting(consoleAdmin(SITE), true);
+        consoleUgcService.updateSetting(consoleAdmin(SITE), true, null);
         assertThat(featuresEnabled()).isTrue();
     }
 
@@ -253,11 +259,59 @@ class UgcIntegrationTest {
     @Test
     @DisplayName("开关变更写审计：谁在什么时候开/关，必须能查")
     void settingChangeIsAudited() {
-        consoleUgcService.updateSetting(consoleAdmin(SITE), false);
+        consoleUgcService.updateSetting(consoleAdmin(SITE), false, null);
         Integer audited = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM console_audit WHERE action = 'ugc.setting' AND target_id = ?",
                 Integer.class, SITE);
         assertThat(audited).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("先审后发：新评论落 pending、对外不可见，站主发布后才出现")
+    void preModerationKeepsCommentPending() {
+        jdbc.update("UPDATE site SET ugc_moderation = 'pre' WHERE site_key = ?", SITE);
+
+        UgcCommentDto created = service.create(alice, new UgcCommentRequest(workId, "待审核内容"));
+        assertThat(created.status()).isEqualTo("pending");
+        assertThat(service.list(workId, 1, 20).total()).as("pending 不能出现在公开列表").isZero();
+
+        ConsolePrincipal admin = consoleAdmin(SITE);
+        var pending = consoleUgcService.list(admin, "pending", 1, 20);
+        assertThat(pending.total()).isEqualTo(1);
+
+        consoleUgcService.publish(admin, created.commentId());
+        assertThat(service.list(workId, 1, 20).total()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("举报：同一人同一评论只有一张工单；采纳后评论被隐藏、驳回则评论不动")
+    void reportFlow() {
+        UgcCommentDto a = service.create(alice, new UgcCommentRequest(workId, "被举报的评论"));
+        UgcCommentDto b = service.create(alice, new UgcCommentRequest(workId, "另一条"));
+        ConsolePrincipal admin = consoleAdmin(SITE);
+
+        var first = reportService.report(bob, new CommentReportRequest(a.commentId(), "引战"));
+        assertThat(first.created()).isTrue();
+        var again = reportService.report(bob, new CommentReportRequest(a.commentId(), "再点一次"));
+        assertThat(again.created()).as("重复举报返回原工单，不再建单").isFalse();
+        assertThat(again.report().reportId()).isEqualTo(first.report().reportId());
+
+        assertThat(consoleUgcService.listReports(admin, "open", 1, 20).total()).isEqualTo(1);
+        consoleUgcService.resolveReport(admin, first.report().reportId());
+        assertThat(service.list(workId, 1, 20).total()).as("采纳后该评论被隐藏").isEqualTo(1); // 只剩 b
+
+        var second = reportService.report(bob, new CommentReportRequest(b.commentId(), "也举报"));
+        consoleUgcService.dismissReport(admin, second.report().reportId());
+        assertThat(service.list(workId, 1, 20).total()).as("驳回不动评论").isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("举报自己的评论被拒（有自己的删除入口）")
+    void cannotReportOwnComment() {
+        UgcCommentDto own = service.create(alice, new UgcCommentRequest(workId, "自己的"));
+        assertThatThrownBy(() -> reportService.report(alice, new CommentReportRequest(own.commentId(), "自举报")))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("自己的评论");
     }
 
     private boolean featuresEnabled() {

@@ -50,16 +50,18 @@ public class UgcRepository {
         this.jdbc = jdbc;
     }
 
-    public long insert(String siteKey, String workId, long userId, String body, LocalDateTime now) {
+    public long insert(String siteKey, String workId, long userId, String body, String status,
+                       LocalDateTime now) {
         KeyHolder keyHolder = new GeneratedKeyHolder();
         jdbc.update("""
                 INSERT INTO ugc_comment (site_key, work_id, user_id, body, status, created_at, updated_at)
-                VALUES (:siteKey, :workId, :userId, :body, 'published', :now, :now)
+                VALUES (:siteKey, :workId, :userId, :body, :status, :now, :now)
                 """, new MapSqlParameterSource()
                 .addValue("siteKey", siteKey)
                 .addValue("workId", workId)
                 .addValue("userId", userId)
                 .addValue("body", body)
+                .addValue("status", status)
                 .addValue("now", now), keyHolder, new String[]{"id"});
         Number key = keyHolder.getKey();
         if (key == null) {
