@@ -27,7 +27,7 @@ import java.util.Optional;
 @Repository
 public class UgcRepository {
 
-    /** 内部行：多带 username、状态与父 id，供列表渲染、删除鉴权与回复归档用。 */
+    /** 内部行：多带 username、状态、父 id 与编辑时间，供列表渲染、删除鉴权与回复归档用。 */
     public record Row(
             long id,
             String siteKey,
@@ -37,7 +37,8 @@ public class UgcRepository {
             String body,
             String status,
             LocalDateTime createdAt,
-            Long parentId
+            Long parentId,
+            LocalDateTime editedAt
     ) {
     }
 
@@ -50,7 +51,8 @@ public class UgcRepository {
             rs.getString("body"),
             rs.getString("status"),
             rs.getObject("created_at", LocalDateTime.class),
-            rs.getObject("parent_id", Long.class));
+            rs.getObject("parent_id", Long.class),
+            rs.getObject("edited_at", LocalDateTime.class));
 
     private final NamedParameterJdbcTemplate jdbc;
 
@@ -84,7 +86,7 @@ public class UgcRepository {
     public List<Row> findPublished(String siteKey, String workId, int limit, int offset) {
         return jdbc.query("""
                         SELECT c.id, c.site_key, c.work_id, c.user_id, u.username, c.body, c.status,
-                               c.created_at, c.parent_id
+                               c.created_at, c.parent_id, c.edited_at
                           FROM ugc_comment c
                           JOIN app_user u ON u.id = c.user_id
                          WHERE c.site_key = :siteKey AND c.work_id = :workId
@@ -114,7 +116,7 @@ public class UgcRepository {
     public Optional<Row> findById(String siteKey, long id) {
         List<Row> rows = jdbc.query("""
                 SELECT c.id, c.site_key, c.work_id, c.user_id, u.username, c.body, c.status,
-                       c.created_at, c.parent_id
+                       c.created_at, c.parent_id, c.edited_at
                   FROM ugc_comment c
                   JOIN app_user u ON u.id = c.user_id
                  WHERE c.site_key = :siteKey AND c.id = :id
@@ -139,6 +141,25 @@ public class UgcRepository {
     }
 
     /**
+     * 作者改正文。只动 published / pending 的行——hidden（站主处置过）与 deleted 不再接受编辑。
+     *
+     * <p>status 一起写：先审后发的站点里，编辑等于重新投稿，必须回到 pending 重审，
+     * 否则「先发一条合规的、过审后改成违规的」就是一个现成的绕过路径。
+     */
+    public int updateBody(String siteKey, long id, String body, String status, LocalDateTime now) {
+        return jdbc.update("""
+                UPDATE ugc_comment
+                   SET body = :body, status = :status, edited_at = :now, updated_at = :now
+                 WHERE site_key = :siteKey AND id = :id AND status IN ('published', 'pending')
+                """, new MapSqlParameterSource()
+                .addValue("siteKey", siteKey)
+                .addValue("id", id)
+                .addValue("body", body)
+                .addValue("status", status)
+                .addValue("now", now));
+    }
+
+    /**
      * 撤回一个楼层：顶层评论连同它下面的回复一起软删。
      *
      * <p>为什么连回复一起删：父评论没了，回复就失去上下文，单独留在公开列表里既读不懂、
@@ -159,7 +180,7 @@ public class UgcRepository {
     public List<Row> findPublishedReplies(String siteKey, long parentId, int limit, int offset) {
         return jdbc.query("""
                         SELECT c.id, c.site_key, c.work_id, c.user_id, u.username, c.body, c.status,
-                               c.created_at, c.parent_id
+                               c.created_at, c.parent_id, c.edited_at
                           FROM ugc_comment c
                           JOIN app_user u ON u.id = c.user_id
                          WHERE c.site_key = :siteKey AND c.parent_id = :parentId
@@ -219,7 +240,7 @@ public class UgcRepository {
         jdbc.query("""
                         SELECT * FROM (
                             SELECT c.id, c.site_key, c.work_id, c.user_id, u.username, c.body, c.status,
-                                   c.created_at, c.parent_id,
+                                   c.created_at, c.parent_id, c.edited_at,
                                    ROW_NUMBER() OVER (PARTITION BY c.parent_id
                                                       ORDER BY c.created_at ASC, c.id ASC) AS rn
                               FROM ugc_comment c
@@ -274,7 +295,7 @@ public class UgcRepository {
     public List<ConsoleRow> findForConsole(String siteKey, String status, int limit, int offset) {
         StringBuilder sql = new StringBuilder("""
                 SELECT c.id, c.site_key, c.work_id, COALESCE(w.title, c.work_id) AS work_title,
-                       u.username, c.body, c.status, c.created_at, c.parent_id
+                       u.username, c.body, c.status, c.created_at, c.parent_id, c.edited_at
                   FROM ugc_comment c
                   JOIN app_user u ON u.id = c.user_id
                   LEFT JOIN work w ON w.work_id = c.work_id
@@ -296,7 +317,7 @@ public class UgcRepository {
     public Optional<ConsoleRow> findForConsoleById(String siteKey, long id) {
         return jdbc.query("""
                         SELECT c.id, c.site_key, c.work_id, COALESCE(w.title, c.work_id) AS work_title,
-                               u.username, c.body, c.status, c.created_at, c.parent_id
+                               u.username, c.body, c.status, c.created_at, c.parent_id, c.edited_at
                           FROM ugc_comment c
                           JOIN app_user u ON u.id = c.user_id
                           LEFT JOIN work w ON w.work_id = c.work_id

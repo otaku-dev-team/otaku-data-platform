@@ -10,6 +10,7 @@ import com.otaku.importer.dto.ImportBatchRequest.ImportItem;
 import com.otaku.ugc.dto.CommentReportDto;
 import com.otaku.ugc.dto.CommentReportRequest;
 import com.otaku.ugc.dto.UgcCommentDto;
+import com.otaku.ugc.dto.UgcCommentEditRequest;
 import com.otaku.ugc.dto.UgcCommentRequest;
 import com.otaku.user.UserRecord;
 import com.otaku.work.WorkRecord;
@@ -517,6 +518,95 @@ class UgcIntegrationTest {
                 new UgcCommentRequest(workId, "第 6 条", floor.commentId())))
                 .isInstanceOf(ApiException.class)
                 .hasMessageContaining("发言太快");
+    }
+
+    @Test
+    @DisplayName("编辑评论：正文更新、edited_at 有值、状态保持 published")
+    void editOwnUpdatesBodyAndStamp() {
+        UgcCommentDto comment = service.create(alice, new UgcCommentRequest(workId, "错别字"));
+
+        UgcCommentDto edited = service.editOwn(alice, comment.commentId(),
+                new UgcCommentEditRequest("改好了"));
+
+        assertThat(edited.body()).isEqualTo("改好了");
+        assertThat(edited.editedAt()).isNotNull();
+        assertThat(edited.status()).isEqualTo("published");
+        assertThat(service.list(workId, 1, 20).items().get(0).body()).isEqualTo("改好了");
+    }
+
+    @Test
+    @DisplayName("只能改自己的：别人的 403，内容一个字都不动")
+    void cannotEditOthersComment() {
+        UgcCommentDto comment = service.create(alice, new UgcCommentRequest(workId, "原文"));
+
+        assertThatThrownBy(() -> service.editOwn(bob, comment.commentId(),
+                new UgcCommentEditRequest("篡改")))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("只能修改自己的评论");
+        assertThat(service.list(workId, 1, 20).items().get(0).body()).isEqualTo("原文");
+    }
+
+    @Test
+    @DisplayName("已撤回 / 被站主隐藏的评论不能再编辑：404，不泄露「其实还在」")
+    void cannotEditDeletedOrHidden() {
+        UgcCommentDto deleted = service.create(alice, new UgcCommentRequest(workId, "要删的"));
+        service.deleteOwn(alice, deleted.commentId());
+        assertThatThrownBy(() -> service.editOwn(alice, deleted.commentId(),
+                new UgcCommentEditRequest("改已删的")))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("评论不存在");
+
+        UgcCommentDto hidden = service.create(alice, new UgcCommentRequest(workId, "会被隐藏"));
+        consoleUgcService.hide(consoleAdmin(SITE), hidden.commentId());
+        assertThatThrownBy(() -> service.editOwn(alice, hidden.commentId(),
+                new UgcCommentEditRequest("改被藏的")))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("评论不存在");
+    }
+
+    @Test
+    @DisplayName("编辑也要过内容校验：空白与超长都拒，不截断")
+    void editValidatesBody() {
+        UgcCommentDto comment = service.create(alice, new UgcCommentRequest(workId, "原文"));
+
+        assertThatThrownBy(() -> service.editOwn(alice, comment.commentId(),
+                new UgcCommentEditRequest("   ")))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("不能为空");
+
+        assertThatThrownBy(() -> service.editOwn(alice, comment.commentId(),
+                new UgcCommentEditRequest("字".repeat(UgcService.MAX_BODY_LENGTH + 1))))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("最多");
+    }
+
+    @Test
+    @DisplayName("先审后发：编辑后重新落回 pending，公开列表立刻看不到")
+    void editInPreModeGoesBackToPending() {
+        UgcCommentDto comment = service.create(alice, new UgcCommentRequest(workId, "先发后审的评论"));
+        assertThat(service.list(workId, 1, 20).total()).isEqualTo(1);
+
+        jdbc.update("UPDATE site SET ugc_moderation = 'pre' WHERE site_key = ?", SITE);
+        UgcCommentDto edited = service.editOwn(alice, comment.commentId(),
+                new UgcCommentEditRequest("改成要重审的内容"));
+
+        assertThat(edited.status()).isEqualTo("pending");
+        assertThat(service.list(workId, 1, 20).total()).as("待审后公开列表看不到").isZero();
+    }
+
+    @Test
+    @DisplayName("编辑回复：正文更新，parent_id 不变，不带 reply_count")
+    void editReplyKeepsParent() {
+        UgcCommentDto floor = service.create(alice, new UgcCommentRequest(workId, "主评论"));
+        UgcCommentDto reply = service.create(bob,
+                new UgcCommentRequest(workId, "回复原文", floor.commentId()));
+
+        UgcCommentDto edited = service.editOwn(bob, reply.commentId(),
+                new UgcCommentEditRequest("回复改过"));
+
+        assertThat(edited.body()).isEqualTo("回复改过");
+        assertThat(edited.parentId()).isEqualTo(floor.commentId());
+        assertThat(edited.replyCount()).isNull();
     }
 
     @Test

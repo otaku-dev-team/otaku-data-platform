@@ -1038,6 +1038,46 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "429": { $ref: "#/components/responses/RateLimitedWithRetry" }
         "500": { $ref: "#/components/responses/InternalError" }
+    patch:
+      tags: [社区]
+      summary: 修改自己的评论正文
+      operationId: editWorkComment
+      description: |
+        只能改 `body`。作品归属、作者、父评论都不可变——允许改 `parent_id` 等于把一条回复搬走，
+        会让别人的楼层出现缺口（要换个位置说，删了重发即可）。
+
+        - 只能改自己的（别人的 `403`）；
+        - 只接受 `published` / `pending`：已隐藏（站主处置过）或已撤回的返回 `404`，
+          不泄露「这条其实还在、只是被藏了」；
+        - **先审后发的站点里，编辑会重新落回 `pending`**——否则「先发合规内容过审、再改成违规」
+          就是一条现成的绕过路径；
+        - 校验与发表一致：空白 `400`、超 1000 字 `400`（不截断）；
+        - 成功后 `200` + 评论本体，`edited_at` 有值。编辑响应里顶层评论的 `replies` 是空数组，
+          客户端应保留已有预览、只替换这条本身，不要把整条替换成「零回复」。
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: comment_id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UgcCommentEditRequest" }
+      responses:
+        "200":
+          description: 已更新
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UgcComment" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimitedWithRetry" }
+        "500": { $ref: "#/components/responses/InternalError" }
 
   /api/me/comment-reports:
     post:
@@ -2576,6 +2616,16 @@ components:
           format: date-time
           description: 发表时间（UTC，RFC 3339）
           example: "2026-10-29T05:10:00Z"
+        edited_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: |
+            作者最后一次修改正文的时间；`null` = 从未编辑。
+
+            站主的隐藏 / 恢复**不算**编辑——那些只动内部 `updated_at`，不对外暴露，
+            否则「已编辑」会变成审核动作的副作用。
+          example: "2026-10-29T06:20:00Z"
         parent_id:
           type: string
           nullable: true
@@ -2632,6 +2682,20 @@ components:
             校验：父评论必须在本作品下、状态为 `published`；指向一条回复 → **400**
             （只支持一层）；不存在 / 跨作品 / 待审 / 已隐藏 / 已删 → **404**，不泄露状态。
           example: "1024"
+
+    UgcCommentEditRequest:
+      type: object
+      required: [body]
+      properties:
+        body:
+          type: string
+          minLength: 1
+          maxLength: 1000
+          description: |
+            新的正文，纯文本。去首尾空白后为空 → `400`；超 1000 字 → `400`（不截断）。
+
+            只有正文可改：作品、作者、父评论都不接受——要把回复换个位置说，删了重发。
+          example: "第三集的作画真是顶（改：第 3 集）。"
 
     SiteFeatures:
       type: object
