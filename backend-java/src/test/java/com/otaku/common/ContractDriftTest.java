@@ -241,6 +241,9 @@ class ContractDriftTest {
         targets.put("Device", com.otaku.device.dto.DeviceDto.class);
         // 软删结果（#249）：三个计数分开是为了对账，形状必须钉住
         targets.put("DeletionResult", com.otaku.importer.dto.DeletionResult.class);
+        // 平台代存 UGC · 评论（#240 B1）：作者只给用户名，内部 id/状态不外露
+        targets.put("UgcComment", com.otaku.ugc.dto.UgcCommentDto.class);
+        targets.put("UgcCommentPage", PageResponse.class);
         return targets;
     }
 
@@ -254,6 +257,7 @@ class ContractDriftTest {
         targets.put("CollectionUpdateRequest", com.otaku.collection.dto.CollectionUpdateRequest.class);
         targets.put("ImportBatchRequest", com.otaku.importer.dto.ImportBatchRequest.class);
         targets.put("DeletionRequest", com.otaku.importer.dto.DeletionRequest.class);
+        targets.put("UgcCommentRequest", com.otaku.ugc.dto.UgcCommentRequest.class);
         targets.put("ImportItem", com.otaku.importer.dto.ImportBatchRequest.ImportItem.class);
         targets.put("ScheduleImportRequest", com.otaku.schedule.dto.ScheduleImportRequest.class);
         targets.put("ScheduleImportItem", com.otaku.schedule.dto.ScheduleImportRequest.ScheduleImportItem.class);

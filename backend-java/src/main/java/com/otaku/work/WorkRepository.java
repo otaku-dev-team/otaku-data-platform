@@ -61,6 +61,19 @@ public class WorkRepository {
         return rows.stream().findFirst();
     }
 
+    /**
+     * 这个来源归属哪个站点（site_source 映射）。UGC 的站点隔离依据它，而不是请求参数。
+     *
+     * <p>未登记的来源返回 empty：宁可当作「不属于任何站点」拒绝写入，也不猜一个站点——
+     * 猜错就是跨站越权。
+     */
+    public Optional<String> siteKeyOfSource(String source) {
+        List<String> rows = jdbc.queryForList(
+                "SELECT site_key FROM site_source WHERE source = :source",
+                new MapSqlParameterSource("source", source), String.class);
+        return rows.stream().findFirst();
+    }
+
     public Optional<WorkRecord> findByWorkId(String workId) {
         List<WorkRecord> rows = jdbc.query(
                 "SELECT " + COLUMNS + " FROM work WHERE work_id = :workId",
