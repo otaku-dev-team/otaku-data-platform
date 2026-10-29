@@ -255,6 +255,40 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "500": { $ref: "#/components/responses/InternalError" }
 
+  /api/works/{work_id}/comments:
+    get:
+      tags: [社区]
+      summary: 作品评论列表（平台代存 UGC，B1）
+      operationId: listWorkComments
+      description: |
+        作品页评论区：只返回 `published` 的评论，**最新在前**。
+
+        - 作品不存在或 `work_id` 格式非法 → `404`（与详情一致）；
+        - 作品存在但还没有评论 → `200` + `total: 0` + 空数组，不是 404；
+        - `page_size` 上限 50，超出按 50 截断，不报错；
+        - 未登录用户也能读（评论是公开内容）。
+
+        数据边界：这些评论是**用户在我们客户端里写的**，不是来源站的内容；
+        平台对来源站数据只读的红线不变。
+      parameters:
+        - $ref: "#/components/parameters/WorkId"
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: page_size
+          in: query
+          description: 每页条数，上限 50
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UgcCommentPage" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimitedWithRetry" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
   /api/tags:
     get:
       tags: [作品查询]
@@ -884,6 +918,65 @@ paths:
         "204":
           description: 已取消（或本来就没收藏）
         "401": { $ref: "#/components/responses/UnauthorizedSession" }
+
+  /api/me/comments:
+    post:
+      tags: [社区]
+      summary: 发表评论（需登录）
+      operationId: createWorkComment
+      description: |
+        在当前站点的作品下发一条评论。成功返回 `201` + 评论本体。
+
+        约束：
+        - `body` 是**纯文本**，1–1000 字，原样存储、不做 HTML/Markdown 解析；
+          超出长度返回 `400`，**不截断**（截断等于悄悄改用户写的内容）；
+        - 防刷屏：同一用户 **60 秒内最多 5 条**，超出 `429 RATE_LIMITED`；
+        - 作品必须存在且属于当前登录用户的站点，否则 `404` / `403`；
+        - 新评论默认 `published`（先发后审）。站主/平台的审核与隐藏能力在 B2，
+          本轮只提供作者自删。
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UgcCommentRequest" }
+      responses:
+        "201":
+          description: 已创建
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UgcComment" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimitedWithRetry" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /api/me/comments/{comment_id}:
+    delete:
+      tags: [社区]
+      summary: 删除自己的评论（幂等）
+      operationId: deleteWorkComment
+      description: |
+        **软删**（`status='deleted'`，保留行便于追溯），成功后 `204`。
+
+        幂等：重复删除、或 id 根本不存在，都返回 `204`；删别人的评论返回 `403`——
+        不装作删掉了，也不泄露别人的评论是否存在。
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: comment_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204": { description: 已删除（或本来就不存在） }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/RateLimitedWithRetry" }
+        "500": { $ref: "#/components/responses/InternalError" }
 
   /api/me/devices:
     post:
@@ -2099,6 +2192,62 @@ components:
           format: date-time
           description: 本次操作使用的下架时间（UTC，RFC 3339）；已软删的行保留首次下架时间，不会被刷新
           example: "2026-10-29T04:30:00Z"
+
+    UgcComment:
+      type: object
+      description: |
+        一条作品评论。字段刻意少：作者 id、站点键、状态机都是内部实现，
+        暴露出去只会让客户端跟着我们改名。
+      required: [comment_id, work_id, author, body, created_at]
+      properties:
+        comment_id:
+          type: string
+          example: "1024"
+        work_id:
+          type: string
+          example: "W-8f3a91"
+        author:
+          type: string
+          description: 用户名（B1 没有昵称体系）
+          example: "kagamimi"
+        body:
+          type: string
+          maxLength: 1000
+          description: 纯文本，客户端**不得**按 HTML/Markdown 渲染
+          example: "第三集的作画真是顶。"
+        created_at:
+          type: string
+          format: date-time
+          description: 发表时间（UTC，RFC 3339）
+          example: "2026-10-29T05:10:00Z"
+
+    UgcCommentPage:
+      type: object
+      description: 评论分页信封，字段与作品列表一致（`total` / `page` / `page_size` / `total_pages` / `items`）。
+      required: [total, page, page_size, total_pages, items]
+      properties:
+        total: { type: integer, example: 3 }
+        page: { type: integer, example: 1 }
+        page_size: { type: integer, example: 20 }
+        total_pages: { type: integer, example: 1 }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/UgcComment" }
+
+    UgcCommentRequest:
+      type: object
+      required: [work_id, body]
+      properties:
+        work_id:
+          type: string
+          description: 要评论的作品
+          example: "W-8f3a91"
+        body:
+          type: string
+          minLength: 1
+          maxLength: 1000
+          description: 纯文本；去首尾空白后为空 → 400
+          example: "第三集的作画真是顶。"
 
     SchedulePage:
       type: object
