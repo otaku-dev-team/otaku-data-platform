@@ -13,6 +13,13 @@ abstract final class PlatformInfo {
       desktopOverride ??
       (Platform.isWindows || Platform.isLinux || Platform.isMacOS);
 
+  /// Android。系统取色（Material You）目前只有这一端有。
+  ///
+  /// 刻意**不**把 `desktopOverride == false` 当成 Android：测试里那表示
+  /// 「按手机形态渲染」，但进程仍然跑在 Windows 上，此时调 Android 专属插件
+  /// 会抛 `MissingPluginException`。
+  static bool get isAndroid => Platform.isAndroid && desktopOverride != true;
+
   /// 覆盖「是不是桌面端」，仅供测试用。
   ///
   /// **为什么需要它**：单测跑在 Windows 上，`Platform.isWindows` 恒为 true，

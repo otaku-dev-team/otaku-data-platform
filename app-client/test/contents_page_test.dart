@@ -19,6 +19,7 @@ import 'package:otaku_app/features/contents/contents_page.dart';
 import 'package:otaku_app/features/contents/work_card.dart';
 import 'package:otaku_app/features/contents/work_list_tile.dart';
 import 'package:otaku_app/features/detail/work_detail_page.dart';
+import 'package:otaku_app/shared/widgets/scroll_edge_fade.dart';
 
 import 'support/test_overrides.dart';
 
@@ -348,5 +349,26 @@ void main() {
     // 假数据没有封面、没有评分、没有标签：不该凭空出现「0.0」或空标签区。
     expect(find.text('0.0'), findsNothing);
     expect(tester.takeException(), isNull);
+  });
+
+  group('窄屏筛选栏', () {
+    testWidgets('390 宽：六枚胶囊换行排完，标签入口不用横滑就能看到', (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(wrap(const OtakuApp()));
+      await settle(tester);
+
+      // 以前是「限高 52 + 横向 ListView」：一屏只放得下三枚，剩下的类型与
+      // 标签入口必须横滑才找得到，最右还要被总数和视图切换压掉半个。
+      // 现在是 Wrap，一行放不下就换行——所以**不做任何手势**也该看得见。
+      expect(
+        find.text('标签'),
+        findsOneWidget,
+        reason: '标签入口必须在首屏可见，不能靠横滑',
+      );
+      expect(find.byType(ScrollEdgeFade), findsNothing, reason: '不再需要横滑渐隐');
+    });
   });
 }

@@ -53,6 +53,15 @@ dependencies:
   timezone: ^0.11.2
   webview_flutter: ^4.14.1
 
+  # 外观实验：Material You 取色（Android 12+ 从系统壁纸取色）。
+  # 只在「跟随系统取色」开关打开时才用；其他平台恒为 null，自动退回品牌色。
+  dynamic_color: ^1.7.0
+
+  # 应用内更新：下载 APK → 校验 → 拉起系统安装器。
+  path_provider: ^2.1.5
+  open_filex: ^4.7.0
+  crypto: ^3.0.6
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

@@ -35,10 +35,23 @@ abstract final class RoutePaths {
   /// 每日新番档期。与列表/收藏平级：从任何地方都能直接进。
   static const String schedule = '/schedule';
 
-  /// 设置：外观 / 离线缓存 / 关于。
+  /// 设置：主页面只放分组入口，内容在二级页。
   ///
   /// 平级而不是挂在某个页面下面：主题与缓存是设备级的，与「当前在看什么」无关。
   static const String settings = '/settings';
+
+  /// 设置二级页（相对 [settings]）。
+  ///
+  /// 设置项会越加越多（主题、缓存、更新、来源声明，以后还有通知、数据导出），
+  /// 全铺在一屏会变成一条长走廊。拆成二级后主页面永远是三五行，
+  /// 加东西只影响它自己那一页。
+  static const String appearanceSettingsSegment = 'appearance';
+  static const String storageSettingsSegment = 'storage';
+  static const String aboutSettingsSegment = 'about';
+
+  static const String appearanceSettings = '$settings/$appearanceSettingsSegment';
+  static const String storageSettings = '$settings/$storageSettingsSegment';
+  static const String aboutSettings = '$settings/$aboutSettingsSegment';
 
   /// 相对 `contents` 的子路由。
   static const String workDetailSegment = ':workId';

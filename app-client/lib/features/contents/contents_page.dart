@@ -10,6 +10,7 @@ import '../../core/router/route_paths.dart';
 import '../../core/platform_info.dart';
 import '../../core/theme/app_layout.dart';
 import '../../core/theme/app_theme.dart';
+import '../../data/models/tag_vocabulary.dart';
 import '../../data/models/work_sort.dart';
 import '../../data/models/work_type.dart';
 import '../../shared/widgets/account_menu.dart';
@@ -18,12 +19,12 @@ import '../../shared/widgets/mobile_nav_bar.dart';
 import '../../shared/widgets/desktop_shortcuts.dart';
 import '../../shared/widgets/empty_state.dart';
 import '../../shared/widgets/error_state.dart';
-import '../../shared/widgets/scroll_edge_fade.dart';
 import '../../shared/widgets/offline_notice.dart';
 import '../../shared/widgets/skeleton_list.dart';
 import 'catalog_counts.dart';
 import 'contents_controller.dart';
 import 'tag_picker.dart';
+import 'tag_vocabulary_provider.dart';
 import 'search_history_controller.dart';
 import 'work_card.dart';
 import 'work_list_tile.dart';
@@ -176,6 +177,19 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
     ref.read(contentsFilterProvider.notifier).search('');
   }
 
+  /// 点「热门标签」：按标签筛选，不是把词填进搜索框。
+  ///
+  /// `q` 只匹配标题（实测「科幻」当搜索词 7 条、当标签筛 2579 条），
+  /// 填进输入框只会让用户以为搜索坏了。
+  void _applySuggestedTag(String tag) {
+    _debounce?.cancel();
+    _searchController.clear();
+    ref.read(contentsFilterProvider.notifier).search('');
+    ref.read(contentsFilterProvider.notifier).toggleTag(tag);
+    // 收键盘：用户已经选完了，键盘继续占着半屏只会挡住结果。
+    _searchFocus.unfocus();
+  }
+
   @override
   Widget build(BuildContext context) {
     final filter = ref.watch(contentsFilterProvider);
@@ -183,13 +197,16 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
     final view = ref.watch(catalogViewProvider);
     final counts = ref.watch(catalogCountsProvider).value;
     final searchHistory = ref.watch(searchHistoryProvider);
-    // 聚焦 + 输入框为空 + 有历史，三个条件同时成立才显示。
-    // 输入框里已经有词时不显示：那一栏会变成「历史 vs 当前查询」两个焦点，
+    // 聚焦 + 输入框为空 → 展开「前置面板」（历史 + 热门标签）。
+    // 输入框里已经有词时不显示：那一栏会变成「建议 vs 当前查询」两个焦点，
     // 用户还得先分辨哪个才是自己在搜的。
-    final showSearchHistory =
-        _searchFocused &&
-        filter.query.trim().isEmpty &&
-        searchHistory.isNotEmpty;
+    final searchIdle = _searchFocused && filter.query.trim().isEmpty;
+    // 只在面板展开时才取热门标签：这一页不聚焦时不该为一个提示多打一次请求。
+    final hotTags = searchIdle
+        ? ref.watch(hotTagSuggestionsProvider).value ?? const <TagCount>[]
+        : const <TagCount>[];
+    final showSearchSuggestions =
+        searchIdle && (searchHistory.isNotEmpty || hotTags.isNotEmpty);
 
     ref.listen<ContentsFilter>(contentsFilterProvider, (previous, next) {
       if (previous == null || previous == next) return;
@@ -326,10 +343,12 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
                       ),
                     ),
                   ),
-                  if (showSearchHistory)
-                    _SearchHistoryBar(
+                  if (showSearchSuggestions)
+                    _SearchSuggestions(
                       queries: searchHistory,
-                      onSelect: _applyHistory,
+                      hotTags: hotTags,
+                      onSelectHistory: _applyHistory,
+                      onSelectTag: _applySuggestedTag,
                     ),
                   _FilterRow(
                     selected: filter.type,
@@ -841,90 +860,88 @@ class _FilterRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 52,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          // 窄屏上胶囊只留文字：每个都带 5 位数会占满一行，剩下的类型
-          // 全靠横滑找。数量挪到右侧只显示一条总数，宽屏再恢复站点那种
-          // 「类型 + 数量」的胶囊。
-          final narrow = constraints.maxWidth < 560;
-          final showChipCounts = !narrow;
-          final showTotal = total != null;
-          final scheme = Theme.of(context).colorScheme;
-          final chips = ListView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.only(
-              left: AppLayout.pagePadding,
-              right: 8,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // 窄屏上胶囊只留文字：每个都带 5 位数会占满一行，剩下的类型
+        // 全靠横滑找。数量单独一行显示总数，宽屏再恢复站点那种
+        // 「类型 + 数量」的胶囊。
+        final narrow = constraints.maxWidth < 560;
+        final showChipCounts = !narrow;
+        final scheme = Theme.of(context).colorScheme;
+
+        // **换行而不是横滑**。
+        //
+        // 以前是「52px 固定高度 + 横向 ListView」：右侧还要挤总数与视图切换，
+        // 结果一屏只放得下三枚，剩下的类型（以及标签入口）必须横滑才找得到，
+        // 最右那枚还会被切掉半个——用户会直接认定「布局挡到了」。
+        //
+        // 现在这块不再限高（外层是 Column），换成 Wrap：六枚在两行内排完，
+        // 一眼看到全部筛选维度，没有隐藏项，也没有横滑手势要学。
+        // 代价是多占一行高度——比「找不到筛选」便宜得多。
+        final chips = <Widget>[
+          _chip(context, label: '全部', type: null, showCount: showChipCounts),
+          for (final type in WorkType.selectable)
+            _chip(
+              context,
+              label: type.label,
+              type: type,
+              showCount: showChipCounts,
             ),
-            children: [
-              _chip(
-                context,
-                label: '全部',
-                type: null,
-                showCount: showChipCounts,
+          // 标签入口放在类型后面，不塞 AppBar：AppBar 已经挤了
+          // 刷新 / 资讯 / 收藏 / 新番 / 年份 / 排序 / 账号七个动作，
+          // 在 800px 宽的窗口下会溢出（实测 6px）。
+          ActionChip(
+            avatar: Icon(
+              Icons.sell_outlined,
+              size: 16,
+              color: tags.isEmpty ? null : scheme.primary,
+            ),
+            label: Text(tags.isEmpty ? '标签' : '标签 ${tags.length}'),
+            visualDensity: VisualDensity.compact,
+            onPressed: onTagsPressed,
+          ),
+        ];
+
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppLayout.pagePadding,
+                4,
+                AppLayout.pagePadding,
+                0,
               ),
-              for (final type in WorkType.selectable)
-                _chip(
-                  context,
-                  label: type.label,
-                  type: type,
-                  showCount: showChipCounts,
-                ),
-              // 标签入口放在 chips 末尾而不是 AppBar：AppBar 已经挤了
-              // 刷新 / 资讯 / 收藏 / 新番 / 年份 / 排序 / 账号七个动作，
-              // 在 800px 宽的窗口下会溢出（实测 6px）。
-              Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: ActionChip(
-                  avatar: Icon(
-                    Icons.sell_outlined,
-                    size: 16,
-                    color: tags.isEmpty
-                        ? null
-                        : Theme.of(context).colorScheme.primary,
-                  ),
-                  label: Text(tags.isEmpty ? '标签' : '标签 ${tags.length}'),
-                  visualDensity: VisualDensity.compact,
-                  onPressed: onTagsPressed,
-                ),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Wrap(spacing: 8, runSpacing: 6, children: chips),
               ),
-            ],
-          );
-          return Row(
-            children: [
-              Expanded(
-                // 窄屏胶囊可横滑，右缘渐隐盖住最后一枚的切边；宽屏放得下，
-                // 不加渐隐免得把最后一枚的正常边缘也压暗。
-                child: narrow ? ScrollEdgeFade(child: chips) : chips,
+            ),
+            Padding(
+              // 右侧多留 6：视图切换自己带 2px 内边距与描边，对齐到页面边距
+              // 时视觉上会比左侧文字更靠里。
+              padding: const EdgeInsets.only(
+                left: AppLayout.pagePadding,
+                right: AppLayout.pagePadding - 6,
               ),
-              if (showTotal) ...[
-                // 一道细分隔线：窄屏上胶囊是横滑的，总数紧贴其右缘时
-                // 会被读成最后一枚胶囊的后缀（「漫画 共 19.9 万」）。
-                Container(
-                  width: 1,
-                  height: 14,
-                  color: scheme.outlineVariant,
-                ),
-                Padding(
-                  padding: const EdgeInsets.only(left: 10, right: 10),
-                  child: Text(
-                    _totalLabel(total!, narrow: narrow),
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+              child: Row(
+                children: [
+                  if (total != null)
+                    Text(
+                      _totalLabel(total!, narrow: narrow),
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
                     ),
-                  ),
-                ),
-              ],
-              Padding(
-                padding: const EdgeInsets.only(right: AppLayout.pagePadding),
-                child: _ViewSwitch(value: view, onChanged: onViewChanged),
+                  const Spacer(),
+                  _ViewSwitch(value: view, onChanged: onViewChanged),
+                ],
               ),
-            ],
-          );
-        },
-      ),
+            ),
+            const SizedBox(height: 4),
+          ],
+        );
+      },
     );
   }
 
@@ -947,7 +964,8 @@ class _FilterRow extends StatelessWidget {
     final count = showCount ? counts?.countOf(type) : null;
 
     return Padding(
-      padding: const EdgeInsets.only(right: 8, top: 8, bottom: 8),
+      // 横向间距交给外层 Wrap 的 spacing：这里再加 right 会变成 16px 的缝。
+      padding: const EdgeInsets.symmetric(vertical: 3),
       child: ChoiceChip(
         label: Row(
           mainAxisSize: MainAxisSize.min,
@@ -1143,20 +1161,31 @@ class _RatingSortNotice extends StatelessWidget {
   }
 }
 
-/// 搜索框下面的「最近搜索」。
+/// 搜索框聚焦且为空时展开的「前置面板」：最近搜过 + 热门标签。
 ///
-/// 只在输入框聚焦且为空时出现（判定在父级），所以这里不关心显示时机。
-/// 每条能点（填回搜索框）也能删（×），末尾一个「清空」。
+/// 这块以前只有历史。加热门标签是因为词表里那 2000 个带作品数的标签
+/// 平时没人看得到——用户不知道有「机战」这种筛法，自然也不会去搜。
+///
+/// **点标签走的是标签筛选，不是把词填进搜索框**：`/api/works` 的 `q`
+/// 只匹配标题（实测标签词「科幻」当搜索词只剩 7 条，当标签筛有 2579 条）。
+/// 填进搜索框会得到「搜了个寂寞」的结果，比不给入口更糟。
 ///
 /// **整栏包在 `Focus(descendantsAreFocusable: false)` 里**：chip 一旦能拿焦点，
 /// 点它的 × 会让搜索框失焦，而这一栏的显示条件正是「搜索框聚焦」——用户点
 /// 一下删除，整栏就在手指底下消失，剩下几条也没法接着删。代价是键盘 Tab
 /// 到不了这些 chip，但它们本来只是鼠标/触摸的快捷方式，输入框还在最上面。
-class _SearchHistoryBar extends ConsumerWidget {
-  const _SearchHistoryBar({required this.queries, required this.onSelect});
+class _SearchSuggestions extends ConsumerWidget {
+  const _SearchSuggestions({
+    required this.queries,
+    required this.hotTags,
+    required this.onSelectHistory,
+    required this.onSelectTag,
+  });
 
   final List<String> queries;
-  final ValueChanged<String> onSelect;
+  final List<TagCount> hotTags;
+  final ValueChanged<String> onSelectHistory;
+  final ValueChanged<String> onSelectTag;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1174,29 +1203,61 @@ class _SearchHistoryBar extends ConsumerWidget {
           AppLayout.pagePadding,
           0,
         ),
-        child: Wrap(
-          spacing: 8,
-          runSpacing: 4,
-          crossAxisAlignment: WrapCrossAlignment.center,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('最近搜索', style: hint),
-            for (final query in queries)
-              InputChip(
-                label: ConstrainedBox(
-                  // 有人会把整句话粘进搜索框。截断而不是换行：
-                  // chip 换行会把这一栏撑成好几行，把筛选栏推下去。
-                  constraints: const BoxConstraints(maxWidth: 180),
-                  child: Text(query, overflow: TextOverflow.ellipsis),
-                ),
-                visualDensity: VisualDensity.compact,
-                onPressed: () => onSelect(query),
-                deleteButtonTooltipMessage: '删除「$query」',
-                onDeleted: () =>
-                    ref.read(searchHistoryProvider.notifier).remove(query),
+            if (queries.isNotEmpty) ...[
+              Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Text('最近搜索', style: hint),
+                  for (final query in queries)
+                    InputChip(
+                      label: ConstrainedBox(
+                        // 有人会把整句话粘进搜索框。截断而不是换行：
+                        // chip 换行会把这一栏撑成好几行，把筛选栏推下去。
+                        constraints: const BoxConstraints(maxWidth: 180),
+                        child: Text(query, overflow: TextOverflow.ellipsis),
+                      ),
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () => onSelectHistory(query),
+                      deleteButtonTooltipMessage: '删除「$query」',
+                      onDeleted: () =>
+                          ref.read(searchHistoryProvider.notifier).remove(query),
+                    ),
+                  TextButton(
+                    onPressed: () =>
+                        ref.read(searchHistoryProvider.notifier).clear(),
+                    child: const Text('清空'),
+                  ),
+                ],
               ),
-            TextButton(
-              onPressed: () => ref.read(searchHistoryProvider.notifier).clear(),
-              child: const Text('清空'),
+              if (hotTags.isNotEmpty) const SizedBox(height: 6),
+            ],
+            if (hotTags.isNotEmpty)
+              Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Text('热门标签', style: hint),
+                  for (final tag in hotTags)
+                    ActionChip(
+                      label: Text('${tag.name} · ${tag.count}'),
+                      visualDensity: VisualDensity.compact,
+                      tooltip: '按「${tag.name}」筛选作品',
+                      onPressed: () => onSelectTag(tag.name),
+                    ),
+                ],
+              ),
+            const SizedBox(height: 2),
+            Text(
+              '搜索匹配作品标题；想按标签找，用上面的「热门标签」或筛选栏里的标签。',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
             ),
           ],
         ),

@@ -69,6 +69,8 @@ void main() {
       overrides: [
         localPrefsProvider.overrideWithValue(prefs ?? InMemoryLocalPrefs()),
         ...authOverrides(token: token),
+        // 聚焦搜索框会取热门标签；给零延迟替身，避免 Pending timers。
+        ...tagOverrides(),
         if (withDataSource)
           workDataSourceProvider.overrideWithValue(_FakeWorkSource()),
         appInitialLocationProvider.overrideWithValue(RoutePaths.contents),
