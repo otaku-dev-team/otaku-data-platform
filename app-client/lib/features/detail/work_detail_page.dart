@@ -25,6 +25,7 @@ import '../contents/contents_controller.dart';
 import '../recent/recent_views_controller.dart';
 import 'related_works_section.dart';
 import 'work_collection_controller.dart';
+import 'work_credits_section.dart';
 import 'work_detail_controller.dart';
 
 /// 作品详情。契约 6.2 / 6.3：
@@ -32,10 +33,14 @@ import 'work_detail_controller.dart';
 /// - `summary` 为 null → "暂无简介"，超长时折叠；
 /// - `main_rating`、`tags` 为空 → 对应区块不渲染。
 ///
-/// 版面顺序：封面 + 标题 + 分类评分 → 简介 → 相关作品。
+/// 版面顺序：封面 + 标题 + 分类评分 → 别名 / 制作公司 → 简介 →
+/// 制作人员 → 角色与声优 → 相关作品。
 /// （收录信息那一段已下线：作品 ID / 来源 ID 是排障用的，不给用户看。）
-/// 站点还有原名、别名、年份、话数、制作、导演、声优、系列、相关推荐，
-/// 这些字段平台契约里都还没有，**这里不摆空位**——空占位比少显示更误导。
+///
+/// 制作人员与角色与声优 2026-10-29 才接上（Issue #256）：后端富字段与关系四表
+/// 上线前，契约里根本没有这两块，当时**不摆空位**是对的；现在数据到位才补。
+/// 两块都是「有才有」——动画里约三分之二的作品没有，那是数据事实不是缺陷，
+/// 所以空态是不渲染整块，而不是挂一个「暂无」。
 class WorkDetailPage extends ConsumerStatefulWidget {
   const WorkDetailPage({super.key, required this.workId});
 
@@ -377,6 +382,14 @@ class _DetailInfo extends StatelessWidget {
         const SizedBox(height: 20),
         const Divider(height: 1),
         const SizedBox(height: 16),
+        // 别名 / 制作公司：两个都是"有才有"的元信息，缺失时整行不出现。
+        //
+        // 别名 2026-10-29 起已是干净的字符串数组（Issue #273 把空壳 `{\n}`
+        // 洗成了 `[]`），所以这里直接 join，不用再防一整段带花括号的文本。
+        if (work.aliases case final aliases? when aliases.isNotEmpty)
+          MetaLine(label: '又名', value: aliases.join(' / ')),
+        if (work.studios case final studios? when studios.isNotEmpty)
+          MetaLine(label: '制作公司', value: studios.join(' × ')),
         Text(
           '简介',
           style: theme.textTheme.titleSmall?.copyWith(
@@ -385,6 +398,17 @@ class _DetailInfo extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         _SummaryBlock(text: work.summary),
+        // 制作人员 / 角色与声优：有数据才渲染（组件内部判空），
+        // 间距跟着渲染一起出现，避免空区块前后留下两段说不清的空白。
+        // 单部最多 288 条，折叠由组件内部处理。
+        if (work.staff case final staff? when staff.isNotEmpty) ...[
+          const SizedBox(height: 20),
+          StaffSection(staff: staff),
+        ],
+        if (work.characters case final characters? when characters.isNotEmpty) ...[
+          const SizedBox(height: 20),
+          CharacterSection(characters: characters),
+        ],
       ],
     );
   }

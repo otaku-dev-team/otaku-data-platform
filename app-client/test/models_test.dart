@@ -131,6 +131,97 @@ void main() {
       expect(work.sourceId, isEmpty);
       expect(work.updatedAt, isNull);
     });
+
+    test('staff 三态：null / [] / 非空各自保留，缓存往返不互相归并', () {
+      // 契约对 staff / characters / studios 都定义了三态（未提供 / 明确没有 / 有）。
+      // 界面上前两者可以同样处理，但解析侧不许把 [] 并进 null——
+      // 一次离线缓存往返就把「明确没有」抹成「未提供」了。
+      final nulled = Work.fromJson({...listItem(), 'staff': null});
+      final emptied = Work.fromJson({...listItem(), 'staff': []});
+      final filled = Work.fromJson({
+        ...listItem(),
+        'staff': [
+          {'role': '脚本', 'name': '伊藤和典', 'person_id': null},
+        ],
+      });
+
+      expect(nulled.staff, isNull);
+      expect(emptied.staff, isEmpty);
+      expect(filled.staff!.single.role, '脚本');
+      // 契约写明 Staff 侧 person_id 实测 0% 有值，人物页落地前一律 null。
+      expect(filled.staff!.single.personId, isNull);
+    });
+
+    test('staff 里混着脏记录：跳过坏条目，不让整部作品解析失败', () {
+      final work = Work.fromJson({
+        ...listItem(),
+        'staff': [
+          {'role': '脚本', 'name': '伊藤和典'},
+          '不是对象',
+          {'role': '音乐'}, // 缺 name
+          {'name': '只有人名'}, // 缺 role
+          {}, // 全空 → 过滤掉
+        ],
+      });
+      // 一部作品里混几条脏记录不该让整个详情打不开；
+      // 只缺一半的条目仍然要显示（来源侧确实有只给人名的记录）。
+      expect(work.staff!.length, 3);
+    });
+
+    test('288 条 staff 全量解析不截断——折叠是界面的事，不是解析的事', () {
+      final work = Work.fromJson({
+        ...listItem(),
+        'staff': [
+          for (var i = 0; i < 288; i++) {'role': '职位$i', 'name': '人$i'},
+        ],
+      });
+      expect(work.staff!.length, 288, reason: '实测单部最多 288 条（柯南）');
+    });
+
+    test('character_type 空串归一为 null：界面不显示「未知类型」', () {
+      final work = Work.fromJson({
+        ...listItem(),
+        'characters': [
+          {'name': '猫猫', 'actor': '悠木碧', 'character_type': '   '},
+          {'name': '壬氏', 'actor': '大塚剛央', 'character_type': '主角'},
+        ],
+      });
+      expect(work.characters!.first.characterType, isNull);
+      expect(work.characters!.last.characterType, '主角');
+    });
+
+    test('episodes 越界归一为 null：0 与 10001 都不是话数', () {
+      int? parse(Object? raw) =>
+          Work.fromJson({...listItem(), 'episodes': raw}).episodes;
+      expect(parse(12), 12);
+      expect(parse('12'), 12, reason: '字符串数字与整数都能解析');
+      expect(parse(0), isNull, reason: '0 话是「来源未提供」，不是真的 0');
+      expect(parse(10001), isNull);
+      expect(parse(null), isNull);
+    });
+
+    test('toJson 与 fromJson 对称：富字段与关联数组过一遍缓存不丢', () {
+      final work = Work.fromJson({
+        ...listItem(),
+        'title_original': '新世紀エヴァンゲリオン',
+        'aliases': [],
+        'media': 'TV',
+        'episodes': 26,
+        'staff': [],
+        'characters': [
+          {'name': '猫猫', 'actor': '悠木碧', 'character_type': null, 'person_id': '5076'},
+        ],
+        'studios': ['J.C.STAFF'],
+      });
+      final back = Work.fromJson(work.toJson());
+      expect(back.titleOriginal, '新世紀エヴァンゲリオン');
+      expect(back.aliases, isEmpty);
+      expect(back.media, 'TV');
+      expect(back.episodes, 26);
+      expect(back.staff, isEmpty);
+      expect(back.characters!.single.personId, '5076');
+      expect(back.studios, ['J.C.STAFF']);
+    });
   });
 
   group('PagedResult', () {

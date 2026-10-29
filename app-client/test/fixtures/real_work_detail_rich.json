@@ -1,0 +1,577 @@
+{
+  "work_id": "W-w2jscm1b0sbdry0",
+  "work_type": "anime",
+  "title": "药屋少女的呢喃",
+  "summary": "大陆的中央有个大国，在那个国家的后宫之中有一位少女，其名为“猫猫”。她以前在花街做药师，现在在后宫做事。某天，她得知皇子们皆早夭，而现在的两个皇子都因为生病而逐渐衰弱。于是，在好奇心的驱使下，她开始调查事情的真相，就好像在说世上不可能存在诅咒。壬氏是一位外表俊美的宦官，他让猫猫当皇帝宠妃的试毒人。猫猫对人没有兴趣，却异常钟情毒和药，就是这样一位在花街长大的药师，被卷入了宫中的传闻事件。美丽的玫瑰长有刺，女人的庭院里到处都是毒，流言和阴谋更是不缺。虽然不断地被壬氏委托麻烦事，但猫猫还是照常处理。罕见的嗜毒姑娘今天也在后宫里奔走。",
+  "release_year": 2023,
+  "title_original": "薬屋のひとりごと",
+  "aliases": [
+    "药师少女的独语",
+    "Kusuriya no Hitorigoto",
+    "The Apothecary Diaries"
+  ],
+  "media": "TV",
+  "episodes": 24,
+  "cover_url": "http://154.8.194.198:8080/api/covers/W-w2jscm1b0sbdry0",
+  "tags": [
+    "中国风",
+    "悠木碧",
+    "悬疑",
+    "推理",
+    "轻小说改"
+  ],
+  "main_rating": {
+    "value": 7.5,
+    "scale": "0-10",
+    "source": "bangumi"
+  },
+  "staff": [
+    {
+      "role": "副导演",
+      "name": "筆坂明規",
+      "person_id": null
+    },
+    {
+      "role": "脚本",
+      "name": "柿原優子",
+      "person_id": null
+    },
+    {
+      "role": "脚本",
+      "name": "千葉美鈴",
+      "person_id": null
+    },
+    {
+      "role": "脚本",
+      "name": "小川ひとみ",
+      "person_id": null
+    },
+    {
+      "role": "脚本",
+      "name": "綾奈ゆにこ",
+      "person_id": null
+    },
+    {
+      "role": "演出",
+      "name": "外山草",
+      "person_id": "12122"
+    },
+    {
+      "role": "作画监督",
+      "name": "유승희",
+      "person_id": "30581"
+    },
+    {
+      "role": "作画监督",
+      "name": "渡辺奈月",
+      "person_id": "9170"
+    },
+    {
+      "role": "演出",
+      "name": "朝木幸彦",
+      "person_id": "19146"
+    },
+    {
+      "role": "作画监督",
+      "name": "吉田肇",
+      "person_id": "14208"
+    },
+    {
+      "role": "作画监督",
+      "name": "朱世傑",
+      "person_id": "52034"
+    },
+    {
+      "role": "作画监督",
+      "name": "五十嵐俊介",
+      "person_id": "42957"
+    },
+    {
+      "role": "作画监督",
+      "name": "廣田茜",
+      "person_id": "30935"
+    },
+    {
+      "role": "作画监督",
+      "name": "古池敏也",
+      "person_id": "30744"
+    },
+    {
+      "role": "作画监督",
+      "name": "亀山朋子",
+      "person_id": "35615"
+    },
+    {
+      "role": "作画监督",
+      "name": "宮井加奈",
+      "person_id": "20271"
+    },
+    {
+      "role": "作画监督",
+      "name": "土方友希",
+      "person_id": "27416"
+    },
+    {
+      "role": "作画监督",
+      "name": "白石悟",
+      "person_id": "38062"
+    },
+    {
+      "role": "作画监督",
+      "name": "金元会",
+      "person_id": "42965"
+    },
+    {
+      "role": "作画监督",
+      "name": "狄飛廉",
+      "person_id": "52950"
+    },
+    {
+      "role": "作画监督",
+      "name": "高橋紀子",
+      "person_id": "51259"
+    },
+    {
+      "role": "作画监督",
+      "name": "猪爪多恵",
+      "person_id": "52259"
+    },
+    {
+      "role": "作画监督",
+      "name": "小島えり",
+      "person_id": "37095"
+    },
+    {
+      "role": "作画监督",
+      "name": "近藤瑠衣",
+      "person_id": "34321"
+    },
+    {
+      "role": "作画监督",
+      "name": "鈴木春香",
+      "person_id": "36800"
+    },
+    {
+      "role": "作画监督",
+      "name": "早川元基",
+      "person_id": "40310"
+    },
+    {
+      "role": "作画监督",
+      "name": "山道到威",
+      "person_id": "49402"
+    },
+    {
+      "role": "作画监督",
+      "name": "野上慎也",
+      "person_id": "33025"
+    },
+    {
+      "role": "分镜",
+      "name": "外山草",
+      "person_id": "12122"
+    },
+    {
+      "role": "作画监督",
+      "name": "和泉百香",
+      "person_id": "52405"
+    },
+    {
+      "role": "作画监督",
+      "name": "友部奈津美",
+      "person_id": "38055"
+    },
+    {
+      "role": "作画监督",
+      "name": "宍戸久美子",
+      "person_id": "3742"
+    },
+    {
+      "role": "作画监督",
+      "name": "北田久登",
+      "person_id": "43772"
+    },
+    {
+      "role": "作画监督",
+      "name": "本吉晃子",
+      "person_id": "42727"
+    },
+    {
+      "role": "作画监督",
+      "name": "CHA MYOUNG JUN",
+      "person_id": "37092"
+    },
+    {
+      "role": "作画监督",
+      "name": "塚本龍介",
+      "person_id": "58784"
+    },
+    {
+      "role": "作画监督",
+      "name": "山本径子",
+      "person_id": "26452"
+    },
+    {
+      "role": "作画监督",
+      "name": "安藤暢啓",
+      "person_id": "55763"
+    },
+    {
+      "role": "作画监督",
+      "name": "中村沙由貴",
+      "person_id": "38068"
+    },
+    {
+      "role": "作画监督",
+      "name": "山田佳奈莉",
+      "person_id": "57831"
+    },
+    {
+      "role": "作画监督",
+      "name": "西村広",
+      "person_id": "13577"
+    },
+    {
+      "role": "作画监督",
+      "name": "池田裕治",
+      "person_id": "328"
+    },
+    {
+      "role": "作画监督",
+      "name": "中谷友紀子",
+      "person_id": "13189"
+    },
+    {
+      "role": "作画监督",
+      "name": "中山和子",
+      "person_id": "35461"
+    },
+    {
+      "role": "作画监督",
+      "name": "長森佳容",
+      "person_id": "1640"
+    },
+    {
+      "role": "作画监督",
+      "name": "佐藤結花",
+      "person_id": "58507"
+    },
+    {
+      "role": "作画监督",
+      "name": "菅原美幸",
+      "person_id": "30444"
+    },
+    {
+      "role": "作画监督",
+      "name": "島崎望",
+      "person_id": "37227"
+    },
+    {
+      "role": "作画监督",
+      "name": "杜林桂",
+      "person_id": "52750"
+    },
+    {
+      "role": "作画监督",
+      "name": "西田美弥子",
+      "person_id": "21212"
+    },
+    {
+      "role": "演出",
+      "name": "川畑えるきん",
+      "person_id": "13394"
+    },
+    {
+      "role": "作画监督",
+      "name": "堀江由美",
+      "person_id": "43257"
+    },
+    {
+      "role": "作画监督",
+      "name": "Moaang",
+      "person_id": "36094"
+    },
+    {
+      "role": "作画监督",
+      "name": "後藤孝宏",
+      "person_id": "25542"
+    },
+    {
+      "role": "作画监督",
+      "name": "李少雷",
+      "person_id": "51355"
+    },
+    {
+      "role": "作画监督",
+      "name": "林映辰",
+      "person_id": "52951"
+    },
+    {
+      "role": "作画监督",
+      "name": "西道拓哉",
+      "person_id": "42964"
+    },
+    {
+      "role": "作画监督",
+      "name": "南波天",
+      "person_id": "63045"
+    },
+    {
+      "role": "作画监督",
+      "name": "兼子秀敬",
+      "person_id": "33170"
+    },
+    {
+      "role": "作画监督",
+      "name": "宋賢珠",
+      "person_id": "70102"
+    },
+    {
+      "role": "总作画监督",
+      "name": "中谷友紀子",
+      "person_id": "13189"
+    },
+    {
+      "role": "总作画监督",
+      "name": "長森佳容",
+      "person_id": "1640"
+    },
+    {
+      "role": "总作画监督",
+      "name": "宮井加奈",
+      "person_id": "20271"
+    },
+    {
+      "role": "总作画监督",
+      "name": "中嶋敦子",
+      "person_id": "276"
+    },
+    {
+      "role": "总作画监督",
+      "name": "池田裕治",
+      "person_id": "328"
+    },
+    {
+      "role": "作画监督",
+      "name": "大田謙治",
+      "person_id": "18479"
+    },
+    {
+      "role": "总作画监督",
+      "name": "大河しのぶ",
+      "person_id": "28030"
+    },
+    {
+      "role": "总作画监督",
+      "name": "廣田茜",
+      "person_id": "30935"
+    },
+    {
+      "role": "分镜",
+      "name": "川畑えるきん",
+      "person_id": "13394"
+    },
+    {
+      "role": "演出",
+      "name": "山本恭平",
+      "person_id": "37654"
+    },
+    {
+      "role": "演出",
+      "name": "志賀岳",
+      "person_id": "50646"
+    },
+    {
+      "role": "演出",
+      "name": "筆坂明規",
+      "person_id": "26769"
+    },
+    {
+      "role": "演出",
+      "name": "谷元麻佑",
+      "person_id": "61090"
+    },
+    {
+      "role": "演出",
+      "name": "伊部勇志",
+      "person_id": "25731"
+    },
+    {
+      "role": "演出",
+      "name": "清水アキラ",
+      "person_id": "60131"
+    },
+    {
+      "role": "演出",
+      "name": "中川航",
+      "person_id": "26646"
+    },
+    {
+      "role": "演出",
+      "name": "ちな",
+      "person_id": "21409"
+    },
+    {
+      "role": "演出",
+      "name": "大久保唯男",
+      "person_id": "26637"
+    },
+    {
+      "role": "演出",
+      "name": "角松倶楽部",
+      "person_id": "28000"
+    },
+    {
+      "role": "演出",
+      "name": "藤田健太郎",
+      "person_id": "26714"
+    },
+    {
+      "role": "演出",
+      "name": "是本晶",
+      "person_id": "27023"
+    },
+    {
+      "role": "演出",
+      "name": "横野光代",
+      "person_id": "51357"
+    },
+    {
+      "role": "演出",
+      "name": "大和田淳",
+      "person_id": "27565"
+    },
+    {
+      "role": "分镜",
+      "name": "ちな",
+      "person_id": "21409"
+    },
+    {
+      "role": "分镜",
+      "name": "藤田健太郎",
+      "person_id": "26714"
+    },
+    {
+      "role": "分镜",
+      "name": "中川航",
+      "person_id": "26646"
+    },
+    {
+      "role": "分镜",
+      "name": "野村和也",
+      "person_id": "9860"
+    },
+    {
+      "role": "分镜",
+      "name": "谷元麻佑",
+      "person_id": "61090"
+    },
+    {
+      "role": "分镜",
+      "name": "長沼範裕",
+      "person_id": "17532"
+    },
+    {
+      "role": "分镜",
+      "name": "佐藤雅子",
+      "person_id": "24460"
+    },
+    {
+      "role": "分镜",
+      "name": "角松倶楽部",
+      "person_id": "28000"
+    },
+    {
+      "role": "分镜",
+      "name": "筆坂明規",
+      "person_id": "26769"
+    },
+    {
+      "role": "作画监督",
+      "name": "Han Sung Hui",
+      "person_id": "48342"
+    }
+  ],
+  "characters": [
+    {
+      "name": "猫猫",
+      "actor": "悠木碧",
+      "character_type": null,
+      "person_id": "5076"
+    },
+    {
+      "name": "壬氏",
+      "actor": "大塚剛央",
+      "character_type": null,
+      "person_id": "32681"
+    },
+    {
+      "name": "玉葉妃",
+      "actor": "種﨑敦美",
+      "character_type": null,
+      "person_id": "7575"
+    },
+    {
+      "name": "高順",
+      "actor": "小西克幸",
+      "character_type": null,
+      "person_id": "3861"
+    },
+    {
+      "name": "小蘭",
+      "actor": "久野美咲",
+      "character_type": null,
+      "person_id": "11523"
+    },
+    {
+      "name": "梨花妃",
+      "actor": "石川由依",
+      "character_type": null,
+      "person_id": "5727"
+    },
+    {
+      "name": "里樹妃",
+      "actor": "木野日菜",
+      "character_type": null,
+      "person_id": "19643"
+    },
+    {
+      "name": "阿多妃",
+      "actor": "甲斐田裕子",
+      "character_type": null,
+      "person_id": "4245"
+    },
+    {
+      "name": "李白",
+      "actor": "赤羽根健治",
+      "character_type": null,
+      "person_id": "5685"
+    },
+    {
+      "name": "梅梅",
+      "actor": "潘めぐみ",
+      "character_type": null,
+      "person_id": "7050"
+    },
+    {
+      "name": "白鈴",
+      "actor": "小清水亜美",
+      "character_type": null,
+      "person_id": "4474"
+    },
+    {
+      "name": "女華",
+      "actor": "七海ひろき",
+      "character_type": null,
+      "person_id": "14221"
+    }
+  ],
+  "studios": [
+    "TOHO animation STUDIO×OLM"
+  ],
+  "source": "bangumi",
+  "source_id": "420628",
+  "source_url": "https://bgm.tv/subject/420628",
+  "updated_at": "2026-10-29T03:38:52.559Z",
+  "deleted": false
+}
