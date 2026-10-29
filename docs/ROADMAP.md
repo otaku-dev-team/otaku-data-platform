@@ -284,7 +284,7 @@
 | W3 | 数据完整度（封面 / 评分 / 简介覆盖） | zm | @pyxz0 | 进行中（Issue #97，计划见 [data-completeness-plan.md](data-completeness-plan.md)） | [data-completeness-plan.md](data-completeness-plan.md) |
 | W4 | 第二个来源站接入落地 | @pyxz0 | zm | 已验证（VNDB 实测，见 §8.7）；产品化落地暂缓，随跨源视图一并重启（Issue #96） | 主责方自定 |
 | W5 | 平台能力开放（供来源站复用） | @pyxz0 | @riceyu02 | 未启动（Issue #96） | 主责方自定 |
-| W6 | 生产化与可运维 | @pyxz0 | 团队（服务器资源） | 🟢 运维面已上线：指标端点（#286，公网 401 守卫）、备份恢复演练（#195，53.6MB dump → 恢复 35.8s 逐表一致）、封面回填定时任务；剩正式域名（商务侧） | [`deploy-production.md`](deploy-production.md) · [`deployment-schedule.md`](deployment-schedule.md) |
+| W6 | 生产化与可运维 | @pyxz0 | 团队（服务器资源） | 🟢 运维面已上线：指标端点（#286，公网 401 守卫）、备份恢复演练（#195，53.6MB dump → 恢复 35.8s 逐表一致）、封面回填定时任务；**发版规程**（含 7 项冒烟）见 `deploy-production.md` §6.1；剩正式域名（商务侧） | [`deploy-production.md`](deploy-production.md) · [`deployment-schedule.md`](deployment-schedule.md) |
 
 探索项（需先过红线再立项）：E1 跨源作品身份模型 · E2 平台自建互动能力 —— 见 [`project-charter.md`](project-charter.md) §2.1。
 

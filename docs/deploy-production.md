@@ -393,6 +393,47 @@ nc -zv <服务器IP> 3306
 
 再用客户端连一次，走完「列表 → 详情 → 登录 → 收藏 → 另一端可见」。
 
+### 6.1 每次发版后必跑（不是首次上线，是每一次）
+
+> 2026-10-29 的教训：那天发了 6 次版，其中一次把 `app.cover.allowed-hosts` 挤进了
+> `app.ugc` 命名空间。`/actuator/health` 全程 **UP**，但全站封面 404 了 **55 分钟**才被发现。
+> 健康检查只能证明「进程活着」，证明不了「配置读对了」。
+
+发版固定三步（本地出包 → 上传 → 重建容器）：
+
+```bash
+# 1) 本地出包
+cd backend-java && ./mvnw -q -DskipTests package
+
+# 2) 备份旧包再上传（.bak 留痕，回滚靠它）
+ssh -i ~/.ssh/otaku_deploy pyxz0@<host> \
+  'cd /opt/otaku/backend/target && cp -f backend-java-0.1.0-SNAPSHOT.jar \
+   backend-java-0.1.0-SNAPSHOT.jar.bak-<原因> -$(date +%H%M%S)'
+scp -i ~/.ssh/otaku_deploy backend-java/target/backend-java-0.1.0-SNAPSHOT.jar \
+  pyxz0@<host>:/opt/otaku/backend/target/
+
+# 3) 重建（Flyway 会自动迁移）+ 等 healthy
+ssh -i ~/.ssh/otaku_deploy pyxz0@<host> \
+  'cd /opt/otaku/backend && docker compose -f compose.prod.yaml up -d --build backend'
+```
+
+然后**必须**：
+
+```bash
+# a) 看迁移是否真的跑了
+docker logs otaku-backend --since 3m | grep -E "Migrating|Successfully applied"
+
+# b) 跑冒烟（7 项，30 秒）。任何一项 FAIL 就先别走开
+bash scripts/post-deploy-check.sh http://127.0.0.1:8080
+```
+
+`post-deploy-check.sh` 覆盖 health / 列表 total>0 / 详情 / tags / **封面 200** /
+内部接口无令牌 401 / prometheus 无令牌 401。**第 5 项就是这次故障的护栏**——
+白名单为空时它必定 FAIL。
+
+回滚：`target/` 下每次发版都留 `.bak-<原因>-<时分秒>`，换回旧 jar 再 `up -d --build` 即可。
+注意迁移是单向的：回滚代码不会回滚 schema，跨迁移回滚要先确认旧版能跑在新库上。
+
 ---
 
 ## 7. 运维
