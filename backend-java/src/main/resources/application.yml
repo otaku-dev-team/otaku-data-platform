@@ -68,12 +68,6 @@ app:
     max-concurrency: 2
     timeout: 10s
     max-bytes: 5242880
-  ugc:
-    retention:
-      # 软删（作者撤回）的评论保留天数，到期物理删除。见 docs/ugc-retention-proposal.md：
-      # 保留是为了追溯，但「保留」不等于「永久」——用户以为删了，数据不该一直躺着。
-      # 0 = 不清理（站点/法务给出「全留」口径时用；此时删除只能人工执行）。
-      deleted-days: ${OTAKU_UGC_RETENTION_DELETED_DAYS:90}
     # 封面回源白名单（host:port）。**留空 = 全部拒绝**（fail-closed），不是"不限"。
     # 接新的来源站时，把它的 host:port 加到 OTAKU_COVER_ALLOWED_HOSTS 即可，不需要改代码。
     # 默认只含首站自身：保证不写 .env 时行为与旧版一致（首站封面仍可用）。
@@ -84,6 +78,12 @@ app:
     # 仍然放行，只有「浏览器带着别站页面地址来取图」才拒（返回 404，契约里既有的码）。
     # 开启前先确认 Flutter Web 的调试端口，否则 Web 端封面会被拦。
     allowed-referers: []
+  ugc:
+    retention:
+      # 软删（作者撤回）的评论保留天数，到期物理删除。见 docs/ugc-retention-proposal.md：
+      # 保留是为了追溯，但「保留」不等于「永久」——用户以为删了，数据不该一直躺着。
+      # 0 = 不清理（站点/法务给出「全留」口径时用；此时删除只能人工执行）。
+      deleted-days: ${OTAKU_UGC_RETENTION_DELETED_DAYS:90}
 
 management:
   endpoints:
