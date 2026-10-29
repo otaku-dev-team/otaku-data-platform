@@ -1,7 +1,7 @@
 # 合并队列与合并后动作清单
 
 > **现用清单。** 每次合并后更新这一份，不再另写。
-> 更新于 2026-10-29 23:30，基准 `main = 1674698`（#294 评论编辑）。
+> 更新于 2026-10-30 00:30，基准 `main = cda2bab`（#298 封面白名单事故修复）。
 > 开放 PR **0 个**；远端分支 16 条（本地另有 11 条已合未删，见 §3.2）。
 > 合并权条例仍按 [`project-charter.md`](project-charter.md) §3.5：**CI 全绿 + 不碰红线 + 说清楚，谁都能合（含自合）**。
 
@@ -94,6 +94,10 @@ filter-links (#130)        ⊃ client-home (#121)
 - [x] **#278 锁冲突重试**：撞唯一键与死锁同路重试，避免合法记录被判 `INTERNAL_ERROR`。
 - [x] **#286 指标端点**：`/actuator/prometheus` 复用内部令牌，公网实测 401、`health` 保持 200。
 - [x] **#195 备份恢复演练（第一次真做）**：53.6MB dump → 独立库恢复 35.8s，逐表与生产一致。
+- [x] **封面白名单事故修复**（10-30，PR #298）：加 `app.ugc.retention` 时把 cover 段的
+      `allowed-hosts` 挤进 `app.ugc` → 全站封面 404 **55 分钟**（health 仍 UP）。
+      修复 + `ApplicationYamlStructureTest`（防配置结构错位）+ `scripts/post-deploy-check.sh`
+      （7 项发版冒烟，规程见 `deploy-production.md` §6.1）。
 
 ### 待办
 
