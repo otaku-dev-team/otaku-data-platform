@@ -4,6 +4,7 @@ import com.otaku.common.ApiException;
 import com.otaku.common.ErrorCode;
 import com.otaku.common.PageResponse;
 import com.otaku.ugc.dto.UgcCommentDto;
+import com.otaku.ugc.dto.UgcCommentEditRequest;
 import com.otaku.ugc.dto.UgcCommentRequest;
 import com.otaku.user.UserRecord;
 import com.otaku.work.WorkRecord;
@@ -183,6 +184,50 @@ public class UgcService {
     }
 
     /**
+     * 作者改自己的评论正文。
+     *
+     * <p>只允许 published / pending：hidden 是站主处置过的、deleted 是已撤回的，都不接受再编辑
+     * （对外一律 404——不泄露「这条其实还在，只是被藏了」）。
+     *
+     * <p>先审后发的站点里，编辑会重新落回 pending。否则「先发一条合规的、过审后再改成违规的」
+     * 就是一条现成的绕过路径。
+     */
+    @Transactional
+    public UgcCommentDto editOwn(UserRecord user, String commentId, UgcCommentEditRequest request) {
+        if (request == null) {
+            throw ApiException.badRequest("请求体不能为空");
+        }
+        long id = parseId(commentId);
+        UgcRepository.Row row = repository.findById(user.siteKey(), id)
+                .orElseThrow(() -> new ApiException(ErrorCode.COMMENT_NOT_FOUND, "评论不存在"));
+        if (row.userId() != user.id()) {
+            throw new ApiException(ErrorCode.FORBIDDEN, "只能修改自己的评论");
+        }
+        if (!"published".equals(row.status()) && !"pending".equals(row.status())) {
+            throw new ApiException(ErrorCode.COMMENT_NOT_FOUND, "评论不存在");
+        }
+        String body = normalizeBody(request.body());
+        String siteKey = user.siteKey();
+        if (!settings.isEnabled(siteKey)) {
+            throw new ApiException(ErrorCode.FORBIDDEN, "本站未开启社区功能");
+        }
+
+        String status = "pre".equals(settings.moderationMode(siteKey)) ? "pending" : "published";
+        int updated = repository.updateBody(siteKey, id, body, status,
+                LocalDateTime.now(ZoneOffset.UTC));
+        if (updated == 0) {
+            // 并发：刚好被站主隐藏或作者删除
+            throw new ApiException(ErrorCode.COMMENT_NOT_FOUND, "评论不存在");
+        }
+        UgcRepository.Row after = repository.findById(siteKey, id)
+                .orElseThrow(() -> new IllegalStateException("评论刚更新却读不到：" + id));
+        if (after.parentId() != null) {
+            return toReplyDto(after);
+        }
+        return toFloorDto(after, (int) repository.countPublishedReplies(siteKey, id), List.of());
+    }
+
+    /**
      * 解析并校验 {@code parent_id}。
      *
      * <p>父评论必须是**本作品下、已发布的顶层评论**：
@@ -220,6 +265,7 @@ public class UgcService {
                 row.body(),
                 row.status(),
                 row.createdAt() == null ? null : row.createdAt().toInstant(ZoneOffset.UTC),
+                row.editedAt() == null ? null : row.editedAt().toInstant(ZoneOffset.UTC),
                 replyCount,
                 replies.stream().map(UgcService::toReplyDto).toList());
     }
@@ -232,6 +278,7 @@ public class UgcService {
                 row.body(),
                 row.status(),
                 row.createdAt() == null ? null : row.createdAt().toInstant(ZoneOffset.UTC),
+                row.editedAt() == null ? null : row.editedAt().toInstant(ZoneOffset.UTC),
                 row.parentId() == null ? null : String.valueOf(row.parentId()));
     }
 

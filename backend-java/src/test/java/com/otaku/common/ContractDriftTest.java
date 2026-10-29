@@ -267,6 +267,8 @@ class ContractDriftTest {
         targets.put("ImportBatchRequest", com.otaku.importer.dto.ImportBatchRequest.class);
         targets.put("DeletionRequest", com.otaku.importer.dto.DeletionRequest.class);
         targets.put("UgcCommentRequest", com.otaku.ugc.dto.UgcCommentRequest.class);
+        // 编辑正文（#240 B2c④）：只有 body，作品/作者/父评论都不可改
+        targets.put("UgcCommentEditRequest", com.otaku.ugc.dto.UgcCommentEditRequest.class);
         targets.put("SiteUgcSettingUpdate", com.otaku.console.dto.ConsoleDtos.UgcSettingUpdate.class);
         targets.put("CommentReportRequest", com.otaku.ugc.dto.CommentReportRequest.class);
         targets.put("ImportItem", com.otaku.importer.dto.ImportBatchRequest.ImportItem.class);

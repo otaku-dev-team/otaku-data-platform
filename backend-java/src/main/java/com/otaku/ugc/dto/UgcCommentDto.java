@@ -20,6 +20,9 @@ import java.util.List;
  *       后者是其中最早的若干条（服务端截断，避免一次拉全楼）；回复自身这两个字段为 null / 空数组。</li>
  * </ul>
  * 只做一层：回复的 {@code parentId} 永远指向顶层评论，不会出现「回复的回复」。
+ *
+ * <p>{@code editedAt} 非空表示**作者改过正文**（站主的隐藏/恢复不算编辑，那走 updated_at）。
+ * 客户端据此显示「已编辑」，审核侧据此判断是否需要重看。
  */
 public record UgcCommentDto(
         String commentId,
@@ -28,22 +31,24 @@ public record UgcCommentDto(
         String body,
         String status,
         Instant createdAt,
+        Instant editedAt,
         String parentId,
         Integer replyCount,
         List<UgcCommentDto> replies
 ) {
     /** 顶层评论：带回复数与内嵌回复；回复自身用 {@link #reply}。 */
     public static UgcCommentDto floor(String commentId, String workId, String author, String body,
-                                     String status, Instant createdAt, int replyCount,
-                                     List<UgcCommentDto> replies) {
-        return new UgcCommentDto(commentId, workId, author, body, status, createdAt, null,
+                                     String status, Instant createdAt, Instant editedAt,
+                                     int replyCount, List<UgcCommentDto> replies) {
+        return new UgcCommentDto(commentId, workId, author, body, status, createdAt, editedAt, null,
                 replyCount, replies == null ? List.of() : replies);
     }
 
     /** 一条回复：不带 reply_count / replies（层数只有一层，嵌套字段没有读者）。 */
     public static UgcCommentDto reply(String commentId, String workId, String author, String body,
-                                     String status, Instant createdAt, String parentId) {
-        return new UgcCommentDto(commentId, workId, author, body, status, createdAt, parentId,
-                null, List.of());
+                                     String status, Instant createdAt, Instant editedAt,
+                                     String parentId) {
+        return new UgcCommentDto(commentId, workId, author, body, status, createdAt, editedAt,
+                parentId, null, List.of());
     }
 }

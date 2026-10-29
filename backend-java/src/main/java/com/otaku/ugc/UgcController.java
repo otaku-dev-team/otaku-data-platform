@@ -6,6 +6,7 @@ import com.otaku.ugc.dto.CommentReportDto;
 import com.otaku.ugc.dto.CommentReportRequest;
 import com.otaku.ugc.dto.SiteFeaturesDto;
 import com.otaku.ugc.dto.UgcCommentDto;
+import com.otaku.ugc.dto.UgcCommentEditRequest;
 import com.otaku.ugc.dto.UgcCommentRequest;
 import com.otaku.user.UserRecord;
 import org.springframework.http.HttpStatus;
@@ -13,6 +14,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -111,5 +113,19 @@ public class UgcController {
             @RequestAttribute(AuthFilter.ATTRIBUTE_USER) UserRecord user,
             @PathVariable("commentId") String commentId) {
         service.deleteOwn(user, commentId);
+    }
+
+    /**
+     * 改自己的评论正文。
+     *
+     * <p>用 PATCH 而不是 PUT：只有 {@code body} 可改，作品 / 作者 / 父评论都不可变，
+     * PUT 会让人以为能整体替换。
+     */
+    @PatchMapping("/api/me/comments/{commentId}")
+    public UgcCommentDto edit(
+            @RequestAttribute(AuthFilter.ATTRIBUTE_USER) UserRecord user,
+            @PathVariable("commentId") String commentId,
+            @RequestBody UgcCommentEditRequest request) {
+        return service.editOwn(user, commentId, request);
     }
 }
