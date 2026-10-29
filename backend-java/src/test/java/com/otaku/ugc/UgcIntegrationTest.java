@@ -67,6 +67,9 @@ class UgcIntegrationTest {
     private UgcSettingsRepository settings;
 
     @Autowired
+    private UgcCleanupJob cleanupJob;
+
+    @Autowired
     private ImportService importService;
 
     @Autowired
@@ -514,6 +517,35 @@ class UgcIntegrationTest {
                 new UgcCommentRequest(workId, "第 6 条", floor.commentId())))
                 .isInstanceOf(ApiException.class)
                 .hasMessageContaining("发言太快");
+    }
+
+    @Test
+    @DisplayName("留存清理：只清超期撤回的评论，其他状态即便更老也不动")
+    void cleanupPurgesOnlyExpiredDeleted() {
+        UgcCommentDto oldDeleted = service.create(alice, new UgcCommentRequest(workId, "很久以前撤回"));
+        UgcCommentDto freshDeleted = service.create(alice, new UgcCommentRequest(workId, "刚撤回"));
+        UgcCommentDto published = service.create(alice, new UgcCommentRequest(workId, "还在的"));
+        service.deleteOwn(alice, oldDeleted.commentId());
+        service.deleteOwn(alice, freshDeleted.commentId());
+
+        // 把「很早撤回的」和「仍然公开的」都改成 200 天前：
+        // 后者用来证明清理看的是 status，不只是时间。
+        LocalDateTime longAgo = LocalDateTime.now(ZoneOffset.UTC).minusDays(200);
+        jdbc.update("UPDATE ugc_comment SET updated_at = ? WHERE id IN (?, ?)", longAgo,
+                Long.parseLong(oldDeleted.commentId()), Long.parseLong(published.commentId()));
+
+        int purged = cleanupJob.purge(LocalDateTime.now(ZoneOffset.UTC));
+
+        assertThat(purged).as("只有那条超期的撤回被物理删").isEqualTo(1);
+        assertThat(countComment(oldDeleted.commentId())).isZero();
+        assertThat(countComment(freshDeleted.commentId())).as("未到保留期，留着").isEqualTo(1);
+        assertThat(countComment(published.commentId())).as("published 再老也不清").isEqualTo(1);
+    }
+
+    private int countComment(String commentId) {
+        Integer n = jdbc.queryForObject("SELECT COUNT(*) FROM ugc_comment WHERE id = ?",
+                Integer.class, Long.parseLong(commentId));
+        return n == null ? 0 : n;
     }
 
     private boolean featuresEnabled() {
