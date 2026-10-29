@@ -1,6 +1,7 @@
 package com.otaku.ugc.dto;
 
 import java.time.Instant;
+import java.util.List;
 
 /**
  * 一条评论（对外形状）。字段刻意少：客户端只需要能渲染一条评论，不需要作者 id、
@@ -11,6 +12,14 @@ import java.time.Instant;
  *
  * <p>{@code author} 是用户名（不是昵称体系，B1 没有昵称）；已注销/被删用户的评论
  * 目前不会出现（用户删除不在本期），所以这里不做 null 兜底文案。
+ *
+ * <p>B2c 起一条评论可能是回复：
+ * <ul>
+ *   <li>{@code parentId}：回复的目标顶层评论 id；顶层评论为 {@code null}；</li>
+ *   <li>{@code replyCount} / {@code replies}：**只有顶层评论**才有——前者是已发布回复总数，
+ *       后者是其中最早的若干条（服务端截断，避免一次拉全楼）；回复自身这两个字段为 null / 空数组。</li>
+ * </ul>
+ * 只做一层：回复的 {@code parentId} 永远指向顶层评论，不会出现「回复的回复」。
  */
 public record UgcCommentDto(
         String commentId,
@@ -18,6 +27,23 @@ public record UgcCommentDto(
         String author,
         String body,
         String status,
-        Instant createdAt
+        Instant createdAt,
+        String parentId,
+        Integer replyCount,
+        List<UgcCommentDto> replies
 ) {
+    /** 顶层评论：带回复数与内嵌回复；回复自身用 {@link #reply}。 */
+    public static UgcCommentDto floor(String commentId, String workId, String author, String body,
+                                     String status, Instant createdAt, int replyCount,
+                                     List<UgcCommentDto> replies) {
+        return new UgcCommentDto(commentId, workId, author, body, status, createdAt, null,
+                replyCount, replies == null ? List.of() : replies);
+    }
+
+    /** 一条回复：不带 reply_count / replies（层数只有一层，嵌套字段没有读者）。 */
+    public static UgcCommentDto reply(String commentId, String workId, String author, String body,
+                                     String status, Instant createdAt, String parentId) {
+        return new UgcCommentDto(commentId, workId, author, body, status, createdAt, parentId,
+                null, List.of());
+    }
 }

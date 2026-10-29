@@ -469,7 +469,8 @@
 | 站主开关 + 后台审核（B2a） | 已上线 | V19；`ugc_enabled` **默认 0**，未开启写入 403；`ugc.hide/publish/setting` 三条审计 |
 | 举报 + 先审后发（B2b） | 已上线 | V20；举报幂等（同人同评论唯一）、`resolve` 事务内隐藏、`pre` 模式落 `pending` |
 | 导出本站评论（B2c①） | 已上线 | UTF-8 BOM、RFC 4180 转义、5 万行截断 + `X-Export-Truncated`、审计 `ugc.export` |
-| 点评 / 回复 / 留存策略 / 机器审核 | 未开工 | B2c 剩余；**导出先做**是因为 positioning §A.9 把「数据交还」写成合同义务 |
+| 回复（B2c②） | 已上线 | V21 `parent_id`；**只允许一层**；列表内嵌 3 条预览 + `reply_count`；`GET .../comments/{id}/replies` 按对话顺序；撤回楼层连带软删回复 |
+| 点评 / 留存策略 / 机器审核 | 未开工 | B2c 剩余；**导出先做**是因为 positioning §A.9 把「数据交还」写成合同义务 |
 
 同批落地的内容治理两项：
 

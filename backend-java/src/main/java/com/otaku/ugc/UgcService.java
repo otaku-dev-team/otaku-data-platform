@@ -15,20 +15,23 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
- * 平台代存 UGC · 作品评论（#240 / docs/product-positioning.md §A.4）。
+ * 平台代存 UGC · 作品评论与回复（#240 / docs/product-positioning.md §A.4）。
  *
- * <p>这次只做 B1 的「评论」最小闭环：发、看、删自己的。点评、回复、举报、审核队列、
- * 站主启用开关都是后续档，接口先按能扩的形状留好。
+ * <p>B1 做评论最小闭环（发、看、删自己的），B2c② 补回复。回复**只有一层**：
+ * 顶层评论下的回复不能被再回复——两层已覆盖「评论 + 追评」的实际用法，
+ * 更深的树在手机上只能靠缩进硬撑，分页/审核/删除三处都会跟着变复杂。
  *
  * <p>四条边界写在实现里，不靠自觉：
  * <ol>
  *   <li><b>站点隔离</b>：site_key 一律取登录态的 {@code app_user.site_key}，不接受请求参数；</li>
  *   <li><b>只存用户写的内容</b>：body 是纯文本，不解析 HTML/Markdown，不做自动链接；</li>
- *   <li><b>删除是软删</b>：{@code status='deleted'} 保留行，便于站主/平台追溯；</li>
- *   <li><b>防刷屏</b>：同一用户 60 秒内最多 5 条，超出 429（不做全局限流，那会误伤正常用户）。</li>
+ *   <li><b>删除是软删</b>：{@code status='deleted'} 保留行；撤回顶层评论时连同回复一起软删（楼层语义）；</li>
+ *   <li><b>防刷屏</b>：同一用户 60 秒内最多 5 条（评论 + 回复共用额度），超出 429。</li>
  * </ol>
  */
 @Service
@@ -44,6 +47,8 @@ public class UgcService {
     /** 列表页大小上限：与作品列表同为 50，避免一次拉全站评论。 */
     private static final int MAX_PAGE_SIZE = 50;
     private static final int MAX_WORK_ID_LENGTH = 32;
+    /** 列表里每条顶层评论内嵌几条回复：够看出「有人在聊」，剩下的点进去看。 */
+    static final int PREVIEW_REPLIES = 3;
 
     private final UgcRepository repository;
     private final WorkRepository workRepository;
@@ -56,7 +61,12 @@ public class UgcService {
         this.settings = settings;
     }
 
-    /** 作品页评论列表：只返回 published，最新在前；作品不存在返回 404（与详情一致）。 */
+    /**
+     * 作品页评论列表：顶层评论分页（最新在前），每条内嵌最早 3 条回复与回复总数。
+     *
+     * <p>{@code total} 是**顶层评论数**，不含回复——否则「20 条评论里 18 条是回复」会让
+     * 翻页手感变得莫名其妙。回复自己走 {@link #listReplies}。
+     */
     public PageResponse<UgcCommentDto> list(String workId, int page, int pageSize) {
         String id = requireWorkId(workId);
         WorkRecord work = workRepository.findByWorkId(id)
@@ -67,15 +77,50 @@ public class UgcService {
         // 站点键取作品来源所属站点，而不是「谁在看」——未登录用户也要能看评论。
         String siteKey = siteKeyOfWork(work);
         long total = repository.countPublished(siteKey, id);
+        List<UgcRepository.Row> rows = repository.findPublished(siteKey, id, safeSize,
+                (safePage - 1) * safeSize);
+        if (rows.isEmpty()) {
+            return PageResponse.of(safePage, safeSize, total, List.of());
+        }
+
+        List<Long> floorIds = rows.stream().map(UgcRepository.Row::id).toList();
+        Map<Long, Integer> counts = repository.countRepliesByParents(siteKey, floorIds);
+        Map<Long, List<UgcRepository.Row>> previews =
+                repository.findRecentReplies(siteKey, floorIds, PREVIEW_REPLIES);
+        List<UgcCommentDto> items = new ArrayList<>(rows.size());
+        for (UgcRepository.Row row : rows) {
+            items.add(UgcService.toFloorDto(row, counts.getOrDefault(row.id(), 0),
+                    previews.getOrDefault(row.id(), List.of())));
+        }
+        return PageResponse.of(safePage, safeSize, total, items);
+    }
+
+    /** 某条顶层评论下的全部回复（对话顺序：最早在前），分页。 */
+    public PageResponse<UgcCommentDto> listReplies(String workId, String commentId, int page,
+                                                   int pageSize) {
+        String id = requireWorkId(workId);
+        WorkRecord work = workRepository.findByWorkId(id)
+                .orElseThrow(ApiException::workNotFound);
+        String siteKey = siteKeyOfWork(work);
+
+        long parentId = parseId(commentId);
+        UgcRepository.Row parent = repository.findById(siteKey, parentId)
+                .filter(r -> r.parentId() == null && "published".equals(r.status()))
+                .filter(r -> id.equals(r.workId()))
+                .orElseThrow(() -> new ApiException(ErrorCode.COMMENT_NOT_FOUND, "评论不存在"));
+
+        int safePage = Math.max(1, page);
+        int safeSize = Math.min(Math.max(1, pageSize), MAX_PAGE_SIZE);
+        long total = repository.countPublishedReplies(siteKey, parent.id());
         List<UgcCommentDto> items = repository
-                .findPublished(siteKey, id, safeSize, (safePage - 1) * safeSize)
+                .findPublishedReplies(siteKey, parent.id(), safeSize, (safePage - 1) * safeSize)
                 .stream()
-                .map(UgcService::toDto)
+                .map(UgcService::toReplyDto)
                 .toList();
         return PageResponse.of(safePage, safeSize, total, items);
     }
 
-    /** 发评论。201 由控制器给；这里只负责校验、限流与落库。 */
+    /** 发评论或回复。201 由控制器给；这里只负责校验、限流与落库。 */
     @Transactional
     public UgcCommentDto create(UserRecord user, UgcCommentRequest request) {
         if (request == null) {
@@ -97,6 +142,8 @@ public class UgcService {
             throw new ApiException(ErrorCode.FORBIDDEN, "作品不属于当前站点");
         }
 
+        Long parentId = resolveParent(siteKey, workId, request.parentId());
+
         LocalDateTime since = LocalDateTime.now(ZoneOffset.UTC).minusSeconds(RATE_WINDOW_SECONDS);
         if (repository.countRecentByUser(siteKey, user.id(), since) >= RATE_LIMIT) {
             throw new ApiException(ErrorCode.RATE_LIMITED,
@@ -104,11 +151,13 @@ public class UgcService {
         }
 
         // 发布策略：pre = 先审后发（落 pending，站主审核后才对外可见）；post = 先发后审（默认）。
+        // 回复与顶层用同一套策略：父评论已发布、回复待审是正常状态，客户端会提示「审核后显示」。
         String status = "pre".equals(settings.moderationMode(siteKey)) ? "pending" : "published";
-        long id = repository.insert(siteKey, workId, user.id(), body, status,
+        long id = repository.insert(siteKey, workId, user.id(), parentId, body, status,
                 LocalDateTime.now(ZoneOffset.UTC));
-        log.info("评论落库 site={} work={} user={} comment={}", siteKey, workId, user.userId(), id);
-        return repository.findById(siteKey, id).map(UgcService::toDto)
+        log.info("评论落库 site={} work={} user={} parent={} comment={}", siteKey, workId,
+                user.userId(), parentId, id);
+        return repository.findById(siteKey, id).map(UgcService::toReplyOrFloorDto)
                 .orElseThrow(() -> new IllegalStateException("评论刚插入却读不到：" + id));
     }
 
@@ -117,6 +166,8 @@ public class UgcService {
      *
      * <p>「不存在」与「别人的」分开处理：删除是幂等动作，重发不该报错；
      * 但明确是别人的评论时不该装作删掉了。
+     *
+     * <p>撤回的是**楼层**：顶层评论被删时，它下面的回复一起软删。回复被删时只影响自己。
      */
     @Transactional
     public void deleteOwn(UserRecord user, String commentId) {
@@ -128,17 +179,67 @@ public class UgcService {
         if (row.get().userId() != user.id()) {
             throw new ApiException(ErrorCode.FORBIDDEN, "只能删除自己的评论");
         }
-        repository.markDeleted(user.siteKey(), id, LocalDateTime.now(ZoneOffset.UTC));
+        repository.markFloorDeleted(user.siteKey(), id, LocalDateTime.now(ZoneOffset.UTC));
     }
 
-    private static UgcCommentDto toDto(UgcRepository.Row row) {
-        return new UgcCommentDto(
+    /**
+     * 解析并校验 {@code parent_id}。
+     *
+     * <p>父评论必须是**本作品下、已发布的顶层评论**：
+     * <ul>
+     *   <li>不存在 / 跨作品 / 非 published（待审、被隐藏、已删）→ 404，不泄露状态；</li>
+     *   <li>指向一条回复（parent 本身有 parent_id）→ 400「只支持两层」，这是用法错误，说清楚；</li>
+     *   <li>指向自己的回复链无限深 → 同样被上一条挡住。</li>
+     * </ul>
+     */
+    private Long resolveParent(String siteKey, String workId, String rawParentId) {
+        if (rawParentId == null || rawParentId.isBlank()) {
+            return null;
+        }
+        long parentId = parseId(rawParentId);
+        UgcRepository.Row parent = repository.findById(siteKey, parentId)
+                .orElseThrow(() -> new ApiException(ErrorCode.COMMENT_NOT_FOUND, "要回复的评论不存在"));
+        if (!workId.equals(parent.workId())) {
+            throw new ApiException(ErrorCode.COMMENT_NOT_FOUND, "要回复的评论不存在");
+        }
+        if (parent.parentId() != null) {
+            throw ApiException.badRequest("只支持回复主评论，不能回复回复");
+        }
+        if (!"published".equals(parent.status())) {
+            throw new ApiException(ErrorCode.COMMENT_NOT_FOUND, "要回复的评论不存在");
+        }
+        return parent.id();
+    }
+
+    private static UgcCommentDto toFloorDto(UgcRepository.Row row, int replyCount,
+                                            List<UgcRepository.Row> replies) {
+        return UgcCommentDto.floor(
                 String.valueOf(row.id()),
                 row.workId(),
                 row.username(),
                 row.body(),
                 row.status(),
-                row.createdAt() == null ? null : row.createdAt().toInstant(ZoneOffset.UTC));
+                row.createdAt() == null ? null : row.createdAt().toInstant(ZoneOffset.UTC),
+                replyCount,
+                replies.stream().map(UgcService::toReplyDto).toList());
+    }
+
+    private static UgcCommentDto toReplyDto(UgcRepository.Row row) {
+        return UgcCommentDto.reply(
+                String.valueOf(row.id()),
+                row.workId(),
+                row.username(),
+                row.body(),
+                row.status(),
+                row.createdAt() == null ? null : row.createdAt().toInstant(ZoneOffset.UTC),
+                row.parentId() == null ? null : String.valueOf(row.parentId()));
+    }
+
+    /** 发评论/回复的响应：按落库结果选形状（回复不带 reply_count）。 */
+    private static UgcCommentDto toReplyOrFloorDto(UgcRepository.Row row) {
+        return row.parentId() == null
+                ? toFloorDto(row, 0, List.of())
+                : toReplyDto(row);
     }
 
     private static String requireWorkId(String raw) {
