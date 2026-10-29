@@ -1,6 +1,8 @@
 package com.otaku.ugc;
 
 import com.otaku.common.ApiException;
+import com.otaku.console.ConsolePrincipal;
+import com.otaku.console.dto.ConsoleDtos;
 import com.otaku.common.PageResponse;
 import com.otaku.importer.ImportService;
 import com.otaku.importer.dto.ImportBatchRequest;
@@ -25,6 +27,7 @@ import org.springframework.test.context.ActiveProfiles;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -53,6 +56,12 @@ class UgcIntegrationTest {
     private UgcService service;
 
     @Autowired
+    private ConsoleUgcService consoleUgcService;
+
+    @Autowired
+    private UgcSettingsRepository settings;
+
+    @Autowired
     private ImportService importService;
 
     @Autowired
@@ -75,6 +84,9 @@ class UgcIntegrationTest {
                 + " VALUES (?, '别的站', 'active', NOW(3), NOW(3))", OTHER_SITE);
         jdbc.update("INSERT IGNORE INTO site_source (site_key, source, created_at) VALUES (?, ?, NOW(3))",
                 SITE, SOURCE);
+        // B2 起写入要求站主先开社区；本类的用例默认在「已开启」下跑，
+        // 开关本身的语义由 disabledSiteRejectsWrites / featuresReflectSetting 两条单独覆盖。
+        jdbc.update("UPDATE site SET ugc_enabled = 1 WHERE site_key = ?", SITE);
 
         alice = createUser("it-ugc-alice", SITE);
         bob = createUser("it-ugc-bob", SITE);
@@ -90,6 +102,7 @@ class UgcIntegrationTest {
 
     @AfterEach
     void cleanUp() {
+        jdbc.update("DELETE FROM console_audit WHERE actor_admin_id LIKE 'it-ugc-%'");
         jdbc.update("DELETE FROM ugc_comment WHERE site_key IN (?, ?)", SITE, OTHER_SITE);
         jdbc.update("DELETE FROM import_batch_run WHERE batch_id LIKE ?", BATCH_PREFIX + "%");
         jdbc.update("DELETE FROM import_batch WHERE batch_id LIKE ?", BATCH_PREFIX + "%");
@@ -176,6 +189,85 @@ class UgcIntegrationTest {
         // 换个用户不受影响（限流是按用户的，不是全局）
         service.create(bob, new UgcCommentRequest(workId, "别人不受影响"));
         assertThat(service.list(workId, 1, 20).total()).isEqualTo(UgcService.RATE_LIMIT + 1);
+    }
+
+    @Test
+    @DisplayName("站主没开社区：写接口 403，features 返回 false")
+    void disabledSiteRejectsWrites() {
+        jdbc.update("UPDATE site SET ugc_enabled = 0 WHERE site_key = ?", SITE);
+
+        assertThatThrownBy(() -> service.create(alice, new UgcCommentRequest(workId, "没开也发")))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("未开启社区");
+        assertThat(service.list(workId, 1, 20).total()).isZero();
+    }
+
+    @Test
+    @DisplayName("features 端点跟着开关走（单站实例按唯一 active 站点解析）")
+    void featuresReflectSetting() {
+        jdbc.update("UPDATE site SET status = 'suspended' WHERE site_key = ?", OTHER_SITE);
+        assertThat(featuresEnabled()).isTrue();
+
+        consoleUgcService.updateSetting(consoleAdmin(SITE), false);
+        assertThat(featuresEnabled()).isFalse();
+        consoleUgcService.updateSetting(consoleAdmin(SITE), true);
+        assertThat(featuresEnabled()).isTrue();
+    }
+
+    @Test
+    @DisplayName("后台审核：看得到、能隐藏、能恢复，且隐藏后客户端列表立刻消失")
+    void consoleCanHideAndPublish() {
+        UgcCommentDto comment = service.create(alice, new UgcCommentRequest(workId, "待审内容"));
+        ConsolePrincipal admin = consoleAdmin(SITE);
+
+        var page = consoleUgcService.list(admin, "published", 1, 20);
+        assertThat(page.total()).isEqualTo(1);
+        assertThat(page.items().get(0).workTitle()).isEqualTo("评论用例作品");
+
+        ConsoleDtos.UgcItem hidden = consoleUgcService.hide(admin, comment.commentId());
+        assertThat(hidden.status()).isEqualTo("hidden");
+        assertThat(service.list(workId, 1, 20).total()).as("隐藏后对外不可见").isZero();
+
+        // 幂等：再隐藏一次不报错，状态不变
+        assertThat(consoleUgcService.hide(admin, comment.commentId()).status()).isEqualTo("hidden");
+
+        ConsoleDtos.UgcItem back = consoleUgcService.publish(admin, comment.commentId());
+        assertThat(back.status()).isEqualTo("published");
+        assertThat(service.list(workId, 1, 20).total()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("后台只动本站：别的站的评论看不到，也隐藏不了（404 而不是悄悄改）")
+    void consoleIsIsolatedBySite() {
+        UgcCommentDto comment = service.create(alice, new UgcCommentRequest(workId, "本站评论"));
+        ConsolePrincipal otherAdmin = consoleAdmin(OTHER_SITE);
+
+        var page = consoleUgcService.list(otherAdmin, null, 1, 20);
+        assertThat(page.total()).isZero();
+        assertThat(page.items()).as("条目也必须为空，不能只让 total 是 0").isEmpty();
+        assertThatThrownBy(() -> consoleUgcService.hide(otherAdmin, comment.commentId()))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("评论不存在");
+    }
+
+    @Test
+    @DisplayName("开关变更写审计：谁在什么时候开/关，必须能查")
+    void settingChangeIsAudited() {
+        consoleUgcService.updateSetting(consoleAdmin(SITE), false);
+        Integer audited = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM console_audit WHERE action = 'ugc.setting' AND target_id = ?",
+                Integer.class, SITE);
+        assertThat(audited).isEqualTo(1);
+    }
+
+    private boolean featuresEnabled() {
+        // 与 UgcController.features() 同一口径
+        return settings.singleActiveSite().map(settings::isEnabled).orElse(false);
+    }
+
+    private static ConsolePrincipal consoleAdmin(String siteKey) {
+        return new ConsolePrincipal(1L, "it-ugc-admin", "it-ugc-admin", "审核员",
+                "platform", siteKey, siteKey);
     }
 
     // ---- 辅助 ----

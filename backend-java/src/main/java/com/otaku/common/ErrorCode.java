@@ -15,6 +15,8 @@ public enum ErrorCode {
     BATCH_NOT_FOUND(HttpStatus.NOT_FOUND),
     /** 资讯不存在。与上面两个同模式：404 需要区分是哪种实体，客户端据此显示不同空状态。 */
     ARTICLE_NOT_FOUND(HttpStatus.NOT_FOUND),
+    /** 评论不存在（后台审核用；客户端侧的删除按幂等 204 处理，不用这个码）。 */
+    COMMENT_NOT_FOUND(HttpStatus.NOT_FOUND),
 
     /** 阶段 2：口令错误或用户不存在（不区分两者，避免枚举账号）。 */
     INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED),

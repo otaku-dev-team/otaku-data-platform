@@ -121,6 +121,94 @@ public class UgcRepository {
                 .addValue("now", now));
     }
 
+    /** 后台审核列表用的一行：比客户端多作品标题与状态。 */
+    public record ConsoleRow(
+            long id,
+            String siteKey,
+            String workId,
+            String workTitle,
+            String username,
+            String body,
+            String status,
+            LocalDateTime createdAt
+    ) {
+    }
+
+    private static final RowMapper<ConsoleRow> CONSOLE_MAPPER = (rs, rowNum) -> new ConsoleRow(
+            rs.getLong("id"),
+            rs.getString("site_key"),
+            rs.getString("work_id"),
+            rs.getString("work_title"),
+            rs.getString("username"),
+            rs.getString("body"),
+            rs.getString("status"),
+            rs.getObject("created_at", LocalDateTime.class));
+
+    /**
+     * 后台审核列表：按站点过滤，可按状态筛（null = 全部）。
+     *
+     * <p>排序用「最新在前」而不是「published 优先」：审核场景看的是刚发出来的，
+     * 不是最好看的。
+     */
+    public List<ConsoleRow> findForConsole(String siteKey, String status, int limit, int offset) {
+        StringBuilder sql = new StringBuilder("""
+                SELECT c.id, c.site_key, c.work_id, COALESCE(w.title, c.work_id) AS work_title,
+                       u.username, c.body, c.status, c.created_at
+                  FROM ugc_comment c
+                  JOIN app_user u ON u.id = c.user_id
+                  LEFT JOIN work w ON w.work_id = c.work_id
+                 WHERE c.site_key = :siteKey
+                """);
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("siteKey", siteKey)
+                .addValue("limit", limit)
+                .addValue("offset", offset);
+        if (status != null) {
+            sql.append(" AND c.status = :status");
+            params.addValue("status", status);
+        }
+        sql.append(" ORDER BY c.created_at DESC, c.id DESC LIMIT :limit OFFSET :offset");
+        return jdbc.query(sql.toString(), params, CONSOLE_MAPPER);
+    }
+
+    /** 单条（后台）：隐藏/恢复后要回一份带作品标题的最新状态。 */
+    public Optional<ConsoleRow> findForConsoleById(String siteKey, long id) {
+        return jdbc.query("""
+                        SELECT c.id, c.site_key, c.work_id, COALESCE(w.title, c.work_id) AS work_title,
+                               u.username, c.body, c.status, c.created_at
+                          FROM ugc_comment c
+                          JOIN app_user u ON u.id = c.user_id
+                          LEFT JOIN work w ON w.work_id = c.work_id
+                         WHERE c.site_key = :siteKey AND c.id = :id
+                        """,
+                new MapSqlParameterSource().addValue("siteKey", siteKey).addValue("id", id),
+                CONSOLE_MAPPER).stream().findFirst();
+    }
+
+    public long countForConsole(String siteKey, String status) {
+        StringBuilder sql = new StringBuilder(
+                "SELECT COUNT(*) FROM ugc_comment c WHERE c.site_key = :siteKey");
+        MapSqlParameterSource params = new MapSqlParameterSource().addValue("siteKey", siteKey);
+        if (status != null) {
+            sql.append(" AND c.status = :status");
+            params.addValue("status", status);
+        }
+        Long total = jdbc.queryForObject(sql.toString(), params, Long.class);
+        return total == null ? 0L : total;
+    }
+
+    /** 后台改状态；只对存在的行生效，返回影响行数（0 = 不存在或跨站）。 */
+    public int updateStatus(String siteKey, long id, String status, LocalDateTime now) {
+        return jdbc.update("""
+                UPDATE ugc_comment SET status = :status, updated_at = :now
+                 WHERE site_key = :siteKey AND id = :id
+                """, new MapSqlParameterSource()
+                .addValue("siteKey", siteKey)
+                .addValue("id", id)
+                .addValue("status", status)
+                .addValue("now", now));
+    }
+
     /** 最近一段时间内该用户发了几条（防刷屏）。 */
     public int countRecentByUser(String siteKey, long userId, LocalDateTime since) {
         Integer count = jdbc.queryForObject("""

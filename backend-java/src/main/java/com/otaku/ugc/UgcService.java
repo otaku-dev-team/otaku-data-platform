@@ -47,10 +47,13 @@ public class UgcService {
 
     private final UgcRepository repository;
     private final WorkRepository workRepository;
+    private final UgcSettingsRepository settings;
 
-    public UgcService(UgcRepository repository, WorkRepository workRepository) {
+    public UgcService(UgcRepository repository, WorkRepository workRepository,
+                      UgcSettingsRepository settings) {
         this.repository = repository;
         this.workRepository = workRepository;
+        this.settings = settings;
     }
 
     /** 作品页评论列表：只返回 published，最新在前；作品不存在返回 404（与详情一致）。 */
@@ -83,6 +86,11 @@ public class UgcService {
         WorkRecord work = workRepository.findByWorkId(workId)
                 .orElseThrow(ApiException::workNotFound);
         String siteKey = siteKeyOfWork(work);
+        // 站主没开社区 → 写接口一律 403。开关是**产品决定**（要不要在自己站上承载用户内容），
+        // 不是技术细节，所以由站主在后台开，后端只做闸门。
+        if (!settings.isEnabled(siteKey)) {
+            throw new ApiException(ErrorCode.FORBIDDEN, "本站未开启社区功能");
+        }
         // 站点隔离：用户只能在自己站点的作品下发评论。跨站用户拿到工作 id 也发不了。
         // 历史账号 site_key 可能为 null（V10 之前的行）——按「未归属」处理，一律拒绝写入。
         if (!siteKey.equals(user.siteKey())) {

@@ -244,6 +244,11 @@ class ContractDriftTest {
         // 平台代存 UGC · 评论（#240 B1）：作者只给用户名，内部 id/状态不外露
         targets.put("UgcComment", com.otaku.ugc.dto.UgcCommentDto.class);
         targets.put("UgcCommentPage", PageResponse.class);
+        targets.put("SiteFeatures", com.otaku.ugc.dto.SiteFeaturesDto.class);
+        // 后台审核（#240 B2a）：评论行多作品标题与状态，开关两个方向
+        targets.put("ConsoleUgcItem", com.otaku.console.dto.ConsoleDtos.UgcItem.class);
+        targets.put("ConsoleUgcPage", PageResponse.class);
+        targets.put("SiteUgcSetting", com.otaku.console.dto.ConsoleDtos.UgcSetting.class);
         return targets;
     }
 
@@ -258,6 +263,7 @@ class ContractDriftTest {
         targets.put("ImportBatchRequest", com.otaku.importer.dto.ImportBatchRequest.class);
         targets.put("DeletionRequest", com.otaku.importer.dto.DeletionRequest.class);
         targets.put("UgcCommentRequest", com.otaku.ugc.dto.UgcCommentRequest.class);
+        targets.put("SiteUgcSettingUpdate", com.otaku.console.dto.ConsoleDtos.UgcSettingUpdate.class);
         targets.put("ImportItem", com.otaku.importer.dto.ImportBatchRequest.ImportItem.class);
         targets.put("ScheduleImportRequest", com.otaku.schedule.dto.ScheduleImportRequest.class);
         targets.put("ScheduleImportItem", com.otaku.schedule.dto.ScheduleImportRequest.ScheduleImportItem.class);

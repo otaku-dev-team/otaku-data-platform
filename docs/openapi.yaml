@@ -255,6 +255,28 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "500": { $ref: "#/components/responses/InternalError" }
 
+  /api/site/features:
+    get:
+      tags: [社区]
+      summary: 本站能力开关（客户端据此决定内置评论区还是跳原页）
+      operationId: getSiteFeatures
+      description: |
+        一个部署服务一个站，所以不需要站点参数。
+
+        - `ugc_enabled: false` → 客户端作品页底部**跳来源站原页**，不渲染评论区；
+        - `ugc_enabled: true` → 用 `GET /api/works/{work_id}/comments` 渲染内置评论区。
+
+        解析不出「唯一 active 站点」时一律返回 `false`（fail-closed）：多站部署是将来形态，
+        那时应给实例配站点标识，而不是在这里猜。
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SiteFeatures" }
+        "429": { $ref: "#/components/responses/RateLimitedWithRetry" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
   /api/works/{work_id}/comments:
     get:
       tags: [社区]
@@ -1177,6 +1199,133 @@ paths:
         "204": { description: 已修改 }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/UnauthorizedSession" }
+
+  /api/console/ugc:
+    get:
+      tags: [站主后台]
+      summary: 本站评论列表（审核用）
+      operationId: listConsoleUgc
+      description: |
+        按登录站主的站点过滤（**不接受站点参数**）。`status` 可选
+        `published` / `hidden` / `deleted` / `all`（缺省 = 全部），最新在前。
+      security:
+        - consoleAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string, enum: [published, hidden, deleted, all] }
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: page_size
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConsoleUgcPage" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimitedWithRetry" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /api/console/ugc/{comment_id}/hide:
+    post:
+      tags: [站主后台]
+      summary: 隐藏一条评论
+      operationId: hideConsoleUgc
+      description: |
+        隐藏后客户端列表立刻不可见（`status=hidden`），但数据保留、可随时恢复。
+        幂等：已隐藏再点一次不报错、不重复记审计。跨站 id 返回 `404`，不是悄悄改。
+      security:
+        - consoleAuth: []
+      parameters:
+        - name: comment_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: 隐藏后的最新状态
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConsoleUgcItem" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimitedWithRetry" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /api/console/ugc/{comment_id}/publish:
+    post:
+      tags: [站主后台]
+      summary: 恢复一条被隐藏的评论
+      operationId: publishConsoleUgc
+      description: 与隐藏对称；已发布的再恢复一次不报错。
+      security:
+        - consoleAuth: []
+      parameters:
+        - name: comment_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: 恢复后的最新状态
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConsoleUgcItem" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimitedWithRetry" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /api/console/site/ugc:
+    get:
+      tags: [站主后台]
+      summary: 本站社区开关
+      operationId: getConsoleUgcSetting
+      description: |
+        默认 `false`。这是**产品决定**（要不要在自己站上承载用户内容），
+        由站主自己开，平台不代劳。
+      security:
+        - consoleAuth: []
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SiteUgcSetting" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimitedWithRetry" }
+        "500": { $ref: "#/components/responses/InternalError" }
+    put:
+      tags: [站主后台]
+      summary: 开关本站社区
+      operationId: updateConsoleUgcSetting
+      description: |
+        变更会写审计（`ugc.setting`）：谁在什么时候开/关，必须能查。
+
+        - 关：客户端写接口 403，`/api/site/features` 返回 `false`；
+        - 开：恢复写入。**已有的评论不会因为关开关被删除**。
+      security:
+        - consoleAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SiteUgcSettingUpdate" }
+      responses:
+        "200":
+          description: 变更后的状态
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SiteUgcSetting" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimitedWithRetry" }
+        "500": { $ref: "#/components/responses/InternalError" }
 
   /api/console/overview:
     get:
@@ -2248,6 +2397,61 @@ components:
           maxLength: 1000
           description: 纯文本；去首尾空白后为空 → 400
           example: "第三集的作画真是顶。"
+
+    SiteFeatures:
+      type: object
+      required: [ugc_enabled]
+      properties:
+        ugc_enabled:
+          type: boolean
+          description: 本站是否开启社区（作品评论）。`false` 时客户端跳来源站原页补位
+          example: false
+
+    ConsoleUgcItem:
+      type: object
+      required: [comment_id, work_id, work_title, author, body, status, created_at]
+      properties:
+        comment_id: { type: string, example: "1024" }
+        work_id: { type: string, example: "W-8f3a91" }
+        work_title:
+          type: string
+          description: 作品标题（用于审核时判断上下文）；作品已不存在时回落成 work_id
+          example: "骇客娃娃"
+        author: { type: string, example: "kagamimi" }
+        body: { type: string, example: "第三集的作画真是顶。" }
+        status:
+          type: string
+          enum: [published, hidden, deleted]
+        created_at: { type: string, format: date-time, example: "2026-10-29T05:10:00Z" }
+
+    ConsoleUgcPage:
+      type: object
+      required: [total, page, page_size, total_pages, items]
+      properties:
+        total: { type: integer, example: 12 }
+        page: { type: integer, example: 1 }
+        page_size: { type: integer, example: 20 }
+        total_pages: { type: integer, example: 1 }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/ConsoleUgcItem" }
+
+    SiteUgcSetting:
+      type: object
+      required: [enabled]
+      properties:
+        enabled:
+          type: boolean
+          description: 本站社区开关。默认 `false`（合规责任在网站，开不开由站主决定）
+          example: true
+
+    SiteUgcSettingUpdate:
+      type: object
+      required: [enabled]
+      properties:
+        enabled:
+          type: boolean
+          description: 必填；缺省不当作 false（那会静默关掉功能）
 
     SchedulePage:
       type: object
