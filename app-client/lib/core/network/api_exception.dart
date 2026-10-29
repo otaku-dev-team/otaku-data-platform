@@ -10,6 +10,19 @@ enum ApiErrorCode {
   /// 登录时账号密码不对。与 [unauthorized] 同为 401，但**不能清已有会话**。
   invalidCredentials('INVALID_CREDENTIALS'),
 
+  /// 站点身份映射的平台账号已被禁用（`app_user.status = disabled`，契约 403）。
+  ///
+  /// 与 401 的区别是**用户重做一次也解决不了**：再授权几次拿到的还是这个
+  /// 被禁用的平台账号。所以提示停在「已禁用」，不要往「重试」上引。
+  userDisabled('USER_DISABLED'),
+
+  /// 站点侧授权链路暂不可用（超时 / 5xx / 未配置），契约 503。
+  ///
+  /// **用户动作与 401 恰好相反**：契约 §1.1 要求这时**不要引导重走授权**——
+  /// 站点自己都不可用，重走必然再失败，只会把用户推进一个死循环。
+  /// 因此文案只说「稍后再试」，这条注释是以后改文案时不许删的依据。
+  siteUnavailable('SITE_UNAVAILABLE'),
+
   /// 改状态时该作品已不在收藏里（C11）。提示刷新，**不得静默重新收藏**。
   collectionRequired('COLLECTION_REQUIRED'),
 
@@ -90,6 +103,8 @@ class ApiException implements Exception {
     ApiErrorCode.articleNotFound => '资讯不存在',
     ApiErrorCode.unauthorized => '登录已过期，请重新登录',
     ApiErrorCode.invalidCredentials => '账号或密码不正确',
+    ApiErrorCode.userDisabled => '账号已被禁用',
+    ApiErrorCode.siteUnavailable => '站点登录暂不可用，请稍后再试',
     ApiErrorCode.collectionRequired => '该作品已不在收藏中，请刷新后重试',
     ApiErrorCode.cancelled => '请求已取消',
     _ => message.isNotEmpty ? message : '出了点问题，请重试',

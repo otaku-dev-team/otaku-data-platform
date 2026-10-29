@@ -312,19 +312,29 @@ class AuthController extends Notifier<AuthState> {
     }
   }
 
-  /// 票据类 401 改文案。
+  /// 站点票据换会话的失败分档。
   ///
-  /// `UNAUTHORIZED` 的默认文案是「登录已过期，请重新登录」——那是**会话失效**的
-  /// 语义。而这里的 401 是站点票据的问题（过期 / 被用过 / 平台侧 secret 错），
-  /// 用户可能压根还没登录过，告诉他「登录已过期」只会让人去找一个不存在的问题。
+  /// 为什么要分：契约 §1.1 给三类失败规定了**不同的用户动作**，混成一句
+  /// 「授权失败，请重试」会让人去做一件必然失败的事。
+  ///
+  /// - **401**（后端实测返 `INVALID_CREDENTIALS`，见下方判据）→ 票据过期 /
+  ///   被用过 / 平台侧 secret 错，**引导重新授权**。文案必须是「重新授权」
+  ///   而不是「重试」：票据是一次性的，重试＝拿同一张票再发一次，必然再失败，
+  ///   只有重走授权才拿得到新票。这正是契约那句「不要静默重试」的意思。
+  /// - **503** `SITE_UNAVAILABLE` → 站点侧不可用，**不要**引导重走授权，
+  ///   交给 [ApiErrorCode.siteUnavailable] 自己的文案（只说稍后再试）。
+  /// - **403** `USER_DISABLED` → 账号被禁用，重做几次都一样，停在「已禁用」。
+  ///
+  /// ⚠️ 判据里 `unauthorized` 不能删：那是**旧实现的码**，也是本文件历史注释
+  /// 写的码。后端实际返 `INVALID_CREDENTIALS`（2026-10-29 对生产实测确认），
+  /// 只认其中一个，另一个就会整档失效——而失效的表现是测试照绿、真机错文案。
   static Object _siteLoginError(Object raw) {
-    if (raw is ApiException && raw.code == ApiErrorCode.unauthorized) {
-      return const ApiException(
-        code: ApiErrorCode.unknown,
-        message: '授权失败，请重试',
-      );
-    }
-    return raw;
+    if (raw is! ApiException) return raw;
+    return switch (raw.code) {
+      ApiErrorCode.invalidCredentials || ApiErrorCode.unauthorized =>
+        const ApiException(code: ApiErrorCode.unknown, message: '授权已失效，请重新授权'),
+      _ => raw,
+    };
   }
 }
 
