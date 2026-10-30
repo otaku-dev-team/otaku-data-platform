@@ -118,6 +118,29 @@ services:
       LOGGING_LEVEL_ROOT: ${LOG_LEVEL_ROOT:-INFO}
       MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS: never
       TZ: ${TZ:-Asia/Shanghai}
+      # ── 访问日志（Tomcat access log）──────────────────────────
+      # 为什么开：在此之前**全链路没有任何请求级记录**——没有 Nginx 反代
+      # （生产的下载走宿主机 nginx，API 是 :8080 直连），后端也没开 accesslog，
+      # 于是「有多少人在用」这个问题一次都答不上来。这是唯一的观测出口。
+      #
+      # 隐私口径（别改）：
+      #   1. pattern 用 `%U`（**只要路径，不带 query string**）——
+      #      搜索词、筛选条件都在这条链路里，落盘等于留用户行为指纹。
+      #   2. IP 是个人信息，但《网络安全法》第 21 条要求网络日志留存 ≥ 6 个月，
+      #      安全审计属正当必要；**不对外提供、不与其他数据关联**是使用边界。
+      #   3. max-days=190（≈6 个月）而不是默认的 -1（永不删）：
+      #      法定下限满足即止，不做无限期留存。
+      #   4. buffered=false：否则日志攒在缓冲区里，出事时看不到最近几秒。
+      SERVER_TOMCAT_ACCESSLOG_ENABLED: ${ACCESS_LOG_ENABLED:-true}
+      SERVER_TOMCAT_ACCESSLOG_DIRECTORY: /app/logs
+      SERVER_TOMCAT_ACCESSLOG_PREFIX: access
+      SERVER_TOMCAT_ACCESSLOG_SUFFIX: .log
+      # 默认 .yyyy-MM-dd → access.2026-10-31.log，配下面的 bind mount 落在宿主机
+      SERVER_TOMCAT_ACCESSLOG_ROTATE: "true"
+      SERVER_TOMCAT_ACCESSLOG_MAX_DAYS: "190"
+      SERVER_TOMCAT_ACCESSLOG_BUFFERED: "false"
+      # %a 来源 IP / %t 时间 / %m %U 方法+路径(无 query) / %s 状态 / %b 字节 / %D 耗时(微秒) / UA
+      SERVER_TOMCAT_ACCESSLOG_PATTERN: '%a %{yyyy-MM-dd HH:mm:ss.SSS}t "%m %U" %s %b %D "%{User-Agent}i"'
     # 只绑回环：公网流量一律经 Nginx。
     # 容器之间走 compose 网络（backend:8080），不依赖这条 ports——
     # 所以收紧它不影响反代，只是把「后端 8080 直接暴露在公网」这件事关掉。
@@ -128,6 +151,10 @@ services:
       # 封面缓存必须持久化：不挂卷的话每次重启都要回源重抓，
       # 而来源站 42% 的页会断连，用户侧会看到大量糊图。
       - cover-cache:/app/data/covers
+      # 访问日志落宿主机：容器里的 /app/logs 是 uid 999(otaku) 写的，
+      # 宿主机 ./logs 必须先 `chown 999:999`（compose 不会替你改属主，
+      # 属主不对时 Tomcat 起得来但写不进日志，**且只在日志里 warning 一句**）。
+      - ./logs:/app/logs
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/actuator/health"]
       interval: 30s
