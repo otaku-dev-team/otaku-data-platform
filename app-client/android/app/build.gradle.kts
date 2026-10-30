@@ -20,8 +20,7 @@ android {
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
-        // flutter_local_notifications（追番提醒，W1.3a）用了 java.time，
-        // 需要开启 core library desugaring 才能在 minSdk 24 上跑。
+        // 依赖树里仍有插件用到 java.time（minSdk 24 上需要脱糖才能跑）。
         // 不开的话构建会直接失败，报 "requires core library desugaring"。
         isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17

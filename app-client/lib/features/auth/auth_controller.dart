@@ -210,22 +210,45 @@ class AuthController extends Notifier<AuthState> {
       state: SiteAuthState.generate(),
       startedAt: DateTime.now().toUtc(),
     );
-    await store.save(attempt);
+    try {
+      await store.save(attempt);
 
-    final opened = await launcher.openAuthorize(state: attempt.state);
-    if (!ref.mounted) return;
-    if (!opened) {
-      // 打不开浏览器（没有可处理的 Activity 等）要说出来，别让用户
-      // 盯着一个没反应的按钮猜。
+      final opened = await launcher.openAuthorize(state: attempt.state);
+      if (!ref.mounted) return;
+      if (!opened) {
+        // 打不开浏览器（没有可处理的 Activity 等）要说出来，别让用户
+        // 盯着一个没反应的按钮猜。
+        await store.clear();
+        state = state.copyWith(
+          submitting: false,
+          error: const ApiException(
+            code: ApiErrorCode.unknown,
+            message: '打不开授权页面，请检查是否安装了浏览器',
+          ),
+        );
+      }
+      // opened == true 时 submitting 继续保持：等回跳（成功）或取消（见
+      // [cancelSiteLogin]）来收尾。
+    } on Object catch (raw) {
+      // 落盘 / 推路由的意外异常也不能把按钮留在转圈状态。
+      if (!ref.mounted) return;
       await store.clear();
       state = state.copyWith(
         submitting: false,
-        error: const ApiException(
-          code: ApiErrorCode.unknown,
-          message: '打不开授权页面，请检查是否安装了浏览器',
-        ),
+        error: ApiException.fromAny(raw),
       );
     }
+  }
+
+  /// 用户在授权页里放弃登录（返回 / 关页）时收尾。
+  ///
+  /// 这不是错误：用户主动退出，不该弹红色错误条，只把「正在登录」放下，
+  /// 让登录按钮回到可点状态。已登录时不动——回跳成功后又取消的情况以成功为准。
+  void cancelSiteLogin() {
+    if (!ref.mounted) return;
+    if (state.status == AuthStatus.signedIn) return;
+    if (!state.submitting) return;
+    state = state.copyWith(submitting: false);
   }
 
   /// 处理站点回跳：`com.otaku.app:/oauth2redirect?ticket=…&state=…`。
@@ -245,6 +268,10 @@ class AuthController extends Notifier<AuthState> {
     if (attempt == null) {
       // 没有进行中的授权。可能是别的 App 拿同一个 scheme 试探，
       // 也可能是用户清理过数据——不弹错误，安静结束。
+      // 但要把「正在登录」放下：票据没了却留着 submitting，就是永远转圈。
+      if (state.status != AuthStatus.signedIn) {
+        state = state.copyWith(submitting: false);
+      }
       return false;
     }
     if (!attempt.matches(uri.queryParameters['state'])) {

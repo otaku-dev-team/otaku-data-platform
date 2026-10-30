@@ -95,59 +95,79 @@ class CoverImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final imageUrl = url;
-    final hasCover = imageUrl != null && imageUrl.isNotEmpty;
-    final badge = source;
+    // 按**实际显示尺寸**解码，而不是把来源图原尺寸全解出来：
+    // 后端 `/api/covers` 实测单张 40KB–460KB，原图长边常在 1000px 以上，
+    // 网格里一次十几张全尺寸解码会明显卡顿、也更容易被系统回收。
+    // 拿不到有限宽度（网格/头图传的是 infinity）时用父级约束。
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final dpr = MediaQuery.devicePixelRatioOf(context);
+        final targetWidth = width.isFinite && width > 0
+            ? width
+            : (constraints.maxWidth.isFinite
+                  ? constraints.maxWidth
+                  : MediaQuery.sizeOf(context).width);
+        final cacheWidth = (targetWidth * dpr).round().clamp(48, 1600).toInt();
 
-    final cover = hasCover
-        ? CachedNetworkImage(
-              imageUrl: imageUrl,
-              width: width,
-              height: height,
-              fit: BoxFit.cover,
-              fadeInDuration: const Duration(milliseconds: 160),
-              placeholder: (context, url) => loadingFallback(
-                width: width,
-                height: height,
-              ),
-              errorWidget: (context, url, error) => errorFallback(
+        final imageUrl = url;
+        final hasCover = imageUrl != null && imageUrl.isNotEmpty;
+        final badge = source;
+
+        final cover = hasCover
+            ? CachedNetworkImage(
+                  imageUrl: imageUrl,
+                  width: width,
+                  height: height,
+                  fit: BoxFit.cover,
+                  fadeInDuration: const Duration(milliseconds: 160),
+                  // 解码与磁盘缓存都按显示尺寸压一档：换来的是首屏更快、
+                  // 滚动时不再反复解大图。
+                  memCacheWidth: cacheWidth,
+                  maxWidthDiskCache: cacheWidth,
+                  placeholder: (context, url) => loadingFallback(
+                    width: width,
+                    height: height,
+                  ),
+                  errorWidget: (context, url, error) => errorFallback(
+                    width: width,
+                    height: height,
+                    label: placeholderLabel,
+                    style: placeholderStyle,
+                  ),
+                )
+            : errorFallback(
                 width: width,
                 height: height,
                 label: placeholderLabel,
                 style: placeholderStyle,
-              ),
-            )
-          : errorFallback(
-              width: width,
-              height: height,
-              label: placeholderLabel,
-              style: placeholderStyle,
-            );
+              );
 
-    if (badge == null) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(radius),
-        child: cover,
-      );
-    }
+        if (badge == null) {
+          return ClipRRect(
+            borderRadius: BorderRadius.circular(radius),
+            child: cover,
+          );
+        }
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(radius),
-      child: _boxIfSized(
-        Stack(
-          children: [
-            Positioned.fill(child: cover),
-            // 贴角而不是占一行：这里的高度（尤其是网格卡片）是按字号量死的，
-            // 多一行会把正文挤出卡片。
-            Positioned.directional(
-              textDirection: Directionality.of(context),
-              start: 6,
-              bottom: 6,
-              child: SourceBadge(source: badge),
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(radius),
+          child: _boxIfSized(
+            Stack(
+              children: [
+                Positioned.fill(child: cover),
+                // 贴角而不是占一行：这里的高度（尤其是网格卡片）是按字号量死的，
+                // 多一行会把正文挤出卡片。
+                Positioned.directional(
+                  textDirection: Directionality.of(context),
+                  start: 6,
+                  bottom: 6,
+                  child: SourceBadge(source: badge),
+                ),
+              ],
             ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 

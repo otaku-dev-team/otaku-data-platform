@@ -9,7 +9,6 @@ import '../../data/models/work.dart';
 import '../../data/repositories/collection_repository.dart';
 import '../auth/auth_controller.dart';
 import '../collection/collection_controller.dart';
-import '../reminders/reminder_service.dart';
 
 /// 单部作品的收藏状态（详情页用）。
 ///
@@ -142,10 +141,6 @@ class WorkCollectionController extends AsyncNotifier<CollectionState> {
 
   void _invalidateList() {
     ref.invalidate(collectionControllerProvider);
-    // 收藏变了，提醒也要重排：把手上的作品收进/移出「在看」，
-    // 决定的是「以后还提不提醒我」。同一次操作里顺手做掉，
-    // 比等下一次冷启动更符合用户的预期。
-    unawaited(ref.read(reminderServiceProvider).refresh());
   }
 
   static const ApiException _unknownStateError = ApiException(
