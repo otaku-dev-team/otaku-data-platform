@@ -258,6 +258,11 @@ class ContractDriftTest {
         targets.put("CommentReport", com.otaku.ugc.dto.CommentReportDto.class);
         targets.put("ConsoleReportItem", com.otaku.console.dto.ConsoleDtos.ReportItem.class);
         targets.put("ConsoleReportPage", PageResponse.class);
+        // 运行期配置（V27）：公开读 + 内部写的回执；AdultRebuildResult 是嵌在回执里的重建结果，
+        // 直接映射 AdultFlagRebuilder.Result —— 它没有单独的 DTO，字段就是审计口径
+        targets.put("AppConfig", com.otaku.appconfig.dto.AppConfigDtos.AppConfig.class);
+        targets.put("AppConfigUpdateResult", com.otaku.appconfig.dto.AppConfigDtos.ConfigUpdateResult.class);
+        targets.put("AdultRebuildResult", com.otaku.work.AdultFlagRebuilder.Result.class);
         return targets;
     }
 
@@ -292,6 +297,8 @@ class ContractDriftTest {
         targets.put("SiteCreateRequest", com.otaku.console.dto.InternalSiteDtos.SiteCreateRequest.class);
         targets.put("SiteAdminCreateRequest", com.otaku.console.dto.InternalSiteDtos.SiteAdminCreateRequest.class);
         targets.put("DeviceRegistrationRequest", com.otaku.device.dto.DeviceRegistrationRequest.class);
+        // 改一条运行期配置（V27）：value 是任意 JSON，所以契约里也只钉 key/value/note 三个字段名
+        targets.put("AppConfigUpdate", com.otaku.appconfig.dto.AppConfigDtos.ConfigUpdate.class);
         return targets;
     }
 

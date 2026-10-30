@@ -2492,16 +2492,16 @@ components:
 
     AdultRebuildResult:
       type: object
-      required: [enabled, hiddenWorks, tagRows, millis]
+      required: [enabled, hidden_works, tag_rows, millis]
       properties:
         enabled:
           type: boolean
           description: 本次重算时遮挡是否开着；false 表示全库已清零
-        hiddenWorks:
+        hidden_works:
           type: integer
           format: int64
           description: 重算后仍被隐藏的作品数
-        tagRows:
+        tag_rows:
           type: integer
           description: work_tag 里实际改动的行数
         millis:
