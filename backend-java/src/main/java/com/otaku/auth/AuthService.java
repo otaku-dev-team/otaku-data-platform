@@ -9,12 +9,17 @@ import com.otaku.common.PublicIdGenerator;
 import com.otaku.common.SessionTokens;
 import com.otaku.session.SessionRecord;
 import com.otaku.session.SessionRepository;
+import com.otaku.user.AccountDeletedEvent;
 import com.otaku.user.UserRecord;
 import com.otaku.user.UserRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.Duration;
@@ -35,6 +40,8 @@ import java.util.Optional;
 @Service
 public class AuthService {
 
+    private static final Logger log = LoggerFactory.getLogger(AuthService.class);
+
     static final Duration SESSION_TTL = Duration.ofDays(30);
     private static final Duration TOUCH_INTERVAL = Duration.ofMinutes(5);
     private static final int USERNAME_MIN = 3;
@@ -47,14 +54,39 @@ public class AuthService {
     private final SessionRepository sessionRepository;
     private final PublicIdGenerator idGenerator;
     private final LoginThrottle loginThrottle;
+    private final ApplicationEventPublisher events;
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder(BCRYPT_COST);
 
     public AuthService(UserRepository userRepository, SessionRepository sessionRepository,
-                       PublicIdGenerator idGenerator, LoginThrottle loginThrottle) {
+                       PublicIdGenerator idGenerator, LoginThrottle loginThrottle,
+                       ApplicationEventPublisher events) {
         this.userRepository = userRepository;
         this.sessionRepository = sessionRepository;
         this.idGenerator = idGenerator;
         this.loginThrottle = loginThrottle;
+        this.events = events;
+    }
+
+    /**
+     * 用户注销自己的账号（#240 B2c⑤）。
+     *
+     * <p>口径（zm 2026-10-30 定）：**匿名化保留**——评论行不动，展示层显示「已注销用户」，
+     * 楼层不塌；物理删由 UGC 侧一个默认关闭的开关控制，最终以站点/法务口径为准。
+     *
+     * <p>三件事：置 {@code deleted_at} + {@code status=disabled}（之后登录一律失败）、
+     * 撤销全部会话（其他设备立刻掉线）、发事件让 UGC 决定要不要动评论。
+     *
+     * <p>不做「二次确认」这类产品逻辑：那属于客户端交互，服务端只负责一次性的、幂等的状态迁移。
+     */
+    @Transactional
+    public void deleteAccount(UserRecord user) {
+        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
+        int updated = userRepository.markDeleted(user.id(), now);
+        sessionRepository.revokeAllForUser(user.id(), now);
+        if (updated > 0) {
+            events.publishEvent(new AccountDeletedEvent(user.id(), user.siteKey()));
+        }
+        log.info("账号注销 user={} site={} changed={}", user.userId(), user.siteKey(), updated);
     }
 
     /** 内部建号（POST /internal/accounts）：不返回会话，账号由负责人创建。 */

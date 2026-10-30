@@ -18,7 +18,7 @@ import java.time.ZoneOffset;
  * <p>只清 {@code status='deleted'}。已发布 / 待审 / 已隐藏的评论一条都不动：
  * 那些还有产品意义，清掉等于替站主删内容。
  *
- * <p>保留期是**配置项**（{@code app.ugc.retention.deleted-days}，默认 90），
+ * <p>保留期是**配置项**（{@code app.ugc.retention.deleted-days}，开发期默认 15），
  * 站点 / 法务给出不同口径时改配置即可，不写死；配成 0 = 不清理。
  *
  * <p>范式照 {@link com.otaku.device.DeviceCleanupJob}。
@@ -32,7 +32,7 @@ public class UgcCleanupJob {
     private final int retentionDays;
 
     public UgcCleanupJob(UgcRepository repository,
-                         @Value("${app.ugc.retention.deleted-days:90}") int retentionDays) {
+                         @Value("${app.ugc.retention.deleted-days:15}") int retentionDays) {
         this.repository = repository;
         this.retentionDays = retentionDays;
     }

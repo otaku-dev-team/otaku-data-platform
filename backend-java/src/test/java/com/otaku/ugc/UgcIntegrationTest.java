@@ -1,5 +1,6 @@
 package com.otaku.ugc;
 
+import com.otaku.auth.AuthService;
 import com.otaku.common.ApiException;
 import com.otaku.console.ConsolePrincipal;
 import com.otaku.console.dto.ConsoleDtos;
@@ -12,6 +13,7 @@ import com.otaku.ugc.dto.CommentReportRequest;
 import com.otaku.ugc.dto.UgcCommentDto;
 import com.otaku.ugc.dto.UgcCommentEditRequest;
 import com.otaku.ugc.dto.UgcCommentRequest;
+import com.otaku.user.AccountDeletedEvent;
 import com.otaku.user.UserRecord;
 import com.otaku.work.WorkRecord;
 import com.otaku.work.WorkRepository;
@@ -30,6 +32,7 @@ import org.springframework.test.context.ActiveProfiles;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -69,6 +72,12 @@ class UgcIntegrationTest {
 
     @Autowired
     private UgcCleanupJob cleanupJob;
+
+    @Autowired
+    private AuthService authService;
+
+    @Autowired
+    private UgcRepository ugcRepository;
 
     @Autowired
     private ImportService importService;
@@ -607,6 +616,46 @@ class UgcIntegrationTest {
         assertThat(edited.body()).isEqualTo("回复改过");
         assertThat(edited.parentId()).isEqualTo(floor.commentId());
         assertThat(edited.replyCount()).isNull();
+    }
+
+    // ---- 注销（B2c⑤）：默认匿名化保留，开关打开才移除 ----
+
+    @Test
+    @DisplayName("注销账号：status 置 disabled、deleted_at 有值，评论保留但作者显示「已注销用户」")
+    void accountDeletionAnonymizesAuthor() {
+        service.create(alice, new UgcCommentRequest(workId, "注销前的评论"));
+
+        authService.deleteAccount(alice);
+
+        Map<String, Object> row = jdbc.queryForMap(
+                "SELECT status, deleted_at FROM app_user WHERE id = ?", alice.id());
+        assertThat(row.get("status")).isEqualTo("disabled");
+        assertThat(row.get("deleted_at")).isNotNull();
+
+        PageResponse<UgcCommentDto> page = service.list(workId, 1, 20);
+        assertThat(page.total()).as("评论保留，楼层不塌").isEqualTo(1);
+        assertThat(page.items().get(0).author()).isEqualTo("已注销用户");
+        assertThat(page.items().get(0).body()).isEqualTo("注销前的评论");
+    }
+
+    @Test
+    @DisplayName("注销开关打开：该用户评论立即软删（对外消失），行仍保留，别人的不动")
+    void accountRemovalSwitchHidesComments() {
+        service.create(alice, new UgcCommentRequest(workId, "要被移除的"));
+        service.create(bob, new UgcCommentRequest(workId, "别人的留着"));
+
+        // 直接构造强制开启的监听器，不依赖 Spring 里的默认配置
+        new AccountDeletionUgcListener(ugcRepository, true)
+                .onAccountDeleted(new AccountDeletedEvent(alice.id(), SITE));
+
+        PageResponse<UgcCommentDto> page = service.list(workId, 1, 20);
+        assertThat(page.total()).isEqualTo(1);
+        assertThat(page.items().get(0).author()).isEqualTo("it-ugc-bob");
+
+        Integer deleted = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM ugc_comment WHERE site_key = ? AND user_id = ? AND status = 'deleted'",
+                Integer.class, SITE, alice.id());
+        assertThat(deleted).as("软删保留行，物理清理由留存作业兜底").isEqualTo(1);
     }
 
     @Test

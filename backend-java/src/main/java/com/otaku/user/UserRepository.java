@@ -92,6 +92,32 @@ public class UserRepository {
                         .addValue("now", now));
     }
 
+    /**
+     * 用户注销：置 {@code disabled} + 记 {@code deleted_at}，**不删行**。
+     *
+     * <p>为什么不物理删：{@code app_user} 被 {@code ugc_comment} / {@code ugc_report} /
+     * {@code collection} / {@code user_device} / {@code user_session} 五张表外键引用。
+     * 删行等于连带删掉这个人在别人楼下的回复，楼层会塌。
+     * 默认口径是**匿名化保留**（展示层显示「已注销用户」），物理删由独立开关控制，
+     * 见 {@code docs/ugc-retention-proposal.md} §6。
+     *
+     * <p>为什么不用 {@code updateStatus}：{@code status='disabled'} 现在同时表示「站主禁用」
+     * （可恢复）。注销是用户主动且不该被站主恢复，必须能区分——`deleted_at` 非空即为注销。
+     *
+     * @return 受影响行数；0 = 账号不存在或已注销（幂等）
+     */
+    public int markDeleted(long id, LocalDateTime now) {
+        return jdbc.update("""
+                        UPDATE app_user
+                           SET status = 'disabled', deleted_at = :now,
+                               status_changed_at = :now, updated_at = :now
+                         WHERE id = :id AND deleted_at IS NULL
+                        """,
+                new MapSqlParameterSource()
+                        .addValue("id", id)
+                        .addValue("now", now));
+    }
+
     private static UserRecord map(ResultSet rs, int rowNum) throws SQLException {
         return new UserRecord(
                 rs.getLong("id"),

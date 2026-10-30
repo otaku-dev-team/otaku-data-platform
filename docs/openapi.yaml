@@ -853,6 +853,33 @@ paths:
         "204":
           description: 已撤销；或本来就没有有效会话（幂等）
 
+  /api/me:
+    delete:
+      tags: [账号]
+      summary: 注销自己的账号（匿名化保留）
+      operationId: deleteAccount
+      description: |
+        账号注销。成功后 `204`，本机与**其他所有设备**的会话立刻失效。
+
+        语义（2026-10-30 定，最终以站点/法务口径为准）：
+
+        - 账号置 `disabled` + 记 `deleted_at`，之后**无法再登录**；用户名不释放
+          （保留供追溯、防冒用，也避免「注销后别人抢注同名」）；
+        - **评论默认保留**：作者显示「已注销用户」，楼层不塌。
+          站点若配置为「注销即清空」，评论会在注销时被软删（公开列表立刻消失），
+          物理清理由保留期作业兜底；
+        - 注销不删账号行：`app_user` 被评论/举报/收藏/设备/会话五张表引用，
+          删行等于连带抹掉这个人在别人楼下的回复。
+
+        幂等：已注销后再调用会因会话失效返回 `401`，不会重复处理。
+      security:
+        - bearerAuth: []
+      responses:
+        "204":
+          description: 已注销（所有设备会话已失效）
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
   /api/me/collections:
     get:
       tags: [个人收藏]

@@ -85,7 +85,8 @@ public class UgcRepository {
     /** 作品页顶层列表：只要 published 且 parent_id IS NULL，最新在前。 */
     public List<Row> findPublished(String siteKey, String workId, int limit, int offset) {
         return jdbc.query("""
-                        SELECT c.id, c.site_key, c.work_id, c.user_id, u.username, c.body, c.status,
+                        SELECT c.id, c.site_key, c.work_id, c.user_id,
+                               CASE WHEN u.deleted_at IS NULL THEN u.username ELSE '已注销用户' END AS username, c.body, c.status,
                                c.created_at, c.parent_id, c.edited_at
                           FROM ugc_comment c
                           JOIN app_user u ON u.id = c.user_id
@@ -115,7 +116,8 @@ public class UgcRepository {
     /** 按 id 取一行（删除鉴权、回复挂载校验用）：同样带 site_key，跨站 id 直接当不存在。 */
     public Optional<Row> findById(String siteKey, long id) {
         List<Row> rows = jdbc.query("""
-                SELECT c.id, c.site_key, c.work_id, c.user_id, u.username, c.body, c.status,
+                SELECT c.id, c.site_key, c.work_id, c.user_id,
+                               CASE WHEN u.deleted_at IS NULL THEN u.username ELSE '已注销用户' END AS username, c.body, c.status,
                        c.created_at, c.parent_id, c.edited_at
                   FROM ugc_comment c
                   JOIN app_user u ON u.id = c.user_id
@@ -179,7 +181,8 @@ public class UgcRepository {
     /** 某条顶层评论下的回复（对话顺序：最早在前）。 */
     public List<Row> findPublishedReplies(String siteKey, long parentId, int limit, int offset) {
         return jdbc.query("""
-                        SELECT c.id, c.site_key, c.work_id, c.user_id, u.username, c.body, c.status,
+                        SELECT c.id, c.site_key, c.work_id, c.user_id,
+                               CASE WHEN u.deleted_at IS NULL THEN u.username ELSE '已注销用户' END AS username, c.body, c.status,
                                c.created_at, c.parent_id, c.edited_at
                           FROM ugc_comment c
                           JOIN app_user u ON u.id = c.user_id
@@ -239,7 +242,8 @@ public class UgcRepository {
         Map<Long, List<Row>> grouped = new HashMap<>();
         jdbc.query("""
                         SELECT * FROM (
-                            SELECT c.id, c.site_key, c.work_id, c.user_id, u.username, c.body, c.status,
+                            SELECT c.id, c.site_key, c.work_id, c.user_id,
+                               CASE WHEN u.deleted_at IS NULL THEN u.username ELSE '已注销用户' END AS username, c.body, c.status,
                                    c.created_at, c.parent_id, c.edited_at,
                                    ROW_NUMBER() OVER (PARTITION BY c.parent_id
                                                       ORDER BY c.created_at ASC, c.id ASC) AS rn
@@ -362,6 +366,23 @@ public class UgcRepository {
                 .addValue("userId", userId)
                 .addValue("since", since), Integer.class);
         return count == null ? 0 : count;
+    }
+
+    /**
+     * 注销时移除（软删）该用户的全部评论与回复（开关默认关，口径见 zm 2026-10-30）。
+     *
+     * <p>为什么软删而不是 DELETE：这些行被别人回复过、也可能被举报过（外键指向它），
+     * 物理删要按拓扑顺序清三张表，容易漏。软删对外**立即消失**（公开列表只认 published），
+     * 真正的物理清理由 retention 作业在保留期后统一做。
+     */
+    public int markDeletedByUser(String siteKey, long userId, LocalDateTime now) {
+        return jdbc.update("""
+                UPDATE ugc_comment SET status = 'deleted', updated_at = :now
+                 WHERE site_key = :siteKey AND user_id = :userId AND status <> 'deleted'
+                """, new MapSqlParameterSource()
+                .addValue("siteKey", siteKey)
+                .addValue("userId", userId)
+                .addValue("now", now));
     }
 
     /**
