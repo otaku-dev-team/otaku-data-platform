@@ -484,7 +484,7 @@
 | 导出本站评论（B2c①） | 已上线 | UTF-8 BOM、RFC 4180 转义、5 万行截断 + `X-Export-Truncated`、审计 `ugc.export` |
 | 回复（B2c②） | 已上线 | V21 `parent_id`；**只允许一层**；列表内嵌 3 条预览 + `reply_count`；`GET .../comments/{id}/replies` 按对话顺序；撤回楼层连带软删回复 |
 | 编辑评论（B2c④） | 已上线 | V22 `edited_at`；`PATCH /api/me/comments/{id}` 只改正文；先审后发的站点编辑后回 `pending`（否则「过审后再改」就是绕过路径）；编辑与站主隐藏用不同时间戳 |
-| 点评（长评 + 评分） | **待拍板** | 方案 [`ugc-review-proposal.md`](ugc-review-proposal.md)：三种形态 + 三个决策点（是否「看过才能评」/ 要不要平台自建评分 / 与评论是否打通）；不写半成品 |
+| 点评（长评 + 评分） | 已上线 | V24 `ugc_review`，一人一条（唯一键）；`rating` 1–10 与 `body` 至少一项；**均分只算打了分的**；编辑省略字段沿用原值；与评论不打通（两个 tab）；与来源站 `main_rating` 并列不覆盖 |
 | 机器审核 | 未开工 | 依赖站点选服务商；平台侧只留接入位 |
 
 同批落地的内容治理两项：
