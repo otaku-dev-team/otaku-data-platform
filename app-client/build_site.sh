@@ -43,6 +43,9 @@ UPDATE_BASE_URL=""
 # 目标 CPU 架构。默认 all（三套都装，体积最大）。国内真机分发包用 arm64：
 # debug 的 170MB 里有一半是 armeabi-v7a + x86_64 的 libflutter.so。
 ABI="all"
+# 出正式分发包时，要求必须配了正式签名（没有 android/key.properties 就失败）。
+# 默认只是警告：联调/自测也常出 release 包，硬失败会挡住这些场景。
+REQUIRE_RELEASE_KEY=0
 
 say() { printf '[build_site] %s\n' "$*"; }
 die() {
@@ -67,6 +70,8 @@ usage() {
   --update-base-url <url> 更新清单 / 安装包基地址（默认 <API_BASE_URL>/downloads）
   --abi <架构>         apk 目标架构：arm64（默认推荐，约省 2/3）| arm32 | x64 | all
                        只出 arm64 的包无法装到 32 位老机与 x86 模拟器上
+  --require-release-key  发正式包时必须已配正式签名（无 android/key.properties 就报错退出）
+                         缺省只警告：联调自测也常出 release 包，不该被挡住
   --dry-run            只打印将要执行的命令，不构建
   --list               列出已有站点
   -h, --help           显示本帮助
@@ -108,6 +113,7 @@ while [ $# -gt 0 ]; do
     --update-base-url) UPDATE_BASE_URL="${2:-}"; shift 2 ;;
     --update-base-url=*) UPDATE_BASE_URL="${1#*=}"; shift ;;
     --abi) ABI="${2:-}"; shift 2 ;;
+    --require-release-key) REQUIRE_RELEASE_KEY=1; shift ;;
     --abi=*) ABI="${1#*=}"; shift ;;
     --dry-run) DRY_RUN=1; shift ;;
     --list) say "已有站点："; list_sites; exit 0 ;;
@@ -203,6 +209,19 @@ if [ "$TARGET" = "apk" ] && [ "$MODE" = "release" ]; then
       say "      当前白名单只放行 154.8.194.198；换域名要同步更新，或等 https 到位"
       ;;
   esac
+
+  # 正式签名：缺密钥时 gradle 会把 release 降级成 debug 签名。那种包发出去，
+  # 换台机器重建签名就变了，老用户升级会 INSTALL_FAILED_UPDATE_INCOMPATIBLE
+  # ——装不上更新，且只能靠卸载重装解决。所以这里必须说出来。
+  if [ -f android/key.properties ]; then
+    say "签名：android/key.properties 已配置，release 用正式密钥"
+  elif [ "$REQUIRE_RELEASE_KEY" -eq 1 ]; then
+    die "出正式包必须配正式签名：缺 android/key.properties（照 android/key.properties.example 建，密钥与口令不入库）"
+  else
+    say "警告：release 将用 **debug 签名**（缺 android/key.properties）"
+    say "      这个包不能分发——换机器重建签名就变，老用户升不了级"
+    say "      正式发版请加 --require-release-key，把它变成硬失败"
+  fi
 fi
 
 cmd=(flutter build "$TARGET" "--$MODE")

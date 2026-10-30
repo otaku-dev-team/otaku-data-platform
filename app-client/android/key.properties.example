@@ -1,0 +1,19 @@
+# 正式签名配置（**这个文件要复制成 key.properties 再填，key.properties 不入库**）
+#
+# 生成密钥（只做一次，密钥与口令请离线保管，丢了就再也发不了更新）：
+#
+#   keytool -genkey -v -keystore android/otaku.jks \
+#       -keyalg RSA -keysize 2048 -validity 10000 -alias otaku
+#
+# 然后：
+#   cp android/key.properties.example android/key.properties
+#   # 填上下面四个值（口令不要提交、不要贴到 issue 里）
+#
+# 生效后 `flutter build apk --release` 会自动用它；没配则退回 debug 签名并打印警告。
+# 校验方式见 docs/app-update.md「发布前：正式签名」。
+
+# 相对 android/ 目录解析，也可以写绝对路径（放仓库外更安全）
+storeFile=otaku.jks
+storePassword=把 store 口令粘在这里
+keyAlias=otaku
+keyPassword=把 key 口令粘在这里
