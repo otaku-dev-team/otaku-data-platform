@@ -46,7 +46,11 @@ public class AuthFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getRequestURI().substring(request.getContextPath().length());
-        return !(path.equals("/api/auth/me") || path.startsWith("/api/me/"));
+        // 注意 `/api/me` 是精确路径（注销账号 DELETE /api/me），不能只靠 startsWith("/api/me/")：
+        // 少了这一条，请求会绕过鉴权、`AuthFilter.ATTRIBUTE_USER` 不被注入，
+        // Controller 拿不到用户 → Spring 直接 400。2026-10-30 生产上就是这么翻的车。
+        return !(path.equals("/api/auth/me") || path.equals("/api/me")
+                || path.startsWith("/api/me/"));
     }
 
     @Override
