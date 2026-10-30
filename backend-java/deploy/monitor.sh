@@ -16,6 +16,7 @@
 #
 #   5. 证书剩余天数 HTTPS 静默过期那天，App 会突然全部连不上，而服务器本身"正常"
 #   6. 慢查询日志体积 常开慢查询是为了「有据可查」，但没人看着它会默默涨大
+#   7. 内存与 swap    2G 机器上挤着 mysql + java + 别的项目，available 见底就是 OOM 前兆
 #
 # 阈值都能用环境变量覆盖，默认值是按 2 核 2G / 50G 盘定的；
 # 也可以在 .env 里写 EXPECT_SERVICES / EXPECT_TLS，切换"正式形态 / 联调形态"。
@@ -180,6 +181,21 @@ else
             ok "慢查询日志 ${SLOW_MB}MB（${SLOW_BYTES} 字节）"
         fi
     fi
+fi
+
+# ── 7. 内存与 swap（只告警，不计失败）────────────────────────────────
+# 2G 机器上同时跑 mysql(570M) + java(210M) + 别的项目(240M)，内存是这台机器最先见的底。
+# 判据用「可用内存」而不是「swap 用了多少」：swap 有几百兆是常态（内核会把冷页换出去），
+# 真正危险的是 available 见底——那时候 OOM killer 随时会挑一个进程开刀。
+MEM_AVAIL_MB=$(free -m | awk '/^Mem:/{print $7}')
+SWAP_USED_MB=$(free -m | awk '/^Swap:/{print $3}')
+SWAP_TOTAL_MB=$(free -m | awk '/^Swap:/{print $2}')
+if [ -z "${MEM_AVAIL_MB:-}" ]; then
+    skip "内存（读不到 free 输出）"
+elif [ "$MEM_AVAIL_MB" -lt "${MEM_MIN_AVAIL_MB:-200}" ]; then
+    warn "可用内存仅 ${MEM_AVAIL_MB}MB（阈值 ${MEM_MIN_AVAIL_MB:-200}MB），swap 已用 ${SWAP_USED_MB:-0}MB"
+else
+    ok "可用内存 ${MEM_AVAIL_MB}MB，swap ${SWAP_USED_MB:-0}/${SWAP_TOTAL_MB:-0}MB"
 fi
 
 if [ "$FAILS" -gt 0 ]; then
