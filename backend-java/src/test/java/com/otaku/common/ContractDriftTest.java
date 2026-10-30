@@ -245,6 +245,11 @@ class ContractDriftTest {
         targets.put("UgcComment", com.otaku.ugc.dto.UgcCommentDto.class);
         targets.put("UgcCommentPage", PageResponse.class);
         targets.put("SiteFeatures", com.otaku.ugc.dto.SiteFeaturesDto.class);
+        // 点评（#240 B2c⑥）：与评论是两套形状，rating/body 都可空但至少一项有值
+        targets.put("UgcReview", com.otaku.ugc.dto.UgcReviewDto.class);
+        targets.put("UgcReviewPage", PageResponse.class);
+        targets.put("UgcReviewSummary", com.otaku.ugc.dto.UgcReviewSummary.class);
+        targets.put("RatingBucket", com.otaku.ugc.dto.UgcReviewSummary.Bucket.class);
         // 后台审核（#240 B2a）：评论行多作品标题与状态，开关两个方向
         targets.put("ConsoleUgcItem", com.otaku.console.dto.ConsoleDtos.UgcItem.class);
         targets.put("ConsoleUgcPage", PageResponse.class);
@@ -269,6 +274,9 @@ class ContractDriftTest {
         targets.put("UgcCommentRequest", com.otaku.ugc.dto.UgcCommentRequest.class);
         // 编辑正文（#240 B2c④）：只有 body，作品/作者/父评论都不可改
         targets.put("UgcCommentEditRequest", com.otaku.ugc.dto.UgcCommentEditRequest.class);
+        // 点评（#240 B2c⑥）
+        targets.put("UgcReviewRequest", com.otaku.ugc.dto.UgcReviewRequest.class);
+        targets.put("UgcReviewEditRequest", com.otaku.ugc.dto.UgcReviewEditRequest.class);
         targets.put("SiteUgcSettingUpdate", com.otaku.console.dto.ConsoleDtos.UgcSettingUpdate.class);
         targets.put("CommentReportRequest", com.otaku.ugc.dto.CommentReportRequest.class);
         targets.put("ImportItem", com.otaku.importer.dto.ImportBatchRequest.ImportItem.class);
