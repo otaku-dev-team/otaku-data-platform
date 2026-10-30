@@ -26,10 +26,35 @@ abstract final class AppConfig {
 
   /// 应用版本，设置页「关于」里显示。
   ///
-  /// **与 `pubspec.yaml` 的 `version:` 手工对齐**。没有引 `package_info_plus`：
-  /// 为一个静态字符串多加一个平台插件与一条构建链路不值当。
-  /// 发版时两处一起改——版本号留在编译期常量里，也省掉了「读不到就显示未知」的分支。
-  static const String version = '1.0.0';
+  /// 由 `build_site.sh --version-name` 在构建期注入；缺省值与 `pubspec.yaml` 对齐。
+  /// 远程更新必须拿到**数字** versionCode 才能比较新旧，所以它和展示用的
+  /// [versionName] 分开：前者每次发版递增，后者给人看。
+  static const String versionName = String.fromEnvironment(
+    'APP_VERSION_NAME',
+    defaultValue: '1.0.0',
+  );
+
+  static const int versionCode = int.fromEnvironment(
+    'APP_VERSION_CODE',
+    defaultValue: 1,
+  );
+
+  /// 兼容旧调用：设置页只关心展示串。
+  static const String version = versionName;
+
+  /// 更新清单与安装包的基地址。
+  ///
+  /// 生产环境 nginx 与 API 同域，默认 `${baseUrl}/downloads` 即可；联调环境
+  /// API 直连 8080、nginx 在 80/443，构建时要显式注入：
+  /// `--dart-define=UPDATE_BASE_URL=http://154.8.194.198/downloads`。
+  static const String _updateBaseUrlOverride = String.fromEnvironment(
+    'UPDATE_BASE_URL',
+  );
+
+  static String get updateBaseUrl {
+    if (_updateBaseUrlOverride.isNotEmpty) return _updateBaseUrlOverride;
+    return '$baseUrl/downloads';
+  }
 
   /// 后端地址。Android 模拟器访问宿主机必须用 10.0.2.2，不能用 127.0.0.1。
   static String get baseUrl {

@@ -46,12 +46,16 @@ dependencies:
   hive_ce: ^2.22.0
   hive_ce_flutter: ^2.5.0
 
-  # 追番提醒（W1.3a）：设备本地排程，不依赖后端推送服务。
-  # `timezone` 只用来把「当地 09:00」换算成一个确定的 UTC 时刻，
-  # 不需要时区数据库（见 lib/features/reminders/local_reminder_scheduler.dart）。
-  flutter_local_notifications: ^22.3.2
-  timezone: ^0.11.2
+  # 应用内更新：下载 APK → 校验 → 拉起系统安装器。
+  path_provider: ^2.1.5
+  open_filex: ^4.7.0
+  crypto: ^3.0.6
+
   webview_flutter: ^4.14.1
+
+  # 外观实验：Material You 取色（Android 12+ 从系统壁纸取色）。
+  # 只在「跟随系统取色」开关打开时才用；其他平台恒为 null，自动退回品牌色。
+  dynamic_color: ^1.7.0
 
 dev_dependencies:
   flutter_test:

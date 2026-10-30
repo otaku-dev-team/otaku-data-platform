@@ -19,8 +19,7 @@ import 'package:otaku_app/data/models/work_type.dart';
 import 'package:otaku_app/data/repositories/article_repository.dart';
 import 'package:otaku_app/data/repositories/schedule_repository.dart';
 import 'package:otaku_app/data/repositories/work_repository.dart';
-import 'package:otaku_app/features/reminders/reminder_scheduler.dart';
-import 'package:otaku_app/features/reminders/reminder_service.dart';
+import 'package:otaku_app/features/contents/work_card.dart';
 import 'package:otaku_app/shared/widgets/main_nav_destination.dart';
 
 import 'support/test_overrides.dart';
@@ -84,6 +83,44 @@ class _EmptyScheduleSource implements ScheduleDataSource {
       SchedulePageData(season: null, seasons: const [], groups: const []);
 }
 
+/// 有内容的数据源，专给「切 tab 保留状态」用：空列表没得滚，
+/// 滚动位置那条断言就变成了 0 == 0 的假通过。
+class _PagedWorkSource implements WorkDataSource {
+  @override
+  Future<PagedResult<WorkSummary>> fetchWorks({
+    WorkType? type,
+    String? query,
+    WorkSort sort = WorkSort.id,
+    int page = 1,
+    int pageSize = 20,
+    List<String>? tags,
+    int? year,
+  }) async {
+    final items = [
+      for (var i = 0; i < 24; i++)
+        WorkSummary(
+          workId: 'W-$i',
+          workType: WorkType.anime,
+          title: '测试作品 $i',
+        ),
+    ];
+    return PagedResult<WorkSummary>(
+      items: items,
+      total: items.length,
+      page: 1,
+      pageSize: pageSize,
+      totalPages: 1,
+    );
+  }
+
+  @override
+  Future<Work> fetchDetail(String workId) async => throw UnimplementedError();
+
+  @override
+  Future<RelatedWorks> fetchRelated(String workId, {int limit = 6}) async =>
+      RelatedWorks(basisTags: const [], items: const []);
+}
+
 /// 手机端主导航（`docs/flutter-lead-plan.md` §6「两端差异清单」第一行：
 /// 主导航 手机 `NavigationBar` / 桌面 `NavigationRail`）。
 ///
@@ -110,11 +147,6 @@ void main() {
       overrides: [
         ...authOverrides(),
         appInitialLocationProvider.overrideWithValue(location),
-        // 切到「手机平台」后，提醒排程会走真插件（要平台通道），
-        // 单测里调不了。换成空实现——这条测试只关心导航。
-        reminderSchedulerProvider.overrideWithValue(
-          const NoopReminderScheduler(),
-        ),
         // 用空数据源而不是 Mock：Mock 内部的延迟定时器排不干净，
         // widget 测试会以「Pending timers」失败。
         workDataSourceProvider.overrideWithValue(_EmptyWorkSource()),
@@ -199,30 +231,22 @@ void main() {
       await tester.pumpWidget(appAt(RoutePaths.home));
       await tester.pumpAndSettle();
 
-      expect(find.byType(NavigationBar), findsOneWidget);
+      final nav = find.byType(NavigationBar);
+      expect(nav, findsOneWidget);
       // 用图标类型判定，不用文字——底栏的文字标签默认只有选中项显示。
-      //
-      // ⚠️ 必须限定在底栏**内部**找：作品库 AppBar 也有一个同款书签图标
-      // （`contents_page.dart` 的收藏入口），整页找会命中两个，
-      // 于是这条断言变成「首页有几个书签图标」而不是「底栏有五个目的地」。
-      final inBar = find.descendant(
-        of: find.byType(NavigationBar),
-        matching: find.byIcon(Icons.home_rounded),
-      );
-      expect(inBar, findsOneWidget);
-      for (final icon in [
+      // 必须限定在 NavigationBar 内：`newspaper_outlined` 也用在首页
+      // 「最新资讯」的空态图标上，全页搜索会命中两个。
+      for (final icon in const [
+        Icons.home_rounded,
         Icons.grid_view_outlined,
         Icons.newspaper_outlined,
         Icons.bookmark_border_rounded,
         Icons.calendar_today_outlined,
       ]) {
         expect(
-          find.descendant(
-            of: find.byType(NavigationBar),
-            matching: find.byIcon(icon),
-          ),
+          find.descendant(of: nav, matching: find.byIcon(icon)),
           findsOneWidget,
-          reason: '底栏每个目的地各一个（$icon）',
+          reason: '底栏应有 $icon',
         );
       }
     });
@@ -246,21 +270,12 @@ void main() {
       await tester.pumpWidget(appAt(RoutePaths.home));
       await tester.pumpAndSettle();
 
-      // 起点是首页：不再断言 AppBar 标题是「首页」——首页改版后标题换成了
-      // 品牌行（标识 + Otaku + 日期），钉标题等于钉品牌样式，一改版就红。
-      // 底栏的选中项才是「现在在首页」这件事的可靠表达。
-      final startBar = tester.widget<NavigationBar>(find.byType(NavigationBar));
-      expect(startBar.selectedIndex, 0, reason: '起点在首页（底栏第一项）');
+      // 首页大改后 AppBar 不再写「首页」，换成品牌抬头（Otaku + 日期）。
+      expect(find.widgetWithText(AppBar, 'Otaku'), findsOneWidget);
 
       // 收藏页此前在手机上**完全没有入口**（首页上没有，作品库 AppBar 里有个
       // 书签图标）——这条钉的就是「从首页一步能到收藏」。
-      // 同样限定在底栏内：否则点到的可能是作品库 AppBar 那个书签。
-      await tester.tap(
-        find.descendant(
-          of: find.byType(NavigationBar),
-          matching: find.byIcon(Icons.bookmark_border_rounded),
-        ),
-      );
+      await tester.tap(find.byIcon(Icons.bookmark_border_rounded));
       await tester.pumpAndSettle();
 
       expect(find.widgetWithText(AppBar, '我的收藏'), findsOneWidget);
@@ -283,6 +298,71 @@ void main() {
 
       expect(find.byType(NavigationBar), findsNothing);
       expect(find.byType(NavigationRail), findsOneWidget);
+    });
+  });
+
+  /// 切 tab 保留状态——`StatefulShellRoute.indexedStack` 的**唯一**理由。
+  ///
+  /// 改造前是平铺 `GoRoute` + `go(path)`：整棵替换，作品库切去资讯再切回来
+  /// 会从顶部重来。这条测试钉的就是「别退回那个行为」。
+  group('切 tab 保留状态', () {
+    testWidgets('作品库滚到一半，去资讯再回来还在原处', (tester) async {
+      usePhone(tester);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            ...authOverrides(),
+            appInitialLocationProvider.overrideWithValue(RoutePaths.contents),
+            workDataSourceProvider.overrideWithValue(_PagedWorkSource()),
+            articleDataSourceProvider.overrideWithValue(_EmptyArticleSource()),
+            scheduleDataSourceProvider.overrideWithValue(_EmptyScheduleSource()),
+          ],
+          child: const OtakuApp(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      double offset() {
+        final states = tester.stateList<ScrollableState>(find.byType(Scrollable));
+        return states
+            .firstWhere((state) => state.axisDirection == AxisDirection.down)
+            .position
+            .pixels;
+      }
+
+      expect(offset(), 0);
+
+      // 拖列表（不是拖底栏）：拖到第一张卡身上，滚动的是外层列表。
+      await tester.drag(find.byType(WorkCard).first, const Offset(0, -700));
+      await tester.pumpAndSettle();
+
+      final scrolled = offset();
+      expect(scrolled, greaterThan(0), reason: '先确认真的滚动了');
+
+      // 去资讯，再回浏览。
+      await tester.tap(
+        find.descendant(
+          of: find.byType(NavigationBar),
+          matching: find.byIcon(Icons.newspaper_outlined),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.widgetWithText(AppBar, '最新资讯'), findsOneWidget);
+
+      await tester.tap(
+        find.descendant(
+          of: find.byType(NavigationBar),
+          matching: find.byIcon(Icons.grid_view_outlined),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        offset(),
+        scrolled,
+        reason: '切回来应该停在原处，而不是回到顶部',
+      );
     });
   });
 }

@@ -17,6 +17,13 @@ abstract interface class SiteAuthLauncher {
   /// 回跳 URI 流。每个 URI 形如 `com.otaku.app:/oauth2redirect?ticket=…&state=…`。
   Stream<String> get redirects;
 
+  /// 用户**没有完成授权就退出**了授权页（返回键 / 关闭按钮 / 路由被弹掉）。
+  ///
+  /// 必须单独有一条信号：[openAuthorize] 只负责「把页面推上去」，之后
+  /// `submitting` 会一直挂着等回跳。用户中途放弃时不会再有回跳，没有这条
+  /// 信号，登录按钮就会永远转圈（只能杀后台恢复）——真机复现过。
+  Stream<void> get cancelled;
+
   /// 打开站点授权页。返回是否成功打开。
   ///
   /// ## 这里为什么不是「系统浏览器」
@@ -51,6 +58,7 @@ class MockSiteAuthLauncher implements SiteAuthLauncher {
 
   final StreamController<String> _redirects =
       StreamController<String>.broadcast();
+  final StreamController<void> _cancels = StreamController<void>.broadcast();
 
   int openCalls = 0;
   String? lastState;
@@ -60,6 +68,9 @@ class MockSiteAuthLauncher implements SiteAuthLauncher {
 
   @override
   Stream<String> get redirects => _redirects.stream;
+
+  @override
+  Stream<void> get cancelled => _cancels.stream;
 
   @override
   Future<bool> openAuthorize({required String state}) async {
@@ -73,7 +84,15 @@ class MockSiteAuthLauncher implements SiteAuthLauncher {
     if (!_redirects.isClosed) _redirects.add(uri.toString());
   }
 
-  Future<void> dispose() => _redirects.close();
+  /// 模拟用户退出授权页（未完成授权）。
+  void simulateCancel() {
+    if (!_cancels.isClosed) _cancels.add(null);
+  }
+
+  Future<void> dispose() async {
+    await _redirects.close();
+    await _cancels.close();
+  }
 }
 
 /// 生产环境里「这台设备走不了授权」的占位。
@@ -88,6 +107,9 @@ class UnsupportedSiteAuthLauncher implements SiteAuthLauncher {
 
   @override
   Stream<String> get redirects => const Stream<String>.empty();
+
+  @override
+  Stream<void> get cancelled => const Stream<void>.empty();
 
   @override
   Future<bool> openAuthorize({required String state}) async => false;

@@ -68,6 +68,20 @@ void main() {
       expect(c.read(siteAuthStateStoreProvider).read(), isNull,
           reason: '没打开成的授权不该留着 state 等一个不会来的回跳');
     });
+
+    test('用户在授权页返回：清掉等待态，按钮不再转圈', () async {
+      final c = createContainer();
+      await begin(c);
+      expect(c.read(authControllerProvider).submitting, isTrue,
+          reason: '等回跳期间是等待态');
+
+      c.read(authControllerProvider.notifier).cancelSiteLogin();
+
+      final state = c.read(authControllerProvider);
+      expect(state.submitting, isFalse,
+          reason: '取消后必须回到可点状态，否则只能杀后台');
+      expect(state.error, isNull, reason: '主动取消不是失败，不该弹错误');
+    });
   });
 
   group('回跳处理', () {
@@ -149,7 +163,7 @@ void main() {
           reason: '可能是别的 App 在试同一个 scheme，不该打扰用户');
     });
 
-    test('票据被用过（重放）→ 401，「授权失败，请重试」', () async {
+    test('票据被用过（重放）→ 401，引导「重新授权」而不是「重试」', () async {
       final c = createContainer();
       final first = await begin(c);
       await c
@@ -163,7 +177,13 @@ void main() {
           .handleSiteRedirect(redirectUri('ticket-once', second.state));
 
       expect(ok, isFalse);
-      expect(c.read(authControllerProvider).error?.userMessage, contains('授权失败'));
+      // 契约 §1.1：401 的用户动作是**重走一次授权**，不是拿同一张票重试
+      // ——票据一次性，重试必然再失败。三档分档的完整钉子在
+      // `site_login_error_test.dart`。
+      expect(
+        c.read(authControllerProvider).error?.userMessage,
+        contains('重新授权'),
+      );
     });
   });
 
@@ -241,6 +261,9 @@ class _BrokenLauncher implements SiteAuthLauncher {
 
   @override
   Stream<String> get redirects => const Stream<String>.empty();
+
+  @override
+  Stream<void> get cancelled => const Stream<void>.empty();
 
   @override
   Future<bool> openAuthorize({required String state}) async => false;

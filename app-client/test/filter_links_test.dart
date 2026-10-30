@@ -55,6 +55,8 @@ void main() {
     overrides: [
       workDataSourceProvider.overrideWithValue(source ?? _EmptySource()),
       ...authOverrides(),
+      // 聚焦搜索框会取热门标签；给零延迟替身，避免 Pending timers。
+      ...tagOverrides(),
       appInitialLocationProvider.overrideWithValue(RoutePaths.contents),
     ],
     child: child,

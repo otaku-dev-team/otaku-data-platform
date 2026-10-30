@@ -24,19 +24,23 @@ class SiteAuthBootstrap extends ConsumerStatefulWidget {
 
 class _SiteAuthBootstrapState extends ConsumerState<SiteAuthBootstrap> {
   StreamSubscription<String>? _redirects;
+  StreamSubscription<void>? _cancels;
 
   @override
   void initState() {
     super.initState();
-    _redirects = ref
-        .read(siteAuthLauncherProvider)
-        .redirects
-        .listen(_onRedirect);
+    final launcher = ref.read(siteAuthLauncherProvider);
+    _redirects = launcher.redirects.listen(_onRedirect);
+    // 用户在授权页里放弃 / 关页：把「正在登录」放下，别让按钮永远转圈。
+    _cancels = launcher.cancelled.listen((_) {
+      ref.read(authControllerProvider.notifier).cancelSiteLogin();
+    });
   }
 
   @override
   void dispose() {
     _redirects?.cancel();
+    _cancels?.cancel();
     super.dispose();
   }
 

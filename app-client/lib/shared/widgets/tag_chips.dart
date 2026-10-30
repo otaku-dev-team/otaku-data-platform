@@ -12,6 +12,7 @@ class TagChips extends StatelessWidget {
     required this.tags,
     this.maxVisible = 4,
     this.showOverflowCount = false,
+    this.singleLine = false,
     this.onTag,
     this.selectedTags = const <String>{},
   });
@@ -27,6 +28,16 @@ class TagChips extends StatelessWidget {
   /// 会让用户以为标签就这些，而且断在半个字上像渲染坏了。
   /// 详情页这类可以自然换行的地方保持 `false`，没必要藏。
   final bool showOverflowCount;
+
+  /// 强制单行（不换行）。
+  ///
+  /// `Wrap` 在宽度不够时会折行：放进**固定高度**的容器（列表磁贴那条 22px
+  /// 标签行）后，第二行会直接画到容器外、压住下一条卡片——真机上就是
+  /// 320 宽下列表磁贴的标签压到下一张卡上。这类位置必须用 `Row` 排一行，
+  /// 超出部分由调用方用横向滚动 / 裁切处理。
+  ///
+  /// 高度自由的场景（详情页、资讯正文）保持 `false`，让标签自然换行。
+  final bool singleLine;
 
   /// 点了某个标签就回调它；`null` 表示纯展示。
   final ValueChanged<String>? onTag;
@@ -51,29 +62,32 @@ class TagChips extends StatelessWidget {
     final visible = values.take(limit);
     final hidden = values.length - limit;
 
-    return Wrap(
-      spacing: 6,
-      runSpacing: 6,
-      children: [
-        for (final tag in visible)
-          _Tag(
-            label: tag,
-            textStyle: textTheme.labelSmall,
-            scheme: scheme,
-            selected: selectedTags.contains(tag),
-            onTap: onTag,
-          ),
-        // `+N` 只是提示还有多少，不参与筛选，所以不给 onTap。
-        if (hidden > 0)
-          _Tag(
-            label: '+$hidden',
-            textStyle: textTheme.labelSmall,
-            scheme: scheme,
-            selected: false,
-            onTap: null,
-          ),
-      ],
-    );
+    final chips = <Widget>[
+      for (final tag in visible)
+        _Tag(
+          label: tag,
+          textStyle: textTheme.labelSmall,
+          scheme: scheme,
+          selected: selectedTags.contains(tag),
+          onTap: onTag,
+        ),
+      // `+N` 只是提示还有多少，不参与筛选，所以不给 onTap。
+      if (hidden > 0)
+        _Tag(
+          label: '+$hidden',
+          textStyle: textTheme.labelSmall,
+          scheme: scheme,
+          selected: false,
+          onTap: null,
+        ),
+    ];
+
+    if (singleLine) {
+      // 一行到底：Row 不会折行，超宽由外层的横向滚动/裁切兜住。
+      return Row(mainAxisSize: MainAxisSize.min, spacing: 6, children: chips);
+    }
+
+    return Wrap(spacing: 6, runSpacing: 6, children: chips);
   }
 }
 

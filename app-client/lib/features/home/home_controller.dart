@@ -50,6 +50,19 @@ final homeTodayScheduleProvider = FutureProvider<ScheduleGroup?>(
 ///
 /// 复用列表接口的 `sort=rating`：服务端已按评分降序、无评分沉底，
 /// 首页拿第一页就是"分最高的那几部"，不需要新接口。
+///
+/// ## 已知数据问题：满分墙（不是排序 bug）
+///
+/// 来源站（Bangumi）的 `score` 是平均值，但**没有「评分人数」维度**
+/// （[`ranking-proposal.md`] §4 已定不做人数加权）。一条只有 1–2 人打 10 分的
+/// 冷门短片会稳定压过 8.x 的长篇：2026-10-29 实测联调库 `sort=rating`
+/// **前 10 页（500 条）全是 10.0**，第 20 页才降到 9.3。
+///
+/// 客户端筛不动这道墙（要翻十几页），所以这里不做「取多页再过滤」的假动作。
+/// 根治有两条路，都需三人确认：
+/// 1. 榜单加可选 `max_rating`（与 `min_rating` 对称），首页精选传 `≤9.9`；
+/// 2. 数据侧从 Bangumi 档案的 `score_details` 算评分人数，低于阈值的评分
+///    按「无评分」处理（需重导）。
 final homeTopRatedProvider = FutureProvider<List<WorkSummary>>(
   (ref) async {
     final fetched = await ref.watch(workRepositoryProvider).fetchWorks(

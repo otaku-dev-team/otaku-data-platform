@@ -279,7 +279,7 @@
 
 | # | 工作流 | 主责 | 协作 | 状态 | 计划文档 |
 |---|---|---|---|---|---|
-| W1 | 客户端体验纵深（原生 / 离线 / 发现接入 / 呈现适配 / 通知） | @riceyu02 | @pyxz0（W1.3） | **功能面已清空**（2026-10-28）；剩真实数据走查、Android 深链、#125 拍板 | [`client-enhancement-plan.md`](client-enhancement-plan.md) |
+| W1 | 客户端体验纵深（原生 / 离线 / 发现接入 / 呈现适配 / 通知） | @riceyu02 | @pyxz0（W1.3） | **功能面已清空**（2026-10-28）；剩真实数据走查（主观观感要人看、Android 真机要设备）。Android 深链 2026-10-28 起作废、#125 已关闭 | [`client-enhancement-plan.md`](client-enhancement-plan.md) |
 | W2 | 跨源视图与发现增强（同名归并 / 榜单 / 搜索 / 推荐） | @pyxz0 | @riceyu02、zm | 进行中（Issue #96，见 §8.4） | 主责方自定 |
 | W3 | 数据完整度（封面 / 评分 / 简介覆盖） | zm | @pyxz0 | 进行中（Issue #97，计划见 [data-completeness-plan.md](data-completeness-plan.md)） | [data-completeness-plan.md](data-completeness-plan.md) |
 | W4 | 第二个来源站接入落地 | @pyxz0 | zm | 已验证（VNDB 实测，见 §8.7）；产品化落地暂缓，随跨源视图一并重启（Issue #96） | 主责方自定 |
@@ -389,14 +389,22 @@
    前者要人看、后者要设备。按章程 §4「完成时带着证据来」这条仍不算完全收口。
 2. **账号绑定客户端形态**（#147 第 3 项，待确认清单点名 W1）：站点 OAuth 定稿后登录页要有「来源站账号 + 平台账号」双入口，
    方案见 [`w1-login-dual-entry.md`](w1-login-dual-entry.md)，**实现已进 main**（`site_auth_state` / `site_auth_launcher` /
-   `site_auth_bootstrap` 三件套 + 登录页双入口）。已落地的是「state 落盘 + 系统浏览器授权」两步，
-   **未做**：Android 深链回跳（需真机）与「断开与网站的连接」（等后端给平台代理端点）。
+   `site_auth_bootstrap` 三件套 + 登录页双入口）。已落地的是「state 落盘 + App 内 WebView 授权」两步。
+   ~~Android 深链回跳~~ **2026-10-28 起作废**：#238 方案 A 把授权页放进 App 内 WebView，
+   回跳由 `onNavigationRequest` / `onUrlChange` 在 WebView 内拦截，**不经系统 intent 分发**，
+   因此 manifest 不需要注册 `com.otaku.app` scheme（见 `w1-login-dual-entry.md` §3）。
+   **未做**的只剩「断开与网站的连接」（等后端给平台代理端点）。
+   #242（令牌交换代理）2026-10-29 已闭环——secret 已注入、真票据换 token 跑通，
+   于是客户端侧最后一段（`POST /api/auth/site-login` 的失败分档）得以落地：契约 §1.1 给
+   401 / 403 / 503 规定了**不同的用户动作**，此前被一句「授权失败，请重试」抹平，
+   且因为 mock 抛的码（`UNAUTHORIZED`）与后端实测返的（`INVALID_CREDENTIALS`）不是同一个，
+   那条分支在 mock 下命中、真机上不命中——**测试全绿而真机错文案**。
    该文给后端的三个输入仍待回：断开连接的代理端点 / `user` 响应带 `identity_source` /
    平台会话与站点令牌的寿命关系。
 3. **#125 人物页 / 详情页富字段**：#125 已关闭，方案留档在
    [`person-studio-proposal.md`](person-studio-proposal.md)。
    后端富字段（原名 / 别名 / 媒介 / 话数，#250）与关系四表（staff / characters /
-   studios，#255）**已上线**；**客户端详情页两区块待合**（PR #296，Issue #256）——
+   studios，#255）**已上线**；**客户端详情页两区块已合**（PR #296 → `30d1dfe`，Issue #256）——
    此前没做是因为 10-28 的样本取自灌库前的空库，实测误判成「数据几乎没有」，
    生产真实覆盖是动画 staff 35% / characters 30% / studios 20%。
    ⚠️ 人物页本身（B2）**仍不在本期**：`person_id` 在 Staff 侧实测 0% 有值，

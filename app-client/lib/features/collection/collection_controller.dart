@@ -7,7 +7,6 @@ import '../../data/models/collection_entry.dart';
 import '../../data/repositories/collection_repository.dart';
 import '../../data/repositories/work_repository.dart' show Fetched;
 import '../auth/auth_controller.dart';
-import '../reminders/reminder_service.dart';
 
 /// 收藏页的状态筛选。`null` = 全部（含「已收藏但未设状态」）。
 class CollectionFilterController extends Notifier<CollectionStatus?> {
@@ -99,9 +98,6 @@ class CollectionController
       ];
       state = AsyncData(Fetched.live(next));
       await _remember(userId, next, filter);
-      // 提醒跟着「在追」清单走：改完状态就把未来两周重排一遍。
-      // 失败也由 refresh 自己吞掉，不影响这里的结果。
-      unawaited(ref.read(reminderServiceProvider).refresh());
       return null;
     } on ApiException catch (error) {
       if (!ref.mounted) return error;
@@ -128,7 +124,6 @@ class CollectionController
           .toList(growable: false);
       state = AsyncData(Fetched.live(next));
       await _remember(userId, next, ref.read(collectionFilterProvider));
-      unawaited(ref.read(reminderServiceProvider).refresh());
       return null;
     } on ApiException catch (error) {
       return error;

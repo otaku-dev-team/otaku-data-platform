@@ -1,9 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- release 包必须显式声明，Flutter 默认只在 debug/profile 清单里加这条 -->
     <uses-permission android:name="android.permission.INTERNET"/>
-    <!-- 追番提醒（W1.3a）是提前两周排进系统闹钟的：重启后系统会清掉这些闹钟，
-         没有这条权限，用户重启一次就再也收不到提醒，而且没有任何提示。 -->
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <!-- 应用内更新：下载完 APK 后拉起系统安装器。Android 8+ 还需要用户在
+         「安装未知应用」里为本应用单独授权，代码会在拉不起来时提示。 -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
     <!-- 应用名来自构建期品牌配置（dart-define 的 APP_NAME / Gradle 的 appName），
          见 docs/site-branding.md。默认值在 build.gradle.kts 的 resValue 里。
          注意：XML 注释里不能出现连续两个连字符，aapt 会直接构建失败。 -->
@@ -39,25 +39,6 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
-
-        <!-- 本地提醒的两条广播接收器（flutter_local_notifications 要求应用侧声明）。
-             ScheduledNotificationReceiver：到点触发通知；
-             ScheduledNotificationBootReceiver：开机 / 应用更新后把已排的闹钟重新注册。
-             少了后者，重启一次提醒就全丢了——单测和 analyze 都发现不了，
-             只有真机重启才会暴露。 -->
-        <receiver
-            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver"
-            android:exported="false" />
-        <receiver
-            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED"/>
-                <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
-                <action android:name="android.intent.action.QUICKBOOT_POWERON"/>
-                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON"/>
-            </intent-filter>
-        </receiver>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

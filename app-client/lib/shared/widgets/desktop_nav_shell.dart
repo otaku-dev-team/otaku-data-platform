@@ -60,9 +60,14 @@ class DesktopNavShell extends StatelessWidget {
       labelType: NavigationRailLabelType.none,
       groupAlignment: -0.85,
       onDestinationSelected: (index) {
-        final router = GoRouter.maybeOf(context);
-        if (router == null) return;
-        router.go(MainNavDestination.values[index].path);
+        // 与手机底栏同一套：在 stateful shell 内用 goBranch，保住各 tab 的
+        // 滚动位置；不在壳里（设置页等兄弟路由）才退回 go()。
+        final shell = StatefulNavigationShell.maybeOf(context);
+        if (shell != null) {
+          shell.goBranch(index);
+          return;
+        }
+        GoRouter.maybeOf(context)?.go(MainNavDestination.values[index].path);
       },
       destinations: const [
         NavigationRailDestination(

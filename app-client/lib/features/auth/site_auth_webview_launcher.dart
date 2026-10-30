@@ -24,11 +24,13 @@ import 'site_auth_webview_page.dart';
 class WebViewSiteAuthLauncher implements SiteAuthLauncher {
   WebViewSiteAuthLauncher(this._ref) {
     _ref.onDispose(_redirects.close);
+    _ref.onDispose(_cancels.close);
   }
 
   final Ref _ref;
   final StreamController<String> _redirects =
       StreamController<String>.broadcast();
+  final StreamController<void> _cancels = StreamController<void>.broadcast();
 
   static const Set<TargetPlatform> _platformsWithWebView = {
     TargetPlatform.android,
@@ -45,6 +47,9 @@ class WebViewSiteAuthLauncher implements SiteAuthLauncher {
   Stream<String> get redirects => _redirects.stream;
 
   @override
+  Stream<void> get cancelled => _cancels.stream;
+
+  @override
   Future<bool> openAuthorize({required String state}) async {
     if (!supported) return false;
     try {
@@ -53,6 +58,7 @@ class WebViewSiteAuthLauncher implements SiteAuthLauncher {
             extra: SiteAuthWebViewArgs(
               state: state,
               onRedirect: _deliver,
+              onCancelled: _deliverCancel,
             ),
           );
       return true;
@@ -66,5 +72,11 @@ class WebViewSiteAuthLauncher implements SiteAuthLauncher {
   void _deliver(String uri) {
     if (_redirects.isClosed) return;
     _redirects.add(uri);
+  }
+
+  /// 用户在授权页里点了返回 / 关掉页面，没有回跳。
+  void _deliverCancel() {
+    if (_cancels.isClosed) return;
+    _cancels.add(null);
   }
 }

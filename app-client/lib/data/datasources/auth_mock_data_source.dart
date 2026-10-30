@@ -78,9 +78,12 @@ class AuthMockDataSource implements AuthDataSource {
 
   /// 站点授权登录的假实现。
   ///
-  /// 三条可驱动的分支，对应真实链路上最常见的失败：
+  /// 五条可驱动的分支，对应真实链路上最常见的失败：
   /// - ticket 为空 → 400（回调构造不完整）；
-  /// - ticket 是 `expired` → 401（票据超时或被用过，平台后端归一后都是这个码）；
+  /// - ticket 是 `expired` → 401 `INVALID_CREDENTIALS`（票据超时或被用过，
+  ///   平台后端归一后都是这个码，**实测确认**，不是猜的）；
+  /// - ticket 是 `disabled` → 403 `USER_DISABLED`（映射的平台账号被禁用）；
+  /// - ticket 是 `site-down` → 503 `SITE_UNAVAILABLE`（站点侧不可用）；
   /// - 其他 → 成功，返回一个**站点身份**的账号（`identity_source` 有值），
   ///   这样桌面走查能看到「账号菜单显示身份来源」这一支。
   ///
@@ -99,10 +102,28 @@ class AuthMockDataSource implements AuthDataSource {
       );
     }
     if (normalized == 'expired' || _usedTickets.contains(normalized)) {
+      // ⚠️ 码必须是**后端实际返的那个**：2026-10-29 对生产实测，假票据返
+      // `401 INVALID_CREDENTIALS`。早先这里写的是 `UNAUTHORIZED`，于是
+      // `AuthController._siteLoginError` 那条分支在 mock 下命中、真机上不命中
+      // ——测试全绿而真机错文案（显示成「账号或密码不正确」）。
       throw const ApiException(
-        code: ApiErrorCode.unauthorized,
-        message: '授权失败，请重试',
+        code: ApiErrorCode.invalidCredentials,
+        message: '站点授权已失效，请重新登录',
         statusCode: 401,
+      );
+    }
+    if (normalized == 'disabled') {
+      throw const ApiException(
+        code: ApiErrorCode.userDisabled,
+        message: '账号已被禁用',
+        statusCode: 403,
+      );
+    }
+    if (normalized == 'site-down') {
+      throw const ApiException(
+        code: ApiErrorCode.siteUnavailable,
+        message: '站点登录暂不可用，请稍后再试',
+        statusCode: 503,
       );
     }
     _usedTickets.add(normalized);

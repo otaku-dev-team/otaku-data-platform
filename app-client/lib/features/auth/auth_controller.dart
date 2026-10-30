@@ -210,22 +210,45 @@ class AuthController extends Notifier<AuthState> {
       state: SiteAuthState.generate(),
       startedAt: DateTime.now().toUtc(),
     );
-    await store.save(attempt);
+    try {
+      await store.save(attempt);
 
-    final opened = await launcher.openAuthorize(state: attempt.state);
-    if (!ref.mounted) return;
-    if (!opened) {
-      // 打不开浏览器（没有可处理的 Activity 等）要说出来，别让用户
-      // 盯着一个没反应的按钮猜。
+      final opened = await launcher.openAuthorize(state: attempt.state);
+      if (!ref.mounted) return;
+      if (!opened) {
+        // 打不开浏览器（没有可处理的 Activity 等）要说出来，别让用户
+        // 盯着一个没反应的按钮猜。
+        await store.clear();
+        state = state.copyWith(
+          submitting: false,
+          error: const ApiException(
+            code: ApiErrorCode.unknown,
+            message: '打不开授权页面，请检查是否安装了浏览器',
+          ),
+        );
+      }
+      // opened == true 时 submitting 继续保持：等回跳（成功）或取消（见
+      // [cancelSiteLogin]）来收尾。
+    } on Object catch (raw) {
+      // 落盘 / 推路由的意外异常也不能把按钮留在转圈状态。
+      if (!ref.mounted) return;
       await store.clear();
       state = state.copyWith(
         submitting: false,
-        error: const ApiException(
-          code: ApiErrorCode.unknown,
-          message: '打不开授权页面，请检查是否安装了浏览器',
-        ),
+        error: ApiException.fromAny(raw),
       );
     }
+  }
+
+  /// 用户在授权页里放弃登录（返回 / 关页）时收尾。
+  ///
+  /// 这不是错误：用户主动退出，不该弹红色错误条，只把「正在登录」放下，
+  /// 让登录按钮回到可点状态。已登录时不动——回跳成功后又取消的情况以成功为准。
+  void cancelSiteLogin() {
+    if (!ref.mounted) return;
+    if (state.status == AuthStatus.signedIn) return;
+    if (!state.submitting) return;
+    state = state.copyWith(submitting: false);
   }
 
   /// 处理站点回跳：`com.otaku.app:/oauth2redirect?ticket=…&state=…`。
@@ -245,6 +268,10 @@ class AuthController extends Notifier<AuthState> {
     if (attempt == null) {
       // 没有进行中的授权。可能是别的 App 拿同一个 scheme 试探，
       // 也可能是用户清理过数据——不弹错误，安静结束。
+      // 但要把「正在登录」放下：票据没了却留着 submitting，就是永远转圈。
+      if (state.status != AuthStatus.signedIn) {
+        state = state.copyWith(submitting: false);
+      }
       return false;
     }
     if (!attempt.matches(uri.queryParameters['state'])) {
@@ -312,19 +339,29 @@ class AuthController extends Notifier<AuthState> {
     }
   }
 
-  /// 票据类 401 改文案。
+  /// 站点票据换会话的失败分档。
   ///
-  /// `UNAUTHORIZED` 的默认文案是「登录已过期，请重新登录」——那是**会话失效**的
-  /// 语义。而这里的 401 是站点票据的问题（过期 / 被用过 / 平台侧 secret 错），
-  /// 用户可能压根还没登录过，告诉他「登录已过期」只会让人去找一个不存在的问题。
+  /// 为什么要分：契约 §1.1 给三类失败规定了**不同的用户动作**，混成一句
+  /// 「授权失败，请重试」会让人去做一件必然失败的事。
+  ///
+  /// - **401**（后端实测返 `INVALID_CREDENTIALS`，见下方判据）→ 票据过期 /
+  ///   被用过 / 平台侧 secret 错，**引导重新授权**。文案必须是「重新授权」
+  ///   而不是「重试」：票据是一次性的，重试＝拿同一张票再发一次，必然再失败，
+  ///   只有重走授权才拿得到新票。这正是契约那句「不要静默重试」的意思。
+  /// - **503** `SITE_UNAVAILABLE` → 站点侧不可用，**不要**引导重走授权，
+  ///   交给 [ApiErrorCode.siteUnavailable] 自己的文案（只说稍后再试）。
+  /// - **403** `USER_DISABLED` → 账号被禁用，重做几次都一样，停在「已禁用」。
+  ///
+  /// ⚠️ 判据里 `unauthorized` 不能删：那是**旧实现的码**，也是本文件历史注释
+  /// 写的码。后端实际返 `INVALID_CREDENTIALS`（2026-10-29 对生产实测确认），
+  /// 只认其中一个，另一个就会整档失效——而失效的表现是测试照绿、真机错文案。
   static Object _siteLoginError(Object raw) {
-    if (raw is ApiException && raw.code == ApiErrorCode.unauthorized) {
-      return const ApiException(
-        code: ApiErrorCode.unknown,
-        message: '授权失败，请重试',
-      );
-    }
-    return raw;
+    if (raw is! ApiException) return raw;
+    return switch (raw.code) {
+      ApiErrorCode.invalidCredentials || ApiErrorCode.unauthorized =>
+        const ApiException(code: ApiErrorCode.unknown, message: '授权已失效，请重新授权'),
+      _ => raw,
+    };
   }
 }
 
