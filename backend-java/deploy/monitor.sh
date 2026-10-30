@@ -16,8 +16,7 @@
 #
 #   5. 证书剩余天数 HTTPS 静默过期那天，App 会突然全部连不上，而服务器本身"正常"
 #   6. 慢查询日志体积 常开慢查询是为了「有据可查」，但没人看着它会默默涨大
-#   7. 访问日志体积   同上：max-days 管的是留几天，管不住单日被刷到几个 G
-#   8. 内存与 swap    2G 机器上挤着 mysql + java + 别的项目，available 见底就是 OOM 前兆
+#   7. 内存与 swap    2G 机器上挤着 mysql + java + 别的项目，available 见底就是 OOM 前兆
 #
 # 阈值都能用环境变量覆盖，默认值是按 2 核 2G / 50G 盘定的；
 # 也可以在 .env 里写 EXPECT_SERVICES / EXPECT_TLS，切换"正式形态 / 联调形态"。
@@ -184,27 +183,7 @@ else
     fi
 fi
 
-# ── 7. 访问日志体积（只告警，不计失败）────────────────────────────────
-# 访问日志（Tomcat access log，见 docs/deploy-production.md §7「日志与磁盘」）是新增的
-# 观测出口，rotate + max-days=190 管住的是「天数」，管不住「一天能有多大」——
-# 真被人刷接口时，单日文件能涨到几个 G，而那正是最不该悄悄把盘吃满的时候。
-# 阈值不自动清：超了先判断是流量涨了还是有人在刷，删日志等于把证据一起删掉。
-ACCESS_LOG_MAX_MB=${ACCESS_LOG_MAX_MB:-500}
-ACCESS_LOG_DIR=${ACCESS_LOG_DIR:-$(cd "$(dirname "$0")/.." && pwd)/logs}
-if [ ! -d "$ACCESS_LOG_DIR" ]; then
-    skip "访问日志（目录不存在：$ACCESS_LOG_DIR）"
-else
-    # 同样用 `cat | wc -c` 数字节：du 对小文件按块取整，会把几百 K 报成几 M。
-    ACCESS_BYTES=$(cat "$ACCESS_LOG_DIR"/access.*.log 2>/dev/null | wc -c | tr -d ' \r')
-    ACCESS_MB=$(( ${ACCESS_BYTES:-0} / 1048576 ))
-    if [ "$ACCESS_MB" -gt "$ACCESS_LOG_MAX_MB" ]; then
-        warn "访问日志 ${ACCESS_MB}MB（阈值 ${ACCESS_LOG_MAX_MB}MB，目录 ${ACCESS_LOG_DIR}）——先看是不是被刷"
-    else
-        ok "访问日志 ${ACCESS_MB}MB（${ACCESS_BYTES:-0} 字节）"
-    fi
-fi
-
-# ── 8. 内存与 swap（只告警，不计失败）────────────────────────────────
+# ── 7. 内存与 swap（只告警，不计失败）────────────────────────────────
 # 2G 机器上同时跑 mysql(570M) + java(210M) + 别的项目(240M)，内存是这台机器最先见的底。
 # 判据用「可用内存」而不是「swap 用了多少」：swap 有几百兆是常态（内核会把冷页换出去），
 # 真正危险的是 available 见底——那时候 OOM killer 随时会挑一个进程开刀。
