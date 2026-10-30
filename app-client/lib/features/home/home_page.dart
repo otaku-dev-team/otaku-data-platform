@@ -529,11 +529,17 @@ class _RecentViewsSection extends ConsumerWidget {
   /// 比「高分作品」的 148 窄一档：这一块是自己的足迹，不该比推荐更抢眼。
   static const double _cardWidth = 116;
 
+  /// 首页横排露几条。再多也没人横向翻到底——完整列表在「全部」里。
+  static const int _previewCount = 10;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final items = ref.watch(recentViewsProvider);
     if (items.isEmpty) return const SizedBox.shrink();
 
+    // 首页只露最近这几部，其余进「全部」列表页看。横排滑到第 11 张之后
+    // 没人还记得自己在找哪一部，而列表页有分组、能按日期往回找。
+    final preview = items.take(_previewCount).toList();
     final textScale = MediaQuery.textScalerOf(context).scale(1);
     final stripHeight = CompactWorkCard.heightFor(_cardWidth, textScale);
 
@@ -544,53 +550,29 @@ class _RecentViewsSection extends ConsumerWidget {
           _SectionHeader(
             title: '最近浏览',
             trailing: TextButton(
-              onPressed: () => _confirmClear(context, ref),
+              onPressed: () => context.push(RoutePaths.recentHistory),
               style: TextButton.styleFrom(
                 minimumSize: const Size(0, 32),
                 padding: const EdgeInsets.symmetric(horizontal: 8),
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
-              child: Text('清空', style: Theme.of(context).textTheme.labelMedium),
+              child: Text('全部', style: Theme.of(context).textTheme.labelMedium),
             ),
           ),
           SizedBox(
             height: stripHeight,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
-              // 不做「查看全部」：历史上限 50 条，这一条横排就是全部。
-              itemCount: items.length,
+              itemCount: preview.length,
               separatorBuilder: (_, _) => const SizedBox(width: 12),
               itemBuilder: (context, index) =>
-                  CompactWorkCard(work: items[index].work, width: _cardWidth),
+                  CompactWorkCard(work: preview[index].work, width: _cardWidth),
             ),
           ),
           const SizedBox(height: 20),
         ],
       ),
     );
-  }
-
-  /// 清空要二次确认：这是纯本地数据，清了就再也拿不回来（不像收藏能重新拉）。
-  Future<void> _confirmClear(BuildContext context, WidgetRef ref) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('清空最近浏览？'),
-        content: const Text('只清空这台设备上的浏览记录，不影响收藏与离线缓存。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('清空'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
-    ref.read(recentViewsProvider.notifier).clear();
   }
 }
 
