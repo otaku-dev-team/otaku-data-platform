@@ -163,6 +163,9 @@ services:
       # 变成"未匹配 Host 的默认站点"，等于把 Nginx 欢迎页暴露在公网。
       # 生成出来的 default.conf（来自 templates）会写进这个目录。
       - ./nginx/conf.d:/etc/nginx/conf.d
+      # 客户端安装包 / 更新清单：nginx 直接静态托管，不经过后端。
+      # 目录与模板里的 /downloads/ alias 对应，见 docs/app-update.md。
+      - ./downloads:/usr/share/nginx/downloads:ro
       # 证书由 certbot 写，nginx 只读挂载：即使 nginx 被攻破也改不了证书。
       - letsencrypt:/etc/letsencrypt:ro
       - certbot-www:/var/www/certbot:ro
