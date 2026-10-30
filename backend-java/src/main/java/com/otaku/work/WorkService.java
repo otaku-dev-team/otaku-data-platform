@@ -2,6 +2,7 @@ package com.otaku.work;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.otaku.common.AdultTags;
 import com.otaku.common.ApiException;
 import com.otaku.common.LikePattern;
 import com.otaku.common.PageResponse;
@@ -258,13 +259,20 @@ public class WorkService {
         }
     }
 
+    /**
+     * 把库里的 tags 原文转成对外数组。
+     *
+     * <p>成人词一律剔除（{@link AdultTags}）：成人作品本身已经在仓储层挡掉了，
+     * 这里是第二道——列表/详情/推荐理由任何一处出现 {@code R18} 都等于把口径写在了用户脸上。
+     * 剔除后只剩成人词的作品返回 {@code []}，与「来源明确没给标签」在展示上等价。
+     */
     private List<String> parseTags(String tagsJson) {
         if (tagsJson == null) {
             return null;
         }
         try {
             List<String> tags = objectMapper.readValue(tagsJson, TAG_LIST);
-            return tags.isEmpty() ? List.of() : tags;
+            return tags.isEmpty() ? List.of() : AdultTags.strip(tags);
         } catch (Exception ex) {
             log.warn("tags 字段不是合法 JSON，按未提供处理：{}", ex.getMessage());
             return null;

@@ -36,13 +36,19 @@ public class TagRepository {
         this.jdbc = jdbc;
     }
 
-    /** 按作品数降序、同分按名称升序；{@code workType} 为 null 时统计全部类型。 */
+    /**
+     * 按作品数降序、同分按名称升序；{@code workType} 为 null 时统计全部类型。
+     *
+     * <p>成人作品不计数：它们的标签行 {@code is_adult = 1}，被这条条件整行排除，
+     * 于是成人词自己的计数直接变 0、自然从词表里消失（不需要再传一份黑名单进来比对），
+     * 正常词的计数也不会虚高——避免「词表说 949 部、点进去只有 700 部」。
+     */
     public List<TagDtos.TagItem> top(String workType, int limit) {
         StringBuilder sql = new StringBuilder(
-                "SELECT tag AS name, COUNT(*) AS work_count FROM work_tag");
+                "SELECT tag AS name, COUNT(*) AS work_count FROM work_tag WHERE is_adult = 0");
         MapSqlParameterSource params = new MapSqlParameterSource().addValue("limit", limit);
         if (workType != null) {
-            sql.append(" WHERE work_type = :workType");
+            sql.append(" AND work_type = :workType");
             params.addValue("workType", workType);
         }
         sql.append(" GROUP BY tag ORDER BY work_count DESC, tag ASC LIMIT :limit");

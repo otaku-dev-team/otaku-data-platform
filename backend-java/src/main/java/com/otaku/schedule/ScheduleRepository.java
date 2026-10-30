@@ -1,6 +1,7 @@
 package com.otaku.schedule;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.otaku.common.AdultTags;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
@@ -33,6 +34,16 @@ public class ScheduleRepository {
             """;
 
     private static final RowMapper<ScheduleRecord> MAPPER = ScheduleRepository::map;
+
+    /**
+     * 成人条目过滤。
+     *
+     * <p>档期表只有两千多行、且 {@code work_tags} 没有反查表，所以这里直接
+     * {@code JSON_OVERLAPS} 现算（与 work 那套落库标记不同：那边一算就是 19.8 万行，
+     * 这边扫全表也是毫秒级，不值得再加一列）。
+     */
+    private static final String ADULT_FILTER =
+            " AND (work_tags IS NULL OR NOT JSON_OVERLAPS(work_tags, CAST(:adultTags AS JSON)))";
 
     /**
      * 读库时把 JSON 列归一成紧凑形式。当前只用于 work_tags（字符串数组）。
@@ -97,15 +108,21 @@ public class ScheduleRepository {
      */
     public List<ScheduleRecord> findByWeekday(Integer weekday) {
         String sql = "SELECT " + COLUMNS + " FROM schedule WHERE weekday <=> :weekday"
+                + ADULT_FILTER
                 + " ORDER BY id ASC";
-        return jdbc.query(sql, new MapSqlParameterSource("weekday", weekday), MAPPER);
+        return jdbc.query(sql, new MapSqlParameterSource()
+                .addValue("weekday", weekday)
+                .addValue("adultTags", AdultTags.JSON), MAPPER);
     }
 
     /** 按季度取全部条目，接口层自己按星期分组。 */
     public List<ScheduleRecord> findBySeason(String seasonCode) {
         String sql = "SELECT " + COLUMNS + " FROM schedule WHERE season_code = :seasonCode"
+                + ADULT_FILTER
                 + " ORDER BY weekday ASC, id ASC";
-        return jdbc.query(sql, new MapSqlParameterSource("seasonCode", seasonCode), MAPPER);
+        return jdbc.query(sql, new MapSqlParameterSource()
+                .addValue("seasonCode", seasonCode)
+                .addValue("adultTags", AdultTags.JSON), MAPPER);
     }
 
     /** 库里出现过的全部季度编码，新的在前。给"切换季度"用。 */

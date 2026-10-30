@@ -6,6 +6,7 @@ import com.otaku.article.dto.ArticleDtos.ArticleDetail;
 import com.otaku.article.dto.ArticleDtos.ArticlePage;
 import com.otaku.article.dto.ArticleDtos.ArticleSummary;
 import com.otaku.article.dto.ArticleDtos.Category;
+import com.otaku.common.AdultTags;
 import com.otaku.common.PageResponse;
 import org.springframework.stereotype.Service;
 
@@ -87,7 +88,7 @@ public class ArticleService {
                 record.sourceName(),
                 record.sourceUrl(),
                 record.coverUrl(),
-                readStringList(record.tagsJson()));
+                readTags(record.tagsJson()));
     }
 
     private ArticleDetail toDetail(ArticleRecord record) {
@@ -101,7 +102,7 @@ public class ArticleService {
                 record.sourceName(),
                 record.sourceUrl(),
                 record.coverUrl(),
-                readStringList(record.tagsJson()),
+                readTags(record.tagsJson()),
                 readStringList(record.relatedWorkIdsJson()));
     }
 
@@ -123,6 +124,14 @@ public class ArticleService {
     }
 
     /** 读 JSON 数组列。解析不了当未提供：这一列是附加信息，不该让整条资讯读不出来。 */
+    /**
+     * 资讯标签。成人词同样剔除——资讯标签与作品标签是同一套体系（站点两处都指向
+     * {@code /contents?tag=xxx}），别处藏了这里露出来就等于没藏。
+     */
+    private List<String> readTags(String json) {
+        return AdultTags.strip(readStringList(json));
+    }
+
     private List<String> readStringList(String json) {
         if (json == null || json.isBlank()) {
             return null;
