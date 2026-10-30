@@ -20,8 +20,6 @@ import 'package:otaku_app/data/models/work_type.dart';
 import 'package:otaku_app/data/repositories/article_repository.dart';
 import 'package:otaku_app/data/repositories/schedule_repository.dart';
 import 'package:otaku_app/data/repositories/work_repository.dart';
-import 'package:otaku_app/features/reminders/reminder_scheduler.dart';
-import 'package:otaku_app/features/reminders/reminder_service.dart';
 
 import 'support/test_overrides.dart';
 
@@ -116,10 +114,6 @@ void main() {
       overrides: [
         ...authOverrides(),
         appInitialLocationProvider.overrideWithValue(location),
-        // 切到手机平台后提醒排程会走真插件（要平台通道），单测里调不了。
-        reminderSchedulerProvider.overrideWithValue(
-          const NoopReminderScheduler(),
-        ),
         workDataSourceProvider.overrideWithValue(_HeroWorkSource()),
         articleDataSourceProvider.overrideWithValue(_EmptyArticleSource()),
         scheduleDataSourceProvider.overrideWithValue(_EmptyScheduleSource()),

@@ -306,6 +306,10 @@ void main() {
       await tester.pumpWidget(_app(source, cache, key: const ValueKey('online')));
       await tester.pumpAndSettle();
 
+      // 先滚到可见再点：筛选区改成换行后头部变高，默认 800×600 的测试视口里
+      // 第一张卡会落到折线以下，直接 tap 会打空（点不到 = 详情没打开）。
+      await tester.ensureVisible(find.text('缓存里的作品').first);
+      await tester.pumpAndSettle();
       await tester.tap(find.text('缓存里的作品').first);
       await tester.pumpAndSettle();
       expect(find.textContaining('当前离线'), findsNothing);
@@ -313,6 +317,8 @@ void main() {
       // 断网后重新进入详情页（新容器 = 重开 App）。
       source.offline = true;
       await tester.pumpWidget(_app(source, cache, key: const ValueKey('offline')));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('缓存里的作品').first);
       await tester.pumpAndSettle();
       await tester.tap(find.text('缓存里的作品').first);
       await tester.pumpAndSettle();

@@ -35,9 +35,21 @@ class TagPickerDialog extends ConsumerStatefulWidget {
 }
 
 class _TagPickerDialogState extends ConsumerState<TagPickerDialog> {
+  /// 热门区显示多少个。20 个正好两三行，再多就又是「一墙 chip」。
+  static const int _hotTagCount = 20;
+
+  /// 「全部标签」每次多显示多少个。
+  ///
+  /// 不一次铺开两千个：`FilterChip` 是完整的状态化 widget，两千个一起建
+  /// 会让打开面板卡一下。分页加，每页 240 个，对点选没有影响。
+  static const int _restPageSize = 240;
+
   late List<String> _selected = List<String>.of(widget.initial);
   final TextEditingController _search = TextEditingController();
   String _keyword = '';
+
+  /// 「全部标签」当前展开到第几个。默认先给一页，剩下的按钮按需加。
+  int _visibleRest = _restPageSize;
 
   @override
   void dispose() {
@@ -168,23 +180,89 @@ class _TagPickerDialogState extends ConsumerState<TagPickerDialog> {
       );
     }
 
-    return SingleChildScrollView(
-      child: Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: [
-          for (final item in items)
-            FilterChip(
-              label: Text('${item.name} · ${item.count}'),
-              selected: _selected.contains(item.name),
-              // 到上限后，未选中的 chip 禁掉：让用户点一下没反应比点完再被吞掉好。
-              onSelected: _atLimit && !_selected.contains(item.name)
-                  ? null
-                  : (_) => _toggle(item.name),
-              visualDensity: VisualDensity.compact,
+    // 搜索时不分组：用户已经在缩小范围了，再套一层「热门 / 全部」只是
+    // 让他多点一次。直接给命中的全部。
+    if (keyword.isNotEmpty) {
+      return SingleChildScrollView(child: _cloud(items));
+    }
+
+    // 按作品数降序。词表本身是服务端顺序，不可依赖。
+    final sorted = [...items]..sort((a, b) => b.count.compareTo(a.count));
+    final hot = sorted.take(_hotTagCount).toList(growable: false);
+    final rest = sorted.skip(_hotTagCount).toList(growable: false);
+
+    // 已选置顶：标签藏在两千个 chip 里时，用户想知道「我选了什么」得先滚
+    // 到底部，选满了想删掉一个尤其难。词表里没有的（历史筛选遗留）也要显示，
+    // 否则他永远删不掉那个标签。
+    final selected = [
+      for (final name in _selected)
+        items.firstWhere(
+          (item) => item.name == name,
+          orElse: () => TagCount(name: name, count: 0),
+        ),
+    ];
+
+    return ListView(
+      children: [
+        if (selected.isNotEmpty) ...[
+          _sectionTitle('已选（${selected.length}/$maxFilterTags）'),
+          _cloud(selected),
+          const SizedBox(height: 14),
+        ],
+        _sectionTitle('热门'),
+        _cloud(hot),
+        if (rest.isNotEmpty) ...[
+          const SizedBox(height: 14),
+          _sectionTitle('全部标签（${sorted.length}）'),
+          _cloud(rest.take(_visibleRest).toList(growable: false)),
+          if (_visibleRest < rest.length)
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: OutlinedButton(
+                  onPressed: () => setState(() => _visibleRest += _restPageSize),
+                  child: Text(
+                    '再看 $_restPageSize 个（还剩 ${rest.length - _visibleRest}）',
+                  ),
+                ),
+              ),
             ),
         ],
+      ],
+    );
+  }
+
+  Widget _sectionTitle(String text) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Text(
+        text,
+        style: theme.textTheme.labelLarge?.copyWith(
+          color: theme.colorScheme.primary,
+          fontWeight: FontWeight.w700,
+        ),
       ),
+    );
+  }
+
+  Widget _cloud(List<TagCount> items) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        for (final item in items)
+          FilterChip(
+            label: Text('${item.name} · ${item.count}'),
+            selected: _selected.contains(item.name),
+            // 到上限后，未选中的 chip 禁掉：让用户点一下没反应比点完再被吞掉好。
+            onSelected: _atLimit && !_selected.contains(item.name)
+                ? null
+                : (_) => _toggle(item.name),
+            visualDensity: VisualDensity.compact,
+          ),
+      ],
     );
   }
 

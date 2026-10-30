@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -598,15 +600,101 @@ class _RecentViewsSection extends ConsumerWidget {
 /// 标题与元信息。**只在手机端出现**——桌面首屏已经有侧栏和更宽的横排，
 /// 再加一块大图会把首屏撑满。
 ///
-/// 数据复用「高分作品」的第一条，不新开请求：首页是入口，不值得为一张
+/// 数据复用「高分作品」的前几条，不新开请求：首页是入口，不值得为一张
 /// banner 多打一次接口。加载中给同高占位，避免数据到位后整页往下跳。
-class _FeaturedHero extends ConsumerWidget {
+///
+/// 手机端每 5 秒在「高分作品」里自动换一张（最多 5 张），右上角点状指示
+/// 当前是第几张。定时器随页面销毁取消、切后台暂停——否则测试会报
+/// pending timer，真机也会一直唤醒页面。
+class _FeaturedHero extends ConsumerStatefulWidget {
   const _FeaturedHero();
 
+  @override
+  ConsumerState<_FeaturedHero> createState() => _FeaturedHeroState();
+}
+
+class _FeaturedHeroState extends ConsumerState<_FeaturedHero>
+    with WidgetsBindingObserver {
   static const double _height = 200;
 
+  /// 一次最多轮几张。10 张全轮一遍要近一分钟，用户看不到第一张之外的差别。
+  static const int _maxSlides = 5;
+
+  /// 轮换间隔。太短读不完标题，太长又像没在动。
+  static const Duration _interval = Duration(seconds: 5);
+
+  Timer? _timer;
+  int _index = 0;
+
+  /// 当前分支是否在前台可见。
+  ///
+  /// 切成 `StatefulShellRoute` 之后，非当前 tab 的页面**不会被销毁**，
+  /// 只是被 `Offstage` + `TickerMode(enabled: false)` 藏起来。`Ticker`
+  /// 会自动停，但 `Timer.periodic` 不会——不处理的话，人在资讯页时首页
+  /// 仍在每 5 秒重建一次（看不见，但白耗电）。这里跟着 TickerMode 停表。
+  bool _visible = true;
+
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _startTimer();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // `TickerMode.valuesOf` 建立了依赖：切 tab 时会回到这里。
+    final visible = TickerMode.valuesOf(context).enabled;
+    if (visible == _visible) return;
+    _visible = visible;
+    if (visible) {
+      _startTimer();
+    } else {
+      _timer?.cancel();
+      _timer = null;
+    }
+  }
+
+  @override
+  void dispose() {
+    // 必须取消：轮换是 Timer.periodic，留着会让测试报 pending timer，
+    // 真机上也会一直唤醒页面。
+    WidgetsBinding.instance.removeObserver(this);
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // 后台停表：既省电，也避免回到前台时一次连跳好几张。
+    if (state == AppLifecycleState.resumed) {
+      _startTimer();
+    } else {
+      _timer?.cancel();
+      _timer = null;
+    }
+  }
+
+  void _startTimer() {
+    _timer?.cancel();
+    // 不可见就不排表：`didChangeAppLifecycleState(resumed)` 也会走到这里，
+    // 回到前台时人在别的 tab，同样不该起表。
+    if (!_visible) return;
+    _timer = Timer.periodic(_interval, (_) => _advance());
+  }
+
+  void _advance() {
+    if (!mounted || PlatformInfo.isDesktop) return;
+    final items = ref.read(homeTopRatedProvider).value;
+    if (items == null) return;
+    final count = items.length < _maxSlides ? items.length : _maxSlides;
+    if (count <= 1) return;
+    setState(() => _index = (_index + 1) % count);
+  }
+
+  @override
+  Widget build(BuildContext context) {
     if (PlatformInfo.isDesktop) return const SizedBox.shrink();
 
     final theme = Theme.of(context);
@@ -635,7 +723,12 @@ class _FeaturedHero extends ConsumerWidget {
     final items = topRated.value ?? const <WorkSummary>[];
     if (items.isEmpty) return const SizedBox.shrink();
 
-    final work = items.first;
+    // 刷新/数据变短时 _index 可能越界，取模即可；不额外 setState，避免 build 里改状态。
+    final slides = items.length > _maxSlides
+        ? items.sublist(0, _maxSlides)
+        : items;
+    final slideIndex = _index % slides.length;
+    final work = slides[slideIndex];
     final rating = work.mainRating;
     final meta = [
       work.workType.label,
@@ -665,64 +758,108 @@ class _FeaturedHero extends ConsumerWidget {
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    // 头图背景不贴来源角标：它会被压在标题/元信息上，
-                    // 而且这张图的职责是氛围，不是「这条来自哪」。
-                    CoverImage(
-                      url: work.coverUrl,
-                      width: double.infinity,
-                      height: double.infinity,
-                      radius: 0,
-                      placeholderLabel: firstChar,
-                      // 无封面时走深色渐变占位，而不是海报用的斜纹——
-                      // 斜纹放大到 1000px 宽会变成一块喧宾夺主的条纹布。
-                      placeholderStyle: CoverPlaceholderStyle.hero,
-                    ),
-                    // 底部压暗，保证白字在浅色封面上也能读。
-                    const DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [Color(0x000B1620), Color(0xE60B1620)],
-                          stops: [0.35, 1],
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 450),
+                      switchInCurve: Curves.easeOut,
+                      switchOutCurve: Curves.easeIn,
+                      // 默认 layoutBuilder 只按子节点自身尺寸堆叠；这里的子节点是
+                      // `StackFit.expand`，必须显式给 expand 约束，否则切换瞬间
+                      // 会退回 0 尺寸、整块闪一下。
+                      layoutBuilder: (currentChild, previousChildren) => Stack(
+                        fit: StackFit.expand,
+                        children: [...previousChildren, ?currentChild],
+                      ),
+                      child: KeyedSubtree(
+                        key: ValueKey(work.workId),
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            // 头图背景不贴来源角标：它会被压在标题/元信息上，
+                            // 而且这张图的职责是氛围，不是「这条来自哪」。
+                            CoverImage(
+                              url: work.coverUrl,
+                              width: double.infinity,
+                              height: double.infinity,
+                              radius: 0,
+                              placeholderLabel: firstChar,
+                              // 无封面时走深色渐变占位，而不是海报用的斜纹——
+                              // 斜纹放大到 1000px 宽会变成一块喧宾夺主的条纹布。
+                              placeholderStyle: CoverPlaceholderStyle.hero,
+                            ),
+                            // 底部压暗，保证白字在浅色封面上也能读。
+                            const DecoratedBox(
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [Color(0x000B1620), Color(0xE60B1620)],
+                                  stops: [0.35, 1],
+                                ),
+                              ),
+                            ),
+                            Positioned(
+                              left: 16,
+                              right: 16,
+                              bottom: 14,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    '高分精选',
+                                    style: theme.textTheme.labelSmall?.copyWith(
+                                      color: Colors.white.withValues(alpha: 0.75),
+                                      letterSpacing: 1,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    work.title,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: theme.textTheme.titleLarge?.copyWith(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w700,
+                                      height: 1.25,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    meta,
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: Colors.white.withValues(alpha: 0.85),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
-                    Positioned(
-                      left: 16,
-                      right: 16,
-                      bottom: 14,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '高分精选',
-                            style: theme.textTheme.labelSmall?.copyWith(
-                              color: Colors.white.withValues(alpha: 0.75),
-                              letterSpacing: 1,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            work.title,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.titleLarge?.copyWith(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w700,
-                              height: 1.25,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            meta,
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: Colors.white.withValues(alpha: 0.85),
-                            ),
-                          ),
-                        ],
+                    // 指示点放右上角：底部左侧是标题/元信息，放右边会被长标题压住。
+                    if (slides.length > 1)
+                      Positioned(
+                        top: 12,
+                        right: 12,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            for (var i = 0; i < slides.length; i++)
+                              AnimatedContainer(
+                                duration: const Duration(milliseconds: 250),
+                                margin: const EdgeInsets.only(left: 4),
+                                width: i == slideIndex ? 14 : 5,
+                                height: 5,
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(
+                                    alpha: i == slideIndex ? 0.95 : 0.45,
+                                  ),
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                              ),
+                          ],
+                        ),
                       ),
-                    ),
                   ],
                 ),
               ),

@@ -30,3 +30,20 @@ final tagVocabularyProvider =
       final source = ref.watch(tagDataSourceProvider);
       return source.fetchTags(type: type);
     }, retry: (retryCount, error) => null);
+
+/// 搜索前置面板里的「热门标签」：词表里作品数最多的若干个。
+///
+/// **为什么不让用户直接搜标签名**：`/api/works` 的 `q` 只匹配标题
+/// （实测「科幻」当搜索词只有 7 条，而当标签筛有 2579 条）。所以这里点
+/// 标签走的是**标签筛选**，不是往搜索框里填字——填进去等于骗他。
+///
+/// 取 12 个：再多人就只是把一块 chip 墙搬到了搜索框下面。
+final hotTagSuggestionsProvider = FutureProvider<List<TagCount>>((ref) async {
+  final vocabulary = await ref.watch(tagVocabularyProvider(null).future);
+  final sorted = [...vocabulary.items]
+    ..sort((a, b) => b.count.compareTo(a.count));
+  return sorted.take(hotTagSuggestionCount).toList(growable: false);
+}, retry: (retryCount, error) => null);
+
+/// 搜索前置面板里显示几个热门标签。
+const int hotTagSuggestionCount = 12;

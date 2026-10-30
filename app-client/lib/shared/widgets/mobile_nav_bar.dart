@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/platform_info.dart';
+import '../../core/theme/app_theme.dart';
+import 'glass_backdrop.dart';
 import 'main_nav_destination.dart';
 
 /// 手机端主导航：底部一条 [NavigationBar]。
@@ -47,12 +49,23 @@ class MobileNavBar extends StatelessWidget {
     // 设置是应用配置、详情是列表的子页，都不属于「在内容之间跳」这一层。
     if (current == null) return const SizedBox.shrink();
 
-    return NavigationBar(
+    final bar = NavigationBar(
+      // 玻璃模式下底栏自己透明（主题里已设），模糊由外层 [GlassSurface] 提供。
+      backgroundColor: AppTheme.isGlass(context)
+          ? Colors.transparent
+          : null,
       selectedIndex: MainNavDestination.values.indexOf(current),
       onDestinationSelected: (index) {
-        final target = router;
-        if (target == null) return;
-        target.go(MainNavDestination.values[index].path);
+        // 走 goBranch 而不是 go(path)：切 tab 只换显隐，页面不被销毁，
+        // 作品库翻到第几页、滚到哪里都还在。`go(path)` 会整棵替换，
+        // 切回来等于重开。
+        final shell = StatefulNavigationShell.maybeOf(context);
+        if (shell != null) {
+          shell.goBranch(index);
+          return;
+        }
+        // 不在 shell 里（页面被单独 pump 的测试、或以后挪出主壳）时退回 go。
+        GoRouter.maybeOf(context)?.go(MainNavDestination.values[index].path);
       },
       destinations: [
         for (final d in MainNavDestination.values)
@@ -66,5 +79,10 @@ class MobileNavBar extends StatelessWidget {
           ),
       ],
     );
+
+    // 玻璃模式：底栏是常驻的那一层，值得真做一次模糊（列表滚动时下面的
+    // 卡片会从它后面透过去）。卡片不做——几十个 BackdropFilter 会把帧时间吃掉。
+    if (!AppTheme.isGlass(context)) return bar;
+    return GlassSurface(child: bar);
   }
 }

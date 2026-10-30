@@ -13,12 +13,21 @@ import 'site_auth_urls.dart';
 /// 这样用一个纯 Widget 参数就能在测试里替换掉真实的流。
 @immutable
 class SiteAuthWebViewArgs {
-  const SiteAuthWebViewArgs({required this.state, required this.onRedirect});
+  const SiteAuthWebViewArgs({
+    required this.state,
+    required this.onRedirect,
+    this.onCancelled,
+  });
 
   final String state;
 
   /// 收到回跳时调用，参数是原始 URI 字符串（与 `SiteAuthLauncher.redirects` 同形）。
   final void Function(String uri) onRedirect;
+
+  /// 用户**没有回跳就关掉页面**时调用（返回键退到根 / 关闭按钮 / 系统返回）。
+  ///
+  /// 不上报这一下，登录页的 `submitting` 会一直为 true，按钮永远转圈。
+  final VoidCallback? onCancelled;
 }
 
 /// App 内 WebView 承载站点授权 / 注册页。
@@ -46,6 +55,22 @@ class _SiteAuthWebViewPageState extends ConsumerState<SiteAuthWebViewPage> {
   double _progress = 0;
   String? _error;
   bool _delivered = false;
+
+  @override
+  void dispose() {
+    // 没走到回跳就离开了授权页 = 用户放弃这次登录。必须把「正在登录」清掉，
+    // 否则登录页的按钮会一直转圈，只能杀后台恢复（真机复现）。
+    //
+    // 放到微任务里：dispose 可能发生在路由弹出的布局阶段，此时同步改
+    // Riverpod 状态会触发正在构建的页面重建。
+    if (!_delivered) {
+      final onCancelled = widget.args.onCancelled;
+      if (onCancelled != null) {
+        Future<void>.microtask(onCancelled);
+      }
+    }
+    super.dispose();
+  }
 
   @override
   void initState() {

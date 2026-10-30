@@ -63,9 +63,15 @@ abstract final class AppTheme {
     ),
   ];
 
-  static ThemeData light() => _build(Brightness.light);
+  static ThemeData light({ColorScheme? dynamicScheme, bool glass = false}) =>
+      _build(Brightness.light, dynamicScheme, glass);
 
-  static ThemeData dark() => _build(Brightness.dark);
+  static ThemeData dark({ColorScheme? dynamicScheme, bool glass = false}) =>
+      _build(Brightness.dark, dynamicScheme, glass);
+
+  /// 当前主题是不是「玻璃质感」。组件里用它决定要不要加模糊层。
+  static bool isGlass(BuildContext context) =>
+      Theme.of(context).extension<AppStyle>()?.glass ?? false;
 
   /// 卡片底色 / 描边，按当前亮度取，避免每个组件自己判 `isDark`。
   static Color cardColor(BuildContext context) =>
@@ -74,55 +80,142 @@ abstract final class AppTheme {
   static Color borderColor(BuildContext context) =>
       Theme.of(context).brightness == Brightness.dark ? darkBorder : cardBorder;
 
-  static ThemeData _build(Brightness brightness) {
+  static ThemeData _build(
+    Brightness brightness,
+    ColorScheme? dynamicScheme,
+    bool glass,
+  ) {
     final isDark = brightness == Brightness.dark;
-    final scheme =
-        ColorScheme.fromSeed(seedColor: brand, brightness: brightness).copyWith(
+    // 系统取色：直接拿 dynamic_color 从壁纸生成的整套配色，连 surface 一起用。
+    // 只覆盖 `outlineVariant`：我们的描边是「比卡片深一点的同色系」，
+    // 而 Material You 的 outlineVariant 偏灰，压在带色的底上会显脏。
+    final border = isDark ? darkBorder : cardBorder;
+    final scheme = (dynamicScheme ??
+            ColorScheme.fromSeed(seedColor: brand, brightness: brightness))
+        .copyWith(
           // fromSeed 生成的 surface 偏灰白，站点是明显带蓝的浅底，直接覆盖。
-          surface: isDark ? darkSurface : surface,
-          onSurface: isDark ? darkInk : ink,
-          onSurfaceVariant: isDark ? darkInkSoft : inkSoft,
-          outlineVariant: isDark ? darkBorder : cardBorder,
-          primary: isDark ? const Color(0xFF66CCFF) : const Color(0xFF1C73B0),
-          secondary: accent,
+          surface: dynamicScheme != null
+              ? dynamicScheme.surface
+              : (isDark ? darkSurface : surface),
+          onSurface: dynamicScheme != null
+              ? dynamicScheme.onSurface
+              : (isDark ? darkInk : ink),
+          onSurfaceVariant: dynamicScheme != null
+              ? dynamicScheme.onSurfaceVariant
+              : (isDark ? darkInkSoft : inkSoft),
+          outlineVariant: border,
+          primary: dynamicScheme != null
+              ? dynamicScheme.primary
+              : (isDark ? const Color(0xFF66CCFF) : const Color(0xFF1C73B0)),
+          secondary: dynamicScheme != null ? dynamicScheme.secondary : accent,
         );
+
+    // 玻璃质感：让「层」变成半透明，露出 [GlassBackdrop] 那层渐变。
+    final cardFill = glass
+        ? (isDark
+              ? const Color(0x59162431)
+              : scheme.surfaceContainerLow.withValues(alpha: 0.55))
+        : (isDark ? darkCard : card);
+    final cardEdge = BorderSide(
+      color: glass
+          ? (isDark
+                ? const Color(0x33FFFFFF)
+                : scheme.outline.withValues(alpha: 0.16))
+          : border,
+    );
 
     return ThemeData(
       useMaterial3: true,
       colorScheme: scheme,
-      scaffoldBackgroundColor: scheme.surface,
+      extensions: <ThemeExtension<dynamic>>[AppStyle(glass: glass)],
+      // 玻璃模式下 Scaffold 必须透明，否则那层渐变永远看不见。
+      scaffoldBackgroundColor: glass ? Colors.transparent : scheme.surface,
       appBarTheme: AppBarTheme(
         // 与页面同色而不是纯白：白条压在浅蓝底上会切出一条明显的横缝，
         // 首页尤其突兀（顶上一条白、下面一片浅蓝）。分层交给卡片和描边。
-        backgroundColor: isDark ? darkSurface : surface,
+        // 玻璃模式下直接透明，让背景透上来（模糊由 GlassBackdrop 的色块提供层次）。
+        backgroundColor: glass
+            ? Colors.transparent
+            : (isDark ? darkSurface : scheme.surface),
         surfaceTintColor: Colors.transparent,
         scrolledUnderElevation: 0,
         foregroundColor: scheme.onSurface,
       ),
       cardTheme: CardThemeData(
         elevation: 0,
-        color: isDark ? darkCard : card,
+        color: cardFill,
         clipBehavior: Clip.antiAlias,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(cardRadius),
-          side: BorderSide(color: isDark ? darkBorder : cardBorder),
+          side: cardEdge,
         ),
+      ),
+      dialogTheme: DialogThemeData(
+        backgroundColor: glass
+            ? (isDark
+                  ? const Color(0xCC162431)
+                  : scheme.surfaceContainerLow.withValues(alpha: 0.9))
+            : (isDark ? darkCard : card),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      ),
+      navigationBarTheme: NavigationBarThemeData(
+        backgroundColor: glass
+            ? Colors.transparent
+            : (isDark ? darkSurface : scheme.surface),
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        indicatorShape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+      ),
+      navigationRailTheme: NavigationRailThemeData(
+        backgroundColor: glass ? Colors.transparent : scheme.surface,
+      ),
+      dividerTheme: DividerThemeData(
+        color: glass
+            ? scheme.outline.withValues(alpha: 0.12)
+            : (isDark ? darkBorder : border),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: isDark ? darkSurface : card,
+        fillColor: glass
+            ? (isDark
+                  ? const Color(0x33FFFFFF)
+                  : scheme.surface.withValues(alpha: 0.45))
+            : (isDark ? darkSurface : card),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: isDark ? darkBorder : cardBorder),
+          borderSide: BorderSide(color: isDark ? darkBorder : border),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: isDark ? darkBorder : cardBorder),
+          borderSide: BorderSide(color: isDark ? darkBorder : border),
         ),
       ),
       snackBarTheme: const SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
       ),
     );
+  }
+}
+
+/// 主题上的实验开关（[ThemeData.extensions]）。
+///
+/// 做成 extension 而不是全局状态：组件只在自己 build 时读一次，
+/// 主题一旦重建（开关改了）整棵树跟着更新，不用手动订阅 provider。
+@immutable
+class AppStyle extends ThemeExtension<AppStyle> {
+  const AppStyle({required this.glass});
+
+  final bool glass;
+
+  @override
+  AppStyle copyWith({bool? glass}) => AppStyle(glass: glass ?? this.glass);
+
+  @override
+  AppStyle lerp(ThemeExtension<AppStyle>? other, double t) {
+    if (other is! AppStyle) return this;
+    // 开关没有中间态：t < 0.5 保持原值，过了就切过去。
+    return t < 0.5 ? this : other;
   }
 }
