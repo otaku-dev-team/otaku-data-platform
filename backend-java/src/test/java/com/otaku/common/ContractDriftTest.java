@@ -258,6 +258,8 @@ class ContractDriftTest {
         targets.put("CommentReport", com.otaku.ugc.dto.CommentReportDto.class);
         targets.put("ConsoleReportItem", com.otaku.console.dto.ConsoleDtos.ReportItem.class);
         targets.put("ConsoleReportPage", PageResponse.class);
+        // 客户端心跳（V27）：只有 ok 一个字段，失败走错误信封而不是 200 + false
+        targets.put("ClientPingResult", com.otaku.usage.dto.UsageDtos.PingResult.class);
         return targets;
     }
 
@@ -292,6 +294,8 @@ class ContractDriftTest {
         targets.put("SiteCreateRequest", com.otaku.console.dto.InternalSiteDtos.SiteCreateRequest.class);
         targets.put("SiteAdminCreateRequest", com.otaku.console.dto.InternalSiteDtos.SiteAdminCreateRequest.class);
         targets.put("DeviceRegistrationRequest", com.otaku.device.dto.DeviceRegistrationRequest.class);
+        // 客户端心跳（V27）：入参刻意只有三个字段，多一个就多一分"能识别到人"的可能
+        targets.put("ClientPingRequest", com.otaku.usage.dto.UsageDtos.PingRequest.class);
         return targets;
     }
 

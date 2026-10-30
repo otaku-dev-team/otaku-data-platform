@@ -66,6 +66,7 @@
 
 - [`docs/how-we-serve-sites.md`](how-we-serve-sites.md)：对站点方说明"我们做什么、不做什么、怎么计费"的对外口径。
 - [`docs/deploy-production.md`](deploy-production.md)：生产部署步骤与拓扑（MySQL + 后端容器、封面回源白名单）。
+- [`docs/usage-analytics.md`](usage-analytics.md)：**使用统计的口径与边界**——账号数 / IP 估算 / 安装心跳三者各答什么、心跳怎么节流、刻意不采集哪些东西、合规依据，以及「还欠隐私政策」这件事。
 - [`docs/deployment-schedule.md`](deployment-schedule.md)：**接单后 3 天部署**的排期——接单前必建的 P1–P9、四条独立并行流、逐日执行窗口与当前卡点。
 - [`docs/bangumi-archive-handover.md`](bangumi-archive-handover.md)：Bangumi 档案灌库说明（55.6 万条来源与管线）。
 

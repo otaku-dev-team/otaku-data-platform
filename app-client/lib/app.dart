@@ -7,6 +7,7 @@ import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
 import 'features/auth/site_auth_bootstrap.dart';
 import 'features/settings/settings_controller.dart';
+import 'features/telemetry/usage_ping_bootstrap.dart';
 import 'features/update/update_bootstrap.dart';
 import 'shared/widgets/glass_backdrop.dart';
 
@@ -49,23 +50,25 @@ class OtakuApp extends ConsumerWidget {
     ColorScheme? darkScheme,
   }) {
     return SiteAuthBootstrap(
-      child: UpdateBootstrap(
-        child: MaterialApp.router(
-          title: 'Otaku',
-          debugShowCheckedModeBanner: false,
-          // 取不到系统配色时（机型不支持 / 桌面端）退回品牌色，
-          // 而不是给一套残缺的配色。
-          theme: AppTheme.light(dynamicScheme: lightScheme, glass: glass),
-          darkTheme: AppTheme.dark(dynamicScheme: darkScheme, glass: glass),
-          // 用户可在设置页里改；默认跟随系统。存在本机偏好里，
-          // 因为它是设备级选择而不是账号设置。
-          themeMode: ref.watch(themeModeProvider),
-          routerConfig: ref.watch(appRouterProvider),
-          // 玻璃模式下垫一层带色块的渐变：半透明的前提是下面有东西可透。
-          builder: glass
-              ? (context, child) =>
-                    GlassBackdrop(child: child ?? const SizedBox())
-              : null,
+      child: UsagePingBootstrap(
+        child: UpdateBootstrap(
+          child: MaterialApp.router(
+            title: 'Otaku',
+            debugShowCheckedModeBanner: false,
+            // 取不到系统配色时（机型不支持 / 桌面端）退回品牌色，
+            // 而不是给一套残缺的配色。
+            theme: AppTheme.light(dynamicScheme: lightScheme, glass: glass),
+            darkTheme: AppTheme.dark(dynamicScheme: darkScheme, glass: glass),
+            // 用户可在设置页里改；默认跟随系统。存在本机偏好里，
+            // 因为它是设备级选择而不是账号设置。
+            themeMode: ref.watch(themeModeProvider),
+            routerConfig: ref.watch(appRouterProvider),
+            // 玻璃模式下垫一层带色块的渐变：半透明的前提是下面有东西可透。
+            builder: glass
+                ? (context, child) =>
+                      GlassBackdrop(child: child ?? const SizedBox())
+                : null,
+          ),
         ),
       ),
     );

@@ -904,6 +904,45 @@ paths:
         "500": { $ref: "#/components/responses/InternalError" }
 
   # ---------------------------------------------------------------------------
+  # 客户端使用统计（匿名；V27）
+  # ---------------------------------------------------------------------------
+
+  /api/client/ping:
+    post:
+      tags: [使用统计]
+      summary: 客户端启动心跳（匿名装机/日活统计）
+      operationId: clientPing
+      description: |
+        **这是唯一一个不承诺「响应里没有任何用户数据」的公开写接口的反面**——
+        它压根不接收用户数据：只有 `install_id`（客户端本地生成的随机 UUID v4）、
+        版本号和平台。**服务端不存 IP、不存设备型号、不关联账号**，
+        所以这张表泄露也还原不出「谁在用」。
+
+        为什么要它：浏览是完全匿名的，只统计登录用户得到的是"注册数"而不是"使用数"，
+        两者在本项目差一个量级（2026-10-31：账号 2 个，其中一个是演示号）。
+        accesslog 能按 IP 估算，但 NAT 会合并、换网会拆分，只能算粗口径。
+
+        客户端**不需要看响应体**，失败也不重试、不阻塞启动——
+        统计不能影响体验。同日重复心跳不会产生新的日活行（按 `(install_id, day)` 去重）。
+
+        `install_id` 必须是 UUID 形状，否则 `400`：这个接口公开且免登录，
+        不校验就等于让任何人往"匿名表"里塞任意字符串（手机号、邮箱…），
+        那它就不再是匿名数据了。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ClientPingRequest" }
+      responses:
+        "200":
+          description: 已记账
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ClientPingResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  # ---------------------------------------------------------------------------
   # 阶段 2：账号与个人数据
   # 语义与错误处理以 docs/stage2-account-collection-contract.md 为准
   # ---------------------------------------------------------------------------
@@ -2371,6 +2410,38 @@ components:
           schema: { $ref: "#/components/schemas/ErrorResponse" }
 
   schemas:
+
+    # ── 客户端使用统计（匿名；与 /api/client/ping 对应）─────────────────────
+    # 这两个 schema 刻意只有三个字段：多一个字段就多一分「能识别到人」的可能，
+    # 而这套统计要回答的只是「多少台设备在用、什么版本」。
+    ClientPingRequest:
+      type: object
+      required: [install_id]
+      properties:
+        install_id:
+          type: string
+          minLength: 36
+          maxLength: 36
+          description: |
+            客户端本地生成的**随机 UUID v4**，重装 App 后变。
+            不含任何硬件指纹（不采 IMEI / OAID / AndroidID / MAC），也不与账号关联。
+            形状不是 UUID → `400`（公开免登录接口的闸门，防止这张表被当成任意字符串的容器）。
+        app_version:
+          type: string
+          maxLength: 32
+          description: versionName（如 `1.1.4`）。超长截断而不是报错——附带信息不该拖垮心跳
+        platform:
+          type: string
+          maxLength: 16
+          description: android / windows / ios 等；留空记 null
+
+    ClientPingResult:
+      type: object
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
+          description: 恒为 true。失败走 4xx/5xx 的统一错误信封，不返回 200 + false
 
     Paging:
       type: object

@@ -89,6 +89,7 @@ git remote set-url origin git@github.com:otaku-dev-team/otaku-data-platform.git
 | 项目定位与边界（改技术方案前必读） | `docs/product-positioning.md` |
 | 数据契约、字段口径 | `docs/data-contract.md`、`docs/openapi.yaml` |
 | 部署 | `docs/deploy-production.md` |
+| 「有多少人在用」/ 使用统计口径 | `docs/usage-analytics.md`（日志统计脚本 `scripts/usage.py`） |
 | 合并进度与开放 PR | `docs/merge-queue.md` |
 | 待决事项 | `docs/open-decisions.md` |
 | 测试工具为什么长这样 | `docs/test-tooling-plan.md` |
