@@ -36,8 +36,12 @@ services:
       - --collation-server=utf8mb4_0900_ai_ci
       # 轻量服务器常见 2G 内存，默认 128M 偏小、调太大会 OOM。
       - --innodb-buffer-pool-size=${MYSQL_BUFFER_POOL:-256M}
-      # 生产不该长慢日志到磁盘塞满；确需排查再打开
-      - --slow-query-log=0
+      # 慢查询：**开**，但阈值放到 2 秒。理由是「出事时有据可查」——
+      # 指标只能告诉你 p99 变慢了，定位不到是哪条 SQL。
+      # 之前是 0（怕日志塞满盘）：现在由 monitor.sh 第 6 项盯着体积（> 50MB 告警），
+      # 2 秒阈值下正常情况下一天都不会有一条，日志几乎不涨。
+      - --slow-query-log=1
+      - --long-query-time=2
     volumes:
       - mysql-data:/var/lib/mysql
     # 只 expose、不 ports：库不对外网开放。需要本地连过去排查时用
