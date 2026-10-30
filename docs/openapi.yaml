@@ -350,6 +350,156 @@ paths:
         "429": { $ref: "#/components/responses/RateLimitedWithRetry" }
         "500": { $ref: "#/components/responses/InternalError" }
 
+  /api/works/{work_id}/reviews:
+    get:
+      tags: [社区]
+      summary: 作品点评列表（打分 + 长评，一人一条）
+      operationId: listWorkReviews
+      description: |
+        作品页「点评」tab：只返回 `published`，**最新在前**。
+
+        点评与评论是两件事，不打通：
+        - **点评**：对作品的评价，一人一条、可打分、可长文；
+        - **评论**：讨论流，可多条、可回复（`/api/works/{work_id}/comments`）。
+
+        - 作品不存在或 `work_id` 非法 → `404`；
+        - 还没有点评 → `200` + `total: 0` + 空数组；
+        - `page_size` 上限 50；未登录也能读。
+      parameters:
+        - $ref: "#/components/parameters/WorkId"
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: page_size
+          in: query
+          description: 每页条数，上限 50
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UgcReviewPage" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimitedWithRetry" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /api/works/{work_id}/reviews/summary:
+    get:
+      tags: [社区]
+      summary: 作品评分概览（均分 / 条数 / 分布）
+      operationId: getWorkReviewSummary
+      description: |
+        只统计 `published`。三个数字口径不同，客户端不要混用：
+
+        - `total`：点评总条数（**含只写文字不打分的**）；
+        - `rated`：其中打了分的条数；
+        - `average`：**只对打了分的求均值**（可为 `null`）。只写文字的点评不参与，
+          否则会被当成 0 分把整部作品拉垮；
+        - `distribution`：各分数的条数，没有的分数不出现（不补 0）。
+
+        与来源站聚合分（`Work.main_rating`）**并列展示、不互相覆盖**——两套口径，
+        混成一个数就再也分不清是谁的。
+      parameters:
+        - $ref: "#/components/parameters/WorkId"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UgcReviewSummary" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /api/me/reviews:
+    post:
+      tags: [社区]
+      summary: 发表点评（需登录，一人一条）
+      operationId: createWorkReview
+      description: |
+        对一部作品发表点评。成功 `201` + 点评本体。
+
+        - `rating` 与 `body` **至少一项非空**：只打分、只写评都行，两样都空 → `400`；
+        - `rating` 1–10；`body` 纯文本、上限 5000 字，空白归一成 `null`；
+        - 同一作品**只能有一条**：已存在 → `409 REVIEW_EXISTS`，客户端应引导去编辑；
+        - 站点未开启社区 → `403`；作品不属于当前站点 → `403`；
+        - 先审后发的站点：新点评落 `pending`，列表与概览都看不到。
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UgcReviewRequest" }
+      responses:
+        "201":
+          description: 已创建
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UgcReview" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: 已点评过这部作品（`REVIEW_EXISTS`）
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /api/me/reviews/{review_id}:
+    patch:
+      tags: [社区]
+      summary: 修改自己的点评
+      operationId: editWorkReview
+      description: |
+        只改 `rating` / `body`，作品与作者不可变。
+
+        **省略的字段沿用原值**——只改评分时正文不会被清空。合并后至少要有一项非空。
+        只能改自己的（别人的 `403`）；已隐藏或已撤回的返回 `404`。
+        先审后发的站点改完回 `pending` 重审。
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: review_id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UgcReviewEditRequest" }
+      responses:
+        "200":
+          description: 已更新
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UgcReview" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+    delete:
+      tags: [社区]
+      summary: 删除自己的点评（幂等）
+      operationId: deleteWorkReview
+      description: |
+        **软删**（`status='deleted'`，保留行便于追溯），成功 `204`。
+
+        幂等：重复删除、id 不存在都返回 `204`；删别人的返回 `403`。
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: review_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204": { description: 已删除（或本来就不存在） }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
   /api/tags:
     get:
       tags: [作品查询]
@@ -2672,6 +2822,136 @@ components:
             内嵌的回复预览：**最早在前**，最多 3 条。只有顶层评论有值；回复为 `[]`。
             完整回复走 `GET /api/works/{work_id}/comments/{comment_id}/replies`。
           items: { $ref: "#/components/schemas/UgcComment" }
+
+    UgcReview:
+      type: object
+      description: |
+        一条作品点评。`rating` 与 `body` 至少一项非空：
+        只打分、只写评都行，两样都空不叫点评（服务端 `400`）。
+      required: [review_id, work_id, author, status, created_at]
+      properties:
+        review_id:
+          type: string
+          example: "88"
+        work_id:
+          type: string
+          example: "W-8f3a91"
+        author:
+          type: string
+          description: 用户名；已注销用户显示「已注销用户」
+          example: "kagamimi"
+        rating:
+          type: integer
+          nullable: true
+          minimum: 1
+          maximum: 10
+          description: 1–10；`null` = 只写了文字没打分（不参与均分）
+          example: 8
+        body:
+          type: string
+          nullable: true
+          maxLength: 5000
+          description: 纯文本长评，客户端**不得**按 HTML/Markdown 渲染；`null` = 只打分
+          example: "作画稳定，节奏比第一季更松弛。"
+        status:
+          type: string
+          enum: [published, pending, hidden, deleted]
+          description: 公开列表里只会是 `published`；新发可能是 `pending`（先审后发）
+          example: published
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-10-30T07:10:00Z"
+        edited_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: 作者最后一次修改内容的时间；`null` = 未编辑
+          example: "2026-10-30T08:00:00Z"
+
+    UgcReviewPage:
+      type: object
+      description: 点评分页信封，字段与其它列表一致。
+      required: [total, page, page_size, total_pages, items]
+      properties:
+        total: { type: integer, example: 12 }
+        page: { type: integer, example: 1 }
+        page_size: { type: integer, example: 20 }
+        total_pages: { type: integer, example: 1 }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/UgcReview" }
+
+    UgcReviewSummary:
+      type: object
+      description: |
+        评分概览。三个数字口径不同：`total` 含只写文字的；
+        `rated` 只算打了分的；`average` 只对打了分的求均值（可为 null）。
+      required: [total, rated, distribution]
+      properties:
+        total:
+          type: integer
+          description: 已发布点评总条数（含只写文字不打分的）
+          example: 12
+        rated:
+          type: integer
+          description: 其中打了分的条数
+          example: 9
+        average:
+          type: number
+          format: double
+          nullable: true
+          description: 打了分的那部分的均分；一条都没打分时为 null
+          example: 7.8
+        distribution:
+          type: array
+          description: 各分数的条数，没有的分数不出现（不补 0）
+          items: { $ref: "#/components/schemas/RatingBucket" }
+
+    RatingBucket:
+      type: object
+      required: [rating, count]
+      properties:
+        rating: { type: integer, minimum: 1, maximum: 10, example: 8 }
+        count: { type: integer, minimum: 1, example: 4 }
+
+    UgcReviewRequest:
+      type: object
+      required: [work_id]
+      properties:
+        work_id:
+          type: string
+          example: "W-8f3a91"
+        rating:
+          type: integer
+          nullable: true
+          minimum: 1
+          maximum: 10
+          description: 评分；与 `body` 至少一项非空
+          example: 8
+        body:
+          type: string
+          nullable: true
+          maxLength: 5000
+          description: 纯文本长评；与 `rating` 至少一项非空。空白归一成 null
+          example: "作画稳定，节奏比第一季更松弛。"
+
+    UgcReviewEditRequest:
+      type: object
+      description: |
+        省略的字段沿用原值——只改评分时正文不会被清空。合并后至少要有一项非空。
+      properties:
+        rating:
+          type: integer
+          nullable: true
+          minimum: 1
+          maximum: 10
+          example: 9
+        body:
+          type: string
+          nullable: true
+          maxLength: 5000
+          example: "二刷之后改到 9 分。"
 
     UgcCommentPage:
       type: object
