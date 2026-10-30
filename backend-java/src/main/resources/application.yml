@@ -82,8 +82,12 @@ app:
     retention:
       # 软删（作者撤回）的评论保留天数，到期物理删除。见 docs/ugc-retention-proposal.md：
       # 保留是为了追溯，但「保留」不等于「永久」——用户以为删了，数据不该一直躺着。
-      # 0 = 不清理（站点/法务给出「全留」口径时用；此时删除只能人工执行）。
-      deleted-days: ${OTAKU_UGC_RETENTION_DELETED_DAYS:90}
+      # 开发期按 zm 定的 15 天（方便测清理链路）；上线前按站点/法务口径改。
+      # 0 = 不清理（站点给出「全留」口径时用；此时删除只能人工执行）。
+      deleted-days: ${OTAKU_UGC_RETENTION_DELETED_DAYS:15}
+      # 用户注销时是否移除他的评论。默认 false = 匿名化保留（作者显示「已注销用户」，楼层不塌）；
+      # 打开 = 软删，对外立即消失，物理清理由上面的保留天数兜底。
+      remove-comments-on-account-removal: ${OTAKU_UGC_REMOVE_ON_ACCOUNT_DELETION:false}
 
 management:
   endpoints:
