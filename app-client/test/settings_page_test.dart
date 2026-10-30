@@ -111,8 +111,9 @@ void main() {
         ),
         findsOneWidget,
       );
+      // 这一页有两张卡都带「清除」（离线缓存 / 图片缓存），这里看第一张。
       final clear = tester.widget<TextButton>(
-        find.widgetWithText(TextButton, '清除'),
+        find.widgetWithText(TextButton, '清除').first,
       );
       expect(clear.onPressed, isNull);
     });
@@ -137,7 +138,8 @@ void main() {
         findsOneWidget,
       );
 
-      await tester.tap(find.widgetWithText(TextButton, '清除'));
+      // 同上：取第一张卡的「清除」（离线缓存）。
+      await tester.tap(find.widgetWithText(TextButton, '清除').first);
       await tester.pumpAndSettle();
       // 二次确认：清除是不可逆的（离线时再也看不到这些内容）。
       expect(find.text('清除离线缓存？'), findsOneWidget);
