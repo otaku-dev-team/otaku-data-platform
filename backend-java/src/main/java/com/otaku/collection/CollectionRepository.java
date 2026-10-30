@@ -88,14 +88,20 @@ public class CollectionRepository {
         String sql = "SELECT " + JOIN_COLUMNS
                 + "  FROM collection c JOIN work w ON w.work_id = c.work_id"
                 + " WHERE c.user_id = :userId"
+                + " AND w.is_adult = 0"
                 + statusCondition(statusFilter, params)
                 + " ORDER BY c.updated_at DESC, c.work_id ASC LIMIT :limit OFFSET :offset";
         return jdbc.query(sql, params, CollectionRepository::mapRow);
     }
 
+    /**
+     * 列表总数。**必须与 {@link #findPage} 同一口径**：成人作品在列表里不占位，
+     * 计数却算进去的话，客户端会出现「共 12 条、只翻到 10 条」。所以这里也 JOIN work。
+     */
     public long count(long userPk, String statusFilter) {
         MapSqlParameterSource params = new MapSqlParameterSource("userId", userPk);
-        String sql = "SELECT COUNT(*) FROM collection c WHERE c.user_id = :userId"
+        String sql = "SELECT COUNT(*) FROM collection c JOIN work w ON w.work_id = c.work_id"
+                + " WHERE c.user_id = :userId AND w.is_adult = 0"
                 + statusCondition(statusFilter, params);
         Long total = jdbc.queryForObject(sql, params, Long.class);
         return total == null ? 0 : total;
@@ -106,7 +112,8 @@ public class CollectionRepository {
         List<CollectionWorkRow> rows = jdbc.query(
                 "SELECT " + JOIN_COLUMNS
                         + "  FROM collection c JOIN work w ON w.work_id = c.work_id"
-                        + " WHERE c.user_id = :userId AND c.work_id = :workId",
+                        + " WHERE c.user_id = :userId AND c.work_id = :workId"
+                        + " AND w.is_adult = 0",
                 new MapSqlParameterSource().addValue("userId", userPk).addValue("workId", workId),
                 CollectionRepository::mapRow);
         return rows.stream().findFirst();

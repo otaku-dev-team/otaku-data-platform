@@ -1,5 +1,6 @@
 package com.otaku.work;
 
+import com.otaku.common.AdultTags;
 import com.otaku.common.TagsJson;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
@@ -74,9 +75,14 @@ public class WorkRepository {
         return rows.stream().findFirst();
     }
 
+    /**
+     * 按对外 ID 取作品。**成人内容与不存在一样返回 empty**：详情、相关推荐、封面代理、
+     * 收藏写入前的存在性校验、UGC 挂靠全部走这一条，过滤放在这里就不用每个调用方各写一遍
+     * （漏一处就是一条泄漏路径）。内部统计（console）走自己的 SQL，不受影响。
+     */
     public Optional<WorkRecord> findByWorkId(String workId) {
         List<WorkRecord> rows = jdbc.query(
-                "SELECT " + COLUMNS + " FROM work WHERE work_id = :workId",
+                "SELECT " + COLUMNS + " FROM work WHERE work_id = :workId AND is_adult = 0",
                 new MapSqlParameterSource("workId", workId),
                 MAPPER);
         return rows.stream().findFirst();
@@ -155,25 +161,50 @@ public class WorkRepository {
      * <p>解析放在 SQL 里（{@code JSON_TABLE}），与回填脚本同一条路径，避免两处解析规则不一致。
      * {@code tagsJson} 一定来自 {@code TagsJson.write()}，是合法 JSON；若真损坏，
      * 这里抛错会让该条导入变 rejected——比默默丢掉标签更容易被发现。
+     *
+     * <p>顺带维护成人标记（见 {@link #applyAdultFlag}）：**只在这一条写入路径上算**，
+     * 所以「标签改了、标记没跟上」这种状态不存在。
      */
     private void replaceTags(long workRef, String tagsJson, String workType,
                              BigDecimal ratingValue, Integer releaseYear) {
         MapSqlParameterSource params = new MapSqlParameterSource("workRef", workRef);
         jdbc.update("DELETE FROM work_tag WHERE work_ref = :workRef", params);
-        if (tagsJson == null) {
-            return;
+        if (tagsJson != null) {
+            String sql = """
+                    INSERT IGNORE INTO work_tag (work_ref, tag, work_type, rating_value, release_year)
+                    SELECT :workRef, LEFT(jt.tag, 64), :workType, :ratingValue, :releaseYear
+                    FROM JSON_TABLE(CAST(:tagsJson AS JSON), '$[*]' COLUMNS (tag VARCHAR(255) PATH '$')) jt
+                    WHERE jt.tag IS NOT NULL AND jt.tag <> ''
+                    """;
+            jdbc.update(sql, params
+                    .addValue("tagsJson", tagsJson)
+                    .addValue("workType", workType)
+                    .addValue("ratingValue", ratingValue)
+                    .addValue("releaseYear", releaseYear));
         }
-        String sql = """
-                INSERT IGNORE INTO work_tag (work_ref, tag, work_type, rating_value, release_year)
-                SELECT :workRef, LEFT(jt.tag, 64), :workType, :ratingValue, :releaseYear
-                FROM JSON_TABLE(CAST(:tagsJson AS JSON), '$[*]' COLUMNS (tag VARCHAR(255) PATH '$')) jt
-                WHERE jt.tag IS NOT NULL AND jt.tag <> ''
-                """;
-        jdbc.update(sql, params
-                .addValue("tagsJson", tagsJson)
-                .addValue("workType", workType)
-                .addValue("ratingValue", ratingValue)
-                .addValue("releaseYear", releaseYear));
+        applyAdultFlag(workRef, params);
+    }
+
+    /**
+     * 打成人标记：**先由标签判定作品，再把同一个结论抄到 work_tag**。
+     *
+     * <p>为什么 work_tag 那列抄的是「作品是否成人」而不是「这个标签是不是成人词」：
+     * 列表与词表要排除的是「成人作品的所有标签行」，若按标签自身判定，
+     * 一部 R18 作品上的 {@code 科幻} 那一行仍会被算进词表计数——等于没过滤。
+     * 反过来说，凡是带成人标签的作品，它的每一行都会被排除，成人词自己的计数因此归零，
+     * 不再需要拿黑名单去比一遍。
+     *
+     * <p>判定只认 {@link AdultTags#NAMES}，与出口剔除、迁移回填同一份名单。
+     */
+    private void applyAdultFlag(long workRef, MapSqlParameterSource params) {
+        params.addValue("adultTags", AdultTags.NAMES);
+        Integer adult = jdbc.queryForObject(
+                "SELECT EXISTS (SELECT 1 FROM work_tag WHERE work_ref = :workRef AND tag IN (:adultTags))",
+                params, Integer.class);
+        int flag = adult == null ? 0 : adult;
+        params.addValue("adult", flag);
+        jdbc.update("UPDATE work SET is_adult = :adult WHERE id = :workRef", params);
+        jdbc.update("UPDATE work_tag SET is_adult = :adult WHERE work_ref = :workRef", params);
     }
 
     public void updateCoverCache(long id, String cacheKey, LocalDateTime cachedAt) {
@@ -277,6 +308,9 @@ public class WorkRepository {
                                             String workType, BigDecimal minRating, Integer year) {
         // 调用方保证已 JOIN work w（见 findPage/count 各分支），这里才能过滤软删。
         sql.append(" AND w.deleted_at IS NULL");
+        // 用 work_tag 上的冗余列，与本方法里 type/rating/year 同一个理由：条件落在同一张索引上，
+        // 不必回表看 work.is_adult。
+        sql.append(" AND t.is_adult = 0");
         if (workType != null) {
             sql.append(" AND t.work_type = :workType");
             params.addValue("workType", workType);
@@ -306,6 +340,7 @@ public class WorkRepository {
         String sql = "SELECT " + COLUMNS + " FROM work"
                 + " WHERE id <> :excludeId"
                 + " AND deleted_at IS NULL"
+                + " AND is_adult = 0"
                 + " AND tags IS NOT NULL"
                 + " AND JSON_OVERLAPS(tags, CAST(:tagsJson AS JSON))"
                 + " ORDER BY rating_value DESC, id DESC"
@@ -397,6 +432,9 @@ public class WorkRepository {
                                          Integer year) {
         // 软删行（#249）对外一律不可见：列表、搜索、标签、年份四个面都从这里过。
         sql.append(" AND w.deleted_at IS NULL");
+        // 成人内容（V25 迁移的那两列）：与软删同级，列表 / 搜索 / 标签 / 年份 / 排行同一口径。
+        // 走的是已落库的 is_adult 列，不是查询时解析 tags——实测解析版把计数从 86ms 拖到 2.7s。
+        sql.append(" AND w.is_adult = 0");
         if (workType != null) {
             sql.append(" AND w.work_type = :workType");
             params.addValue("workType", workType);
