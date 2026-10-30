@@ -1,8 +1,8 @@
 # 合并队列与合并后动作清单
 
 > **现用清单。** 每次合并后更新这一份，不再另写。
-> 更新于 2026-10-30 00:30，基准 `main = cda2bab`（#298 封面白名单事故修复）。
-> 开放 PR **0 个**；远端分支 16 条（本地另有 11 条已合未删，见 §3.2）。
+> 更新于 2026-10-30 14:20，基准 `main = e010087`（发版冒烟规程；前一条 `cda2bab` 是封面白名单事故修复）。
+> 开放 PR **4 个**；远端分支 46 条（本地 91 条，绝大多数已合未删，见 §3.2）。
 > 合并权条例仍按 [`project-charter.md`](project-charter.md) §3.5：**CI 全绿 + 不碰红线 + 说清楚，谁都能合（含自合）**。
 
 ## 0. 一句话
@@ -11,7 +11,13 @@
 UGC 七项（评论 / 开关与审核 / 举报与先审后发 / 导出 / 回复 / 留存清理 / 编辑）、作品软删、详情富字段与
 Staff·声优·制作公司、people 补人、指标端点，均已在 `154.8.194.198:8080` 上线。
 
-**当前没有开放 PR。** 唯一在跑的是数据侧长任务：封面回填分片（cron 每 4 小时 4,000 条，
+**当前有 4 个开放 PR**（详见 §6）：#299 站点票据换会话分三档（客户端）、#301 数据集覆盖率报告工具（数据侧）、
+#302 客户端整合批（导航独立栈 / 设置二级页 / 标签分组 / 搜索建议 / 更新续传 / 外观实验 / 追番提醒下线）、
+#303 nginx 静态托管安装包与更新清单（部署侧）。
+**#302 已 cherry-pick 了 #299 的两个提交**，两侧重叠文件已对齐，本地 `git merge-tree` 验证两种合并顺序都零冲突、
+结果同树——**#299 与 #302 谁先合都行**。#303 动的是生产 nginx/compose，属「对外服务」一档，建议请另一人复核后再合。
+
+唯一在跑的是数据侧长任务：封面回填分片（cron 每 4 小时 4,000 条，
 预计 4–5 天，全库封面 48% → 约 85%，见 #288）。W1 客户端侧剩下的仍是两件要人和设备的活：
 **主观观感走查**（动效/配色，清单见 [`w1-real-data-probe.md`](w1-real-data-probe.md) §5.1）
 与 **真机走查**（10-28 已跑一轮并留档，见 [`real-device-acceptance-2026-10-28.md`](real-device-acceptance-2026-10-28.md)，
@@ -70,6 +76,10 @@ filter-links (#130)        ⊃ client-home (#121)
 每批整合 PR 合入后，**源 PR 已逐条关闭**并留了「已随 #NNN 合入」的说明。
 第 8 批为单 PR 直合（无整合 PR），编号形如 `#275(#270)` = PR #275 关闭 Issue #270。
 
+| 第 9 批 · 客户端整合（**待合**） | #302（`4334a44`，另 cherry-pick #299 的 `09a23e9` + `085d1e3`） | 导航独立栈、设置二级页、标签面板分组、搜索建议面板、更新包断点续传、外观实验（系统取色 / 玻璃质感，默认关）、追番提醒下线、封面与标签行 | 客户端 **391 通过**（见 §5）；后端未动 |
+
+第 9 批**尚未合入**（PR #302 开放中），所以它还没有「结果」一列——合入后再补。
+
 ## 3. 合并后动作
 
 ### 已完成
@@ -107,8 +117,13 @@ filter-links (#130)        ⊃ client-home (#121)
       **4 项被外部条件阻塞**（见 [`real-device-acceptance-2026-10-28.md`](real-device-acceptance-2026-10-28.md) §3）：
       通知送达与重启重注册（后端 `/api/schedule` 零数据）、站点登录完整闭环（需真实测试账号）、
       厂商推送通道（本轮范围外）。**不算完全收口**，但阻塞点都不在代码里。
-- [ ] **客户端全量校验**：`flutter analyze` → `flutter test` → `build apk --debug`；
-      最近一次记录是 305 通过（2026-10-25），10-28/10-29 有大量客户端改动，**未重跑**。
+- [x] **客户端全量校验**：`flutter analyze` → `flutter test` → `build apk --debug`；
+      最近一次记录是 **391 通过 / 0 失败**（2026-10-30 @ `4334a44`，#302 分支独立跑，based on `af8b3d5`；
+      含 #299 带来的 `site_login_error_test.dart` 6 项）。比 10-29 的 385 多 6 项，
+      少 0 项——追番提醒的 13 项测试是随功能一起下线的，不计入。
+- [ ] **外观实验待定**：#302 里带了「跟随系统取色（Material You）」与「玻璃质感」两个开关，
+      **默认都是关的**（关掉即发布版的品牌蓝 + 实心卡片）。要不要转成默认开启，
+      等真机对比过再定——模拟器上只验了默认态。
 
 ## 3.1 分支清理记录（2026-10-26）
 
@@ -167,6 +182,39 @@ squash 合入的那一类。两种直觉都会骗人。
 ⚠️ **#202 / #205 / #230 又是「closed 但内容在 main」**，与 #203 同一类。
 三个 PR 都没有关闭说明——判「进没进」只能看代码，这条规矩已经踩到第四、五、六次了。
 
+### 2026-10-30 盘点（远端 46 条 / 本地 91 条）
+
+判据同 §3.1，另加一条更准的：**`git cherry origin/main <b>`**（按 patch-id 比对，
+不看祖先关系也不看 PR 标记）。本次 46 条远端分支里 **32 条内容已在 main、可直接删**：
+
+- 提交全在 main 祖先链（12 条）：`docs/deploy-long-task-notes`、`docs/pq-296`、
+  `feat/backend-device-tokens`、`feat/backend-work-year-filter`、`feat/console-phase2-144`、
+  `feat/mobile-bottom-nav`、`feat/open-hardening-188`、`feat/site-lifecycle-144`、
+  `feat/tags-endpoint-208`、`feat/work-staff-characters-256`、`perf/tag-vocabulary-cache`、
+  `tune/cover-rate-burst` 等；
+- patch-id 等价已在 main（20 条）：`chore/android-dev-network`（⚠️ 10-27 判为「保留」，
+  现已合入，可删）、`chore/ignore-android-build`、`deploy/live-2026-10-27`、
+  `docs/alias-coverage-273`、`docs/rich-fields-tier-a`、`docs/ugc-dayone-positioning`、
+  `feat/metrics-endpoint-286`、`feat/people-shell-271`、`feat/site-owner-console`、
+  `feat/soft-delete-249`、`feat/ugc-comments-240`、`feat/ugc-export-240b2c`、
+  `feat/ugc-moderation-240b2`、`feat/ugc-report-240b2b`、`feat/work-relations-255`、
+  `fix/alias-empty-shell-273`、`fix/contract-java-skeleton`、`fix/cover-source-badge-stack`、
+  `fix/import-lock-retry-278`。
+
+**保留 9 条未收口**（有独有提交且内容不在 main，逐条核对后才敢动）：
+
+| 分支 | 原因 |
+|---|---|
+| `docs/identity-auth-endpoint-playbook` / `docs/ironlaw-align-reality` / `docs/release-year-contract-sync` / `docs/site-feature-adaptation` | 方案分支，状态已被 #141 / #163 / #99 覆盖；**zm 的分支，留给他判断** |
+| `docs/fix-backup-cron` | 1 提交未进 main，内容与 #209 有重叠 |
+| `feat/cover-backfill` | 封面回填长任务（#288）仍在跑，分支跟着任务走 |
+| `feat/site-login-exchange` | #242 站点 secret，等外部输入 |
+| `feat/work-rich-fields-250` / `fix/work-tag-index-270` | 对应功能已合入，分支停在合并前的旧版（squash 类，祖先关系查不出来） |
+
+**本地 91 条分支**里绝大多数同样已合（`git cherry` 判定内容已在 main），可批量删；
+另有 11 个 worktree 占着磁盘（主目录 `D:/otaku` 之外：`D:/otaku-256`、`-b3`、`-b4`、`-deploy`、
+`-fix-cover`、`-home`、`-mq`、`-train2`、`-ui`、`-wt2`），逐条核对后再清。
+
 ## 4. 会踩到的四个坑
 
 1. **squash 合并会让 stacked PR 的 base 悬空**：#122 被 squash 进 `feat/client-home` 后，
@@ -184,6 +232,7 @@ squash 合入的那一类。两种直觉都会骗人。
 |---|---|---|
 | `backend-java` | `mvnw test` **301 通过 / 0 失败**（含连库集成，`IT_DB_PORT=3307`） | 2026-10-29 @ `1674698`（#294 记录） |
 | `app-client` | `flutter test` **385 通过 / 0 失败**；analyze 干净 | 2026-10-29 @ `30d1dfe`（#296 记录，含新增 13 项；**补上了 10-25 之后的欠账**） |
+| `app-client`（#302 分支） | `flutter test` **391 通过 / 0 失败**；analyze 干净 | 2026-10-30 @ `4334a44`（#302 + #299 的两个提交；分支独立跑） |
 | `app-client`（P5 构建链） | `build_site.sh` 默认路径 debug + release 各构建一次通过、品牌自检命中；覆盖路径用临时站反证 | 2026-10-27 @ `28a7d99` |
 | `sync-python` | `pytest` **274 passed** | 2026-10-29 @ `d1ab96c`（#276 记录） |
 | 契约 | `ContractDriftTest` 全绿（42 path / 87 ref） | 2026-10-28（#258 补齐 Java 形状骨架后 CI 会真跑） |
@@ -193,7 +242,10 @@ squash 合入的那一类。两种直觉都会骗人。
 
 | PR | 主题 | 状态 |
 |---|---|---|
-| — | 无开放 PR | #287（指标端点）已于 2026-10-29 合并；#296（详情页制作人员 / 角色与声优，#256）已于 2026-10-29 合并 @ `30d1dfe` |
+| **#299** | 站点票据换会话按契约 §1.1 分三档（#238） | riceyu02；CI 全绿、`mergeable_state: clean`；**与 #302 零冲突**（顺序不限） |
+| **#301** | 数据集覆盖率报告工具（#2） | zhengmin486；CI 全绿、clean；与 #302 / #303 均无冲突。按「不代合并别人的 PR」，建议作者自己合 |
+| **#302** | 客户端整合批：导航独立栈 / 设置二级页 / 标签分组 / 搜索建议 / 更新续传 / 外观实验 / 追番提醒下线 | riceyu02；CI 全绿、clean；已 cherry-pick #299 的两个提交，与 #299 顺序不限；客户端 391 通过 |
+| **#303** | nginx 静态托管安装包与更新清单 | riceyu02；CI 全绿、clean；**生产 nginx/compose 变更，建议请另一人复核后再合**；线上清单未动（仍 `versionCode 4 / 1.1.2`） |
 
 ⚠️ **#296 合进来时顺带修了 main 上两条预存在的红**（`mobile_nav_test`）：一条断言在整页找
 `bookmark_border_rounded`、被作品库 AppBar 的同款收藏图标干扰；另一条钉 AppBar 标题「首页」、
