@@ -12,9 +12,10 @@
 #   3. 磁盘占用     超过阈值就报——磁盘满是最常见的"服务莫名其妙挂了"
 #   4. 备份新鲜度   最新备份必须 < 26 小时。备份停了但不报警 = 以为有备份
 #
-# 另外查一条不算失败的（证书到期 < 14 天只告警）：
+# 另外查两条不算失败的（只告警，不改变退出码）：
 #
 #   5. 证书剩余天数 HTTPS 静默过期那天，App 会突然全部连不上，而服务器本身"正常"
+#   6. 慢查询日志体积 常开慢查询是为了「有据可查」，但没人看着它会默默涨大
 #
 # 阈值都能用环境变量覆盖，默认值是按 2 核 2G / 50G 盘定的；
 # 也可以在 .env 里写 EXPECT_SERVICES / EXPECT_TLS，切换"正式形态 / 联调形态"。
@@ -152,6 +153,31 @@ else
             else
                 ok "证书剩余 ${DAYS} 天（$DOMAIN）"
             fi
+        fi
+    fi
+fi
+
+# ── 6. 慢查询日志体积（只告警，不计失败）────────────────────────────
+# 慢查询是常开的（compose 里 --slow-query-log=1，阈值 2 秒），为的是出事时有据可查：
+# 指标只能告诉你 p99 变慢，定位不到是哪条 SQL。
+# 但没人看着它就会默默涨大——这条只负责「超过阈值提醒」，不自动删日志：
+# 看到告警的正确反应是去看 SQL，而不是把证据删掉。
+SLOW_LOG_MAX_MB=${SLOW_LOG_MAX_MB:-50}
+if ! command -v docker >/dev/null 2>&1; then
+    skip "慢查询日志（没有 docker）"
+else
+    # 用 `cat | wc -c` 数字节：du 对小文件会按块取整（362 字节也会显示 1MB），
+    # 报出来的数字看着像"有慢查询"，其实只是文件系统块大小。
+    SLOW_BYTES=$(docker exec otaku-mysql sh -c \
+        'cat /var/lib/mysql/*-slow.log 2>/dev/null | wc -c' 2>/dev/null | tr -d '\r')
+    if [ -z "${SLOW_BYTES:-}" ]; then
+        skip "慢查询日志（取不到大小，可能容器名不同或未开启）"
+    else
+        SLOW_MB=$(( SLOW_BYTES / 1048576 ))
+        if [ "$SLOW_MB" -gt "$SLOW_LOG_MAX_MB" ]; then
+            warn "慢查询日志 ${SLOW_MB}MB（阈值 ${SLOW_LOG_MAX_MB}MB）——有查询超过 2 秒，去看 SQL"
+        else
+            ok "慢查询日志 ${SLOW_MB}MB（${SLOW_BYTES} 字节）"
         fi
     fi
 fi
