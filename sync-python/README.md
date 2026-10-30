@@ -275,6 +275,25 @@ python -m sync --health
 
 > 若本机设了全局 `HTTP_PROXY`，连 `localhost` 也会被代理拦掉、表现为 **502**，看起来像后端挂了其实是代理。设 `NO_PROXY=localhost,127.0.0.1` 再试（同源问题见「提交给 Java」一节）。
 
+### 数据集覆盖率报告（`--coverage-report`）
+
+覆盖率工具扫**已导出的标准数据集 SQLite**（规范化产物，不是客户源库），按 `work_type`
+统计各字段填充率、关联覆盖与「有封面可上线数」，直接在「后端能展示什么」的口径上回答
+「能上线的作品有多少」。这是看清数据集真实缺口最快的办法，也是决定哪些缺口值得补的依据。
+
+```bash
+PYTHONPATH=src python -m sync --coverage-report --dataset-in runs/dataset.db
+PYTHONPATH=src python -m sync --coverage-report --dataset-in runs/dataset.db \
+  --source-db /path/to/source.sqlite --coverage-json out.json
+```
+
+- 数据源是 `--export-dataset` 导出的产物，**不是源库**；
+- 传 `--source-db` 时额外扫源库 `entities` 表，给出人物/公司主数据可用量
+  （这是 #1「people 主数据导出」的范围依据）；
+- 只读，不发任何请求、不碰站点地址/令牌；
+- 报告口径与「无封面不展示」一致：可上线数 = 有 `cover_url` 的作品数；
+- 实现见 `src/sync/dataset/coverage.py`，逻辑由 `tests/test_coverage.py` 守住。
+
 ## 约定
 
 - Python **不直接写业务数据库**，只通过内部导入 API 提交。

@@ -216,6 +216,16 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="REPORT",
         help="只补跑上次失败的页：默认取输出目录下最新一份 run-*.json，也可指定路径",
     )
+    parser.add_argument(
+        "--coverage-report",
+        action="store_true",
+        help="扫描已导出的数据集，输出按类型的字段填充率与可上线数（只读，不碰站点/令牌）",
+    )
+    parser.add_argument(
+        "--coverage-json",
+        default=None,
+        help="覆盖率报告落盘路径（JSON），配合 --coverage-report",
+    )
     return parser
 
 
@@ -437,6 +447,39 @@ def _run_dataset_publish(args) -> int:
     return 0 if report.ok else 1
 
 
+def _run_coverage_report(args) -> int:
+    """扫描已导出的数据集，输出按类型的字段填充率与可上线数。
+
+    只读数据集，不发任何请求、不碰站点地址/令牌。
+    传 --source-db 时额外扫源库 entities 表，给出人物/公司主数据可用量
+    （这是 #1「people 主数据导出」的范围依据）。
+    """
+    import sqlite3
+    from pathlib import Path
+
+    from .dataset.coverage import coverage_report, format_coverage_report
+
+    dataset = args.dataset_in or "runs/dataset.db"
+    if not Path(dataset).exists():
+        print(f"错误：数据集不存在: {dataset}", file=sys.stderr)
+        return 2
+
+    try:
+        report = coverage_report(
+            dataset,
+            source_db=args.source_db,
+            json_path=args.coverage_json,
+        )
+    except sqlite3.Error as exc:
+        print(f"错误：读取数据集失败 {dataset}：{exc}", file=sys.stderr)
+        return 2
+
+    print(format_coverage_report(report))
+    if args.coverage_json:
+        print(f"报告 JSON: {args.coverage_json}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
@@ -444,6 +487,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_dataset_export(args)
     if args.import_dataset:
         return _run_dataset_publish(args)
+    if args.coverage_report:
+        return _run_coverage_report(args)
     if args.retry_failed and (args.articles or args.schedule):
         print(
             "错误：--retry-failed 目前只支持作品抓取，不与 --articles / --schedule 同用",
