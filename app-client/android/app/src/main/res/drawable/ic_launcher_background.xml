@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 自适应图标的底层：站点 logo 的深蓝底 #0A2D42（站点 brand 色阶里最深的一档）。
+     只放纯色，不放圆角：形状由系统决定（圆 / 方 / 水滴），我们不该自己画圆角。
+     注意：XML 注释里不能出现连续两个连字符，否则 aapt 会直接报错。 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#0A2D42" />
+</shape>

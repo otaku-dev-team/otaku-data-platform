@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- API 26+ 用自适应图标（系统按形状裁切，尖角不被切掉靠 foreground 的 66dp 安全区）；
+     API 24-25（minSdk 就是 24）继续用 mipmap-*/ic_launcher.png 那套位图。 -->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@drawable/ic_launcher_background" />
+    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+</adaptive-icon>

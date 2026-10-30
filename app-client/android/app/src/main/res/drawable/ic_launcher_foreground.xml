@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 自适应图标的前景：站点 logo 的青色四角星 + 右上高光点（**不含深蓝底**，
+     底在 ic_launcher_background.xml）。
+
+     几何数据直接来自来源站首页 <link rel="icon"> 里的内联 SVG（viewBox 64x64），
+     用 group 缩放到 108dp 画布中心的 66dp 安全区——系统会把图标裁成圆/方/水滴，
+     超出安全区的部分会被切掉，所以星尖必须留够余量。
+
+     VectorDrawable 没有 circle 元素，高光点用两段 arc 画。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <group
+        android:translateX="21"
+        android:translateY="21"
+        android:scaleX="1.03125"
+        android:scaleY="1.03125">
+
+        <!-- 四角星 #39C5BB -->
+        <path
+            android:fillColor="#39C5BB"
+            android:pathData="M32,7c1.7,14.4 10.6,23.3 25,25c-14.4,1.7 -23.3,10.6 -25,25c-1.7,-14.4 -10.6,-23.3 -25,-25c14.4,-1.7 23.3,-10.6 25,-25Z" />
+
+        <!-- 高光点 #66CCFF（原 SVG: cx=50 cy=48 r=3.6） -->
+        <path
+            android:fillColor="#66CCFF"
+            android:pathData="M46.4,48a3.6,3.6 0 1,0 7.2,0a3.6,3.6 0 1,0 -7.2,0Z" />
+    </group>
+</vector>
