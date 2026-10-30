@@ -16,6 +16,7 @@ import '../../data/models/work_type.dart';
 import '../../shared/widgets/account_menu.dart';
 import '../../shared/widgets/cover_image.dart';
 import '../../shared/widgets/compact_work_card.dart';
+import '../../shared/widgets/config_notice_bar.dart';
 import '../../shared/widgets/desktop_nav_shell.dart';
 import '../../shared/widgets/mobile_nav_bar.dart';
 import '../../shared/widgets/desktop_shortcuts.dart';
@@ -81,6 +82,9 @@ class HomePage extends ConsumerWidget {
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.only(top: 4, bottom: 24),
               children: const [
+                // 公告条自己判有没有公告：没有时渲染 SizedBox.shrink()，
+                // 所以这里可以无条件放着，不用在页面里读一次配置
+                ConfigNoticeBar(),
                 _SearchEntry(),
                 _FeaturedHero(),
                 _RecentViewsSection(),
@@ -792,7 +796,10 @@ class _FeaturedHeroState extends ConsumerState<_FeaturedHero>
                                 gradient: LinearGradient(
                                   begin: Alignment.topCenter,
                                   end: Alignment.bottomCenter,
-                                  colors: [Color(0x000B1620), Color(0xE60B1620)],
+                                  colors: [
+                                    Color(0x000B1620),
+                                    Color(0xE60B1620),
+                                  ],
                                   stops: [0.35, 1],
                                 ),
                               ),
@@ -807,7 +814,9 @@ class _FeaturedHeroState extends ConsumerState<_FeaturedHero>
                                   Text(
                                     '高分精选',
                                     style: theme.textTheme.labelSmall?.copyWith(
-                                      color: Colors.white.withValues(alpha: 0.75),
+                                      color: Colors.white.withValues(
+                                        alpha: 0.75,
+                                      ),
                                       letterSpacing: 1,
                                     ),
                                   ),
@@ -826,7 +835,9 @@ class _FeaturedHeroState extends ConsumerState<_FeaturedHero>
                                   Text(
                                     meta,
                                     style: theme.textTheme.bodySmall?.copyWith(
-                                      color: Colors.white.withValues(alpha: 0.85),
+                                      color: Colors.white.withValues(
+                                        alpha: 0.85,
+                                      ),
                                     ),
                                   ),
                                 ],

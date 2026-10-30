@@ -62,7 +62,7 @@ public class WebConfig implements WebMvcConfigurer {
                 // 只拦公共读：/api/auth 有登录节流，/api/me 与 /api/console 有令牌门槛，
                 // /internal 只有平台能调。逐条列出而不是 /api/**，避免把新接口"默认"卷进来。
                 .addPathPatterns("/api/works/**", "/api/tags/**", "/api/schedule/**",
-                        "/api/articles/**", "/api/covers/**");
+                        "/api/articles/**", "/api/covers/**", "/api/app/**");
     }
 
     private static List<String> parseOrigins(String raw) {

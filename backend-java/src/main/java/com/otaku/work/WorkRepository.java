@@ -1,6 +1,6 @@
 package com.otaku.work;
 
-import com.otaku.common.AdultTags;
+import com.otaku.common.AdultPolicy;
 import com.otaku.common.TagsJson;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
@@ -50,8 +50,15 @@ public class WorkRepository {
 
     private final NamedParameterJdbcTemplate jdbc;
 
-    public WorkRepository(NamedParameterJdbcTemplate jdbc) {
+    /**
+     * 成人判定的运行期视图：词表与总开关可热改（{@code app_config}），
+     * 所以这里不能再用编译期常量——否则「改了配置不生效」会变成最难查的一类问题。
+     */
+    private final AdultPolicy adultPolicy;
+
+    public WorkRepository(NamedParameterJdbcTemplate jdbc, AdultPolicy adultPolicy) {
         this.jdbc = jdbc;
+        this.adultPolicy = adultPolicy;
     }
 
     public Optional<WorkRecord> findBySourceKey(String source, String sourceId) {
@@ -194,16 +201,17 @@ public class WorkRepository {
      * 反过来说，凡是带成人标签的作品，它的每一行都会被排除，成人词自己的计数因此归零，
      * 不再需要拿黑名单去比一遍。
      *
-     * <p>判定只认 {@link AdultTags#NAMES}，与出口剔除、迁移回填同一份名单。
+     * <p>判定读 {@link AdultPolicy}（配置可热改，缺键回落到 {@code AdultTags} 的默认值），
+     * 与出口剔除、重建逻辑同一份来源。
      *
-     * <p>再加一条**标题兜底**（{@link AdultTags#titleLooksAdult}）：`R18!` 那 7 部作品的
+     * <p>再加一条**标题兜底**（{@code AdultPolicy#titleLooksAdult}）：`R18!` 那 7 部作品的
      * {@code tags} 是空的，只认标签的话搜 `R18` 照样搜得到——这正是用户会第一时间试的那一下。
      * 标题标记只收「内容确实成人向才会出现」的几个词，`エロ` / `成人` 这种会误杀
      * （{@code 新吼えろペン}、{@code 爱的成人式}），所以没收。
      */
     private void applyAdultFlag(long workRef, String title, MapSqlParameterSource params) {
-        boolean titleAdult = AdultTags.titleLooksAdult(title);
-        params.addValue("adultTags", AdultTags.NAMES);
+        boolean titleAdult = adultPolicy.titleLooksAdult(title);
+        params.addValue("adultTags", adultPolicy.tagNames());
         Integer tagged = jdbc.queryForObject(
                 "SELECT EXISTS (SELECT 1 FROM work_tag WHERE work_ref = :workRef AND tag IN (:adultTags))",
                 params, Integer.class);

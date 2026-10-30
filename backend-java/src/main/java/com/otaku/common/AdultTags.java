@@ -79,7 +79,7 @@ public final class AdultTags {
             TITLE_MARKERS.stream().map(s -> s.toLowerCase(java.util.Locale.ROOT)).toList();
 
     /** 名单的 JSON 数组文本，供 SQL 的 {@code JSON_OVERLAPS(tags, CAST(:adult AS JSON))} 使用。 */
-    public static final String JSON = toJson();
+    public static final String JSON = toJson(NAMES);
 
     private AdultTags() {
     }
@@ -95,11 +95,20 @@ public final class AdultTags {
      * 而这里选的每个标记本身就不可能是正常词的一部分。
      */
     public static boolean titleLooksAdult(String title) {
-        if (title == null || title.isEmpty()) {
+        return titleLooksAdult(title, TITLE_MARKERS_LOWER);
+    }
+
+    /**
+     * 同上，但用调用方给的小写标记表（运行期配置会覆盖默认值，见 {@code AdultPolicy}）。
+     *
+     * @param markersLower **必须是已小写**的标记；这里不再做一次大小写转换，避免每个作品多做一遍
+     */
+    public static boolean titleLooksAdult(String title, List<String> markersLower) {
+        if (title == null || title.isEmpty() || markersLower.isEmpty()) {
             return false;
         }
         String lower = title.toLowerCase(java.util.Locale.ROOT);
-        for (String marker : TITLE_MARKERS_LOWER) {
+        for (String marker : markersLower) {
             if (lower.contains(marker)) {
                 return true;
             }
@@ -116,12 +125,17 @@ public final class AdultTags {
      * 这与「来源没给标签」是两件事，客户端对前者不渲染标签行、对后者也不渲染，展示上等价。
      */
     public static List<String> strip(List<String> tags) {
-        if (tags == null || tags.isEmpty()) {
+        return strip(tags, HIDDEN);
+    }
+
+    /** 同上，但用调用方给的命中集合（运行期配置会覆盖默认值）。 */
+    public static List<String> strip(List<String> tags, Set<String> hidden) {
+        if (tags == null || tags.isEmpty() || hidden.isEmpty()) {
             return tags;
         }
         List<String> kept = null;
         for (int i = 0; i < tags.size(); i++) {
-            if (isAdult(tags.get(i))) {
+            if (tags.get(i) != null && hidden.contains(tags.get(i))) {
                 if (kept == null) {
                     kept = new ArrayList<>(tags.size());
                     kept.addAll(tags.subList(0, i));
@@ -136,9 +150,10 @@ public final class AdultTags {
         return kept == null ? tags : Collections.unmodifiableList(kept);
     }
 
-    private static String toJson() {
+    /** 把任意名单序列化成 JSON 数组文本（SQL 参数用）；失败属于编码错误，直接抛。 */
+    public static String toJson(List<String> names) {
         try {
-            return new ObjectMapper().writeValueAsString(NAMES);
+            return new ObjectMapper().writeValueAsString(names);
         } catch (JsonProcessingException ex) {
             throw new IllegalStateException("成人词表无法序列化", ex);
         }
