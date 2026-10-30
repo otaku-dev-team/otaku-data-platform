@@ -1,8 +1,28 @@
+import java.io.FileInputStream
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
+
+// ── 正式签名 ──────────────────────────────────────────────────────────
+// 密钥**不入库**（android/.gitignore 已排除 key.properties / *.jks / *.keystore）。
+// 有密钥的人把 android/key.properties 放本机即可，格式见同目录的
+// key.properties.example。
+//
+// 没有这个文件就退回 debug 签名：协作者和 CI 都没有密钥，硬失败会直接把
+// 构建链打断。代价是「可能有人拿 debug 签的包当正式版发出去」，所以下面
+// 会打印醒目警告，并且 build_site.sh 可以用 --require-release-key 变成硬失败。
+val keystorePropsFile = rootProject.file("key.properties")
+val keystoreProps = Properties().apply {
+    if (keystorePropsFile.exists()) {
+        keystorePropsFile.inputStream().use { load(it) }
+    }
+}
+val hasReleaseKey =
+    keystorePropsFile.exists() && keystoreProps.getProperty("storeFile") != null
 
 android {
     namespace = "com.otaku.app"
@@ -44,11 +64,39 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        // debug 由 AGP 默认创建，不用声明。
+        if (hasReleaseKey) {
+            create("release") {
+                storeFile = keystorePropsFile.parentFile.resolve(
+                    keystoreProps.getProperty("storeFile"),
+                )
+                storePassword = keystoreProps.getProperty("storePassword")
+                keyAlias = keystoreProps.getProperty("keyAlias")
+                keyPassword = keystoreProps.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            if (hasReleaseKey) {
+                signingConfig = signingConfigs.getByName("release")
+            } else {
+                // 没配密钥：能用，但**不能发出去**。debug 证书换台机器重建就变了，
+                // 老用户升级会 INSTALL_FAILED_UPDATE_INCOMPATIBLE（装不上更新）。
+                signingConfig = signingConfigs.getByName("debug")
+                // 用英文：gradle 进程按平台默认编码输出，中文到这里会变乱码，
+                // 一条看不懂的警告等于没写。
+                println("")
+                println("WARNING: release is signed with the DEBUG key (no android/key.properties).")
+                println("         This APK must NOT be distributed: rebuilding on another machine")
+                println("         changes the signature and users hit INSTALL_FAILED_UPDATE_INCOMPATIBLE.")
+                println("         Generate: keytool -genkey -v -keystore android/otaku.jks \\")
+                println("             -keyalg RSA -keysize 2048 -validity 10000 -alias otaku")
+                println("         Then fill android/key.properties (see key.properties.example).")
+                println("")
+            }
         }
     }
 }

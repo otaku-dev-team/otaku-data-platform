@@ -72,15 +72,51 @@ App 内下载 APK 并拉起系统安装器。设置页「关于 → 检查更新
 
 ### 3.2 签名必须一致（最容易踩的坑）
 
-`android/app/build.gradle.kts` 现在 `release` 也用 **debug 签名**
-（`signingConfigs.getByName("debug")`）。debug 钥是**本机**的
-`~/.android/debug.keystore`：
+debug 钥是**本机**的 `~/.android/debug.keystore`，换台机器打出来的包签名就变了：
 
 - 同一台机器打的包 → 签名一致，可以覆盖安装；
-- 换机器 / 以后换 release keystore → 新旧包签名不同，安装会报
-  `INSTALL_FAILED_UPDATE_INCOMPATIBLE`，用户必须先卸载（会丢本地数据）。
+- 换机器 / 密钥不一致 → 安装报 `INSTALL_FAILED_UPDATE_INCOMPATIBLE`，
+  用户必须先卸载（**会丢本地数据**：登录态、搜索历史、离线缓存）。
 
-**正式对外发布前必须定一把 release keystore**，并保证以后所有更新包都用它签。
+所以**正式对外发布的每一个包都必须用同一把 release keystore 签**。
+
+#### 配置一次，之后自动生效
+
+`android/app/build.gradle.kts` 会读 `android/key.properties`：
+
+| 情况 | 行为 |
+|---|---|
+| 有 `android/key.properties` | release 用里面的正式密钥 |
+| 没有（默认） | 退回 debug 签名，并在构建输出里打印醒目警告 |
+
+退回 debug 而不是报错，是因为协作者和 CI 都没有密钥，硬失败会把构建链打断；
+代价是「可能有人把 debug 签的包当正式版发出去」，所以 `build_site.sh` 出 release 包时
+会再提醒一次，正式发版请加 **`--require-release-key`** 把它变成硬失败。
+
+```bash
+# 1. 生成密钥（只做一次；密钥与口令离线保管，丢了就再也发不了更新）
+keytool -genkey -v -keystore android/otaku.jks \
+    -keyalg RSA -keysize 2048 -validity 10000 -alias otaku
+
+# 2. 写配置（照模板填四个值）
+cp android/key.properties.example android/key.properties
+```
+
+`android/.gitignore` 已排除 `key.properties` / `*.jks` / `*.keystore`——
+**密钥与口令绝不入库**，也不要贴到 issue 或 PR 里。
+
+#### 怎么确认签对了
+
+```bash
+# 构建输出会明确说
+./build_site.sh --site otaku --target apk --build-mode release --abi arm64
+# → 「签名：android/key.properties 已配置，release 用正式密钥」
+
+# 或者验成品 APK 的证书（看 Owner / SHA1 是不是你的正式密钥）
+apksigner verify --print-certs app-client/build/app/outputs/flutter-apk/app-release.apk
+```
+
+正式发版前跑一次 `--require-release-key`：没配密钥就直接失败，不给你发错的机会。
 
 ### 3.3 发布（上传 + 改清单 + 清旧包）
 
