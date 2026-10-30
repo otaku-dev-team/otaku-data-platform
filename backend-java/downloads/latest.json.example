@@ -1,0 +1,12 @@
+{
+  "versionCode": 2,
+  "versionName": "1.1.0",
+  "downloadUrl": "https://otaku.example.com/downloads/otaku-1.1.0.apk",
+  "sha256": "把 sha256sum 的输出粘在这里（小写十六进制）",
+  "changelog": [
+    "作品库标签不再压到下一张卡",
+    "首页高分精选自动轮换",
+    "资讯与档期数据已接入"
+  ],
+  "minSupportedVersionCode": 1
+}
