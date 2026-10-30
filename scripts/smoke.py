@@ -20,8 +20,20 @@
     python scripts/smoke.py --base-url https://api.example.com         # 部署后对比
     python scripts/smoke.py --list                                    # 只列端点
     python scripts/smoke.py --json                                    # 机器可读
+    python scripts/smoke.py --artifacts-only --deep --base-url <地址>  # 发版后验安装包
 
 退出码：0 无回归；1 有回归（键消失/状态码漂移）；2 无法执行。
+
+交付物（发版后验包）
+--------------------
+上面比对的是接口形状，看不到「客户能不能下到包」。`--artifacts` 额外检查
+`/downloads/latest.json` 与它指向的安装包：清单字段齐不齐、包能不能下、
+大小和 sha256 对不对得上。`--artifacts-only` 只做这一项，不比对接口；
+`--deep` 才整包下载算哈希（几十兆，平时不用）。
+
+三种结果分开报，不混成一句「通过」：`passed` 放行；`failed` 与回归同级；
+`disabled`（清单 404/403，下载托管没开）和 `unreachable`（连不上）都是**没验成**，
+退出码 2。
 
 历史（回答「从哪次开始坏」）
 ----------------------------
@@ -366,6 +378,137 @@ def _headers(raw: list[str]) -> dict[str, str]:
     return headers
 
 
+# --------------------------------------------------------------------------
+# 交付物探针：安装包与更新清单
+# --------------------------------------------------------------------------
+# 这部分不在 `docs/openapi.yaml` 里（不是 API，是 nginx 静态文件），所以上面的
+# 端点比对永远看不到它。但客户能不能装上新版本，全看这两个东西：
+#   /downloads/latest.json  —— 客户端启动时比对版本
+#   /downloads/*.apk        —— 真正下载的包
+# 发版后跑一次，就能回答「清单写的包真的存在、大小和哈希对得上吗」。
+
+DOWNLOAD_MANIFEST = "/downloads/latest.json"
+_MANIFEST_KEYS = ("versionCode", "downloadUrl", "sha256")
+_UA = "otaku-smoke/1"
+# 交付物检查的退出码：passed 放行；failed 与回归同级；disabled/unreachable 都是「没验成」。
+_ART_CODES = {"passed": 0, "failed": 1, "disabled": 2, "unreachable": 2}
+
+
+def _get(url: str, timeout: float) -> tuple[int, bytes]:
+    req = urllib.request.Request(url, headers={"User-Agent": _UA})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.status, resp.read()
+    except urllib.error.HTTPError as exc:
+        return exc.code, b""
+    except (urllib.error.URLError, OSError):
+        return 0, b""
+
+
+def artifact_size(url: str, timeout: float) -> int | None:
+    """不发整包拿体积：先 HEAD，被拒再用 Range 取首字节读 Content-Range。"""
+    try:
+        req = urllib.request.Request(url, method="HEAD", headers={"User-Agent": _UA})
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            length = resp.headers.get("Content-Length")
+            if length:
+                return int(length)
+    except urllib.error.HTTPError:
+        pass
+    except (urllib.error.URLError, OSError):
+        return None
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": _UA, "Range": "bytes=0-0"})
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            span = resp.headers.get("Content-Range")  # bytes 0-0/48234496
+            if span and "/" in span:
+                return int(span.rsplit("/", 1)[1])
+            length = resp.headers.get("Content-Length")
+            return int(length) if length else None
+    except (urllib.error.HTTPError, urllib.error.URLError, OSError):
+        return None
+
+
+def artifact_sha256(url: str, timeout: float) -> tuple[str, int]:
+    """整包下载算哈希。只在 --deep 时用，APK 几十兆，别默认跑。"""
+    digest = hashlib.sha256()
+    size = 0
+    req = urllib.request.Request(url, headers={"User-Agent": _UA})
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        while True:
+            chunk = resp.read(1 << 20)
+            if not chunk:
+                break
+            digest.update(chunk)
+            size += len(chunk)
+    return digest.hexdigest(), size
+
+
+def check_artifacts(base_url: str, timeout: float = 10.0, deep: bool = False) -> dict:
+    """返回 {"status": passed|failed|disabled, "checks": [...], "detail": str}"""
+    checks: list[dict] = []
+
+    def add(ok: bool | None, label: str, detail: str) -> None:
+        checks.append({"ok": ok, "label": label, "detail": detail})
+
+    manifest_url = urllib.parse.urljoin(base_url.rstrip("/") + "/", DOWNLOAD_MANIFEST.lstrip("/"))
+    status, body = _get(manifest_url, timeout)
+    if status == 0:
+        # 连不上 ≠ 没启用：服务没起、地址/代理不对都可能。报「未启用」会把网络问题
+        # 藏成一句业务说明，跟以前「什么都没跑成却写全部通过」是同一个坑。
+        add(False, "更新清单", f"{DOWNLOAD_MANIFEST} 连不上（服务没起或地址/代理不对）")
+        return {"status": "unreachable", "checks": checks, "detail": "连不上，无法判断交付物"}
+    if status in (403, 404):
+        add(None, "更新清单", f"{DOWNLOAD_MANIFEST} 返回 {status}")
+        return {"status": "disabled", "checks": checks,
+                "detail": "下载托管未启用：没有 latest.json，客户端拿不到新版本信息"}
+    if status != 200:
+        add(False, "更新清单", f"{DOWNLOAD_MANIFEST} 返回 {status}")
+        return {"status": "failed", "checks": checks, "detail": "更新清单取不到"}
+
+    try:
+        manifest = json.loads(body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        add(False, "更新清单", f"不是合法 JSON：{exc}")
+        return {"status": "failed", "checks": checks, "detail": "更新清单解析失败"}
+
+    missing = [key for key in _MANIFEST_KEYS if manifest.get(key) in (None, "")]
+    if missing:
+        add(False, "更新清单字段", "缺 " + "、".join(missing))
+        return {"status": "failed", "checks": checks, "detail": "更新清单字段不全"}
+    add(True, "更新清单", f"versionCode={manifest['versionCode']}")
+
+    apk_url = urllib.parse.urljoin(manifest_url, str(manifest["downloadUrl"]))
+    size = artifact_size(apk_url, timeout)
+    if size is None:
+        add(False, "安装包可达", f"{apk_url} 取不到大小（404 或不可达）")
+        return {"status": "failed", "checks": checks, "detail": "清单指向的安装包下不到"}
+    declared = manifest.get("size")
+    if declared is not None and int(declared) != size:
+        add(False, "安装包大小", f"清单写 {int(declared)}，实际 {size}")
+        return {"status": "failed", "checks": checks, "detail": "安装包大小与清单不符"}
+    add(True, "安装包可达", f"{size / 1048576:.1f} MB" if size >= 1048576 else f"{size / 1024:.0f} KB")
+
+    if deep:
+        actual, _ = artifact_sha256(apk_url, timeout)
+        if actual.lower() != str(manifest["sha256"]).lower():
+            add(False, "安装包哈希", f"清单 {str(manifest['sha256'])[:12]}…，实际 {actual[:12]}…")
+            return {"status": "failed", "checks": checks, "detail": "安装包哈希与清单不符"}
+        add(True, "安装包哈希", "一致")
+
+    return {"status": "passed", "checks": checks, "detail": "交付物就绪"}
+
+
+def print_artifacts(result: dict) -> None:
+    marks = {True: "[就绪]", False: "[FAIL]", None: "[未启用]"}
+    print("== 交付物 ==")
+    for item in result["checks"]:
+        mark = marks[item["ok"]]
+        if result["status"] == "unreachable" and item["ok"] is False:
+            mark = "[连不上]"
+        print(f"  {mark} {item['label']}：{item['detail']}")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="只读接口快照对比（部署后回归）")
     parser.add_argument("--base-url", default=DEFAULT_BASE, help=f"服务地址（默认 {DEFAULT_BASE}）")
@@ -377,6 +520,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--json", action="store_true", help="机器可读输出")
     parser.add_argument("--no-history", action="store_true",
                         help="不写历史快照（默认每次跑都记一条，保留最近 20 条）")
+    parser.add_argument("--artifacts", action="store_true",
+                        help="同时检查交付物：/downloads/latest.json 与它指向的安装包")
+    parser.add_argument("--artifacts-only", action="store_true",
+                        help="只查交付物，跳过接口比对（发版后验包用）")
+    parser.add_argument("--deep", action="store_true",
+                        help="交付物校验整包下载并核对 sha256（几十兆，慢）")
     args = parser.parse_args(argv)
 
     if args.list:
@@ -385,6 +534,19 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     _build_opener(args.base_url)
+
+    if args.artifacts_only:
+        art = check_artifacts(args.base_url, args.timeout, args.deep)
+        if args.json:
+            print(json.dumps({"base_url": args.base_url, "conclusion": art["status"], **art},
+                             ensure_ascii=False, indent=2))
+        else:
+            print_artifacts(art)
+            print(f"结论：{art['detail']}。")
+        return _ART_CODES.get(art["status"], 2)
+
+    art = check_artifacts(args.base_url, args.timeout, args.deep) if args.artifacts else None
+    art_code = _ART_CODES.get((art or {}).get("status"), 0) if art else 0
 
     baseline_path = Path(args.baseline)
     current = collect(args.base_url, _headers(args.header), args.timeout)
@@ -413,12 +575,16 @@ def main(argv: list[str] | None = None) -> int:
         )
         if args.json:
             print(json.dumps({"saved": str(baseline_path), "endpoints": current,
-                              "history": str(recorded) if recorded else None},
+                              "history": str(recorded) if recorded else None,
+                              "artifacts": art},
                              ensure_ascii=False, indent=2))
         else:
             print(f"已写入基线：{_display(baseline_path)}（{len(current)} 个端点）")
             print("之后跑同一条命令（不带 --save）就会与它对比。")
-        return 0
+            if art:
+                print()
+                print_artifacts(art)
+        return art_code
 
     baseline = json.loads(baseline_path.read_text(encoding="utf-8")).get("endpoints", {})
     base_id = baseline_id(baseline)
@@ -436,6 +602,7 @@ def main(argv: list[str] | None = None) -> int:
             "base_url": args.base_url,
             "conclusion": "regression" if result["regressions"] else "clean",
             **result,
+            "artifacts": art,
             "history": {
                 "entries": len(entries),
                 "recorded": str(recorded) if recorded else None,
@@ -469,12 +636,23 @@ def main(argv: list[str] | None = None) -> int:
             print("  接口形状与基线一致。")
         if recorded:
             print(f"  历史：可回溯 {len(entries)} 条，本次已记入 {_display(recorded)}")
+        if art:
+            print()
+            print_artifacts(art)
 
     # `--json` 时 stdout 必须是纯 JSON，人看的结论走 stderr，否则管道一读就炸。
     out = sys.stderr if args.json else sys.stdout
-    if result["regressions"]:
-        print("结论：有回归（键消失或状态码漂移）。确认是预期改动就 --save 更新基线。", file=out)
+    art_status = (art or {}).get("status")
+    if result["regressions"] or art_status == "failed":
+        print("结论：有回归（键消失/状态码漂移/交付物与清单不符）。确认是预期改动就 --save 更新基线。",
+              file=out)
         return 1
+    if art_status == "unreachable":
+        print("结论：接口比对完成；交付物连不上，没验成（不等于通过）。", file=out)
+        return 2
+    if art_status == "disabled":
+        print("结论：接口无回归；交付物未启用（见上），客户端还不能自己更新。", file=out)
+        return 2
     print("结论：无回归。", file=out)
     return 0
 
