@@ -125,7 +125,7 @@ title 100%、release_year 97.3%、tags 78.5%、**rating 74.7%**、封面 3.5%。
 
 | 事项 | 时机 |
 | --- | --- |
-| 封面白名单改为下标形式注入（`app.cover.allowed-hosts` 是 List，逗号串不生效） | 全量导入结束后随重启一起做 |
+| ~~封面白名单改下标注入~~ 已排除这个猜测：逗号串能正常绑定到 `List`（`CoverWhitelistBindingTest` 钉住）。10-29 的封面故障是配置缩进错位，已修并有结构测试 | 已完成 |
 | 全量导入完成（`total` 应达 557,847；00:05 实测 45,174，约 389 条/分钟） | 预计次日傍晚 |
 | 网站账号登录（`/api/auth/site-login`）实现（阶段 2） | 独立排期，不阻塞客户端当前开发 |
 | 补 `/api/articles` 与 `/api/schedule` 的数据（两条端点通但现在零条） | 全量导入结束后 |
@@ -151,3 +151,76 @@ for id in W-205m6bc2xdqv1kr W-jt14p67nwkqv1sr W-58s8x2m8xga13w0 \
   curl -s -o /dev/null -w "$id %{http_code}\n" "http://154.8.194.198:8080/api/works/$id"
 done
 ```
+
+## 9. 社区接口（评论 / 点评，2026-10-30 全量上线）
+
+作品页底部两个 tab，**两套接口、两张表，不要互相转换**：
+
+| | 评论 | 点评 |
+|---|---|---|
+| 语义 | 讨论流，可多条、可回复 | 对作品的评价，一人一条 |
+| 打分 | 无 | 1–10，可只打分或只写文字 |
+| 端点 | `/api/works/{id}/comments` | `/api/works/{id}/reviews` |
+| 未开启社区 | 整块不渲染，跳来源站原页 | 同左 |
+
+进页面先查 `GET /api/site/features`：`ugc_enabled=false` 就跳原页，不要渲染空评论区。
+
+### 9.1 评论：一次请求拿到「楼层 + 前 3 条回复」
+
+`GET /api/works/{work_id}/comments` 的 `items` 是**顶层评论**：
+
+- `reply_count`：该楼层已发布的回复总数；
+- `replies`：最早 3 条预览（对话顺序）；
+- `total` **只算顶层**——别拿它当「评论 + 回复」的总数。
+
+渲染：楼层下直接铺 `replies`；`reply_count > 3` 时显示「查看全部 N 条回复」，
+点开调 `GET /api/works/{work_id}/comments/{comment_id}/replies`（分页，最早在前）。
+
+### 9.2 发评论 / 回复
+
+`POST /api/me/comments`，body `{work_id, body, parent_id?}`。
+
+`parent_id` 为空 = 顶层评论；有值 = 回复那条**顶层评论**。只支持一层，
+回复一条回复会 `400`（这不是 bug，是设计：两层足够「评论 + 追评」）。
+
+### 9.3 编辑 / 删除
+
+- `PATCH /api/me/comments/{id}` `{body}`：只有正文可改。**响应里顶层评论的 `replies` 是空数组**——
+  请只替换这一条本身，不要整条覆盖成「零回复」；
+- 先审后发的站点，编辑后会回到 `pending`（重新审核），提示「已提交，审核后显示」；
+- `DELETE /api/me/comments/{id}` 幂等 `204`；删顶层会**连带隐藏该楼层的回复**（楼层撤回语义，
+  行仍保留，站主导出能看到）。
+
+### 9.4 点评：三个数字别混用
+
+`GET /api/works/{work_id}/reviews/summary`：
+
+| 字段 | 含义 | 用法 |
+|---|---|---|
+| `total` | 点评条数（**含只写文字不打分的**） | 「N 人点评」 |
+| `rated` | 其中打了分的 | 「N 人打分」 |
+| `average` | 只对打了分的求均值，**可为 null** | 没有打分时显示「暂无评分」，**不要显示 0** |
+
+`distribution` 只含有数据的分数（不补 0），可直接画柱子。
+
+**与作品自带的 `main_rating`（来源站聚合分）是两套口径**：并列展示、各自标注来源，
+不要相加、平均或互相覆盖。
+
+发表：`POST /api/me/reviews` `{work_id, rating?, body?}`，两者至少一项。
+重复提交 → **`409 REVIEW_EXISTS`**，引导去编辑原点评，不要弹「失败」。
+
+编辑：`PATCH /api/me/reviews/{id}`，**省略的字段沿用原值**——只改评分不会清空正文。
+
+### 9.5 错误码速查
+
+| HTTP | code | 客户端该做什么 |
+|---|---|---|
+| 403 | `FORBIDDEN` | 「只能操作自己的内容」或「本站未开启社区」 |
+| 404 | `COMMENT_NOT_FOUND` / `REVIEW_NOT_FOUND` | 内容已删或不存在，刷新列表 |
+| 409 | `REVIEW_EXISTS` | 引导编辑原点评 |
+| 429 | `RATE_LIMITED` | 「发言太快」，按 `Retry-After` 提示 |
+
+### 9.6 两个容易踩的
+
+- `author` 对**已注销账号**显示「已注销用户」——不要用它做用户跳转；
+- `status` 只在你刚发的那条上可能是 `pending`（先审后发）；公开列表里永远是 `published`。
