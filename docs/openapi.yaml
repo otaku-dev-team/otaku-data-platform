@@ -48,7 +48,11 @@ info:
     - 任何 `tags` 数组都**不含成人词**——作品只挂成人标签时该数组为 `[]`（与 "来源没给标签" 展示等价）。
 
     判定落在数据库列 `work.is_adult` / `work_tag.is_adult`（`V25` 迁移），不是查询时解析标签：
-    实测查询时现算把列表计数从 86ms 拖到 2.7s。名单变更需要一条回填迁移。
+    实测查询时现算把列表计数从 86ms 拖到 2.7s。
+
+    **名单与总开关自 2026-10-31 起可在运行期改**（`adult.tags` / `adult.title_markers` / `adult.hidden`，
+    见 `GET /api/app/config` 与 `PUT /internal/app/config`）：改完会自动重算全库标记，
+    不需要发版，也不再需要为加一个词写一条回填迁移（`V25` / `V26` 只是最初的存量回填）。
   contact:
     name: 契约讨论
     url: https://github.com/otaku-dev-team/otaku-data-platform/issues/3
@@ -85,6 +89,38 @@ tags:
 security: []
 
 paths:
+
+  /api/app/config:
+    get:
+      tags: [作品查询]
+      summary: 运行期配置（公告 / 开关 / 成人遮挡口径）
+      operationId: getAppConfig
+      description: |
+        客户端启动时拉一次，用来决定公告、功能开关这类**不发版就能改**的行为。
+
+        约定：
+        - `values` 是任意 JSON 的键值袋。客户端**只认自己认识的键**——后端加新键不需要客户端跟着发版，
+          这是这一层唯一的价值，别把它写成强类型映射。
+        - `version` 是配置版本（毫秒时间戳），客户端据此判断本地缓存要不要刷新；`0` = 库表还从没写过。
+        - `adult.*` 三项**总是回显生效值**（库里没存过就是代码默认），运维改词表时直接在这份返回值上改。
+        - 拉取失败可以直接忽略：客户端退回本地缓存 / 空配置，它只影响装饰性内容。
+
+        已知键：
+
+        | 键 | 形状 | 含义 |
+        |---|---|---|
+        | `app.notice` | `{enabled, text, url?, dismissible?}` | 首页公告条；`text` 为空或 `enabled=false` 即不显示 |
+        | `adult.hidden` | `true` / `false` | 成人遮挡总开关；`false` = 整块下线（重建标记时全库清零） |
+        | `adult.tags` | `string[]` | 成人标签名单；缺键用代码默认（60 个明确成人词） |
+        | `adult.title_markers` | `string[]` | 标题兜底标记；缺键用代码默认 |
+      responses:
+        "200":
+          description: 成功；库表为空时返回 version=0 与生效默认值
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AppConfig" }
+        "429": { $ref: "#/components/responses/RateLimitedWithRetry" }
+        "500": { $ref: "#/components/responses/InternalError" }
 
   /api/works:
     get:
@@ -867,6 +903,47 @@ paths:
               schema: { $ref: "#/components/schemas/ArticleDetail" }
         "429": { $ref: "#/components/responses/RateLimitedWithRetry" }
         "404": { $ref: "#/components/responses/NotFound" }
+
+  /internal/app/config:
+    put:
+      tags: [内部导入]
+      summary: 改一条运行期配置（改完即生效，不发版）
+      operationId: putAppConfig
+      description: |
+        运维口子：改一条配置，**下一个请求就是新口径**，不用重启、不用发版。
+
+        - 改 `adult.*` 时会**同步重算全库成人标记**，响应里的 `rebuild` 给出藏了多少部、
+          同步了多少行、耗时多少毫秒。不重算就会出现「词表改了、旧作品还露着」的半生效状态。
+        - `key` 必须小写字母开头、点分、不超过 64 字符；`value` 可以是标量 / 数组 / 对象。
+        - 幂等：同一个 key 重复写同一个值不报错，只是 `version` 会变（客户端会再拉一次）。
+      security:
+        - internalToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AppConfigUpdate" }
+      responses:
+        "200":
+          description: 已写入；改了 adult.* 时带 rebuild 结果
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AppConfigUpdateResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /internal/app/config/adult-rebuild:
+    post:
+      tags: [内部导入]
+      summary: 手工重算成人标记（绕过接口直接改库时的兜底）
+      operationId: rebuildAdultFlags
+      security:
+        - internalToken: []
+      responses:
+        "200":
+          description: 重算完成
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdultRebuildResult" }
 
   /internal/import/articles:
     post:
@@ -2371,6 +2448,67 @@ components:
           schema: { $ref: "#/components/schemas/ErrorResponse" }
 
   schemas:
+    AppConfig:
+      type: object
+      required: [version, values]
+      properties:
+        version:
+          type: integer
+          format: int64
+          description: 配置版本（毫秒时间戳）；0 = 库表从未写入
+        values:
+          type: object
+          additionalProperties: true
+          description: 键值袋，已知键见 GET /api/app/config 的说明
+
+    AppConfigUpdate:
+      type: object
+      required: [key, value]
+      properties:
+        key:
+          type: string
+          pattern: "^[a-z][a-z0-9_.-]{0,63}$"
+          example: app.notice
+        value:
+          nullable: true
+          description: 任意 JSON；标量 / 数组 / 对象都可以
+        note:
+          type: string
+          nullable: true
+          description: 写进库给人看的说明；留空保留原有 note
+
+    AppConfigUpdateResult:
+      type: object
+      required: [version, key, value]
+      properties:
+        version: { type: integer, format: int64 }
+        key: { type: string }
+        value: { nullable: true }
+        rebuild:
+          allOf:
+            - $ref: "#/components/schemas/AdultRebuildResult"
+          nullable: true
+          description: 只有改 adult.* 时才有
+
+    AdultRebuildResult:
+      type: object
+      required: [enabled, hiddenWorks, tagRows, millis]
+      properties:
+        enabled:
+          type: boolean
+          description: 本次重算时遮挡是否开着；false 表示全库已清零
+        hiddenWorks:
+          type: integer
+          format: int64
+          description: 重算后仍被隐藏的作品数
+        tagRows:
+          type: integer
+          description: work_tag 里实际改动的行数
+        millis:
+          type: integer
+          format: int64
+          description: 本次重算耗时（毫秒）
+
 
     Paging:
       type: object

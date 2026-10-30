@@ -28,7 +28,9 @@ class WorkCountCacheTest {
     private final CountCache cache = new CountCache();
     private final WorkService service = new WorkService(
             repository, mock(PublicUrlResolver.class), new ObjectMapper(), cache,
-            mock(WorkRelationRepository.class));
+            mock(WorkRelationRepository.class),
+            // 空快照 = 全部走 AdultTags 的代码默认值，与线上「没改过配置」同一个状态
+            new com.otaku.common.AdultPolicy(() -> new com.otaku.appconfig.AppConfigService.Snapshot(0, java.util.Map.of())));
 
     private void stubCount(long total) {
         when(repository.count(any(), any(), any(), any(), any())).thenReturn(total);

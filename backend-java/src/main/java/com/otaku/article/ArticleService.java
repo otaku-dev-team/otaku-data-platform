@@ -6,7 +6,7 @@ import com.otaku.article.dto.ArticleDtos.ArticleDetail;
 import com.otaku.article.dto.ArticleDtos.ArticlePage;
 import com.otaku.article.dto.ArticleDtos.ArticleSummary;
 import com.otaku.article.dto.ArticleDtos.Category;
-import com.otaku.common.AdultTags;
+import com.otaku.common.AdultPolicy;
 import com.otaku.common.PageResponse;
 import org.springframework.stereotype.Service;
 
@@ -30,9 +30,12 @@ public class ArticleService {
     private final ArticleRepository repository;
     private final ObjectMapper objectMapper;
 
-    public ArticleService(ArticleRepository repository, ObjectMapper objectMapper) {
+    private final AdultPolicy adultPolicy;
+
+    public ArticleService(ArticleRepository repository, ObjectMapper objectMapper, AdultPolicy adultPolicy) {
         this.repository = repository;
         this.objectMapper = objectMapper;
+        this.adultPolicy = adultPolicy;
     }
 
     /**
@@ -129,7 +132,7 @@ public class ArticleService {
      * {@code /contents?tag=xxx}），别处藏了这里露出来就等于没藏。
      */
     private List<String> readTags(String json) {
-        return AdultTags.strip(readStringList(json));
+        return adultPolicy.strip(readStringList(json));
     }
 
     private List<String> readStringList(String json) {

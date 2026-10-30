@@ -1,7 +1,7 @@
 package com.otaku.schedule;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.otaku.common.AdultTags;
+import com.otaku.common.AdultPolicy;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
@@ -45,6 +45,11 @@ public class ScheduleRepository {
     private static final String ADULT_FILTER =
             " AND (work_tags IS NULL OR NOT JSON_OVERLAPS(work_tags, CAST(:adultTags AS JSON)))";
 
+    /** 总开关关掉时连条件都不拼——不用指望「传个空数组」让 JSON_OVERLAPS 恰好成立。 */
+    private String adultFilter() {
+        return adultPolicy.hidden() ? ADULT_FILTER : "";
+    }
+
     /**
      * 读库时把 JSON 列归一成紧凑形式。当前只用于 work_tags（字符串数组）。
      *
@@ -72,8 +77,11 @@ public class ScheduleRepository {
 
     private final NamedParameterJdbcTemplate jdbc;
 
-    public ScheduleRepository(NamedParameterJdbcTemplate jdbc) {
+    private final AdultPolicy adultPolicy;
+
+    public ScheduleRepository(NamedParameterJdbcTemplate jdbc, AdultPolicy adultPolicy) {
         this.jdbc = jdbc;
+        this.adultPolicy = adultPolicy;
     }
 
     public Optional<ScheduleRecord> findBySourceKey(String source, String sourceId) {
@@ -108,21 +116,21 @@ public class ScheduleRepository {
      */
     public List<ScheduleRecord> findByWeekday(Integer weekday) {
         String sql = "SELECT " + COLUMNS + " FROM schedule WHERE weekday <=> :weekday"
-                + ADULT_FILTER
+                + adultFilter()
                 + " ORDER BY id ASC";
         return jdbc.query(sql, new MapSqlParameterSource()
                 .addValue("weekday", weekday)
-                .addValue("adultTags", AdultTags.JSON), MAPPER);
+                .addValue("adultTags", adultPolicy.tagsJson()), MAPPER);
     }
 
     /** 按季度取全部条目，接口层自己按星期分组。 */
     public List<ScheduleRecord> findBySeason(String seasonCode) {
         String sql = "SELECT " + COLUMNS + " FROM schedule WHERE season_code = :seasonCode"
-                + ADULT_FILTER
+                + adultFilter()
                 + " ORDER BY weekday ASC, id ASC";
         return jdbc.query(sql, new MapSqlParameterSource()
                 .addValue("seasonCode", seasonCode)
-                .addValue("adultTags", AdultTags.JSON), MAPPER);
+                .addValue("adultTags", adultPolicy.tagsJson()), MAPPER);
     }
 
     /** 库里出现过的全部季度编码，新的在前。给"切换季度"用。 */

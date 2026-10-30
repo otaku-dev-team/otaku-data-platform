@@ -2,7 +2,7 @@ package com.otaku.schedule;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.otaku.common.AdultTags;
+import com.otaku.common.AdultPolicy;
 import com.otaku.common.TagsJson;
 import com.otaku.schedule.dto.ScheduleDtos.Platform;
 import com.otaku.schedule.dto.ScheduleDtos.ScheduleGroup;
@@ -37,9 +37,12 @@ public class ScheduleService {
     private final ScheduleRepository repository;
     private final ObjectMapper objectMapper;
 
-    public ScheduleService(ScheduleRepository repository, ObjectMapper objectMapper) {
+    private final AdultPolicy adultPolicy;
+
+    public ScheduleService(ScheduleRepository repository, ObjectMapper objectMapper, AdultPolicy adultPolicy) {
         this.repository = repository;
         this.objectMapper = objectMapper;
+        this.adultPolicy = adultPolicy;
     }
 
     /**
@@ -106,7 +109,7 @@ public class ScheduleService {
                 record.workId());
     }
 
-    private static List<String> parseTags(String json) {
+    private List<String> parseTags(String json) {
         String canonical = TagsJson.canonical(json);
         if (canonical == null) {
             return null;
@@ -116,7 +119,7 @@ public class ScheduleService {
             });
             // 成人词不进响应：含成人词的条目已经在仓储层挡掉，这里是第二道，
             // 防的是「条目本身没问题、但带了 R18 这个标签」的脏数据。
-            return AdultTags.strip(tags);
+            return adultPolicy.strip(tags);
         } catch (Exception ex) {
             // 解析不了按未提供处理：标签是附加信息，不该让整条档期失败。
             return null;
