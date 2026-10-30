@@ -28,8 +28,14 @@ class AdultTagsMigrationTest {
     private static final Path MIGRATION =
             Path.of("src/main/resources/db/migration/V25__adult_visibility.sql");
 
+    /** 标题兜底的迁移：里面的 LIKE 标记必须与 {@link AdultTags#TITLE_MARKERS} 一致。 */
+    private static final Path TITLE_MIGRATION =
+            Path.of("src/main/resources/db/migration/V26__adult_title_flag.sql");
+
     private static final Pattern JSON_LITERAL =
             Pattern.compile("CAST\\('(\\[[^']*])' AS JSON\\)");
+
+    private static final Pattern TITLE_LIKE = Pattern.compile("title LIKE '%([^']+)%'");
 
     @Test
     @DisplayName("V25 迁移里的名单 == AdultTags.NAMES")
@@ -50,5 +56,21 @@ class AdultTagsMigrationTest {
                 .as("名单漂移了：改 AdultTags.NAMES 时要同步加一条回填迁移")
                 .containsExactlyInAnyOrderElementsOf(AdultTags.NAMES);
         assertThat(inMigration).hasSameSizeAs(AdultTags.NAMES);
+    }
+
+    @Test
+    @DisplayName("V26 迁移里的标题标记 == AdultTags.TITLE_MARKERS")
+    void titleMarkersMatchConstant() throws IOException {
+        assertThat(Files.exists(TITLE_MIGRATION)).isTrue();
+        String sql = Files.readString(TITLE_MIGRATION, StandardCharsets.UTF_8);
+
+        List<String> inMigration = TITLE_LIKE.matcher(sql).results()
+                .map(m -> m.group(1))
+                .toList();
+
+        assertThat(inMigration)
+                .as("标题标记漂移了：改 AdultTags.TITLE_MARKERS 时要同步加一条回填迁移")
+                .containsExactlyInAnyOrderElementsOf(AdultTags.TITLE_MARKERS);
+        assertThat(inMigration).hasSameSizeAs(AdultTags.TITLE_MARKERS);
     }
 }

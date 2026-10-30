@@ -110,7 +110,7 @@ public class WorkRepository {
         if (key == null) {
             throw new IllegalStateException("插入 work 后拿不到自增主键：" + record.workId());
         }
-        replaceTags(key.longValue(), record.tagsJson(), record.workType(),
+        replaceTags(key.longValue(), record.tagsJson(), record.title(), record.workType(),
                 record.ratingValue(), record.releaseYear());
         return key.longValue();
     }
@@ -147,7 +147,7 @@ public class WorkRepository {
                 .addValue("id", record.id())
                 .addValue("updatedAt", record.updatedAt()));
         // 评分/年份/标签都可能变，而 work_tag 的索引里冗余了前两者，必须整组重写。
-        replaceTags(record.id(), record.tagsJson(), record.workType(),
+        replaceTags(record.id(), record.tagsJson(), record.title(), record.workType(),
                 record.ratingValue(), record.releaseYear());
     }
 
@@ -165,7 +165,7 @@ public class WorkRepository {
      * <p>顺带维护成人标记（见 {@link #applyAdultFlag}）：**只在这一条写入路径上算**，
      * 所以「标签改了、标记没跟上」这种状态不存在。
      */
-    private void replaceTags(long workRef, String tagsJson, String workType,
+    private void replaceTags(long workRef, String tagsJson, String title, String workType,
                              BigDecimal ratingValue, Integer releaseYear) {
         MapSqlParameterSource params = new MapSqlParameterSource("workRef", workRef);
         jdbc.update("DELETE FROM work_tag WHERE work_ref = :workRef", params);
@@ -182,7 +182,7 @@ public class WorkRepository {
                     .addValue("ratingValue", ratingValue)
                     .addValue("releaseYear", releaseYear));
         }
-        applyAdultFlag(workRef, params);
+        applyAdultFlag(workRef, title, params);
     }
 
     /**
@@ -195,13 +195,19 @@ public class WorkRepository {
      * 不再需要拿黑名单去比一遍。
      *
      * <p>判定只认 {@link AdultTags#NAMES}，与出口剔除、迁移回填同一份名单。
+     *
+     * <p>再加一条**标题兜底**（{@link AdultTags#titleLooksAdult}）：`R18!` 那 7 部作品的
+     * {@code tags} 是空的，只认标签的话搜 `R18` 照样搜得到——这正是用户会第一时间试的那一下。
+     * 标题标记只收「内容确实成人向才会出现」的几个词，`エロ` / `成人` 这种会误杀
+     * （{@code 新吼えろペン}、{@code 爱的成人式}），所以没收。
      */
-    private void applyAdultFlag(long workRef, MapSqlParameterSource params) {
+    private void applyAdultFlag(long workRef, String title, MapSqlParameterSource params) {
+        boolean titleAdult = AdultTags.titleLooksAdult(title);
         params.addValue("adultTags", AdultTags.NAMES);
-        Integer adult = jdbc.queryForObject(
+        Integer tagged = jdbc.queryForObject(
                 "SELECT EXISTS (SELECT 1 FROM work_tag WHERE work_ref = :workRef AND tag IN (:adultTags))",
                 params, Integer.class);
-        int flag = adult == null ? 0 : adult;
+        int flag = titleAdult || (tagged != null && tagged == 1) ? 1 : 0;
         params.addValue("adult", flag);
         jdbc.update("UPDATE work SET is_adult = :adult WHERE id = :workRef", params);
         jdbc.update("UPDATE work_tag SET is_adult = :adult WHERE work_ref = :workRef", params);
