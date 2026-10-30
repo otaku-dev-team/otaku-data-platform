@@ -177,6 +177,23 @@ class AdultContentVisibilityIntegrationTest {
                 assertThat(item.workTags()).doesNotContain("R18"));
     }
 
+    @Test
+    @DisplayName("标题兜底：没有任何成人标签、标题写着 R18 的作品同样不可见")
+    void titleMarkerHidesWorkWithoutAdultTags() {
+        importBatch(item("it-adult-11", "R18! 测试样本", List.of("漫画系列"), "7.0"));
+
+        assertThat(adultFlagOf("it-adult-11")).as("标签干净，靠标题兜底").isEqualTo(1);
+        assertThat(workService.list(null, "R18", null, null, null, null, null, 1, 50).total()).isZero();
+        assertThatThrownBy(() -> workService.detail(workIdOf("it-adult-11")))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> assertThat(((ApiException) ex).code()).isEqualTo(ErrorCode.WORK_NOT_FOUND));
+
+        // 正常标题不受影响：同一个关键词搜不到它，但换正常词还能搜到
+        importBatch(item("it-adult-12", "普通漫画样本", List.of("漫画系列"), "7.0"));
+        assertThat(workService.list(null, "普通漫画样本", null, null, null, null, null, 1, 50).total())
+                .isEqualTo(1);
+    }
+
     // ---------------------------------------------------------------- helpers
 
     private void importBatch(ImportItem... items) {

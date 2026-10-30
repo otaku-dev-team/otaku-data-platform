@@ -42,6 +42,24 @@ class AdultTagsTest {
     }
 
     @Test
+    @DisplayName("标题兜底只认明确的成人标记，会出现在正常标题里的词一个都不收")
+    void titleMarkers() {
+        assertThat(AdultTags.titleLooksAdult("R18!")).isTrue();
+        assertThat(AdultTags.titleLooksAdult("r18 (1)")).isTrue();
+        assertThat(AdultTags.titleLooksAdult("少年少女18禁")).isTrue();
+        assertThat(AdultTags.titleLooksAdult("My Hentai Fantasy")).isTrue();
+        assertThat(AdultTags.titleLooksAdult("無修正学級カラレヤ")).isTrue();
+        assertThat(AdultTags.titleLooksAdult(null)).isFalse();
+        assertThat(AdultTags.titleLooksAdult("")).isFalse();
+
+        // 这三个都在真实数据里出现过，且都是正常作品——收 `エロ` / `成人` 就会误杀
+        assertThat(AdultTags.titleLooksAdult("新吼えろペン (1)")).as("吼えろ 里含 エロ").isFalse();
+        assertThat(AdultTags.titleLooksAdult("マルドゥック・ヴェロシティ 1")).as("ヴェロシティ").isFalse();
+        assertThat(AdultTags.titleLooksAdult("爱的成人式")).as("成人 不等于成人向").isFalse();
+        assertThat(AdultTags.titleLooksAdult("街角魔族 2丁目")).isFalse();
+    }
+
+    @Test
     @DisplayName("strip 保留 null / [] 的三态语义，不把 null 归一成空列表")
     void stripKeepsNullAndEmptySemantics() {
         assertThat(AdultTags.strip(null)).isNull();

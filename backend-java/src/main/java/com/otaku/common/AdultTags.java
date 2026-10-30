@@ -57,6 +57,27 @@ public final class AdultTags {
 
     private static final Set<String> HIDDEN = Set.copyOf(NAMES);
 
+    /**
+     * 标题兜底标记：作品**没有任何成人标签**、但标题里明写着成人等级时用它。
+     *
+     * <p>为什么需要：`R18!` 这个系列 7 部作品的 `tags` 是空的（来源没给标签），
+     * 只认标签的话搜索 `R18` 仍然能搜到它们——这正是用户第一时间会试的那一下。
+     *
+     * <p>为什么只收这几个、不收 `エロ` / `成人`：实测标题里 {@code エロ} 有 293 部、
+     * 未标记 213 部，但里面混着 {@code 新吼えろペン}（吼えろ 里的 エロ）、
+     * {@code マルドゥック・ヴェロシティ}（ヴェロシティ 里的 エロ）；
+     * {@code 成人} 的 33 部里有 {@code 成人仪式}、{@code 爱的成人式}。按这两个词兜底会误杀正常作品。
+     * 这里每个词都只在「内容确实是成人向」时才出现在标题里，实测 24 部全是成人内容
+     * （代价是 4 部「重生到 18 禁游戏世界」的轻小说会被一起藏，可接受）。
+     */
+    public static final List<String> TITLE_MARKERS = List.of(
+            "R18", "18禁", "18X", "無修正", "无码", "Hentai", "里番"
+    );
+
+    /** 小写形式，供 {@link #titleLooksAdult} 做大小写无关匹配（库里也有全小写的 r18）。 */
+    private static final List<String> TITLE_MARKERS_LOWER =
+            TITLE_MARKERS.stream().map(s -> s.toLowerCase(java.util.Locale.ROOT)).toList();
+
     /** 名单的 JSON 数组文本，供 SQL 的 {@code JSON_OVERLAPS(tags, CAST(:adult AS JSON))} 使用。 */
     public static final String JSON = toJson();
 
@@ -65,6 +86,25 @@ public final class AdultTags {
 
     public static boolean isAdult(String tag) {
         return tag != null && HIDDEN.contains(tag);
+    }
+
+    /**
+     * 标题是否带成人标记。{@code null} / 空标题一律 false。
+     *
+     * <p>用 contains 而不是分词：中文/日文标题没有可靠的词边界，
+     * 而这里选的每个标记本身就不可能是正常词的一部分。
+     */
+    public static boolean titleLooksAdult(String title) {
+        if (title == null || title.isEmpty()) {
+            return false;
+        }
+        String lower = title.toLowerCase(java.util.Locale.ROOT);
+        for (String marker : TITLE_MARKERS_LOWER) {
+            if (lower.contains(marker)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
