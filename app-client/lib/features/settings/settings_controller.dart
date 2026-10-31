@@ -2,6 +2,9 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
+import 'package:path_provider/path_provider.dart';
+import 'dart:io';
 
 import '../../core/storage/local_prefs_provider.dart';
 import '../../core/storage/work_cache.dart';
@@ -110,4 +113,68 @@ final cacheUsageProvider = FutureProvider<CacheUsage>((ref) {
 Future<void> clearWorkCache(WidgetRef ref) async {
   await ref.read(workCacheProvider).clear();
   ref.invalidate(cacheUsageProvider);
+}
+
+/// 图片缓存（封面）的占用。
+///
+/// **与 [cacheUsageProvider] 分开统计，但在界面上要一起看**：那个算的是 Hive 里的
+/// JSON（几十 KB），这个是 `flutter_cache_manager` 的磁盘目录——封面往往是大头。
+/// 之前设置页只显示前者，用户看到「约 19.7 KB」会以为应用没占多少，
+/// 而系统设置里显示几十 MB，两边对不上。
+///
+/// 策略是 flutter_cache_manager 的默认值：**最多 200 个文件、30 天过期**，
+/// 所以这个数字有上限，不会无限涨。每张按卡片显示宽度压过（见 `CoverImage`
+/// 的 `maxWidthDiskCache`），单张约 20–30KB。
+final imageCacheUsageProvider = FutureProvider<ImageCacheUsage>((ref) async {
+  try {
+    final temp = await getTemporaryDirectory();
+    // 目录名就是 DefaultCacheManager 的 cacheKey（值 libCachedImageData）：
+    // `Config` 没有暴露默认 key 的常量，但这个 static const 是公开的。
+    final dir = Directory('${temp.path}/${DefaultCacheManager.key}');
+    if (!await dir.exists()) return const ImageCacheUsage(files: 0, bytes: 0);
+
+    var files = 0;
+    var bytes = 0;
+    await for (final entity in dir.list(recursive: true, followLinks: false)) {
+      if (entity is! File) continue;
+      // 单个文件读不到（正被删、权限）时跳过，不因为一张图让整页统计失败。
+      final stat = await entity
+          .stat()
+          .catchError((_) => FileStat.statSync(entity.path));
+      files++;
+      bytes += stat.size;
+    }
+    return ImageCacheUsage(files: files, bytes: bytes);
+  } on Object {
+    // 读不到缓存目录就当「没有图片缓存」：拿不到平台临时目录（单测环境）、
+    // 权限被拒、目录结构异常，对用户而言都是同一件事。
+    // 不报「统计失败」——这是个纯展示的用量数字，给 0 比给红字更无害，
+    // 而且「清除」按钮照旧可点。
+    return const ImageCacheUsage(files: 0, bytes: 0);
+  }
+}, retry: (retryCount, error) => null);
+
+/// 清空图片缓存。
+///
+/// 用 `emptyCache()` 而不是直接删目录：cache manager 自己维护一份对象索引，
+/// 从文件系统层面删掉会让索引指向不存在的文件。
+Future<void> clearImageCache(WidgetRef ref) async {
+  await DefaultCacheManager().emptyCache();
+  // 内存里已解码的那份也放掉，否则清完再进列表还是"秒出"，用户会以为没清掉。
+  PaintingBinding.instance.imageCache.clear();
+  ref.invalidate(imageCacheUsageProvider);
+}
+
+/// 图片缓存的用量。
+@immutable
+class ImageCacheUsage {
+  const ImageCacheUsage({required this.files, required this.bytes});
+
+  /// 缓存文件数（上限由 cache manager 定，默认 200）。
+  final int files;
+
+  /// 总字节数。
+  final int bytes;
+
+  bool get isEmpty => files == 0;
 }

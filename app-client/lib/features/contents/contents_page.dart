@@ -9,6 +9,7 @@ import '../../core/network/api_exception.dart';
 import '../../core/router/route_paths.dart';
 import '../../core/platform_info.dart';
 import '../../core/theme/app_layout.dart';
+import '../../shared/widgets/cover_prefetch.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/models/tag_vocabulary.dart';
 import '../../data/models/work_sort.dart';
@@ -609,13 +610,18 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
           ),
           sliver: SliverList(
             delegate: SliverChildBuilderDelegate(
-              (context, index) => Padding(
-                padding: const EdgeInsets.only(bottom: AppLayout.gridGap),
-                child: WorkListTile(
-                  work: data.items[index],
-                  showMissingRating: showMissingRating,
-                ),
-              ),
+              (context, index) {
+                // 建到某一项时顺手把后面几张的封面预取进缓存：滚过去的时候
+                // 文件已经在磁盘里，不用从占位灰等起。重复调用会被 ImageCache 去重。
+                prefetchCovers(context, data.items.skip(index + 1));
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: AppLayout.gridGap),
+                  child: WorkListTile(
+                    work: data.items[index],
+                    showMissingRating: showMissingRating,
+                  ),
+                );
+              },
               childCount: data.items.length,
             ),
           ),
