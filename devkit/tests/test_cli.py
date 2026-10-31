@@ -70,3 +70,43 @@ def test_cache_key_changes_with_selected_files():
     two = cache.make_key("py", ["pytest"], ["tests/test_b.py"], select.PY_DIR)
 
     assert one != two
+
+
+def test_conclusion_does_not_call_broken_stack_a_pass():
+    """测试没跑起来时一条用例都解析不出来，别把它说成通过。
+
+    2026-11-01 实际踩到：解释器里没有 pytest，devtest 打印「Python 通过」。
+    按 run.py 的状态其实是 failed，坏在结论只看「有没有失败卡片」。
+    """
+    results = {"py": {"status": "failed", "report": None}}
+    line = cli.conclusion_line(results, [], None, {})
+
+    assert "通过" not in line
+    assert "失败" in line
+
+
+def test_conclusion_counts_failure_cards_first():
+    results = {"py": {"status": "failed"}}
+    failures = [{"badge": "新增失败"}, {"badge": "上次也失败"}]
+
+    line = cli.conclusion_line(results, failures, None, {})
+
+    assert "2 项失败" in line
+    assert "1 项新增" in line
+
+
+def test_conclusion_full_pass():
+    results = {s: {"status": "passed"} for s in select.STACKS}
+
+    assert cli.conclusion_line(results, [], None, {}) == "结论：全部通过。可以提交。"
+
+
+def test_conclusion_partial_skip_still_says_not_passed():
+    """有栈没执行时不能说「全部通过」——那正是「以为验过了」的来源。"""
+    results = {"py": {"status": "passed"}, "java": {"status": "skipped"},
+               "dart": {"status": "skipped"}}
+
+    line = cli.conclusion_line(results, [], None, {})
+
+    assert "没执行" in line
+    assert "全部通过" not in line
