@@ -34,6 +34,7 @@
 - [`docs/site-owner-console.md`](site-owner-console.md)：**站主后台使用说明（首版）**——站主能做什么/不能做什么、数据隔离怎么保证、平台运维怎么开通站主、禁用到底禁了什么、已知未做。
 - [`docs/data-completeness-plan.md`](data-completeness-plan.md)：数据缺口体检与补齐路径（封面 / 评分 / 简介三线，结论：封面走 C+A）。
 - [`docs/db-intake-dataset.md`](db-intake-dataset.md)：**数据库直读方案**——库与接口是**两个正交维度**（交付形态 ≠ 数据入口，私有化不等于能给库）；SQLite 无授权体系故只能物理隔离（派生库）、结构耦合压进声明式映射 + 三档缺列处置（主键消失即停机）、参照 Airbyte/dlt/dbt 却不引入的理由，以及 `sync-dataset` 导出 → 提交两段的落地状态与待办。
+- [`docs/开源参考与可借鉴项.md`](开源参考与可借鉴项.md)：**外部开源项目的调研记录**（不做任何代码改动）——四个参考项目三项是 copyleft，只借设计不搬整文件；可借的四项按卡点排优先级，其中「收藏双向同步的冲突模型」直接指向现有 `collection` 表缺版本号与墓碑这件事。附复核命令。
 - [`docs/client-enhancement-plan.md`](client-enhancement-plan.md)：客户端体验增强计划（边界状态、发现体验等轨道）。
 - [`docs/generalization-proposal.md`](generalization-proposal.md)：**未来目标**（当前不实施）——通用化方向 `custom_fields` + `display_template`；新决策须兼容它。
 - [`docs/ironlaw-positioning-analysis.md`](ironlaw-positioning-analysis.md)：铁律与定位冲突的历史分析（已被 2026-10-24 定位修正取代，留作追溯）。
