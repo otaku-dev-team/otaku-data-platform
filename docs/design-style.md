@@ -231,7 +231,7 @@
 | --- | --- | --- |
 | 主按钮 | `primary` 底 + `onPrimary` 字 | `onPrimary` 显式覆盖成 `OnBright.onBright`，Material 默认给白字，白字压天蓝只有 1.8:1 |
 | 文字按钮 / 描边按钮 | 主题级 `foregroundColor: brandText` | 默认是 `primary`（天蓝），22 个 `TextButton` 里只有两个手写了颜色，靠默认值才不会漏 |
-| 输入框聚焦 | `brandFocus`（brand600）、1.6px | 对应网站 `--focus-outline: 2px solid var(--brand-600)`；Material 默认也是 `primary`，会是根淡到看不见的线 |
+| 输入框聚焦 | `brandFocus`（brand600）、1.6px | 对应网站 `--focus-outline: 2px solid var(--brand-600)`；Material 默认取 `primary`，换主色后会是一根淡到看不见的线。**宽度是 1.6 不是 2**，这是承接的旧值，没有留下理由——跟网站差 0.4，看不出来，也不值得为它动所有输入框。写在这里是为了让下一个人知道这处差异是已知的、不是抄漏 |
 | 进度环 / `RefreshIndicator` | `progressIndicatorTheme.color = brandFocus`，页面另加 `color: AppTheme.brandStrong` | 同上，默认读 `primary`，换主色后转圈在白底上只有 1.6:1 |
 | 顶栏 | 跟页面同色、无染色 | 见 §4 |
 | 卡片 | elevation 0 + 1px 描边 + 圆角 16 | 见 §4 |
