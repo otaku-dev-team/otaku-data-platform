@@ -39,6 +39,10 @@ dependencies:
   dio: ^5.11.1
   go_router: ^18.1.0
   cached_network_image: ^4.0.4
+  # 显式声明：虽然它是 cached_network_image 的传递依赖，但设置页要直接用它
+  # 统计/清空图片缓存（DefaultCacheManager + Config.defaultCacheKey）。
+  # 靠传递依赖能 import 一天，换个版本就可能消失。
+  flutter_cache_manager: ^3.4.5
   window_manager: ^0.5.2
   flutter_secure_storage: ^11.2.0
   shared_preferences: ^2.5.6
