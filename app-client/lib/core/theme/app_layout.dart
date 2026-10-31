@@ -91,6 +91,12 @@ abstract final class AppLayout {
       // 用户显式选的列数放宽到 6：1920 宽的桌面选 5 列是合理的，
       // 不该被自适应的上限挡住。下限仍保 2，一列会退化成列表。
       columns = columns.clamp(2, 6);
+      // 但覆盖也不能把卡压到认不出：360 宽的手机选 6 列、默认间距下
+      // 每张卡只有 (328 − 12×5) / 6 ≈ 45px，封面等于没了。
+      // 这里按「本档密度允许的最小卡宽」兜一层——宽屏上 fit 远大于 6，
+      // 等于不生效；手机上它会把覆盖值压回真正放得下的列数。
+      final fit = (availableWidth / minWidth).floor();
+      if (fit >= 2 && columns > fit) columns = fit;
     }
     final cardWidth = (availableWidth - gap * (columns - 1)) / columns;
     return (columns: columns, cardWidth: cardWidth);

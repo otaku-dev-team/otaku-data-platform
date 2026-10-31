@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_layout.dart';
+import '../../core/theme/library_density.dart';
 
 /// 首屏加载用骨架屏，而不是盖一层转圈遮罩——遮罩会让人误以为页面卡死。
 class SkeletonList extends StatefulWidget {
@@ -49,10 +50,24 @@ class _SkeletonListState extends State<SkeletonList>
 }
 
 /// 首屏加载用骨架屏，网格版：与 [WorkCard] 同尺寸，避免加载完成后跳一下。
+///
+/// 密度与列数必须由调用方按当前设置传进来——骨架屏自己不知道用户在设置里
+/// 选了哪一档，按默认档画就会出现「加载时 2 列宽卡、加载完变 3 列窄卡」的跳动。
 class SkeletonGrid extends StatefulWidget {
-  const SkeletonGrid({super.key, this.itemCount = 10});
+  const SkeletonGrid({
+    super.key,
+    this.itemCount = 10,
+    this.density = LibraryDensity.comfort,
+    this.columns,
+  });
 
   final int itemCount;
+
+  /// 与真实网格同一档密度：决定列数、卡片高度、封面下方占位条的条数。
+  final LibraryDensity density;
+
+  /// 用户覆盖的列数；`null` = 按宽度自适应。与真实网格同源，不要在这里另算。
+  final int? columns;
 
   @override
   State<SkeletonGrid> createState() => _SkeletonGridState();
@@ -77,13 +92,21 @@ class _SkeletonGridState extends State<SkeletonGrid>
       builder: (context, constraints) {
         final usable =
             constraints.maxWidth - AppLayout.pagePadding * 2;
-        final metrics = AppLayout.gridMetrics(usable);
+        // 与真实网格同一套算法（contents_page 传进来的密度 + 列数覆盖）。
+        final metrics = AppLayout.gridMetrics(
+          usable,
+          density: widget.density,
+          overrideColumns: widget.columns,
+        );
         // 与真实卡片（contents_page / work_card）同一套字号缩放，否则大字体下
         // 骨架行高和加载完的卡片行高对不上，首屏会出现一次明显的跳动。
         final textScale = MediaQuery.textScalerOf(context).scale(1);
-        final extent =
-            metrics.cardWidth / AppLayout.posterAspect +
-            AppLayout.cardBodyHeight * textScale;
+        // 高度也走同一个函数：以后调 2:3 或文字区高度，只改一处。
+        final extent = AppLayout.gridCellExtent(
+          cardWidth: metrics.cardWidth,
+          density: widget.density,
+          textScale: textScale,
+        );
 
         return GridView.builder(
           physics: const NeverScrollableScrollPhysics(),
@@ -102,7 +125,7 @@ class _SkeletonGridState extends State<SkeletonGrid>
           itemCount: widget.itemCount,
           itemBuilder: (context, index) => _Pulse(
             animation: _controller,
-            child: const _SkeletonPoster(),
+            child: _SkeletonPoster(density: widget.density),
           ),
         );
       },
@@ -111,7 +134,9 @@ class _SkeletonGridState extends State<SkeletonGrid>
 }
 
 class _SkeletonPoster extends StatelessWidget {
-  const _SkeletonPoster();
+  const _SkeletonPoster({required this.density});
+
+  final LibraryDensity density;
 
   @override
   Widget build(BuildContext context) {
@@ -128,10 +153,16 @@ class _SkeletonPoster extends StatelessWidget {
             ),
           ),
         ),
-        const SizedBox(height: 10),
-        const _Bar(width: double.infinity, height: 12),
-        const SizedBox(height: 8),
-        const _Bar(width: 90, height: 12),
+        // 占位条条数与真实卡片一致：舒适两条（两行标题 + 元信息），
+        // 紧凑一条（一行标题），仅封面一条都不画——否则空态比结果还高。
+        if (density != LibraryDensity.coversOnly) ...[
+          const SizedBox(height: 10),
+          const _Bar(width: double.infinity, height: 12),
+          if (density == LibraryDensity.comfort) ...[
+            const SizedBox(height: 8),
+            const _Bar(width: 90, height: 12),
+          ],
+        ],
       ],
     );
   }

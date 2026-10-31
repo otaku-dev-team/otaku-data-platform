@@ -414,9 +414,14 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
     final isStale = data != null && data.filter != filter;
 
     if (contents.isLoading && (data == null || isStale)) {
-      return view == CatalogView.list
-          ? const SkeletonList()
-          : const SkeletonGrid();
+      if (view == CatalogView.list) return const SkeletonList();
+      // 骨架屏用同一档密度与列数：按默认档画的话，切到紧凑 / 仅封面后
+      // 会看到「加载时 2 列宽卡 → 加载完 3 列窄卡」的跳动。
+      final display = ref.watch(libraryDisplayProvider);
+      return SkeletonGrid(
+        density: display.density,
+        columns: display.columns,
+      );
     }
 
     if (contents.hasError) {

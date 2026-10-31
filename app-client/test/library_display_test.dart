@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:otaku_app/core/storage/local_prefs.dart';
@@ -5,6 +6,7 @@ import 'package:otaku_app/core/storage/local_prefs_provider.dart';
 import 'package:otaku_app/core/theme/app_layout.dart';
 import 'package:otaku_app/core/theme/library_density.dart';
 import 'package:otaku_app/features/settings/display_settings.dart';
+import 'package:otaku_app/shared/widgets/skeleton_list.dart';
 
 /// 内存版本机偏好。真实实现要平台通道，单测里调不了。
 class _MemoryPrefs implements LocalPrefs {
@@ -91,6 +93,37 @@ void main() {
       expect(AppLayout.gridMetrics(400, overrideColumns: 1).columns, 2);
     });
 
+    test('手机宽度下覆盖列数被最小卡宽压回（6 列只剩 45px 封面）', () {
+      // 360 逻辑宽 − 2×16 页边距 = 328 可用宽；仅封面档最小卡宽 92 → 最多 3 列。
+      const usable = 328.0;
+      final auto = AppLayout.gridMetrics(
+        usable,
+        density: LibraryDensity.coversOnly,
+      );
+      expect(auto.columns, 3);
+
+      final forced = AppLayout.gridMetrics(
+        usable,
+        density: LibraryDensity.coversOnly,
+        overrideColumns: 6,
+      );
+      // 覆盖值不能压过本档密度的最小卡宽：压回自适应列数，而不是画 45px 的封面。
+      expect(forced.columns, auto.columns);
+      expect(forced.cardWidth, greaterThan(90));
+    });
+
+    test('宽屏覆盖列数不被压低（放得下就按用户选的来）', () {
+      // 1920 − 2×16 = 1888，舒适档最小卡宽 190 → 放得下 6 列，不该被兜底改掉。
+      const usable = 1888.0;
+      final forced = AppLayout.gridMetrics(
+        usable,
+        density: LibraryDensity.comfort,
+        overrideColumns: 6,
+      );
+      expect(forced.columns, 6);
+      expect(forced.cardWidth, greaterThanOrEqualTo(190));
+    });
+
     test('gridCellExtent：仅封面只剩封面高度', () {
       final comfort = AppLayout.gridCellExtent(
         cardWidth: 150,
@@ -119,6 +152,54 @@ void main() {
         textScale: 2,
       );
       expect(large, greaterThan(normal));
+    });
+  });
+
+  group('SkeletonGrid', () {
+    Future<SliverGridDelegateWithFixedCrossAxisCount> pumpSkeleton(
+      WidgetTester tester,
+      LibraryDensity density, {
+      int? columns,
+    }) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 360,
+              height: 600,
+              child: SkeletonGrid(density: density, columns: columns),
+            ),
+          ),
+        ),
+      );
+      final grid = tester.widget<GridView>(find.byType(GridView));
+      return grid.gridDelegate as SliverGridDelegateWithFixedCrossAxisCount;
+    }
+
+    testWidgets('骨架屏列数与高度跟着密度走，不是写死舒适档', (tester) async {
+      // 360 宽 − 2×16 = 328 可用：舒适 2 列、仅封面 3 列。
+      final comfort = await pumpSkeleton(tester, LibraryDensity.comfort);
+      expect(comfort.crossAxisCount, 2);
+      final comfortExtent = comfort.mainAxisExtent!;
+
+      // 同一棵树上换密度，必须真的重算——这就是「切档后加载完跳一下」的回归点。
+      final covers = await pumpSkeleton(tester, LibraryDensity.coversOnly);
+      expect(covers.crossAxisCount, 3);
+      expect(covers.mainAxisExtent!, lessThan(comfortExtent));
+
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('骨架屏与真实网格用同一套算法（同宽度同密度结果一致）', (tester) async {
+      final delegate = await pumpSkeleton(tester, LibraryDensity.coversOnly);
+      const usable = 360 - AppLayout.pagePadding * 2;
+      final metrics = AppLayout.gridMetrics(
+        usable,
+        density: LibraryDensity.coversOnly,
+      );
+      expect(delegate.crossAxisCount, metrics.columns);
+
+      await tester.pumpWidget(const SizedBox());
     });
   });
 
