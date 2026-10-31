@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/theme/app_theme.dart';
 import '../../data/models/work_character.dart';
 import '../../data/models/work_staff.dart';
 
@@ -92,7 +93,7 @@ class _CreditBlockState extends State<_CreditBlock> {
               width: 3,
               height: 15,
               decoration: BoxDecoration(
-                color: scheme.primary,
+                color: AppTheme.brandInk(context),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),

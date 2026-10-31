@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/config/app_config.dart';
+import '../../core/theme/app_theme.dart';
 import 'update_controller.dart';
 import 'update_manifest.dart';
 
@@ -90,7 +91,7 @@ class UpdateDialog extends ConsumerWidget {
               Text(
                 '下载完成，点击「安装更新」按系统提示完成安装。',
                 style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.primary,
+                  color: AppTheme.brandInk(context),
                 ),
               ),
             ],
@@ -99,7 +100,7 @@ class UpdateDialog extends ConsumerWidget {
               Text(
                 '已打开系统安装器，请按提示完成安装。安装完成后重新打开 App 即可。',
                 style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.primary,
+                  color: AppTheme.brandInk(context),
                 ),
               ),
             ],

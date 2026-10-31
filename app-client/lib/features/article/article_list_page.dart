@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/network/api_exception.dart';
 import '../../core/router/route_paths.dart';
 import '../../core/theme/app_layout.dart';
+import '../../core/theme/app_theme.dart';
 import '../../data/models/article.dart';
 import '../../shared/widgets/desktop_nav_shell.dart';
 import '../../shared/widgets/mobile_nav_bar.dart';
@@ -130,6 +131,7 @@ class _ArticleListPageState extends ConsumerState<ArticleListPage> {
   Widget _buildEmpty(ArticleFilter filter) {
     final category = filter.category;
     return RefreshIndicator(
+      color: AppTheme.brandStrong,
       onRefresh: () =>
           ref.read(articleListControllerProvider.notifier).refresh(),
       child: ListView(
@@ -159,6 +161,7 @@ class _ArticleListPageState extends ConsumerState<ArticleListPage> {
 
   Widget _buildList(ArticleListData data) {
     return RefreshIndicator(
+      color: AppTheme.brandStrong,
       onRefresh: () =>
           ref.read(articleListControllerProvider.notifier).refresh(),
       child: ListView.separated(

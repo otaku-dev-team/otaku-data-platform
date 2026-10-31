@@ -77,6 +77,7 @@ class HomePage extends ConsumerWidget {
             ],
           ),
           body: RefreshIndicator(
+            color: AppTheme.brandStrong,
             onRefresh: () => _refresh(ref),
             child: ListView(
               // 内容不足一屏时也要能下拉：否则短屏/大字号下刷新手势失效。
@@ -156,7 +157,9 @@ class _HomeBrand extends StatelessWidget {
           child: const Text(
             'O',
             style: TextStyle(
-              color: Colors.white,
+              // 徽标底是天蓝 → 青的渐变（跟 favicon 同一族色）。深字而不是白字：
+              // 白字压在 `#66CCFF` 上只有 1.8:1，站点顶栏也是深字。
+              color: OnBright.onBright,
               fontSize: 18,
               fontWeight: FontWeight.w800,
               height: 1,
@@ -261,7 +264,7 @@ class _SearchEntry extends StatelessWidget {
                   child: Text(
                     '去搜索',
                     style: theme.textTheme.labelSmall?.copyWith(
-                      color: scheme.primary,
+                      color: AppTheme.brandInk(context),
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -314,7 +317,6 @@ class _SectionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
@@ -326,7 +328,7 @@ class _SectionHeader extends StatelessWidget {
             width: 3,
             height: 15,
             decoration: BoxDecoration(
-              color: scheme.primary,
+              color: AppTheme.brandInk(context),
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -1148,7 +1150,7 @@ class _TodayScheduleCard extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.labelMedium?.copyWith(
-                      color: scheme.primary,
+                      color: AppTheme.brandInk(context),
                       fontWeight: FontWeight.w600,
                     ),
                   ),

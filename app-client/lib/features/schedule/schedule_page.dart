@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/network/api_exception.dart';
 import '../../core/router/route_paths.dart';
 import '../../core/theme/app_layout.dart';
+import '../../core/theme/app_theme.dart';
 import '../../data/models/schedule.dart';
 import '../../shared/widgets/desktop_nav_shell.dart';
 import '../../shared/widgets/mobile_nav_bar.dart';
@@ -100,6 +101,7 @@ class SchedulePage extends ConsumerWidget {
 
     if (data.isEmpty) {
       return RefreshIndicator(
+        color: AppTheme.brandStrong,
         onRefresh: () async => ref.invalidate(scheduleProvider),
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
@@ -158,6 +160,7 @@ class SchedulePage extends ConsumerWidget {
           child: items.isEmpty
               ? _buildEmptyDay(context, ref)
               : RefreshIndicator(
+                color: AppTheme.brandStrong,
                   onRefresh: () async => ref.invalidate(scheduleProvider),
                   child: ListView.separated(
                     padding: const EdgeInsets.fromLTRB(
@@ -179,6 +182,7 @@ class SchedulePage extends ConsumerWidget {
 
   Widget _buildEmptyDay(BuildContext context, WidgetRef ref) {
     return RefreshIndicator(
+      color: AppTheme.brandStrong,
       onRefresh: () async => ref.invalidate(scheduleProvider),
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),

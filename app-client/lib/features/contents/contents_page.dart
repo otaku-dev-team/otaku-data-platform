@@ -485,6 +485,7 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
     };
 
     return RefreshIndicator(
+      color: AppTheme.brandStrong,
       onRefresh: () => ref.read(contentsControllerProvider.notifier).refresh(),
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
@@ -539,6 +540,7 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
   ) {
     _flushScrollReset();
     return RefreshIndicator(
+      color: AppTheme.brandStrong,
       onRefresh: () => ref.read(contentsControllerProvider.notifier).refresh(),
       child: view == CatalogView.list
           ? _buildRows(data, showMissingRating)
@@ -770,7 +772,6 @@ class _YearMenu extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final thisYear = DateTime.now().year;
 
     return PopupMenuButton<int>(
@@ -779,7 +780,7 @@ class _YearMenu extends StatelessWidget {
         Icons.date_range_rounded,
         // 有条件生效时给个颜色提示：筛选栏里的 chip 在手机上可能要滚出视野，
         // 图标是唯一一直可见的状态位。
-        color: current == null ? null : theme.colorScheme.primary,
+        color: current == null ? null : AppTheme.brandInk(context),
       ),
       initialValue: current ?? _allValue,
       constraints: const BoxConstraints(maxHeight: 420),
@@ -894,7 +895,7 @@ class _FilterRow extends StatelessWidget {
             avatar: Icon(
               Icons.sell_outlined,
               size: 16,
-              color: tags.isEmpty ? null : scheme.primary,
+              color: tags.isEmpty ? null : AppTheme.brandInk(context),
             ),
             label: Text(tags.isEmpty ? '标签' : '标签 ${tags.length}'),
             visualDensity: VisualDensity.compact,
