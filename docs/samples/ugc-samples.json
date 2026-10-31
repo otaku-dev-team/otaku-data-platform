@@ -1,0 +1,192 @@
+{
+  "_meta": {
+    "captured_at": "2026-10-31T19:13+08:00",
+    "captured_from": "生产实例（http://154.8.194.198:8080），真请求、真落库，抓完已清理",
+    "why": "契约只描述形状，客户端串接口时最容易踩的是「哪一层有哪个字段」。这里是线上原样响应。",
+    "note": "author 已替换成 alice / bob（原本是 smoke 测试账号），其余字段与线上逐字节一致。"
+  },
+  "samples": [
+    {
+      "name": "floor_list",
+      "endpoint": "GET /api/works/{work_id}/comments?page_size=3",
+      "note": "顶层评论列表。total 只算顶层；每层内嵌最早的 3 条回复（replies）+ 回复总数 reply_count。",
+      "response": {
+        "page": 1,
+        "page_size": 3,
+        "total": 1,
+        "total_pages": 1,
+        "items": [
+          {
+            "comment_id": "17",
+            "work_id": "W-e70201dhttf5ayr",
+            "author": "alice",
+            "body": "样张：这条是顶层评论（编辑过）",
+            "status": "published",
+            "created_at": "2026-10-31T11:13:06.339Z",
+            "edited_at": "2026-10-31T11:13:06.425Z",
+            "parent_id": null,
+            "reply_count": 2,
+            "replies": [
+              {
+                "comment_id": "18",
+                "work_id": "W-e70201dhttf5ayr",
+                "author": "bob",
+                "body": "样张：这是别人回的一条",
+                "status": "published",
+                "created_at": "2026-10-31T11:13:06.393Z",
+                "edited_at": null,
+                "parent_id": "17",
+                "reply_count": null,
+                "replies": []
+              },
+              {
+                "comment_id": "19",
+                "work_id": "W-e70201dhttf5ayr",
+                "author": "alice",
+                "body": "样张：作者自己的回复",
+                "status": "published",
+                "created_at": "2026-10-31T11:13:06.409Z",
+                "edited_at": null,
+                "parent_id": "17",
+                "reply_count": null,
+                "replies": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "replies_page",
+      "endpoint": "GET /api/works/{work_id}/comments/{comment_id}/replies",
+      "note": "某一层的完整回复，**对话顺序**（最早在前，与顶层列表相反）。",
+      "response": {
+        "page": 1,
+        "page_size": 20,
+        "total": 2,
+        "total_pages": 1,
+        "items": [
+          {
+            "comment_id": "18",
+            "work_id": "W-e70201dhttf5ayr",
+            "author": "bob",
+            "body": "样张：这是别人回的一条",
+            "status": "published",
+            "created_at": "2026-10-31T11:13:06.393Z",
+            "edited_at": null,
+            "parent_id": "17",
+            "reply_count": null,
+            "replies": []
+          },
+          {
+            "comment_id": "19",
+            "work_id": "W-e70201dhttf5ayr",
+            "author": "alice",
+            "body": "样张：作者自己的回复",
+            "status": "published",
+            "created_at": "2026-10-31T11:13:06.409Z",
+            "edited_at": null,
+            "parent_id": "17",
+            "reply_count": null,
+            "replies": []
+          }
+        ]
+      }
+    },
+    {
+      "name": "comment_create_reply",
+      "endpoint": "POST /api/me/comments（带 parent_id）",
+      "note": "发回复的响应。注意 reply_count 是 null、replies 是空数组——它是一条回复，不是楼层。",
+      "response": {
+        "comment_id": "18",
+        "work_id": "W-e70201dhttf5ayr",
+        "author": "bob",
+        "body": "样张：这是别人回的一条",
+        "status": "published",
+        "created_at": "2026-10-31T11:13:06.393Z",
+        "edited_at": null,
+        "parent_id": "17",
+        "reply_count": null,
+        "replies": []
+      }
+    },
+    {
+      "name": "comment_edit",
+      "endpoint": "PATCH /api/me/comments/{comment_id}",
+      "note": "编辑顶层评论的响应。edited_at 有值；**replies 是空数组**（客户端别把已有预览覆盖成零回复）；reply_count 仍是真实值。",
+      "response": {
+        "comment_id": "17",
+        "work_id": "W-e70201dhttf5ayr",
+        "author": "alice",
+        "body": "样张：这条是顶层评论（编辑过）",
+        "status": "published",
+        "created_at": "2026-10-31T11:13:06.339Z",
+        "edited_at": "2026-10-31T11:13:06.425Z",
+        "parent_id": null,
+        "reply_count": 2,
+        "replies": []
+      }
+    },
+    {
+      "name": "review_list",
+      "endpoint": "GET /api/works/{work_id}/reviews?page_size=3",
+      "note": "点评列表。rating 可为 null（只写文字）。",
+      "response": {
+        "page": 1,
+        "page_size": 3,
+        "total": 1,
+        "total_pages": 1,
+        "items": [
+          {
+            "review_id": "6",
+            "work_id": "W-e70201dhttf5ayr",
+            "author": "alice",
+            "rating": 8,
+            "body": "样张：点评正文",
+            "status": "published",
+            "created_at": "2026-10-31T11:13:06.500Z",
+            "edited_at": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "review_create",
+      "endpoint": "POST /api/me/reviews",
+      "note": "发点评的响应（201）。",
+      "response": {
+        "review_id": "6",
+        "work_id": "W-e70201dhttf5ayr",
+        "author": "alice",
+        "rating": 8,
+        "body": "样张：点评正文",
+        "status": "published",
+        "created_at": "2026-10-31T11:13:06.500Z",
+        "edited_at": null
+      }
+    },
+    {
+      "name": "review_summary",
+      "endpoint": "GET /api/works/{work_id}/reviews/summary",
+      "note": "评分概览：total 含只写文字的、rated 只算打了分的、average 只对 rated 求均值（可为 null）。",
+      "response": {
+        "total": 1,
+        "rated": 1,
+        "average": 8.0,
+        "distribution": [
+          {
+            "rating": 8,
+            "count": 1
+          }
+        ]
+      }
+    }
+  ],
+  "_gotchas": [
+    "评论列表的 total 只算顶层；回复数看每层的 reply_count。",
+    "编辑评论的响应里 replies 是空数组——只替换这一条，别把整条覆盖成「零回复」。",
+    "发回复的响应里 reply_count=null、replies=[]，这是正常形状（它不是楼层）。",
+    "点评 summary 的三个数口径不同：total ≥ rated，average 只对 rated 求；没有打分时 average 为 null，显示「暂无评分」而不是 0。",
+    "status 只在你自己刚发的那条上可能是 pending（先审后发 / 机器审核转人工）；公开列表里永远是 published。"
+  ]
+}
