@@ -78,8 +78,8 @@ abstract final class Palette {
 
 /// 语义色：状态提示、徽标、表单校验。首站是「浅底 + 深字」成对出现的。
 ///
-/// 客户端此前没有这组，红/绿是各处手写的（`#2E6650` 之类），所以同一件
-/// 「成功」在不同页面颜色不一样。
+/// 客户端此前没有这组，红/绿都是各处手写的字面量（同一件事在不同页面
+/// 用了不同的绿），所以这里一次给全，新代码只从这里取。
 abstract final class Semantic {
   const Semantic._();
 
@@ -98,6 +98,39 @@ abstract final class Semantic {
   /// 通过 / 不通过。首站只给了前景色（用在测试结果行上），没有配套底色。
   static const Color passFg = Color(0xFF157347);
   static const Color failFg = Color(0xFFC32D4D);
+}
+
+/// 作品类型色：动画蓝 / 漫画粉 / 游戏青 / 小说紫。
+///
+/// 值来自首站 `.type-tab[data-type=...]` 的 `--type-a`（浅，选中态渐变起点）与
+/// `--type-b`（深，图标与文字色）。客户端只用一个色（图标 + 14% 透明底），
+/// 所以取 `--type-b`；浅档留着做渐变。
+///
+/// **这四个色相的归谁是有意的，别按「好看」重排。** 2026-11-01 之前客户端自己配了
+/// 一套（动画靛、漫画粉、游戏紫、小说青），其中**游戏与小说跟首站正好互换**——
+/// 同一部作品在两个端看到的是不同颜色，而这正是「品牌色对齐」最容易漏掉的一处：
+/// 看的不是品牌蓝有没有用对，是同一语义在两端的色相是否一致。
+///
+/// 漫画粉与小说紫首站是直接写死的色值、没提成 `:root` 变量，所以这两对严格说
+/// 不是令牌搬运，是把首站的两处散值收了进来（同 [Palette.cardBorder] 的处理）。
+abstract final class TypeColor {
+  const TypeColor._();
+
+  static const Color animeLight = Palette.brand300;
+  static const Color anime = Palette.brand600;
+
+  static const Color comicLight = Color(0xFFFFB3C7);
+  static const Color comic = Color(0xFFE8557D);
+
+  static const Color gameLight = Palette.accent300;
+  static const Color game = Palette.accent600;
+
+  static const Color novelLight = Color(0xFFCDB4F6);
+  static const Color novel = Color(0xFF7C5CD6);
+
+  /// 类型未知。首站没有这一档（它的四类枚举是闭合的），取 `--ink-400`：
+  /// 首站注释说它是「装饰用」，作图标色正好，不当正文。
+  static const Color unknown = Palette.ink400;
 }
 
 /// 亮色大图上的文字（首页 hero、海报拼贴那类区域）。

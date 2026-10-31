@@ -9,6 +9,7 @@ import '../../core/platform_info.dart';
 import '../../core/router/route_paths.dart';
 import '../../core/theme/app_layout.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/theme/design_tokens.dart';
 import '../../data/models/article.dart';
 import '../../data/models/schedule.dart';
 import '../../data/models/work_summary.dart';
@@ -899,15 +900,18 @@ class _TypeBrowseSection extends ConsumerWidget {
     WorkType.unknown => Icons.category_outlined,
   };
 
-  /// 每种类型一个色相。分类入口是首页唯一「按类逛」的入口，四个都涂同一个
-  /// 品牌蓝的话分不出来；这几个色都与品牌蓝相邻（靛/紫/粉/青），放在一起
-  /// 不打架。图标与浅色底共用同一个色值，深浅主题都成立。
+  /// 每种类型一个色相，**顺序与色值都对齐首站 `.type-tab[data-type]`**：
+  /// 动画蓝 / 漫画粉 / 游戏青 / 小说紫（[TypeColor]）。
+  ///
+  /// 分类入口是首页唯一「按类逛」的入口，四个都涂同一个品牌蓝就分不出来；
+  /// 但分色也不能自己挑——同一部作品在网站和客户端必须是同一个颜色，
+  /// 否则用户切端时会觉得「看过的是另一部」。
   static Color _colorOf(WorkType type) => switch (type) {
-    WorkType.anime => const Color(0xFF4F6BFF),
-    WorkType.comic => const Color(0xFFF2749B),
-    WorkType.game => const Color(0xFF8B5CF6),
-    WorkType.novel => const Color(0xFF12B3A6),
-    WorkType.unknown => const Color(0xFF8A94A6),
+    WorkType.anime => TypeColor.anime,
+    WorkType.comic => TypeColor.comic,
+    WorkType.game => TypeColor.game,
+    WorkType.novel => TypeColor.novel,
+    WorkType.unknown => TypeColor.unknown,
   };
 
   @override
