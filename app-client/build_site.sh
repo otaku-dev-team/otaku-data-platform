@@ -67,7 +67,8 @@ usage() {
   --mock               出 Mock 数据版（默认注真实后端：USE_MOCK=false）
   --version-name <x.y.z>  版本名，给人看（默认取 pubspec.yaml）
   --version-code <n>      版本号，整数、每次发版递增（默认取 pubspec.yaml 的 +n）
-  --update-base-url <url> 更新清单 / 安装包基地址（默认 <API_BASE_URL>/downloads）
+  --update-base-url <url> 更新清单 / 安装包基地址
+                       默认取 site.conf 的 UPDATE_BASE_URL，再回落 <API_BASE_URL>/downloads
   --abi <架构>         apk 目标架构：arm64（默认推荐，约省 2/3）| arm32 | x64 | all
                        只出 arm64 的包无法装到 32 位老机与 x86 模拟器上
   --require-release-key  发正式包时必须已配正式签名（无 android/key.properties 就报错退出）
@@ -169,6 +170,13 @@ API_BASE_URL=$(conf_get API_BASE_URL)
 # 可选：来源站地址（HTML 页面，给 App 内 WebView 登录 / 注册用）。
 # 不填不报错，只是登录页不显示站点入口——与不注入时的默认行为一致。
 SITE_BASE_URL=$(conf_get SITE_BASE_URL)
+# 可选：更新清单 / 安装包的基地址。**命令行优先，其次 site.conf**——
+# 这样换域名只改 site.conf 一处，不用每次构建都记着传 --update-base-url
+# （漏一次就会出一个「更新地址还是旧 IP」的包，而且要到用户点更新时才发现）。
+# 两边都没给就留空，由客户端回落成 `${API_BASE_URL}/downloads`。
+if [ -z "$UPDATE_BASE_URL" ]; then
+  UPDATE_BASE_URL=$(conf_get UPDATE_BASE_URL)
+fi
 
 # ── 版本号 ────────────────────────────────────────────────────────────
 # 默认从 pubspec.yaml 取 `version: x.y.z+n`；显式参数优先。发版必须递增

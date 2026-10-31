@@ -83,7 +83,8 @@ if ($Help) {
   -Mock       出 Mock 数据版（默认注真实后端：USE_MOCK=false）
   -VersionName <x.y.z>  版本名，给人看（默认取 pubspec.yaml）
   -VersionCode <n>      版本号，整数、每次发版递增（默认取 pubspec.yaml 的 +n）
-  -UpdateBaseUrl <url>  更新清单 / 安装包基地址（默认 <API_BASE_URL>/downloads）
+  -UpdateBaseUrl <url>  更新清单 / 安装包基地址
+                        默认取 site.conf 的 UPDATE_BASE_URL，再回落 <API_BASE_URL>/downloads
   -Abi <架构>           apk 目标架构：arm64（默认推荐，约省 2/3）| arm32 | x64 | all
                         只出 arm64 的包无法装到 32 位老机与 x86 模拟器上
   -DryRun     只打印命令，不构建
@@ -120,6 +121,11 @@ $apiBaseUrl = Get-ConfValue 'API_BASE_URL' $conf
 # 可选：来源站地址（HTML 页面，给 App 内 WebView 登录 / 注册用）。
 # 不填不报错，只是登录页不显示站点入口——与不注入时的默认行为一致。
 $siteBaseUrl = Get-ConfValue 'SITE_BASE_URL' $conf
+# 可选：更新清单 / 安装包的基地址。命令行优先，其次 site.conf——
+# 换域名只改 site.conf 一处，不用每次构建都记着传 -UpdateBaseUrl。
+if (-not $UpdateBaseUrl) {
+    $UpdateBaseUrl = Get-ConfValue 'UPDATE_BASE_URL' $conf
+}
 
 # ── 版本号 ────────────────────────────────────────────────────────────
 $pubVersion = (Select-String -Path 'pubspec.yaml' -Pattern '^version:\s*(.+)$' |
