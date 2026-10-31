@@ -38,7 +38,7 @@ import 'package:flutter/widgets.dart';
 /// - **做底**：`brand400` + `OnBright.onBright` 深字。主按钮、顶栏、选中的
 ///   `tag-chip` 都是这个组合（白字压上去只有 1.8:1）。
 /// - **做字**：`brand700`。白底上的链接、分类标签、区块色条用它
-///   （`brand400` 当字只有 1.8:1，`brand700` 是 5.7:1）。
+///   （`brand400` 当字只有 1.8:1，`brand700` 是 5.1:1）。
 ///
 /// 深色主题首站没有实现，由 `AppTheme` 按同色相另推一套，不在这里。
 abstract final class Palette {

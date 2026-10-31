@@ -12,7 +12,8 @@ abstract final class AppTheme {
   /// 主色 = 站点 `--brand-400`（天蓝 `#66CCFF`）。
   ///
   /// 站点 `:root` 的注释是「品牌主色（天蓝 #66CCFF 族）—— 全站主视觉」，主按钮、
-  /// 顶栏、Hero 全是这块纯亮天蓝打底、配 `--on-bright` 深字（对比 11.6:1）。
+  /// 顶栏、Hero 全是这块纯亮天蓝打底、配 `--on-bright` 深字（7.9:1；站点注释
+  /// 写的 11.6:1 是拿纯黑算的，不是 `--on-bright`）。
   ///
   /// 此前这里填的是 `--brand-600`（`#2A9AE0`）——那是**白底上的链接文字色**，
   /// 不是主色。两档在色阶里只差两级，单看某一屏都不像错，两端摆一起才看得出
@@ -87,7 +88,7 @@ abstract final class AppTheme {
   ///
   /// 主色 `#66CCFF` 在白底上只有 1.8:1，当字读不出来；站点也是这么拆的——
   /// 按钮、导航用 400 打底，链接用 700 写字。反过来，深色主题的底上 700
-  /// 只有 2.3:1，所以那边直接用 400。
+  /// 只有 3.1:1，所以那边直接用 400。
   ///
   /// 系统取色开着的时候跟着系统的 primary 走，否则开了取色还会冒出
   /// 一块固定天蓝。
@@ -115,7 +116,8 @@ abstract final class AppTheme {
     // 而 Material You 的 outlineVariant 偏灰，压在带色的底上会显脏。
     final border = isDark ? darkBorder : cardBorder;
     // 主色当「字」和「焦点」用的两档，跟站点一样分开：
-    // 亮色下字用 `--brand-700`（5.7:1），焦点环与进度环用 `--brand-600`；
+    // 亮色下字用 `--brand-700`（白底 5.1:1，压在页面浅底上 4.7:1），
+    // 焦点环与进度环用 `--brand-600`；
     // 深色下主色本身就有 8.7:1，两处都直接用主色。
     final brandText = dynamicScheme != null
         ? dynamicScheme.primary
