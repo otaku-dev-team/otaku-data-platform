@@ -470,8 +470,21 @@ bash scripts/post-deploy-check.sh http://127.0.0.1:8080
 19 4 * * * cd /path/to/otaku-data-platform/backend-java && ./deploy/renew-letsencrypt.sh 2>&1 | logger -t otaku-tls
 ```
 
-`deploy/monitor.sh` 查五件事：后端健康、容器状态、磁盘阈值、**备份新鲜度（< 26h）**、
-证书剩余天数（< 14 天开始 WARN）。任一失败退出码非 0，cron 会因此发邮件。
+`deploy/monitor.sh` 查七件事：后端健康、容器状态、磁盘阈值、**备份新鲜度（< 26h）**、
+证书剩余天数（< 14 天 WARN）、慢查询日志体积、**可用内存与 swap**。任一失败退出码非 0。
+
+**⚠️ 退出码非 0 ≠ 有人知道。** 这台机器**没有 MTA**，cron 把输出丢给 `logger` 之后就停在 syslog 里，
+不会有任何邮件发出去（此前这里写「cron 会因此发邮件」，是错的，2026-10-31 更正）。要真收到告警，
+在 `.env` 里配 `ALERT_WEBHOOK`——企业微信 / 钉钉机器人都吃同一种 `{"msgtype":"text"}` 形状：
+
+```bash
+# .env
+ALERT_WEBHOOK=https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=<机器人 key>
+```
+
+配了之后，巡检失败会 POST 一条「巡检失败 N 项 @ 主机（站点）：<每条 FAIL 的原因>」。
+没配时每轮打一行 `[SKIP] 告警通道未配置…`，**让「没人收得到」这件事一直可见**，
+而不是安静地以为自己有监控。
 
 **「该有哪些容器 / 要不要验证书」是显式配置，不是自动探测**（`.env`）：
 
