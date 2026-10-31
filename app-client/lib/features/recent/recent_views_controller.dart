@@ -50,6 +50,31 @@ class RecentViewsController extends Notifier<List<RecentView>> {
     _commit(next);
   }
 
+  /// 删掉一条（按作品 id）。
+  ///
+  /// 比「全清」更常用：用户常常只想抹掉某一部，而不是把全部足迹一起清掉。
+  /// 找不到就什么都不做——连点两次或列表已刷新时不该报错，也不该写一次盘。
+  void remove(String workId) {
+    if (!state.any((item) => item.workId == workId)) return;
+    _commit(<RecentView>[
+      for (final item in state)
+        if (item.workId != workId) item,
+    ]);
+  }
+
+  /// 撤销一次删除：把记录放回原来的位置。
+  ///
+  /// 滑动删除很容易误触，而历史**删了就真没了**（不像收藏能重新拉），
+  /// 所以删完给一个「撤销」。放回原位置而不是置顶——用户撤销的是「刚才那次删除」，
+  /// 不是「我刚又看了一遍」。
+  void restore(RecentView entry, int index) {
+    if (state.any((item) => item.workId == entry.workId)) return;
+    final next = <RecentView>[...state];
+    next.insert(index.clamp(0, next.length), entry);
+    if (next.length > maxEntries) next.removeRange(maxEntries, next.length);
+    _commit(next);
+  }
+
   /// 清空当前账号的历史。
   void clear() => _commit(const <RecentView>[]);
 

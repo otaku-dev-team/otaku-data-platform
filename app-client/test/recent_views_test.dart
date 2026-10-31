@@ -28,6 +28,7 @@ import 'package:otaku_app/data/repositories/schedule_repository.dart';
 import 'package:otaku_app/data/repositories/work_repository.dart';
 import 'package:otaku_app/features/detail/work_detail_page.dart';
 import 'package:otaku_app/features/recent/recent_views_controller.dart';
+import 'package:otaku_app/features/recent/recent_history_page.dart';
 import 'package:otaku_app/shared/widgets/compact_work_card.dart';
 
 import 'support/test_overrides.dart';
@@ -183,6 +184,54 @@ void main() {
       return container;
     }
 
+    test('删单条只影响那一条，其余顺序不变', () {
+      final container = createContainer();
+      final controller = container.read(recentViewsProvider.notifier);
+
+      controller.record(_work('A'), at: DateTime(2026, 10, 1));
+      controller.record(_work('B'), at: DateTime(2026, 10, 2));
+      controller.record(_work('C'), at: DateTime(2026, 10, 3));
+
+      controller.remove('B');
+
+      expect(
+        container.read(recentViewsProvider).map((e) => e.workId),
+        ['C', 'A'],
+      );
+    });
+
+    test('删不存在的 id 不改状态（连点两次不该出错）', () {
+      final container = createContainer();
+      final controller = container.read(recentViewsProvider.notifier);
+      controller.record(_work('A'), at: DateTime(2026, 10, 1));
+
+      controller.remove('不存在');
+      controller.remove('A');
+      controller.remove('A');
+
+      expect(container.read(recentViewsProvider), isEmpty);
+    });
+
+    test('撤销放回原来的位置，不是置顶', () {
+      final container = createContainer();
+      final controller = container.read(recentViewsProvider.notifier);
+      controller.record(_work('A'), at: DateTime(2026, 10, 1));
+      controller.record(_work('B'), at: DateTime(2026, 10, 2));
+      controller.record(_work('C'), at: DateTime(2026, 10, 3));
+
+      // 顺序是 [C, B, A]；删掉中间的 B，再撤销。
+      final removed = container
+          .read(recentViewsProvider)
+          .firstWhere((e) => e.workId == 'B');
+      controller.remove('B');
+      controller.restore(removed, 1);
+
+      expect(
+        container.read(recentViewsProvider).map((e) => e.workId),
+        ['C', 'B', 'A'],
+      );
+    });
+
     test('再次打开同一作品是「置顶 + 换时间」，不是新增一条', () {
       final container = createContainer();
       final controller = container.read(recentViewsProvider.notifier);
@@ -304,7 +353,7 @@ void main() {
       expect(find.text('最近浏览'), findsNothing);
     });
 
-    testWidgets('看过一部之后，首页多出一张卡；清空后这一块整体消失', (tester) async {
+    testWidgets('首页只露最近几条；从「全部」进列表页清空后这一块整体消失', (tester) async {
       final container = await pumpApp(tester);
 
       // 列表页 → 详情
@@ -323,16 +372,29 @@ void main() {
       expect(find.byType(CompactWorkCard), findsNWidgets(2));
       expect(find.text('详情里的甲'), findsOneWidget);
 
-      await tester.tap(find.text('清空'));
+      // 首页不再直接放「清空」——改成进「全部」列表页，清空在那一页的右上角。
+      await tester.tap(find.text('全部'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(RecentHistoryPage), findsOneWidget);
+      // 刚看过的落在「今天」这一段里。
+      expect(find.text('今天'), findsOneWidget);
+      expect(find.text('详情里的甲'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('清空'));
       await tester.pumpAndSettle();
       expect(find.text('清空最近浏览？'), findsOneWidget);
 
       await tester.tap(find.widgetWithText(FilledButton, '清空'));
       await tester.pumpAndSettle();
 
+      expect(container.read(recentViewsProvider), isEmpty);
+      expect(find.text('还没有浏览记录'), findsOneWidget);
+
+      await tester.pageBack();
+      await tester.pumpAndSettle();
       expect(find.text('最近浏览'), findsNothing);
       expect(find.byType(CompactWorkCard), findsOneWidget);
-      expect(container.read(recentViewsProvider), isEmpty);
     });
 
     testWidgets('详情打不开时不留记录', (tester) async {
