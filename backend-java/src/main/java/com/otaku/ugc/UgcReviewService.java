@@ -3,6 +3,7 @@ package com.otaku.ugc;
 import com.otaku.common.ApiException;
 import com.otaku.common.ErrorCode;
 import com.otaku.common.PageResponse;
+import com.otaku.common.TextLength;
 import com.otaku.ugc.dto.UgcReviewDto;
 import com.otaku.ugc.dto.UgcReviewEditRequest;
 import com.otaku.ugc.dto.UgcReviewRequest;
@@ -202,7 +203,8 @@ public class UgcReviewService {
             return null;
         }
         String text = raw.strip();
-        if (text.length() > MAX_BODY_LENGTH) {
+        // 与评论同一口径：码点计数，emoji 算 1 个
+        if (TextLength.of(text) > MAX_BODY_LENGTH) {
             throw ApiException.badRequest("点评最多 " + MAX_BODY_LENGTH + " 字");
         }
         return text;

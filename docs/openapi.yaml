@@ -2437,7 +2437,10 @@ components:
           schema: { $ref: "#/components/schemas/ErrorResponse" }
     RateLimitedWithRetry:
       description: |
-        登录失败次数超限（`RATE_LIMITED`）。`Retry-After` 为还需等待的秒数（≤ 900），
+        触发限流（`RATE_LIMITED`）。两种来源，都用同一个头：
+        - **登录失败次数超限**：`Retry-After` ≤ 900；
+        - **发言太快**（评论/回复每 60 秒 5 条）：`Retry-After` ≤ 60，是窗口里最早那条到期的时间。
+
         客户端应按该值退避后再试，**不要**立刻重试、也不要展示成"账号被锁"。
       headers:
         Retry-After:
@@ -2957,7 +2960,9 @@ components:
         body:
           type: string
           maxLength: 1000
-          description: 纯文本，客户端**不得**按 HTML/Markdown 渲染
+          description: |
+            纯文本，客户端**不得**按 HTML/Markdown 渲染。
+            长度按 **Unicode 码点**计（一个 emoji 算 1 个，不是 UTF-16 的 2 个），与数据库列一致。
           example: "第三集的作画真是顶。"
         status:
           type: string
@@ -3029,7 +3034,9 @@ components:
           type: string
           nullable: true
           maxLength: 5000
-          description: 纯文本长评，客户端**不得**按 HTML/Markdown 渲染；`null` = 只打分
+          description: |
+            纯文本长评，客户端**不得**按 HTML/Markdown 渲染；`null` = 只打分。
+            长度按 **Unicode 码点**计（emoji 算 1 个），与数据库列一致。
           example: "作画稳定，节奏比第一季更松弛。"
         status:
           type: string

@@ -3,6 +3,7 @@ package com.otaku.ugc;
 import com.otaku.common.ApiException;
 import com.otaku.common.ErrorCode;
 import com.otaku.common.PageResponse;
+import com.otaku.common.TextLength;
 import com.otaku.ugc.dto.UgcCommentDto;
 import com.otaku.ugc.dto.UgcCommentEditRequest;
 import com.otaku.ugc.dto.UgcCommentRequest;
@@ -148,10 +149,14 @@ public class UgcService {
 
         Long parentId = resolveParent(siteKey, workId, request.parentId());
 
-        LocalDateTime since = LocalDateTime.now(ZoneOffset.UTC).minusSeconds(RATE_WINDOW_SECONDS);
+        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
+        LocalDateTime since = now.minusSeconds(RATE_WINDOW_SECONDS);
         if (repository.countRecentByUser(siteKey, user.id(), since) >= RATE_LIMIT) {
+            // 带上 Retry-After：契约里 429 就声明了这个头，客户端要按它退避。
+            // 不给的话客户端只能立刻重试，然后立刻再撞一次 429。
             throw new ApiException(ErrorCode.RATE_LIMITED,
-                    "发言太快了，" + RATE_WINDOW_SECONDS + " 秒内最多 " + RATE_LIMIT + " 条");
+                    "发言太快了，" + RATE_WINDOW_SECONDS + " 秒内最多 " + RATE_LIMIT + " 条",
+                    retryAfterSeconds(siteKey, user.id(), now));
         }
 
         // 发布策略：pre = 先审后发（落 pending，站主审核后才对外可见）；post = 先发后审（默认）。
@@ -307,12 +312,28 @@ public class UgcService {
         return trimmed;
     }
 
+    /**
+     * 还要等几秒：窗口里**最早那条**到期就腾出一个名额。
+     *
+     * <p>读不到（并发下那条刚好被删）就按整窗 60 秒给——宁可让客户端多等，
+     * 也别给一个偏小的值让它立刻重试再撞一次。
+     */
+    private int retryAfterSeconds(String siteKey, long userId, LocalDateTime now) {
+        return repository.oldestRecentByUser(siteKey, userId, now.minusSeconds(RATE_WINDOW_SECONDS))
+                .map(oldest -> (int) Math.ceil(
+                        java.time.Duration.between(now, oldest.plusSeconds(RATE_WINDOW_SECONDS))
+                                .toMillis() / 1000.0))
+                .map(seconds -> Math.max(1, Math.min(RATE_WINDOW_SECONDS, seconds)))
+                .orElse(RATE_WINDOW_SECONDS);
+    }
+
     private static String normalizeBody(String raw) {
         if (raw == null || raw.isBlank()) {
             throw ApiException.badRequest("评论内容不能为空");
         }
         String text = raw.strip();
-        if (text.length() > MAX_BODY_LENGTH) {
+        // 按码点算：一个 emoji 是 1 个字，不是 2 个（见 TextLength 的类注释）
+        if (TextLength.of(text) > MAX_BODY_LENGTH) {
             throw ApiException.badRequest("评论最多 " + MAX_BODY_LENGTH + " 字");
         }
         return text;
