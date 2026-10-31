@@ -1695,23 +1695,41 @@ paths:
   /api/console/ugc/export:
     get:
       tags: [站主后台]
-      summary: 导出本站评论（CSV）
+      summary: 导出本站 UGC（评论 / 点评 / 举报，各一份 CSV）
       operationId: exportConsoleUgc
       description: |
-        数据交还客户：把本站评论导成 CSV（UTF-8 带 BOM，Excel 直接打开不乱码）。
+        数据交还客户：把本站的 UGC 导成 CSV（UTF-8 带 BOM，Excel 直接打开不乱码）。
 
+        **为什么要导三份**：站点下线时删的是三张表（`ugc_comment` / `ugc_review` /
+        `ugc_report`），所以「交还」也必须覆盖这三类，否则就是「删了但没交」。
+        三类的列天然不同（点评有评分、举报有理由），合成一张表站主分不清哪列对哪行，
+        因此用 `type` 分开，**每次请求一份文件**。三个文件名不同，下到同一目录不会互相覆盖。
+
+        - `type`：`comment`（缺省）/ `review` / `report`。认不出的值 `400`——
+          不静默降级成评论，否则站主会以为「我的点评就这些」；
         - 按登录站主的站点过滤，**不接受站点参数**；
-        - `status` 可选 `published` / `pending` / `hidden` / `deleted` / `all`（缺省 = 全部）；
+        - `status` 的取值跟着 `type` 走：评论与点评是 `published` / `pending` / `hidden` /
+          `deleted` / `all`；举报是 `open` / `resolved` / `dismissed` / `all`（缺省 = 全部）；
         - 上限 **5 万行**：超过时正常返回前 5 万行并把 `X-Export-Truncated` 置为 `true`（**不报错**，
           站主要的是「能拿到数据」，报错只会让他反复重试）；
         - 每行字段按 RFC 4180 转义（逗号、引号、换行都安全）；响应头 `X-Export-Rows` 是本文件行数；
-        - 导出会写审计 `ugc.export`（谁在什么时候导了多少条）。
+        - 导出会写审计 `ugc.export`（谁在什么时候导了哪一类、多少条）。
+
+        **对账规矩**：下线前 `X-Export-Rows` 必须与 `scripts/site-offboarding.sql` 干跑输出的
+        `comments` / `reviews` / `reports` 逐项相等，不等不许删（2026-10-31 演练的口径）。
       security:
         - consoleAuth: []
       parameters:
+        - name: type
+          in: query
+          schema: { type: string, enum: [comment, review, report], default: comment }
+          description: 导哪一类。缺省 `comment`（与加这个参数之前的行为一致）。
         - name: status
           in: query
-          schema: { type: string, enum: [published, pending, hidden, deleted, all] }
+          schema: { type: string, enum: [published, pending, hidden, deleted, open, resolved, dismissed, all] }
+          description: |
+            状态过滤。评论/点评用 published / pending / hidden / deleted；
+            举报用 open / resolved / dismissed。取值不属于当前 `type` 时 `400`。
       responses:
         "200":
           description: CSV 文件
@@ -1722,9 +1740,14 @@ paths:
             X-Export-Truncated:
               schema: { type: boolean }
               description: 是否因为 5 万行上限被截断
+            X-Export-Kind:
+              schema: { type: string, enum: [comment, review, report] }
+              description: 本次导出的是哪一类（与请求的 type 一致，缺省请求时为 comment）
             Content-Disposition:
               schema: { type: string }
-              description: attachment; filename="ugc-<site_key>-<yyyy-MM-dd>.csv"
+              description: |
+                attachment; filename="<prefix><site_key>-<yyyy-MM-dd>.csv"，
+                prefix 为 `ugc-`（评论）/ `reviews-`（点评）/ `reports-`（举报）
           content:
             text/csv:
               schema: { type: string }

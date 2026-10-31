@@ -1,6 +1,8 @@
 # UGC 留存与删除策略（方案 · 待拍板）
 
 > 状态：**口径已定（zm 2026-10-30），代码已实现**（#240 B2c③⑤）。最终法务口径仍以站点/合同为准。
+> 2026-10-31 补：导出现在覆盖三类（`type=comment|review|report`），与下线删除的三张表一一对应——
+> 此前只导评论，点评与举报「只删不交」，见 [`site-offboarding-drill.md`](site-offboarding-drill.md) §5。
 > 归属：#240 B2c 剩余项里的「留存策略」。主责 @pyxz0；合规口径由站点 / 法务定，本文只给平台侧可执行的机制与推荐值。
 > 相关：`product-positioning.md` §A（代存定位与责任主体）、[`deletion-semantics-proposal.md`](deletion-semantics-proposal.md)（作品软删，与本篇不同层）。
 
@@ -125,10 +127,14 @@ zm 的注：「用户注销权」是红线级法务项，物理删 vs 去标识�
 致：<站点名称>
 事由：<站点域名> 停止使用本平台客户端服务，UGC 数据副本的处理确认
 
-一、数据交还
-  1. 导出接口：GET /api/console/ugc/export?status=all（含已删除评论）
+一、数据交还（三份文件，与下面「副本删除」的范围一一对应）
+  1. 导出接口：GET /api/console/ugc/export?status=all&type=comment|review|report
+     （type 缺省 = comment；三份都要导，只导一份就是没交完）
   2. 导出时间：<YYYY-MM-DD HH:MM>
-  3. 导出条数：<N> 条（published <a> / pending <b> / hidden <c> / deleted <d>）
+  3. 导出条数（**必须与「副本删除」的条数逐项相等**，不等不许删）：
+     - ugc_comment  <N1> 条（published <a> / pending <b> / hidden <c> / deleted <d>）
+     - ugc_review   <N4> 条
+     - ugc_report   <N2> 条
   4. 交付方式：<文件 / 链接>            接收人：<姓名>
 
 二、副本删除
@@ -144,7 +150,11 @@ zm 的注：「用户注销权」是红线级法务项，物理删 vs 去标识�
   站点方：<姓名>    <YYYY-MM-DD>
 ```
 
-注意两点：
+注意三点：
 - **先导出、后删除**，顺序不能换（导出是对账依据，删完再导就是空文件）；
+- **三份导出与三张表逐项对账**：`comments` / `reviews` / `reports` 三个数字对不上，
+  说明交还还没做完，此时删就是数据丢失。2026-10-31 演练发现导出只覆盖评论，
+  点评与举报「只删不交」——补上 `type` 参数后两边范围才一致，详见
+  [`site-offboarding-drill.md`](site-offboarding-drill.md) §5；
 - 删除会写一条 `site.offboard` 审计，写明 `comments=N reports=M`，这份审计**故意不删**——
   它要比被删的数据活得久。

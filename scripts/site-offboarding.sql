@@ -23,6 +23,11 @@
 --
 -- 顺序建议：先在平台侧把站点停用（POST /internal/sites/{key}/suspend，撤销站主会话），
 --       再跑本脚本。停用只是「不让进后台」，数据不动；删副本是不可逆的，必须有人签过字。
+-- 2026-10-31 再修：删除范围定了「三张表」，那「交还」也必须是三份——此前导出只有评论，
+--       点评与举报是「只删不交」（详见 docs/site-offboarding-drill.md §5）。
+--       现在干跑会多打一行对账要求：下面三个数字必须与三份导出的 X-Export-Rows 逐项相等。
+--       少一份或数字不等 = 交还没做完，此时执行 p_dry=0 就是把客户数据删了。
+--
 -- 审计：删除后写一条 site.offboard 到 console_audit；审计行**不随站点删除**（它要比被审计的数据活得久）。
 --       重复执行会再写一条（detail 里是 comments=0 reviews=0 reports=0）——这是**有意**的：
 --       它记录的是「有人又执行了一次」，不是「又删了东西」。看到多条不要以为脚本出错了。
@@ -43,6 +48,14 @@ BEGIN
 
     SELECT p_site AS site_key, v_comments AS comments, v_reviews AS reviews, v_reports AS reports,
            v_audits AS audits, IF(p_dry = 1, 'DRY-RUN (nothing deleted)', 'WILL DELETE') AS mode;
+
+    -- 干跑时把「先去导出」这件事顶到执行者眼前：只写在文档里，执行的人看不到。
+    IF p_dry = 1 THEN
+        SELECT '先导出三份、再删' AS check_up,
+               CONCAT('comments=', v_comments, ' ↔ type=comment；reviews=', v_reviews,
+                      ' ↔ type=review；reports=', v_reports, ' ↔ type=report') AS must_match,
+               '三个数字对不上 = 交还没做完，不许执行（p_dry=0）' AS rule;
+    END IF;
 
     IF p_dry = 0 THEN
         -- 顺序不能反：ugc_report.comment_id 外键指向 ugc_comment

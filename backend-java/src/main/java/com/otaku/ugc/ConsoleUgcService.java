@@ -31,6 +31,8 @@ public class ConsoleUgcService {
 
     private static final Set<String> FILTERABLE = Set.of("published", "pending", "hidden", "deleted");
     private static final Set<String> REPORT_FILTERABLE = Set.of("open", "resolved", "dismissed");
+    /** 可导出的 UGC 三类，与 {@code site-offboarding.sql} 删除的三张表逐一对齐。 */
+    private static final Set<String> EXPORT_KINDS = Set.of("comment", "review", "report");
     private static final Set<String> MODERATION_MODES = Set.of("post", "pre");
     private static final int MAX_PAGE_SIZE = 50;
     /** 导出上限：够覆盖单站现阶段数据量，又不至于一次请求吃穿内存。 */
@@ -38,15 +40,18 @@ public class ConsoleUgcService {
 
     private final UgcRepository ugcRepository;
     private final UgcReportRepository reportRepository;
+    private final UgcReviewRepository reviewRepository;
     private final UgcSettingsRepository settings;
     private final ConsoleScopeResolver scopeResolver;
     private final ConsoleAuditRepository auditRepository;
 
     public ConsoleUgcService(UgcRepository ugcRepository, UgcReportRepository reportRepository,
+                             UgcReviewRepository reviewRepository,
                              UgcSettingsRepository settings, ConsoleScopeResolver scopeResolver,
                              ConsoleAuditRepository auditRepository) {
         this.ugcRepository = ugcRepository;
         this.reportRepository = reportRepository;
+        this.reviewRepository = reviewRepository;
         this.settings = settings;
         this.scopeResolver = scopeResolver;
         this.auditRepository = auditRepository;
@@ -187,30 +192,83 @@ public class ConsoleUgcService {
     }
 
     /**
-     * 导出本站评论为 CSV（数据交还客户）。
+     * 导出本站 UGC 为 CSV（数据交还客户）。
      *
      * <p>上限 5 万行：够覆盖任何单站现阶段的数据量，又不会让一次请求把内存吃穿。
      * 超过上限时正常返回前 5 万行并标记 {@code truncated=true}——**不报错**，
      * 因为站主要的是「能拿到数据」，报错只会让他反复重试。
+     *
+     * <p><b>{@code type} 为什么不是「全部塞一个文件」</b>：下线会删三张表
+     * （{@code ugc_comment} / {@code ugc_review} / {@code ugc_report}），所以交还必须也是三份，
+     * 否则「删了但没交」——2026-10-31 演练就是这么发现的（当时只有评论）。
+     * 三份的列天然不同，合在一张表站主分不清哪列对哪行；`type` 缺省仍是 {@code comment}，
+     * 老调用方不受影响。
      */
-    public ExportResult exportCsv(ConsolePrincipal principal, String status) {
+    public ExportResult exportCsv(ConsolePrincipal principal, String status, String type) {
         ConsoleScope scope = scopeResolver.resolve(principal);
+        String kind = normalizeExportKind(type);
+        return switch (kind) {
+            case "review" -> exportReviews(principal, scope, status);
+            case "report" -> exportReports(principal, scope, status);
+            default -> exportComments(principal, scope, status);
+        };
+    }
+
+    private ExportResult exportComments(ConsolePrincipal principal, ConsoleScope scope, String status) {
         String filter = normalizeFilter(status);
         List<UgcRepository.ConsoleRow> rows =
                 ugcRepository.findForConsole(scope.siteKey(), filter, MAX_EXPORT_ROWS, 0);
         long total = ugcRepository.countForConsole(scope.siteKey(), filter);
-        boolean truncated = total > rows.size();
-
-        auditRepository.record(scope.siteKey(), principal.adminId(),
-                ConsoleAuditRepository.ACTION_UGC_EXPORT, "ugc_comment", scope.siteKey(),
-                "导出 " + rows.size() + " 条（status=" + (filter == null ? "all" : filter) + "）",
-                LocalDateTime.now(ZoneOffset.UTC));
-        log.info("站主 {} 导出站点 {} 的 UGC：{} 条，truncated={}",
-                principal.adminId(), scope.siteKey(), rows.size(), truncated);
-        return new ExportResult(UgcCsvExporter.toCsv(rows), rows.size(), truncated);
+        return finish(principal, scope, "comment", "ugc_comment", filter, rows.size(),
+                total, UgcCsvExporter.toCsv(rows));
     }
 
-    public record ExportResult(String csv, int rows, boolean truncated) {
+    private ExportResult exportReviews(ConsolePrincipal principal, ConsoleScope scope, String status) {
+        String filter = normalizeFilter(status);
+        List<UgcReviewRepository.ExportRow> rows =
+                reviewRepository.findForExport(scope.siteKey(), filter, MAX_EXPORT_ROWS);
+        long total = reviewRepository.countForExport(scope.siteKey(), filter);
+        return finish(principal, scope, "review", "ugc_review", filter, rows.size(),
+                total, UgcCsvExporter.toReviewCsv(rows));
+    }
+
+    private ExportResult exportReports(ConsolePrincipal principal, ConsoleScope scope, String status) {
+        // 举报的状态取值与评论不同（open/resolved/dismissed），不能复用 normalizeFilter
+        String filter = normalizeReportFilter(status);
+        List<UgcReportRepository.ReportRow> rows =
+                reportRepository.listForConsole(scope.siteKey(), filter, MAX_EXPORT_ROWS, 0);
+        long total = reportRepository.countForConsole(scope.siteKey(), filter);
+        return finish(principal, scope, "report", "ugc_report", filter, rows.size(),
+                total, UgcCsvExporter.toReportCsv(rows));
+    }
+
+    private ExportResult finish(ConsolePrincipal principal, ConsoleScope scope, String kind,
+                                String targetType, String filter, int rows, long total, String csv) {
+        boolean truncated = total > rows;
+        auditRepository.record(scope.siteKey(), principal.adminId(),
+                ConsoleAuditRepository.ACTION_UGC_EXPORT, targetType, scope.siteKey(),
+                "导出 " + rows + " 条（type=" + kind + " status=" + (filter == null ? "all" : filter)
+                        + (truncated ? " 截断 total=" + total : "") + "）",
+                LocalDateTime.now(ZoneOffset.UTC));
+        log.info("站主 {} 导出站点 {} 的 {}：{} 条 / 共 {}，truncated={}",
+                principal.adminId(), scope.siteKey(), kind, rows, total, truncated);
+        return new ExportResult(csv, rows, truncated, kind);
+    }
+
+    /** 缺省 {@code comment}：老调用方（与已有冒烟脚本）不带 type，行为不能变。 */
+    private static String normalizeExportKind(String type) {
+        if (type == null || type.isBlank()) {
+            return "comment";
+        }
+        String trimmed = type.trim().toLowerCase(java.util.Locale.ROOT);
+        if (!EXPORT_KINDS.contains(trimmed)) {
+            throw ApiException.badRequest("type 只能是 comment / review / report；"
+                    + "三份都要，各导一次（下线时三张表都会被删）");
+        }
+        return trimmed;
+    }
+
+    public record ExportResult(String csv, int rows, boolean truncated, String kind) {
     }
 
     private static String normalizeReportFilter(String status) {

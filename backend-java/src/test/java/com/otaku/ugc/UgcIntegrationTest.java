@@ -124,6 +124,8 @@ class UgcIntegrationTest {
         jdbc.update("DELETE FROM console_audit WHERE actor_admin_id LIKE 'it-ugc-%'");
         jdbc.update("DELETE FROM ugc_report WHERE site_key IN (?, ?)", SITE, OTHER_SITE);
         jdbc.update("DELETE FROM ugc_comment WHERE site_key IN (?, ?)", SITE, OTHER_SITE);
+        // 点评与评论是两张表：漏了这句，`DELETE FROM app_user` 会被 fk_review_user 挡住
+        jdbc.update("DELETE FROM ugc_review WHERE site_key IN (?, ?)", SITE, OTHER_SITE);
         jdbc.update("DELETE FROM import_batch_run WHERE batch_id LIKE ?", BATCH_PREFIX + "%");
         jdbc.update("DELETE FROM import_batch WHERE batch_id LIKE ?", BATCH_PREFIX + "%");
         jdbc.update("DELETE FROM work WHERE source = ?", SOURCE);
@@ -361,7 +363,7 @@ class UgcIntegrationTest {
                 VALUES (?, ?, ?, '别的站的内容', 'published', NOW(3), NOW(3))
                 """, OTHER_SITE, workId, outsider.id());
 
-        var exported = consoleUgcService.exportCsv(consoleAdmin(SITE), "all");
+        var exported = consoleUgcService.exportCsv(consoleAdmin(SITE), "all", "comment");
 
         assertThat(exported.rows()).isEqualTo(4);
         assertThat(exported.truncated()).isFalse();
@@ -380,10 +382,56 @@ class UgcIntegrationTest {
     }
 
     @Test
+    @DisplayName("导出分三类：点评与举报也要交还（下线时三张表都会被删）")
+    void exportCoversReviewsAndReports() {
+        // 点评：一条带逗号正文 + 一条只打分（body 为 null）
+        jdbc.update("""
+                INSERT INTO ugc_review (site_key, work_id, user_id, rating, body, status,
+                                        created_at, updated_at)
+                VALUES (?, ?, ?, 9, '点评,带逗号', 'published', NOW(3), NOW(3))
+                """, SITE, workId, alice.id());
+        jdbc.update("""
+                INSERT INTO ugc_review (site_key, work_id, user_id, rating, body, status,
+                                        created_at, updated_at)
+                VALUES (?, ?, ?, 6, NULL, 'published', NOW(3), NOW(3))
+                """, SITE, workId, bob.id());
+        // 举报：挂在 alice 的一条评论上
+        UgcCommentDto floor = service.create(alice, new UgcCommentRequest(workId, "被举报的评论"));
+        jdbc.update("""
+                INSERT INTO ugc_report (site_key, comment_id, reporter_id, reason, status, created_at)
+                VALUES (?, ?, ?, '理由,带逗号', 'open', NOW(3))
+                """, SITE, Long.parseLong(floor.commentId()), bob.id());
+
+        var reviews = consoleUgcService.exportCsv(consoleAdmin(SITE), "all", "review");
+        assertThat(reviews.kind()).isEqualTo("review");
+        assertThat(reviews.rows()).as("两条点评都要在").isEqualTo(2);
+        assertThat(reviews.csv()).startsWith(
+                "review_id,work_id,work_title,author,rating,status,created_at,edited_at,body");
+        assertThat(reviews.csv()).contains("\"点评,带逗号\"");
+        assertThat(reviews.csv()).as("只打分的那条 rating 有值、body 为空").contains(",6,published,");
+
+        var reports = consoleUgcService.exportCsv(consoleAdmin(SITE), "all", "report");
+        assertThat(reports.kind()).isEqualTo("report");
+        assertThat(reports.rows()).isEqualTo(1);
+        assertThat(reports.csv()).startsWith(
+                "report_id,comment_id,work_id,work_title,reporter,reason,status,created_at");
+        assertThat(reports.csv()).contains("\"理由,带逗号\"")
+                .as("举报行要能对回评论").contains("," + floor.commentId() + ",");
+
+        // 缺省仍是评论，老调用方不受影响
+        assertThat(consoleUgcService.exportCsv(consoleAdmin(SITE), "all", null).kind())
+                .isEqualTo("comment");
+        // 认不出的 type 直接拒，而不是静默导出一份评论让人以为拿到了点评
+        assertThatThrownBy(() -> consoleUgcService.exportCsv(consoleAdmin(SITE), "all", "reviews"))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("comment / review / report");
+    }
+
+    @Test
     @DisplayName("导出写审计：谁在什么时候导了多少条")
     void exportIsAudited() {
         service.create(alice, new UgcCommentRequest(workId, "导出审计"));
-        consoleUgcService.exportCsv(consoleAdmin(SITE), "all");
+        consoleUgcService.exportCsv(consoleAdmin(SITE), "all", "comment");
 
         Integer audited = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM console_audit WHERE action = 'ugc.export' AND target_id = ?",

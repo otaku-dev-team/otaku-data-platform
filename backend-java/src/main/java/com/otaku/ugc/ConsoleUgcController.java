@@ -60,27 +60,41 @@ public class ConsoleUgcController {
     }
 
     /**
-     * 导出本站评论（CSV，UTF-8 带 BOM，Excel 直接打开不乱码）。
+     * 导出本站 UGC（CSV，UTF-8 带 BOM，Excel 直接打开不乱码）。
      *
      * <p>走 {@code GET} 是因为导出是幂等读操作；审计由服务层写（谁导了多少条）。
+     *
+     * <p>{@code type} 三选一：{@code comment}（缺省）/ {@code review} / {@code report}。
+     * 文件名跟着变（`ugc-…` / `reviews-…` / `reports-…`），三个文件下载到同一个目录不会互相覆盖。
      */
     @GetMapping("/ugc/export")
     public ResponseEntity<byte[]> export(
             @RequestAttribute(ConsoleAuthFilter.ATTRIBUTE_PRINCIPAL) ConsolePrincipal principal,
-            @RequestParam(name = "status", required = false) String status) {
-        var result = service.exportCsv(principal, status);
+            @RequestParam(name = "status", required = false) String status,
+            @RequestParam(name = "type", required = false) String type) {
+        var result = service.exportCsv(principal, status, type);
         // BOM：没有它，Excel 打开 UTF-8 CSV 会把中文显示成乱码。
         byte[] body = ("\uFEFF" + result.csv()).getBytes(java.nio.charset.StandardCharsets.UTF_8);
         return ResponseEntity.ok()
                 .contentType(new MediaType("text", "csv", java.nio.charset.StandardCharsets.UTF_8))
                 .header(HttpHeaders.CONTENT_DISPOSITION,
                         ContentDisposition.attachment()
-                                .filename("ugc-" + principal.siteKey() + "-"
+                                .filename(filePrefix(result.kind()) + principal.siteKey() + "-"
                                         + java.time.LocalDate.now() + ".csv")
                                 .build().toString())
                 .header("X-Export-Rows", String.valueOf(result.rows()))
                 .header("X-Export-Truncated", String.valueOf(result.truncated()))
+                .header("X-Export-Kind", result.kind())
                 .body(body);
+    }
+
+    /** 缺省评论沿用 `ugc-` 前缀：换文件名会让已有的下载脚本与站主的习惯断掉。 */
+    private static String filePrefix(String kind) {
+        return switch (kind) {
+            case "review" -> "reviews-";
+            case "report" -> "reports-";
+            default -> "ugc-";
+        };
     }
 
     @GetMapping("/ugc/reports")
