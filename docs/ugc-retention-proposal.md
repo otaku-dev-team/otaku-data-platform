@@ -116,6 +116,8 @@ zm 的注：「用户注销权」是红线级法务项，物理删 vs 去标识�
 
 > 用途：站点停止合作时，把「数据已交还、副本已删除」这件事落到纸面。
 > 执行 `scripts/site-offboarding.sql` 后填写，双方各留一份。
+> 2026-10-31 已做过一次完整演练（含两个站点的对照与一次真删），步骤与结果见
+> [`site-offboarding-drill.md`](site-offboarding-drill.md)——那次演练抓到了「漏删点评」。
 
 ```
                      UGC 数据副本交还与删除确认函
@@ -130,11 +132,12 @@ zm 的注：「用户注销权」是红线级法务项，物理删 vs 去标识�
   4. 交付方式：<文件 / 链接>            接收人：<姓名>
 
 二、副本删除
-  1. 执行时间：<YYYY-MM-DD HH:MM>
-  2. 执行方式：scripts/site-offboarding.sql（dry-run 对账通过后执行）
-  3. 删除范围：ugc_comment <N1> 条、ugc_report <N2> 条
-  4. 保留项：console_audit（审计留痕，不随站点删除）<N3> 条
-  5. 不在本脚本范围：收藏、账号、设备令牌（按合同另行处理）
+  1. 停站时间：<YYYY-MM-DD HH:MM>（POST /internal/sites/<key>/suspend，站主会话已全部撤销）
+  2. 执行时间：<YYYY-MM-DD HH:MM>
+  3. 执行方式：scripts/site-offboarding.sql（dry-run 对账通过后执行）
+  4. 删除范围：ugc_comment <N1> 条（含回复）、**ugc_review <N4> 条**、ugc_report <N2> 条
+  5. 保留项：console_audit（审计留痕，不随站点删除）<N3> 条
+  6. 不在本脚本范围：收藏、账号、设备令牌（按合同另行处理）
 
 三、确认
   平台方：<姓名>    <YYYY-MM-DD>
