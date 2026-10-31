@@ -212,21 +212,38 @@ infobox 主创要变成可跳转，必须先有 Bangumi 人物 id。两条路：
 
 ## 9. 未测项（写方案时不允许含糊）
 
-- **生产库找到了，但库读不到**：站点库是 `/opt/acgn-test-platform/local_dev.db`（118 MB，库里就是线上数据，
+- **生产库已跑通（2026-11-01）**：站点库 `/opt/acgn-test-platform/local_dev.db`（118 MB，库里就是线上数据，
   文件名带 `local_dev` 是历史遗留），`/opt/acgn-test-platform/backups/` 下有每日快照。
-  但**运维通道禁止任何 sqlite 连接**（连 `:memory:` 都直接 AccessDeny），库里的数只能由人在机器上跑。
+  运维通道禁止 sqlite 直连，但最终通过云助手（TAT）在机器上跑了 `scripts/person-coverage.py`，
+  数据即 10-27 那次导出对应的线上状态（用户确认 27 日后网站无大更新，数字当前有效）。
 
   | 来源 | 位置 | 结果 |
   |---|---|---|
   | dev 库 | `E:\projects\acgn-test-platform\local_dev.db` | `entities` 12 行（11 person + 1 company）、三张关系表 0 行 |
-  | 生产库 | `/opt/acgn-test-platform/local_dev.db` | **读不到**（通道禁止），只能人工执行 |
+  | 生产库 | `/opt/acgn-test-platform/local_dev.db` | ✅ 2026-11-01 跑通 person-coverage，见下表 |
   | 生产导出报告 | `/opt/otaku/data/dataset/otaku.db.report.json` | ✅ 行数与空值率已取，见 §3 |
   | 数据集 v2 | `sync-python/runs/dataset-local-v2.db` | `people` 12 行（带 `bangumi_person_id` 0 行）、关系表引用 0 个 id |
 
-  **仍未测的**（都需要在服务器上执行 `scripts/person-coverage.sql`）：按 `tier` 的 id 分布、
-  `entities` 行数、两套 id 实际撞车数、归一后同名重复率。拿到之前这些一律按未测处理，不写估算值；
-- **名字匹配的准确率未测**：阶段 2 的双条件校验是设计，不是实测结果；
-- **`entities` 里有没有声优**：从写入路径看只有 `ENTITY_ROLE_MAP` 那几个主创职位
-  （导演 / 系列构成 / 音乐 / 角色设计 / 原作 / 动画制作），推断不含声优——生产库没核过；
-- **`name:` 弱关联的实际重复率未测**：同名到底合并掉多少条，要拿到生产库 credits 才知道。
-  这个数字直接决定弱关联通道「看起来准不准」。
+  **生产实测（`person-coverage.py`，2026-11-01，源库 v1 口径）**：
+
+  | 维度 | 指标 | 数字 |
+  |---|---|---|
+  | 声优 coverage | `content_cast` 总行数 / 有 person_id / 无 person_id | 75,821 / 75,821 / **0（100%）** |
+  | 声优去重 | 去重 person_id / 去重 actor 名（归一后） | 6,677 / 6,674 |
+  | 主创 coverage | `content_credits` 总行数 / 有 id / 无 id | 408,144 / 336,979（82.6%）/ 71,165（17.4%） |
+  | 主创去重 | 去重 person_id / 去重 name（归一后） | 19,678 / 49,235 |
+  | 弱关联同名 | 归一后重名的人名个数（无 id 的 credits 中同名 >1 次） | **10,773** |
+  | 花名册 | `entities` 总行数（person / company） | 17,916（14,223 / 3,693） |
+  | 花名册字段 | `entities` 有 `bangumi_person_id` | **0（全部 NULL）** |
+  | 公司 | `content_studios` 总行数 / 去重公司名 | 4,269 / 1,604 |
+  | 两套 id 撞车 | `entities.id ∩ cast.person_id` | 2,514 |
+  | 两套 id 撞车 | `entities.id ∩ credits.person_id` | 2,949 |
+  | 关系表覆盖作品 | 有 credits / 有 cast / 有 studios（共 contents 18,828） | 10,865 / 8,022 / 3,643 |
+
+  原「未测」的四项现在都齐了：**按 tier 的 id 分布**（声优 100% / 主创 82.6%）、**entities 行数**（17,916）、
+  **两套 id 撞车数**（2,514 + 2,949 = 5,463，比 ROADMAP 记的 4,115 更全）、**归一后同名重复率**（10,773 个重名人名）。
+- **名字匹配的准确率未测**：阶段 2 的双条件校验是设计，不是实测结果（保留未测）；
+- **`entities` 里有没有声优**：生产库实测 `entities.entity_type=person` 14,223 行且 `bangumi_person_id` 全 NULL，
+  写入路径只覆盖主创职位（导演 / 系列构成 / 音乐 / 角色设计 / 原作 / 动画制作），**确认不含声优**——与「声优 id 来自 `actors[0].id`」一致；
+- **`name:` 弱关联的实际重复率**：已测。无 id 的 credits 里归一后重名的人名 **10,773 个**，即弱关联通道会把同名不同人的条目并到同一 `name:` 键下；
+  量级占无 id 主创 71,165 行的约 15%（其余为各自唯一的人名），说明弱关联合并不可避免但规模可控，通道「看起来准不准」有了基线。
