@@ -10,6 +10,7 @@ import '../../core/router/route_paths.dart';
 import '../../core/platform_info.dart';
 import '../../core/theme/app_layout.dart';
 import '../../shared/widgets/cover_prefetch.dart';
+import '../settings/display_settings.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/models/tag_vocabulary.dart';
 import '../../data/models/work_sort.dart';
@@ -413,9 +414,14 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
     final isStale = data != null && data.filter != filter;
 
     if (contents.isLoading && (data == null || isStale)) {
-      return view == CatalogView.list
-          ? const SkeletonList()
-          : const SkeletonGrid();
+      if (view == CatalogView.list) return const SkeletonList();
+      // 骨架屏用同一档密度与列数：按默认档画的话，切到紧凑 / 仅封面后
+      // 会看到「加载时 2 列宽卡 → 加载完 3 列窄卡」的跳动。
+      final display = ref.watch(libraryDisplayProvider);
+      return SkeletonGrid(
+        density: display.density,
+        columns: display.columns,
+      );
     }
 
     if (contents.hasError) {
@@ -553,14 +559,23 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
     // 海报网格：列数按可用宽度算，卡片高度写死，保证长短标题不会让行高参差。
     return LayoutBuilder(
       builder: (context, constraints) {
+        // 在 builder 里 watch：切密度只重建网格，不重建整页（搜索框、筛选栏
+        // 都不该跟着重来一遍）。
+        final display = ref.watch(libraryDisplayProvider);
         final usable = constraints.maxWidth - AppLayout.pagePadding * 2;
-        final metrics = AppLayout.gridMetrics(usable);
+        final metrics = AppLayout.gridMetrics(
+          usable,
+          density: display.density,
+          overrideColumns: display.columns,
+        );
         // 正文高度跟着系统字体缩放（与收藏页网格同一套做法）：大字体下固定
         // 高度会撑爆卡片，真机 font_scale 2.0 实测底部溢出 20px。
         final textScale = MediaQuery.textScalerOf(context).scale(1);
-        final extent =
-            metrics.cardWidth / AppLayout.posterAspect +
-            AppLayout.cardBodyHeight * textScale;
+        final extent = AppLayout.gridCellExtent(
+          cardWidth: metrics.cardWidth,
+          density: display.density,
+          textScale: textScale,
+        );
 
         return CustomScrollView(
           controller: _scrollController,
@@ -582,9 +597,10 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
                 ),
                 delegate: SliverChildBuilderDelegate(
                   (context, index) => WorkCard(
-                        work: data.items[index],
-                        showMissingRating: showMissingRating,
-                      ),
+                    work: data.items[index],
+                    showMissingRating: showMissingRating,
+                    density: display.density,
+                  ),
                   childCount: data.items.length,
                 ),
               ),
