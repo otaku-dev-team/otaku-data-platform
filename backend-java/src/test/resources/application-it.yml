@@ -21,6 +21,11 @@ app:
   # 限流本身由 RateLimitIntegrationTest 用独立上下文 + 极小额度验证。
   rate-limit:
     enabled: false
+  import:
+    # 「来源必须登记到站点」的校验在集成测试里关掉：所有用例共用一个库，
+    # 别的测试类建的站点会残留下来，开着会让导入用例因为「有站但来源没登记」而红。
+    # 这条规则本身由 ImportSourceRegistryTest（单测）与 2026-10-31 的第二站演练覆盖。
+    require-registered-source: false
   cover:
     # 放 target 下，避免在仓库里留运行产物
     cache-dir: target/it-covers

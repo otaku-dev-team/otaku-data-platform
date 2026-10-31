@@ -58,6 +58,32 @@ public class ImportService {
     static final int MAX_ITEMS_PER_BATCH = 500;
     private static final int MAX_BATCH_ID_LENGTH = 128;
 
+    /**
+     * 来源必须登记在某站点下（`site_source`），否则这批数据会「进得来、但谁也不属于它」：
+     * 客户端列得出来、评论却 404（`siteKeyOfSource` 为空 → 作品不属于任何站点）。
+     * 更糟的是接第二个站时误导入了别站的 source——用户会看到另一个站的内容。
+     *
+     * <p>空库例外：刚部署、还没建站时放行（bootstrap 可能先灌数据再建站）。
+     * 一旦库里有站点，再导入未登记来源就是配置错误，直接 400，别等到评论挂不上才发现。
+     *
+     * <p>2026-10-31 第二站演练实测：往新站导了 2 条 `bangumi`（该站只登记了 `vndb`），
+     * 导入返回 `inserted=2`，列表 `total` 从 5 变 7——线上就是这样漏出去的。
+     */
+    void requireSourceRegistered(String source) {
+        if (!requireRegisteredSource) {
+            return;
+        }
+        if (workRepository.siteKeyOfSource(source).isPresent()) {
+            return;
+        }
+        if (!workRepository.hasAnySite()) {
+            log.info("库内尚无站点，跳过来源登记校验（source={}）", source);
+            return;
+        }
+        throw ApiException.badRequest("来源 " + source + " 未登记到任何站点："
+                + "先用 POST /internal/sites 建站并指定 sources，否则这批作品客户端列得出来、评论挂不上");
+    }
+
     /** 写一条最多尝试几次：一次正常 + 两次重试，够扛住 5 路并发抢同一行。 */
     private static final int MAX_WRITE_ATTEMPTS = 3;
     /** 锁冲突退避的基数：每次重试等 BASE × 尝试次数（20ms、40ms）。 */
@@ -81,6 +107,8 @@ public class ImportService {
     private final CountCache countCache;
     private final TagCache tagCache;
     private final com.otaku.work.WorkRelationRepository relationRepository;
+    /** 是否强制「来源必须登记到站点」。默认开；集成测试与紧急导入可用配置关掉。 */
+    private final boolean requireRegisteredSource;
 
     public ImportService(WorkRepository workRepository,
                          ImportBatchRepository batchRepository,
@@ -89,7 +117,9 @@ public class ImportService {
                          ObjectMapper objectMapper,
                          CountCache countCache,
                          TagCache tagCache,
-                         com.otaku.work.WorkRelationRepository relationRepository) {
+                         com.otaku.work.WorkRelationRepository relationRepository,
+                         @org.springframework.beans.factory.annotation.Value(
+                                 "${app.import.require-registered-source:true}") boolean requireRegisteredSource) {
         this.workRepository = workRepository;
         this.batchRepository = batchRepository;
         this.idGenerator = idGenerator;
@@ -98,11 +128,13 @@ public class ImportService {
         this.countCache = countCache;
         this.tagCache = tagCache;
         this.relationRepository = relationRepository;
+        this.requireRegisteredSource = requireRegisteredSource;
     }
 
     public ImportBatchResult importBatch(ImportBatchRequest request) {
         String batchId = requireText(request.batchId(), "batch_id", MAX_BATCH_ID_LENGTH);
         String source = requireText(request.source(), "source", MAX_SOURCE_LENGTH);
+        requireSourceRegistered(source);
         List<ImportItem> items = request.items();
         if (items == null) {
             throw ApiException.badRequest("items 不能为空");
