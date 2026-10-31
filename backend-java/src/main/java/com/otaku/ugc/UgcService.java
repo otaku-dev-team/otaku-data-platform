@@ -6,6 +6,7 @@ import com.otaku.common.PageResponse;
 import com.otaku.ugc.dto.UgcCommentDto;
 import com.otaku.ugc.dto.UgcCommentEditRequest;
 import com.otaku.ugc.dto.UgcCommentRequest;
+import com.otaku.ugc.moderation.UgcModerationGate;
 import com.otaku.user.UserRecord;
 import com.otaku.work.WorkRecord;
 import com.otaku.work.WorkRepository;
@@ -54,12 +55,14 @@ public class UgcService {
     private final UgcRepository repository;
     private final WorkRepository workRepository;
     private final UgcSettingsRepository settings;
+    private final UgcModerationGate moderation;
 
     public UgcService(UgcRepository repository, WorkRepository workRepository,
-                      UgcSettingsRepository settings) {
+                      UgcSettingsRepository settings, UgcModerationGate moderation) {
         this.repository = repository;
         this.workRepository = workRepository;
         this.settings = settings;
+        this.moderation = moderation;
     }
 
     /**
@@ -153,7 +156,9 @@ public class UgcService {
 
         // 发布策略：pre = 先审后发（落 pending，站主审核后才对外可见）；post = 先发后审（默认）。
         // 回复与顶层用同一套策略：父评论已发布、回复待审是正常状态，客户端会提示「审核后显示」。
-        String status = "pre".equals(settings.moderationMode(siteKey)) ? "pending" : "published";
+        // 机器审核接在这一步之后：判定不合规直接 400，拿不准就落 pending（详情见 UgcModerationGate）。
+        String status = moderation.decide(siteKey, "comment", body,
+                "pre".equals(settings.moderationMode(siteKey)) ? "pending" : "published");
         long id = repository.insert(siteKey, workId, user.id(), parentId, body, status,
                 LocalDateTime.now(ZoneOffset.UTC));
         log.info("评论落库 site={} work={} user={} parent={} comment={}", siteKey, workId,
@@ -212,7 +217,9 @@ public class UgcService {
             throw new ApiException(ErrorCode.FORBIDDEN, "本站未开启社区功能");
         }
 
-        String status = "pre".equals(settings.moderationMode(siteKey)) ? "pending" : "published";
+        // 编辑同样过机器审核：否则「先发合规内容过审、再改成违规」就是现成的绕过路径
+        String status = moderation.decide(siteKey, "comment", body,
+                "pre".equals(settings.moderationMode(siteKey)) ? "pending" : "published");
         int updated = repository.updateBody(siteKey, id, body, status,
                 LocalDateTime.now(ZoneOffset.UTC));
         if (updated == 0) {

@@ -88,6 +88,22 @@ app:
       # 用户注销时是否移除他的评论。默认 false = 匿名化保留（作者显示「已注销用户」，楼层不塌）；
       # 打开 = 软删，对外立即消失，物理清理由上面的保留天数兜底。
       remove-comments-on-account-removal: ${OTAKU_UGC_REMOVE_ON_ACCOUNT_DELETION:false}
+    moderation:
+      machine:
+        # 机器审核**接入位**（#240 B2c 最后一项）：默认 none = 不接入，行为与接入前完全一致
+        # （调用方只多一次布尔判断）。站点选定服务商后，在服务商前面放一个适配器，
+        # 把自家协议翻成 docs/ugc-machine-moderation.md 里的四个字段，这里填 endpoint 即可
+        # ——不改 Java 代码、不用发版。
+        provider: ${OTAKU_UGC_MACHINE_PROVIDER:none}   # none | http
+        endpoint: ${OTAKU_UGC_MACHINE_ENDPOINT:}
+        token: ${OTAKU_UGC_MACHINE_TOKEN:}
+        # 单条送审超时。发评论是同步调用，这个值就是用户感知到的「最多卡多久」。
+        timeout-ms: ${OTAKU_UGC_MACHINE_TIMEOUT_MS:1500}
+        # 服务商不可用（超时 / 5xx / 响应看不懂）时的策略：
+        #   pass   = 放行（默认。先发后审的站点本就接受「先露后处置」，这比全站发不出评论代价小）
+        #   review = 一律转人工（严格；先发后审的站点也落 pending）
+        #   reject = 一律拒收（最严；服务商一挂等于关掉本站发言）
+        on-error: ${OTAKU_UGC_MACHINE_ON_ERROR:pass}
 
 management:
   endpoints:

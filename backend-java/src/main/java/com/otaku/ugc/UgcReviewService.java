@@ -7,6 +7,7 @@ import com.otaku.ugc.dto.UgcReviewDto;
 import com.otaku.ugc.dto.UgcReviewEditRequest;
 import com.otaku.ugc.dto.UgcReviewRequest;
 import com.otaku.ugc.dto.UgcReviewSummary;
+import com.otaku.ugc.moderation.UgcModerationGate;
 import com.otaku.user.UserRecord;
 import com.otaku.work.WorkRecord;
 import com.otaku.work.WorkRepository;
@@ -49,12 +50,14 @@ public class UgcReviewService {
     private final UgcReviewRepository repository;
     private final WorkRepository workRepository;
     private final UgcSettingsRepository settings;
+    private final UgcModerationGate moderation;
 
     public UgcReviewService(UgcReviewRepository repository, WorkRepository workRepository,
-                            UgcSettingsRepository settings) {
+                            UgcSettingsRepository settings, UgcModerationGate moderation) {
         this.repository = repository;
         this.workRepository = workRepository;
         this.settings = settings;
+        this.moderation = moderation;
     }
 
     /** 作品页点评列表：只返回 published，最新在前。 */
@@ -120,7 +123,9 @@ public class UgcReviewService {
             throw new ApiException(ErrorCode.REVIEW_EXISTS, "你已经点评过这部作品，可以编辑原点评");
         }
 
-        String status = "pre".equals(settings.moderationMode(siteKey)) ? "pending" : "published";
+        // 只打分的点评没有正文，机器审核无从判断——UgcModerationGate 对空文本直接放过
+        String status = moderation.decide(siteKey, "review", body,
+                "pre".equals(settings.moderationMode(siteKey)) ? "pending" : "published");
         long id;
         try {
             id = repository.insert(siteKey, workId, user.id(), rating, body, status,
@@ -155,8 +160,9 @@ public class UgcReviewService {
         String body = request.body() == null ? row.body() : normalizeBody(request.body());
         requireSomething(rating, body);
 
-        String status = "pre".equals(settings.moderationMode(user.siteKey()))
-                ? "pending" : "published";
+        // 与评论同一取舍：改内容也要重过审核，否则「过审后再改」就是绕过路径
+        String status = moderation.decide(user.siteKey(), "review", body,
+                "pre".equals(settings.moderationMode(user.siteKey())) ? "pending" : "published");
         int updated = repository.update(user.siteKey(), id, rating, body, status,
                 LocalDateTime.now(ZoneOffset.UTC));
         if (updated == 0) {
