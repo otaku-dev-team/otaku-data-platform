@@ -37,6 +37,7 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
 /**
  * 平台代存 UGC · 评论（#240 B1）在真 MySQL 上的行为。
@@ -195,15 +196,35 @@ class UgcIntegrationTest {
     }
 
     @Test
+    @DisplayName("长度按码点算：1000 个 emoji 收得下，1001 个才拒")
+    void lengthCountsCodePointsNotUtf16Units() {
+        // 修复前：1000 个 emoji 的 String.length() == 2000，会被误判超长
+        UgcCommentDto accepted = service.create(alice,
+                new UgcCommentRequest(workId, "😀".repeat(UgcService.MAX_BODY_LENGTH)));
+        assertThat(com.otaku.common.TextLength.of(accepted.body()))
+                .isEqualTo(UgcService.MAX_BODY_LENGTH); // 存下来的仍是 1000 个字，没按字节截断
+
+        assertThatThrownBy(() -> service.create(alice,
+                new UgcCommentRequest(workId, "😀".repeat(UgcService.MAX_BODY_LENGTH + 1))))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("最多");
+    }
+
+    @Test
     @DisplayName("防刷屏：同一用户 60 秒内第 6 条被 429 挡住")
     void rateLimitsBurst() {
         for (int i = 1; i <= UgcService.RATE_LIMIT; i++) {
             service.create(alice, new UgcCommentRequest(workId, "刷屏 " + i));
         }
 
-        assertThatThrownBy(() -> service.create(alice, new UgcCommentRequest(workId, "第 6 条")))
-                .isInstanceOf(ApiException.class)
-                .hasMessageContaining("发言太快");
+        ApiException tooFast = catchThrowableOfType(
+                () -> service.create(alice, new UgcCommentRequest(workId, "第 6 条")),
+                ApiException.class);
+        assertThat(tooFast).hasMessageContaining("发言太快");
+        // 契约里 429 声明了 Retry-After，这里钉住「真的会给」且落在窗口内
+        assertThat(tooFast.retryAfterSeconds())
+                .isNotNull()
+                .isBetween(1, UgcService.RATE_WINDOW_SECONDS);
 
         // 换个用户不受影响（限流是按用户的，不是全局）
         service.create(bob, new UgcCommentRequest(workId, "别人不受影响"));

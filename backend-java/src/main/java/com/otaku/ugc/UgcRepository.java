@@ -356,6 +356,24 @@ public class UgcRepository {
     }
 
     /** 最近一段时间内该用户发了几条（防刷屏；回复与顶层共用同一额度，防止用回复绕过）。 */
+    /**
+     * 限流窗口里**最早**那条评论的时间。用来算 {@code Retry-After}：
+     * 它到期就腾出一个名额，客户端等到那一刻再试就不会再撞 429。
+     */
+    public java.util.Optional<LocalDateTime> oldestRecentByUser(String siteKey, long userId,
+                                                               LocalDateTime since) {
+        List<LocalDateTime> rows = jdbc.queryForList("""
+                SELECT created_at FROM ugc_comment
+                 WHERE site_key = :siteKey AND user_id = :userId AND created_at >= :since
+                   AND status <> 'deleted'
+                 ORDER BY created_at ASC LIMIT 1
+                """, new MapSqlParameterSource()
+                .addValue("siteKey", siteKey)
+                .addValue("userId", userId)
+                .addValue("since", since), LocalDateTime.class);
+        return rows.stream().findFirst();
+    }
+
     public int countRecentByUser(String siteKey, long userId, LocalDateTime since) {
         Integer count = jdbc.queryForObject("""
                 SELECT COUNT(*) FROM ugc_comment
