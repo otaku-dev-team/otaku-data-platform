@@ -30,8 +30,17 @@ import 'package:flutter/widgets.dart';
 /// 色板：`--brand-*` 10 档、`--accent-*` 10 档、`--ink-*` 5 档、3 个底色，
 /// 外加 1 个首站没提成变量的卡片描边。
 ///
-/// 品牌蓝 `#66CCFF` 是站点标识色（favicon 那一抹），青绿 `#39C5BB` 是辅助色。
-/// 深色模式首站没有实现，由 `AppTheme` 按同色相另推一套，不在这里。
+/// **主色是 `brand400`（`#66CCFF`）**——站点 `:root` 的注释原话是「品牌主色
+/// （天蓝 #66CCFF 族）—— 全站主视觉」。青绿 `accent500` 是辅助色。
+///
+/// 主色在这一档色阶里被拆成两个角色用，跟站点一样：
+///
+/// - **做底**：`brand400` + `OnBright.onBright` 深字。主按钮、顶栏、选中的
+///   `tag-chip` 都是这个组合（白字压上去只有 1.8:1）。
+/// - **做字**：`brand700`。白底上的链接、分类标签、区块色条用它
+///   （`brand400` 当字只有 1.8:1，`brand700` 是 5.7:1）。
+///
+/// 深色主题首站没有实现，由 `AppTheme` 按同色相另推一套，不在这里。
 abstract final class Palette {
   const Palette._();
 
@@ -39,10 +48,16 @@ abstract final class Palette {
   static const Color brand100 = Color(0xFFD6ECFF);
   static const Color brand200 = Color(0xFFAEDFFF);
   static const Color brand300 = Color(0xFF85CDFF);
+
+  /// 主色（站点 `--brand-400`）。
   static const Color brand400 = Color(0xFF66CCFF);
+
   static const Color brand500 = Color(0xFF46B6F7);
   static const Color brand600 = Color(0xFF2A9AE0);
+
+  /// 主色在**白底上当文字**时的版本（站点 `a { color }` 那一档）。
   static const Color brand700 = Color(0xFF1C73B0);
+
   static const Color brand800 = Color(0xFF16598C);
   static const Color brand900 = Color(0xFF114770);
 

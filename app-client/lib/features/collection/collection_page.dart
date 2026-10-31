@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/network/api_exception.dart';
 import '../../core/router/route_paths.dart';
 import '../../core/theme/app_layout.dart';
+import '../../core/theme/app_theme.dart';
 import '../../data/models/collection_entry.dart';
 import '../../data/repositories/work_repository.dart' show Fetched;
 import '../../shared/widgets/account_menu.dart';
@@ -152,6 +153,7 @@ class _CollectionBody extends ConsumerWidget {
     }
 
     return RefreshIndicator(
+      color: AppTheme.brandStrong,
       onRefresh: () =>
           ref.read(collectionControllerProvider.notifier).refresh(),
       // 与作品库同一套海报网格，两个页面切换时不会有"换了个版面"的割裂感。

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_layout.dart';
+import '../../core/theme/app_theme.dart';
 import '../../shared/widgets/desktop_nav_shell.dart';
 
 /// 设置页共用的小组件。
@@ -40,7 +41,7 @@ class SettingsSectionTitle extends StatelessWidget {
       child: Text(
         text,
         style: theme.textTheme.titleSmall?.copyWith(
-          color: theme.colorScheme.primary,
+          color: AppTheme.brandInk(context),
           fontWeight: FontWeight.w700,
         ),
       ),

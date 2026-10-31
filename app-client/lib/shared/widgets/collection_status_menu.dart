@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/theme/app_theme.dart';
 import '../../data/models/collection_entry.dart';
 
 /// 观看状态选择器。
@@ -32,7 +33,6 @@ class CollectionStatusMenu extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final label = status?.label ?? emptyLabel;
 
     return PopupMenuButton<String>(
@@ -66,7 +66,7 @@ class CollectionStatusMenu extends StatelessWidget {
         avatar: Icon(
           status == null ? Icons.help_outline : Icons.playlist_add_check,
           size: 16,
-          color: theme.colorScheme.primary,
+          color: AppTheme.brandInk(context),
         ),
       ),
     );

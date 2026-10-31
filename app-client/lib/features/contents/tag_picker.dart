@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/theme/app_theme.dart';
 import '../../core/util/tag_filter.dart';
 import '../../data/models/tag_vocabulary.dart';
 import '../../data/models/work_type.dart';
@@ -240,7 +241,7 @@ class _TagPickerDialogState extends ConsumerState<TagPickerDialog> {
       child: Text(
         text,
         style: theme.textTheme.labelLarge?.copyWith(
-          color: theme.colorScheme.primary,
+          color: AppTheme.brandInk(context),
           fontWeight: FontWeight.w700,
         ),
       ),

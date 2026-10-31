@@ -231,7 +231,6 @@ class OriginalLinkButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     final lower = url.toLowerCase();
     final safe = lower.startsWith('http://') || lower.startsWith('https://');
     if (!safe) return const SizedBox.shrink();
@@ -246,7 +245,7 @@ class OriginalLinkButton extends StatelessWidget {
           padding: EdgeInsets.zero,
           minimumSize: const Size(0, 28),
           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          foregroundColor: onDark ? Colors.white : scheme.primary,
+          foregroundColor: onDark ? Colors.white : AppTheme.brandInk(context),
           textStyle: Theme.of(context).textTheme.labelSmall,
         ),
       ),

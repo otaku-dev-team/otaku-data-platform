@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/config/app_config.dart';
 import '../../core/router/route_paths.dart';
+import '../../core/theme/app_theme.dart';
 import 'auth_controller.dart';
 
 /// 登录页：**双入口**。
@@ -93,7 +94,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                 Icon(
                   Icons.collections_bookmark_outlined,
                   size: 40,
-                  color: theme.colorScheme.primary,
+                  color: AppTheme.brandInk(context),
                 ),
                 const SizedBox(height: 12),
                 Text(

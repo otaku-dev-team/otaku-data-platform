@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../core/theme/app_theme.dart';
+
 /// 资讯的元信息行：分类 · 发布时间 · 来源。
 ///
 /// 三项都可能缺失，**缺哪一项就不渲染那一项**，不是拿占位符顶上：
@@ -50,7 +52,7 @@ class ArticleMetaLine extends StatelessWidget {
             text: texts[i],
             // 分类用主色，其余用次要色：一行三个字时也要能一眼找到分类。
             color: i == 0 && categoryText != null && categoryText.isNotEmpty
-                ? scheme.primary
+                ? AppTheme.brandInk(context)
                 : scheme.onSurfaceVariant,
             style: labelStyle,
             // 来源名可能很长，只有它吃掉剩余宽度并省略；分类与时间保持自身宽度。
