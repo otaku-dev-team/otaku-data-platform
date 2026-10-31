@@ -20,6 +20,12 @@
 #
 # 阈值都能用环境变量覆盖，默认值是按 2 核 2G / 50G 盘定的；
 # 也可以在 .env 里写 EXPECT_SERVICES / EXPECT_TLS，切换"正式形态 / 联调形态"。
+#
+# 告警去哪了：这台机器**没有 MTA**，cron 把输出丢给 logger 之后就没有下文了
+# ——也就是说"退出码非 0"这件事，默认只有 syslog 知道，没有人会收到邮件。
+# 要真收到，在 .env 里配 ALERT_WEBHOOK（企业微信 / 钉钉机器人都吃同一种
+# {"msgtype":"text"} 形状），失败时会 POST 一条。没配就每轮打一行 SKIP 提醒，
+# 免得"以为有告警"这件事再被忘掉。
 
 set -uo pipefail
 
@@ -56,13 +62,39 @@ COMPOSE_PROJECT=${COMPOSE_PROJECT:-otaku-prod}
 #   联调形态（IP + HTTP，nginx 未启用）：EXPECT_SERVICES="otaku-backend otaku-mysql" EXPECT_TLS=0
 EXPECT_SERVICES=${EXPECT_SERVICES:-$(read_env EXPECT_SERVICES "otaku-backend otaku-mysql otaku-nginx")}
 EXPECT_TLS=${EXPECT_TLS:-$(read_env EXPECT_TLS 1)}
+# 告警 webhook：企业微信 / 钉钉机器人的地址（含 key，别提交进仓库）
+ALERT_WEBHOOK=${ALERT_WEBHOOK:-$(read_env ALERT_WEBHOOK "")}
+ALERT_TIMEOUT=${ALERT_TIMEOUT:-5}
 
 FAILS=0
+FAIL_LINES=""
 say()  { [ "$QUIET" = "1" ] || printf '%s\n' "$*"; }
 ok()   { say "[OK]   $*"; }
-fail() { printf '[FAIL] %s\n' "$*" >&2; FAILS=$((FAILS + 1)); }
+fail() {
+    printf '[FAIL] %s\n' "$*" >&2
+    FAILS=$((FAILS + 1))
+    FAIL_LINES="${FAIL_LINES}${FAIL_LINES:+; }$*"
+}
 warn() { printf '[WARN] %s\n' "$*" >&2; }
 skip() { say "[SKIP] $*"; }
+
+# 发一条告警。没配 webhook 就只留一行提醒——不假装发出去了。
+# URL 里带机器人 key，所以任何输出都只打 host，不打全量。
+notify() {
+    local text=$1 host payload masked
+    [ -n "$ALERT_WEBHOOK" ] || { printf '[告警] 未配置 ALERT_WEBHOOK，这条只进了 syslog\n' >&2; return 0; }
+    host=$(printf '%s' "$ALERT_WEBHOOK" | sed -E 's#^[a-z]+://([^/]+)/.*#\1#')
+    masked="$host/…"
+    # 换行在 JSON 里非法，统一压成 " | "；引号与反斜杠转义
+    payload=$(printf '%s' "$text" | tr '\n' ' ' | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')
+    if curl -fsS -m "$ALERT_TIMEOUT" -H 'Content-Type: application/json' \
+            -d "{\"msgtype\":\"text\",\"text\":{\"content\":\"$payload\"}}" \
+            "$ALERT_WEBHOOK" >/dev/null 2>&1; then
+        printf '[告警] 已发送到 %s\n' "$masked" >&2
+    else
+        printf '[告警] 发送失败（%s），这条只剩 syslog\n' "$masked" >&2
+    fi
+}
 
 # ── 1. 健康检查 ──────────────────────────────────────────────────────
 # 用 curl 的退出码判断可达性，再单独看 status 字段：
@@ -198,8 +230,16 @@ else
     ok "可用内存 ${MEM_AVAIL_MB}MB，swap ${SWAP_USED_MB:-0}/${SWAP_TOTAL_MB:-0}MB"
 fi
 
+# 告警通道本身也要能被看见：没配就每轮 SKIP 一行，别等出事才发现"没人收得到"
+if [ -n "$ALERT_WEBHOOK" ]; then
+    ok "告警通道已配置（webhook）"
+else
+    skip "告警通道未配置（.env 的 ALERT_WEBHOOK）：失败只进 syslog，没有人会收到通知"
+fi
+
 if [ "$FAILS" -gt 0 ]; then
     printf '巡检失败：%d 项\n' "$FAILS" >&2
+    notify "巡检失败 ${FAILS} 项 @ $(hostname)（站点 ${SITE_KEY}）：${FAIL_LINES}"
     exit 1
 fi
 say "巡检通过：全部正常（站点 ${SITE_KEY}）"
