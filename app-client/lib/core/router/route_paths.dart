@@ -40,6 +40,13 @@ abstract final class RoutePaths {
   /// 平级而不是挂在某个页面下面：主题与缓存是设备级的，与「当前在看什么」无关。
   static const String settings = '/settings';
 
+  /// 最近浏览的完整列表（二级页）。
+  ///
+  /// 首页那条横排只放得下「最近这几部」，想回头找更早看过的就得有地方去。
+  /// 挂在顶层而不是某个 branch 下面：它与「当前在哪个 tab」无关，
+  /// 从首页进、返回也回首页，和设置页同一种形态（覆盖全屏、没有底部导航）。
+  static const String recentHistory = '/recent';
+
   /// 设置二级页（相对 [settings]）。
   ///
   /// 设置项会越加越多（主题、缓存、更新、来源声明，以后还有通知、数据导出），
