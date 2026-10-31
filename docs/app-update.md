@@ -155,6 +155,16 @@ cd app-client
 `/usr/share/nginx/downloads`；`latest.json` 与 `*.apk` 都**不入库**。
 首次新增挂载需要 `docker compose -f compose.prod.yaml up -d nginx`。
 
+> **2026-11-01 实测（`154.8.194.198`），别照上面的「首次」直接 `up -d nginx`**：
+> 这台机器的 :80 现在由**主机 nginx**（systemd）服务，站点文件是
+> `/etc/nginx/sites-enabled/otaku-downloads`（`alias /opt/otaku/downloads/`，
+> `latest.json` 带 `no-store`，其余长缓存），`GET :80/downloads/latest.json` 返回 200。
+> compose 里的 `otaku-nginx` **没有启用**（`docker ps` 只有 `otaku-backend` / `otaku-mysql`）。
+> 两者都监听 :80，**同时起会抢端口**；要切到 compose nginx，先 `systemctl stop nginx`。
+> 另：后端 `:8080` **不服务** `/downloads`（实测 404），客户端默认按 `<API_BASE_URL>/downloads`
+> 拼，所以构建时必须显式传 `--update-base-url http://154.8.194.198/downloads`
+> （PR #319 合入后改读 `site.conf`，只改一处）。
+
 > 手工发布的最低要求（没有脚本时）：先传 APK、再改清单，最后才删旧包。
 > 反过来做会有一段时间「清单指向的包已经不存在」，那段时间更新全部 404。
 
