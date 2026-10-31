@@ -65,6 +65,25 @@
 一句话：**声优能统一，主创不能**——除非补数据源。这条是本次拆解里最该先对齐的事实，
 否则会得出「补个字段就完事」的错误预期。
 
+### 生产导出实测（2026-10-27，数据集 v1）
+
+服务器上留着一份当天的导出报告（`/opt/otaku/data/dataset/otaku.db.report.json`），是 v1 口径的真实数字：
+
+| 表 | 行数 |
+|---|---|
+| `works` | 18,828 |
+| `work_credits` | 407,900（`person_ref` 为空 **71,083 行 = 17.4%**） |
+| `work_cast` | 75,731（报告未列空值，即无空值） |
+| `work_studios` | 4,271 |
+
+这张表纠正一个很容易读错的地方：**「credits 里有 17.4% 没有 id」不等于「主创没有 id」**。
+反过来才对——带 id 的是多数，而那是声优和 `tier=candidate` 的长尾 staff 撑起来的；
+真正没有 id 的是 infobox 解析出的那一批（导演 / 脚本 / 音乐，`bangumi_meta.py:388` 恒 `None`），
+行数不多，却是详情页正面显示的那几个名字。写方案时按行数比例判断「主创有没有 id」会得出相反的结论。
+
+v1 的 `work_credits` 是整表照搬（v2 才加 role 白名单），所以 407,900 不是「详情页用得上的量」。
+按 `tier` 的分布还没测到，见 §9。
+
 ## 4. 改完能拿到什么（阶段 1 的收益边界）
 
 `people` 重键、从关系里派生、并补上弱关联之后：
@@ -193,18 +212,19 @@ infobox 主创要变成可跳转，必须先有 Bangumi 人物 id。两条路：
 
 ## 9. 未测项（写方案时不允许含糊）
 
-- **生产库的真实量拿不到**：本机只有 11 部作品的 dev 库，且 `content_cast` / `content_credits` /
-  `content_studios` **都是 0 行**，连「声优去重多少人」都量不出来。三次实测记录：
+- **生产库找到了，但库读不到**：站点库是 `/opt/acgn-test-platform/local_dev.db`（118 MB，库里就是线上数据，
+  文件名带 `local_dev` 是历史遗留），`/opt/acgn-test-platform/backups/` 下有每日快照。
+  但**运维通道禁止任何 sqlite 连接**（连 `:memory:` 都直接 AccessDeny），库里的数只能由人在机器上跑。
 
-  | 库 | 位置 | 结果 |
+  | 来源 | 位置 | 结果 |
   |---|---|---|
   | dev 库 | `E:\projects\acgn-test-platform\local_dev.db` | `entities` 12 行（11 person + 1 company）、三张关系表 0 行 |
-  | 生产库 | 服务器（`154.8.194.198`，站点跑在 8000） | **没拿到** |
+  | 生产库 | `/opt/acgn-test-platform/local_dev.db` | **读不到**（通道禁止），只能人工执行 |
+  | 生产导出报告 | `/opt/otaku/data/dataset/otaku.db.report.json` | ✅ 行数与空值率已取，见 §3 |
   | 数据集 v2 | `sync-python/runs/dataset-local-v2.db` | `people` 12 行（带 `bangumi_person_id` 0 行）、关系表引用 0 个 id |
 
-  要真实数字，需要其中一条：① 把生产库的 sqlite 文件拷一份下来；② 在服务器上直接跑
-  `python -m sync --coverage-report --source-db /path/app.db` 把输出贴回来。**给哪条我都能跑**，
-  在此之前所有百分比一律按「未测」处理，不写估算值；
+  **仍未测的**（都需要在服务器上执行 `scripts/person-coverage.sql`）：按 `tier` 的 id 分布、
+  `entities` 行数、两套 id 实际撞车数、归一后同名重复率。拿到之前这些一律按未测处理，不写估算值；
 - **名字匹配的准确率未测**：阶段 2 的双条件校验是设计，不是实测结果；
 - **`entities` 里有没有声优**：从写入路径看只有 `ENTITY_ROLE_MAP` 那几个主创职位
   （导演 / 系列构成 / 音乐 / 角色设计 / 原作 / 动画制作），推断不含声优——生产库没核过；
