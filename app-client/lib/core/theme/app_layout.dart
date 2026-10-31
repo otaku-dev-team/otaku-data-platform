@@ -1,5 +1,6 @@
 import 'app_theme.dart';
 import 'design_tokens.dart';
+import 'library_density.dart';
 
 /// 布局尺寸。桌面端与手机端共用一套数值，避免各页面自己写 padding。
 abstract final class AppLayout {
@@ -74,17 +75,36 @@ abstract final class AppLayout {
   static ({int columns, double cardWidth}) gridMetrics(
     double availableWidth, {
     double gap = gridGap,
+    LibraryDensity density = LibraryDensity.comfort,
+    int? overrideColumns,
   }) {
-    final minWidth = availableWidth < 600
-        ? gridMinCardWidthCompact
-        : gridMinCardWidth;
-    var columns = (availableWidth / minWidth).floor();
+    final minWidth = density.minCardWidth(availableWidth);
+    var columns = overrideColumns ?? (availableWidth / minWidth).floor();
     if (columns < 2) columns = 2;
     // 上限 4 列（flutter-lead-plan §6「自适应网格 2–4 列」）。
     // 不限的话 1920 宽的窗口会算出 8 列、单卡不到 200 宽，标题全被截断。
-    if (columns > 4) columns = 4;
+    if (overrideColumns == null && columns > 4) {
+      // 自适应时上限 4 列（flutter-lead-plan §6「自适应网格 2–4 列」）。
+      columns = 4;
+    }
+    if (overrideColumns != null) {
+      // 用户显式选的列数放宽到 6：1920 宽的桌面选 5 列是合理的，
+      // 不该被自适应的上限挡住。下限仍保 2，一列会退化成列表。
+      columns = columns.clamp(2, 6);
+    }
     final cardWidth = (availableWidth - gap * (columns - 1)) / columns;
     return (columns: columns, cardWidth: cardWidth);
+  }
+
+  /// 网格单元的纵向高度：封面按 2:3 + 密度决定的文字区。
+  ///
+  /// 骨架屏与真实网格共用它，否则加载完成时会看到一次高度跳动。
+  static double gridCellExtent({
+    required double cardWidth,
+    required LibraryDensity density,
+    required double textScale,
+  }) {
+    return cardWidth / posterAspect + density.bodyHeight * textScale;
   }
 
   static const double detailCoverWidth = 220;
