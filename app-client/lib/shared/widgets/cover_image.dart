@@ -2,6 +2,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_layout.dart';
+import '../../core/theme/design_tokens.dart';
 import 'source_badge.dart';
 
 /// 占位层的两种形态。
@@ -297,11 +298,23 @@ class _PosterPlaceholder extends StatelessWidget {
               ? constraints.biggest.shortestSide
               : 160.0;
           return DecoratedBox(
+            // 与首站 `.work-cover` 同一段渐变：155° 方向、brand-100 →
+            // brand-300（58% 处）→ accent-200。此前这里是自取的灰蓝两档
+            // （#E9F2FB → #D5E5F4），跟品牌色关系不大，缺封面时整片灰。
+            //
+            // 155deg 换算：CSS 角度自正上方顺时针，方向向量 = (sin155°, -cos155°)
+            // ≈ (0.42, 0.91)，即向右下偏。两端各取反向/正向得到 Flutter 的
+            // Alignment（数值是方向余弦，不是像素偏移）。
             decoration: const BoxDecoration(
               gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [Color(0xFFE9F2FB), Color(0xFFD5E5F4)],
+                begin: Alignment(-0.42, -0.91),
+                end: Alignment(0.42, 0.91),
+                stops: [0, 0.58, 1],
+                colors: [
+                  Palette.brand100,
+                  Palette.brand300,
+                  Palette.accent200,
+                ],
               ),
             ),
             child: Center(
@@ -338,14 +351,26 @@ class _HeroPlaceholder extends StatelessWidget {
   final double height;
   final String label;
 
-  /// 全是深色系：头图上要压白字，浅底无论加多重的压暗层都读不清。
+  /// 全部取自首站品牌色阶的**深端**（brand-700…900、accent-700…900），
+  /// 六组之间只换色相、不抬明度——头图上要压白字，浅底无论加多重的压暗层
+  /// 都读不清。
+  ///
+  /// 为什么不直接用首站那段 155° 浅色渐变：那是**海报位**的画法
+  /// （[CoverPlaceholderStyle.poster]），浅底上压白字是读不出来的。首站的
+  /// 头图位是真图、没有占位形态，所以这一组是照它的色板推出来的，不是照抄——
+  /// 色相全在品牌蓝 ↔ 品牌青这条带上，不另起色系。此前这里是自创的 6 档
+  /// （含绿 #2E6650、酒红 #6B3B4C、橄榄 #584D2F），跟品牌色无关，是深色主题里
+  /// 最扎眼的一处异色。
+  ///
+  /// 白字对比度最低的一组是 [Palette.brand700]（5.1:1）与 [Palette.accent700]
+  /// （5.0:1），都在正文 4.5:1 之上，不必再加压暗层。
   static const _palettes = <List<Color>>[
-    [Color(0xFF16324F), Color(0xFF2B5F7E)],
-    [Color(0xFF2A2144), Color(0xFF4B3A72)],
-    [Color(0xFF16352C), Color(0xFF2E6650)],
-    [Color(0xFF3E2330), Color(0xFF6B3B4C)],
-    [Color(0xFF2C2818), Color(0xFF584D2F)],
-    [Color(0xFF17333A), Color(0xFF2F5B63)],
+    [Palette.brand900, Palette.brand700],
+    [Palette.accent900, Palette.accent700],
+    [Palette.brand800, Palette.accent800],
+    [Palette.accent800, Palette.brand800],
+    [Palette.brand900, Palette.accent900],
+    [Palette.accent900, Palette.brand700],
   ];
 
   /// 自己算一遍码位和，不用 `String.hashCode`：后者不保证跨进程稳定，
