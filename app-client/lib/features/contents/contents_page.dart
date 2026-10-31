@@ -640,7 +640,46 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
           AppLayout.pagePadding,
           24,
         ),
-        child: _buildFooter(data),
+        child: Column(
+          children: [
+            _buildFooter(data),
+            if ((data.hidden ?? 0) > 0) _buildHiddenNotice(data.hidden!),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 「已隐藏 N 部成人内容」。
+  ///
+  /// 成人遮挡是后端的硬规则，但用户看不见它——20 条里少了几条，只会觉得
+  /// 「这数据不全」或者「抓取坏了」。这行字把「主动过滤」和「抓不到」分开
+  /// （铁律 3 的对外说法），同时**只说数量、不给标题**：不暴露被过滤的内容本身。
+  ///
+  /// 只在 hidden > 0 时出现。null（后端没这字段）与 0（确实没藏）都不显示。
+  Widget _buildHiddenNotice(int hidden) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.visibility_off_outlined,
+            size: 14,
+            color: theme.colorScheme.outline,
+          ),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              '已隐藏 $hidden 部成人内容',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.outline,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ],
       ),
     );
   }

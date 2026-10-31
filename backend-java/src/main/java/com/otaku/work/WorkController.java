@@ -1,6 +1,6 @@
 package com.otaku.work;
 
-import com.otaku.common.PageResponse;
+import com.otaku.work.dto.WorkPageResponse;
 import com.otaku.work.dto.RelatedWorksDto;
 import com.otaku.work.dto.WorkDto;
 import com.otaku.work.dto.WorkSummaryDto;
@@ -22,7 +22,7 @@ public class WorkController {
     }
 
     @GetMapping
-    public PageResponse<WorkSummaryDto> list(
+    public WorkPageResponse list(
             @RequestParam(name = "type", required = false) String type,
             @RequestParam(name = "q", required = false) String q,
             @RequestParam(name = "tags", required = false) String tags,
