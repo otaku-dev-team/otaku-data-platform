@@ -6,10 +6,10 @@
 -- 「前缀键方案看起来准不准」，不能靠估。
 --
 -- 用法（在库所在的机器上跑，数据不出服务器）：
+--   python3 scripts/person-coverage.py /path/to/app.db
+-- 没有 sqlite3 命令的机器（比如线上那台）走这条；下面两条只在装了 CLI 时可用：
 --   sqlite3 /path/to/app.db < scripts/person-coverage.sql
--- 或交互式：
---   sqlite3 /path/to/app.db
---   sqlite> .read scripts/person-coverage.sql
+--   sqlite3 /path/to/app.db  然后  .read scripts/person-coverage.sql
 --
 -- 输出是「指标 | 值」两列，直接贴回来即可。
 --
