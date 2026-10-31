@@ -61,9 +61,18 @@
 3. token 表单字段在 schema 层均为可选（默认空串），缺失由应用层报错；平台侧仍须做非空校验后再转发。
 4. `authorize` 未登录返回 **303**（非 302）；桌面 loopback 补白前，联调先走移动端自定义 scheme。
 
-**尚未验证（留待第 1 步联调）**：`token` 成功响应体字段（`access_token` / `user{external_user_id,nickname,avatar_url}`）与 `/api/me` 成功体、`revoke` 成功体——这些需真实授权 ticket，openapi 未标注类型，本次只读探测拿不到，按 §1 契约在第 1 步用真实 ticket 验证。
+**✅ 第 1 步联调实测（2026-10-29，真实 ticket + 平台侧临时 secret）**：成功响应体已用真实授权票据核对，与契约 §1 完全吻合。
 
-**结论**：契约（§1）与站点真实行为一致，具备联调条件；唯一遗留仍是桌面 loopback 端口补报。
+| 请求 | 结果 | 核对 |
+| --- | --- | --- |
+| `POST /api/auth/token`（真 ticket + 正确 secret） | `200` | 返回 `access_token`（64 字符 Bearer）、`expires_in: 3600`（秒）、`user{external_user_id, nickname, avatar_url}` |
+| `GET /api/me`（持上一步 Bearer） | `200` | 返回 `external_user_id` / `nickname` / `avatar_url` / `scope:"identity"` |
+
+> 本次走站点 admin 账号（`external_user_id=1`、`nickname=admin`、`avatar_url` 为空），验证的是「成功响应体字段与类型」对齐；账号归属（身份映射落库）属 §3 待确认范围，不在本步。
+
+**尚未验证（留待后续）**：`revoke` 成功响应体——按 §7 安全纪律，平台侧不可主动调 `revoke`（self-revoke 归站点 / 用户），故其成功体不在平台联调路径内，暂不核对。
+
+**结论**：契约（§1）与站点真实行为一致，具备联调条件；成功响应体已在 10-29 用真实 ticket 核对过，唯一遗留仍是桌面 loopback 端口补报。
 
 ## 2. 平台侧对接形态：令牌交换代理
 
