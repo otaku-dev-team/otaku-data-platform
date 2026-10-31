@@ -1,35 +1,37 @@
 import 'package:flutter/material.dart';
 
+import 'design_tokens.dart';
+
 /// 全局主题。
 ///
-/// **色板来自来源站的 `static/style.css`**，不是随手取的近似值：
-/// 站点是 `--brand-*` 蓝色阶 + `--accent-*` 青色 + 浅蓝底 `#f1f6fc` + 白卡片。
-/// 桌面端跟站点长一样，用户在两个端之间切换不会有"换了个软件"的错觉。
-/// 改色只改这里的常量。
+/// **色板来自首站的 `static/style.css`**，具体色值不写在这里——唯一来源是
+/// [Palette]（`design_tokens.dart`）。站点是 `--brand-*` 蓝色阶 + `--accent-*`
+/// 青色 + 浅蓝底 `#f1f6fc` + 白卡片。桌面端跟站点长一样，用户在两个端之间切换
+/// 不会有"换了个软件"的错觉。
 abstract final class AppTheme {
   /// 主题种子色 = 站点 `--brand-600`。
-  static const Color brand = Color(0xFF2A9AE0);
+  static const Color brand = Palette.brand600;
 
   /// 站点 `--brand-300`：卡片 hover 时的描边、封面占位的渐变中段。
-  static const Color brandLine = Color(0xFF85CDFF);
+  static const Color brandLine = Palette.brand300;
 
   /// 站点 `--brand-50`：选中态胶囊、很淡的品牌色底。
-  static const Color brandSoft = Color(0xFFEAF6FF);
+  static const Color brandSoft = Palette.brand50;
 
   /// 站点 `--accent-500`（favicon 里的那抹青）：封面占位渐变的尾段。
-  static const Color accent = Color(0xFF39C5BB);
+  static const Color accent = Palette.accent500;
 
   /// 站点 `--surface` / `--surface-2`。
-  static const Color surface = Color(0xFFF1F6FC);
-  static const Color surfaceAlt = Color(0xFFE6EEF8);
+  static const Color surface = Palette.surface;
+  static const Color surfaceAlt = Palette.surface2;
 
-  /// 站点 `--card-bg` 与卡片描边 `#dfe9f4`。
-  static const Color card = Color(0xFFFFFFFF);
-  static const Color cardBorder = Color(0xFFDFE9F4);
+  /// 站点 `--card-bg` 与卡片描边。
+  static const Color card = Palette.card;
+  static const Color cardBorder = Palette.cardBorder;
 
   /// 站点 `--ink-900` / `--ink-500`。
-  static const Color ink = Color(0xFF17142B);
-  static const Color inkSoft = Color(0xFF6F6A8A);
+  static const Color ink = Palette.ink900;
+  static const Color inkSoft = Palette.ink500;
 
   // 深色模式站点没有对应实现，按同一套色相推出，保证不是"另一套设计"。
   static const Color darkSurface = Color(0xFF0B1620);
@@ -39,29 +41,17 @@ abstract final class AppTheme {
   static const Color darkInkSoft = Color(0xFF93A4B8);
 
   /// 卡片圆角 = 站点 `--radius-lg`。
-  static const double cardRadius = 16;
+  static const double cardRadius = Radii.lg;
 
-  /// 卡片默认阴影：只做一点点浮起。深色主题里阴影几乎不可见，
-  /// 真正分层靠描边，所以两套主题共用这一份，不各写一套。
-  static const List<BoxShadow> cardShadow = [
-    BoxShadow(color: Color(0x0D143652), blurRadius: 3, offset: Offset(0, 1)),
-  ];
+  /// 卡片默认阴影 = 站点 `--shadow-sm`。
+  ///
+  /// 此前的值只抄了 `--shadow-sm` 的第二层（blur 3），漏了 blur 2 那层。
+  /// 现在指向完整令牌，差的是叠加一层 5% 透明度的 2px 阴影，肉眼不可见。
+  /// 深色主题里阴影几乎不可见，真正分层靠描边，所以两套主题共用这一份。
+  static const List<BoxShadow> cardShadow = Shadows.sm;
 
-  /// 桌面 hover 的阴影（鼠标才有意义，手机不触发）。
-  static const List<BoxShadow> cardShadowHover = [
-    BoxShadow(
-      color: Color(0x2E143652),
-      blurRadius: 38,
-      spreadRadius: -10,
-      offset: Offset(0, 16),
-    ),
-    BoxShadow(
-      color: Color(0x14143652),
-      blurRadius: 12,
-      spreadRadius: -4,
-      offset: Offset(0, 4),
-    ),
-  ];
+  /// 桌面 hover 的阴影 = 站点 `--shadow-lg`（鼠标才有意义，手机不触发）。
+  static const List<BoxShadow> cardShadowHover = Shadows.lg;
 
   static ThemeData light({ColorScheme? dynamicScheme, bool glass = false}) =>
       _build(Brightness.light, dynamicScheme, glass);
@@ -106,7 +96,7 @@ abstract final class AppTheme {
           outlineVariant: border,
           primary: dynamicScheme != null
               ? dynamicScheme.primary
-              : (isDark ? const Color(0xFF66CCFF) : const Color(0xFF1C73B0)),
+              : (isDark ? Palette.brand400 : Palette.brand700),
           secondary: dynamicScheme != null ? dynamicScheme.secondary : accent,
         );
 
@@ -156,7 +146,7 @@ abstract final class AppTheme {
                   ? const Color(0xCC162431)
                   : scheme.surfaceContainerLow.withValues(alpha: 0.9))
             : (isDark ? darkCard : card),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(borderRadius: Radii.circularXl()),
       ),
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: glass
@@ -165,7 +155,7 @@ abstract final class AppTheme {
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         indicatorShape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: Radii.circularMd(),
         ),
       ),
       navigationRailTheme: NavigationRailThemeData(
@@ -184,11 +174,11 @@ abstract final class AppTheme {
                   : scheme.surface.withValues(alpha: 0.45))
             : (isDark ? darkSurface : card),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: Radii.circularMd(),
           borderSide: BorderSide(color: isDark ? darkBorder : border),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: Radii.circularMd(),
           borderSide: BorderSide(color: isDark ? darkBorder : border),
         ),
       ),
