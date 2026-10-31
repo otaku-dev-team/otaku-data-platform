@@ -187,6 +187,7 @@
     "编辑评论的响应里 replies 是空数组——只替换这一条，别把整条覆盖成「零回复」。",
     "发回复的响应里 reply_count=null、replies=[]，这是正常形状（它不是楼层）。",
     "点评 summary 的三个数口径不同：total ≥ rated，average 只对 rated 求；没有打分时 average 为 null，显示「暂无评分」而不是 0。",
-    "status 只在你自己刚发的那条上可能是 pending（先审后发 / 机器审核转人工）；公开列表里永远是 published。"
+    "status 只在你自己刚发的那条上可能是 pending（先审后发 / 机器审核转人工）；公开列表里永远是 published。",
+    "限流在 60 秒内 5 条：第 6 条返回 429 `RATE_LIMITED`，并带 `Retry-After`（≤60，窗口里最早那条到期的秒数）——按它退避，别立刻重试。"
   ]
 }
