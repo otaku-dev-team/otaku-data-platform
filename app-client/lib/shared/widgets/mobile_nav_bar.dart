@@ -70,10 +70,10 @@ class MobileNavBar extends StatelessWidget {
       destinations: [
         for (final d in MainNavDestination.values)
           NavigationDestination(
-            icon: Tooltip(message: d.tooltip, child: Icon(d.icon)),
+            icon: Tooltip(message: d.tooltip, child: _NavIcon(d.icon)),
             selectedIcon: Tooltip(
               message: d.tooltip,
-              child: Icon(d.selectedIcon),
+              child: _NavIcon(d.selectedIcon),
             ),
             label: d.label,
           ),
@@ -84,5 +84,37 @@ class MobileNavBar extends StatelessWidget {
     // 卡片会从它后面透过去）。卡片不做——几十个 BackdropFilter 会把帧时间吃掉。
     if (!AppTheme.isGlass(context)) return bar;
     return GlassSurface(child: bar);
+  }
+}
+
+/// 底栏图标：出现时轻轻放大一下。
+///
+/// [NavigationBar] 只在选中时把 `icon` 换成 `selectedIcon`——**瞬时替换，没有过渡**，
+/// 切 tab 时图标是「啪」地换掉的。
+///
+/// 这里套一层 `TweenAnimationBuilder`：每次这个图标被挂到树上就播一次
+/// 0.92 → 1.0（180ms）。切换 tab 时 NavigationBar 会重建 icon widget，
+/// 所以动画只在切换那一刻跑，不会常驻抖动。
+///
+/// 幅度刻意压得很小、曲线用 `easeOutCubic`（不带过冲）：五个图标在首屏
+/// 一起入场时，幅度大的过冲会显得满屏都在跳。想要更明显的形变（Mihon 那种
+/// 图标本身变形状）需要给每个目的地做一套矢量动画，那是另一个量级的事。
+class _NavIcon extends StatelessWidget {
+  const _NavIcon(this.icon);
+
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0.92, end: 1),
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOutCubic,
+      // Transform.scale 不参与布局（只改绘制），图标占位始终是 24×24，
+      // 不会因为动画把相邻的 label 挤动。
+      builder: (context, scale, child) =>
+          Transform.scale(scale: scale, child: child),
+      child: Icon(icon),
+    );
   }
 }
