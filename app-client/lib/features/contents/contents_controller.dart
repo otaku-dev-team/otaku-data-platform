@@ -225,6 +225,7 @@ class ContentsData {
     required this.page,
     required this.total,
     required this.totalPages,
+    this.hidden,
     this.isLoadingMore = false,
     this.loadMoreError,
     this.fromCache = false,
@@ -241,6 +242,12 @@ class ContentsData {
   final int page;
   final int total;
   final int totalPages;
+
+  /// 当前筛选条件下因成人遮挡被隐藏的条数（后端 `WorkPaging.hidden`）。
+  ///
+  /// `null` = 后端没给这个字段（旧版本服务端、或不是作品列表），
+  /// **不要当 0 处理**：0 是「确实没藏」，null 是「不知道」。
+  final int? hidden;
   final bool isLoadingMore;
   final ApiException? loadMoreError;
 
@@ -259,6 +266,7 @@ class ContentsData {
     int? page,
     int? total,
     int? totalPages,
+    int? hidden,
     bool? isLoadingMore,
     ApiException? loadMoreError,
     bool clearLoadMoreError = false,
@@ -271,6 +279,7 @@ class ContentsData {
       page: page ?? this.page,
       total: total ?? this.total,
       totalPages: totalPages ?? this.totalPages,
+      hidden: hidden ?? this.hidden,
       isLoadingMore: isLoadingMore ?? this.isLoadingMore,
       loadMoreError: clearLoadMoreError
           ? null
@@ -302,6 +311,7 @@ class ContentsController extends AsyncNotifier<ContentsData> {
       page: result.page,
       total: result.total,
       totalPages: result.totalPages,
+      hidden: result.hidden,
       fromCache: fetched.fromCache,
       cachedAt: fetched.cachedAt,
     );
