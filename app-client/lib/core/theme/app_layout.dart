@@ -1,4 +1,5 @@
 import 'app_theme.dart';
+import 'design_tokens.dart';
 
 /// 布局尺寸。桌面端与手机端共用一套数值，避免各页面自己写 padding。
 abstract final class AppLayout {
@@ -16,14 +17,14 @@ abstract final class AppLayout {
   /// 只有 853，用 900 会让桌面端永远落到手机版堆叠布局，封面占掉半屏。
   static const double twoColumnBreakpoint = 720;
 
-  static const double pagePadding = 16;
+  static const double pagePadding = Space.s4;
 
   /// 卡片圆角。**唯一来源是 [AppTheme.cardRadius]**，这里只是布局层的别名——
   /// 此前两处各写一个值（16 / 12），网格卡与横向卡的圆角对不上。
   static const double cardRadius = AppTheme.cardRadius;
 
   /// 卡片内部缩略图 / 封面的圆角。比卡片小一档，内外两层才不会贴在一起。
-  static const double innerRadius = 12;
+  static const double innerRadius = Radii.md;
 
   /// 达到这个宽度后，桌面端在左侧常驻 [NavigationRail]。
   ///
@@ -61,7 +62,7 @@ abstract final class AppLayout {
   /// 详情见 `docs/stage2-acceptance.md` 的「验收发现的问题」。
   static const double collectionCardBodyHeight = 124;
 
-  static const double gridGap = 12;
+  static const double gridGap = Space.s3;
 
   static const double coverWidth = 64;
   static const double coverHeight = 88;
