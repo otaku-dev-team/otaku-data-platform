@@ -233,9 +233,7 @@ abstract final class AppTheme {
         style: OutlinedButton.styleFrom(foregroundColor: brandText),
       ),
       // 进度环也是拿 primary 画的，同样的问题，跟着焦点色走（`--brand-600`）。
-      circularProgressIndicatorTheme: CircularProgressIndicatorThemeData(
-        color: brandFocus,
-      ),
+      progressIndicatorTheme: ProgressIndicatorThemeData(color: brandFocus),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: glass
