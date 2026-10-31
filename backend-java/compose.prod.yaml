@@ -107,6 +107,21 @@ services:
       OTAKU_SITE_OAUTH_CLIENT_SECRET: ${OTAKU_SITE_OAUTH_CLIENT_SECRET:-}
       # 写入 app_user.identity_source 的站名标识（如 otaku_site）；空 = 站点登录未配置
       OTAKU_SITE_OAUTH_IDENTITY_SOURCE: ${OTAKU_SITE_OAUTH_IDENTITY_SOURCE:-}
+      # ── UGC 代存（Issue #240）────────────────────────────────
+      # 撤回（软删）的评论保留天数，到期物理删除；0 = 不清理。
+      # 开发期 15 天，上线前按站点/法务口径定。不设则用 application.yml 的默认值，
+      # 这里显式透出是为了「运维能改，而不用进容器改配置」。
+      OTAKU_UGC_RETENTION_DELETED_DAYS: ${OTAKU_UGC_RETENTION_DELETED_DAYS:-15}
+      # 用户注销时是否连评论一起软删；默认 false = 匿名化保留（作者显示「已注销用户」）
+      OTAKU_UGC_REMOVE_ON_ACCOUNT_DELETION: ${OTAKU_UGC_REMOVE_ON_ACCOUNT_DELETION:-false}
+      # 机器审核**接入位**，协议见 docs/ugc-machine-moderation.md。
+      # 默认 none = 不接入；站点选定服务商后填 endpoint 即可，不用改代码、不用发版。
+      OTAKU_UGC_MACHINE_PROVIDER: ${OTAKU_UGC_MACHINE_PROVIDER:-none}
+      OTAKU_UGC_MACHINE_ENDPOINT: ${OTAKU_UGC_MACHINE_ENDPOINT:-}
+      OTAKU_UGC_MACHINE_TOKEN: ${OTAKU_UGC_MACHINE_TOKEN:-}
+      OTAKU_UGC_MACHINE_TIMEOUT_MS: ${OTAKU_UGC_MACHINE_TIMEOUT_MS:-1500}
+      # 服务商不可用时的策略：pass（默认）/ review / reject
+      OTAKU_UGC_MACHINE_ON_ERROR: ${OTAKU_UGC_MACHINE_ON_ERROR:-pass}
       # 让 Spring 认 X-Forwarded-Proto / -Host / -For（Nginx 会带过来）。
       # 不设的话 request.getScheme() 永远是 http，即使外面是 https——
       # 目前封面地址由 OTAKU_PUBLIC_BASE_URL 显式给，所以这条是**兜底**：
