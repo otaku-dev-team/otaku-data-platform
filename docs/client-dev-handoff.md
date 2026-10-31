@@ -215,6 +215,7 @@ done
 
 | HTTP | code | 客户端该做什么 |
 |---|---|---|
+| 400 | `CONTENT_REJECTED` | 机器审核判为不合规（**未落库**）：提示「修改后再发」，把 `message` 里的理由带上；改完可直接重发，不用刷新列表 |
 | 403 | `FORBIDDEN` | 「只能操作自己的内容」或「本站未开启社区」 |
 | 404 | `COMMENT_NOT_FOUND` / `REVIEW_NOT_FOUND` | 内容已删或不存在，刷新列表 |
 | 409 | `REVIEW_EXISTS` | 引导编辑原点评 |

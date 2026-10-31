@@ -21,6 +21,14 @@ public enum ErrorCode {
     REVIEW_NOT_FOUND(HttpStatus.NOT_FOUND),
     /** 同一作品已经点评过（一人一条）。客户端应引导去编辑，而不是重新提交。 */
     REVIEW_EXISTS(HttpStatus.CONFLICT),
+    /**
+     * 机器审核判定内容不合规（#240 B2c「机器审核」接入位）。
+     *
+     * <p>用 400 而不是 422：客户端对 4xx 的处理只有「普通错误」一档，
+     * 多一个状态码要多改一次客户端；用 code 区分就够——客户端据此把提示换成
+     * 「修改后再发」，而不是笼统的「请求有误」。**不落库**，用户改完可以直接重发。
+     */
+    CONTENT_REJECTED(HttpStatus.BAD_REQUEST),
 
     /** 阶段 2：口令错误或用户不存在（不区分两者，避免枚举账号）。 */
     INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED),

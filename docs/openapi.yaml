@@ -475,7 +475,9 @@ paths:
         - `rating` 1–10；`body` 纯文本、上限 5000 字，空白归一成 `null`；
         - 同一作品**只能有一条**：已存在 → `409 REVIEW_EXISTS`，客户端应引导去编辑；
         - 站点未开启社区 → `403`；作品不属于当前站点 → `403`；
-        - 先审后发的站点：新点评落 `pending`，列表与概览都看不到。
+        - 先审后发的站点：新点评落 `pending`，列表与概览都看不到；
+        - 接入机器审核时：不合规 → `400 CONTENT_REJECTED`（**不落库**），拿不准 → `pending`；
+          只打分的点评没有正文，不送审。
       security:
         - bearerAuth: []
       requestBody:
@@ -489,7 +491,11 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/UgcReview" }
-        "400": { $ref: "#/components/responses/BadRequest" }
+        "400":
+          description: |
+            校验失败（`BAD_REQUEST`）；或机器审核判定内容不合规（`CONTENT_REJECTED`，
+            此时**不落库**，用户改完可直接重发）。
+          content:/n            application/json:/n              schema: { $ref: "#/components/schemas/ErrorResponse" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -508,6 +514,7 @@ paths:
         **省略的字段沿用原值**——只改评分时正文不会被清空。合并后至少要有一项非空。
         只能改自己的（别人的 `403`）；已隐藏或已撤回的返回 `404`。
         先审后发的站点改完回 `pending` 重审。
+        改正文同样重新过机器审核，规则与发表一致。
       security:
         - bearerAuth: []
       parameters:
@@ -526,7 +533,11 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/UgcReview" }
-        "400": { $ref: "#/components/responses/BadRequest" }
+        "400":
+          description: |
+            校验失败（`BAD_REQUEST`）；或机器审核判定内容不合规（`CONTENT_REJECTED`，
+            此时**不落库**，用户改完可直接重发）。
+          content:/n            application/json:/n              schema: { $ref: "#/components/schemas/ErrorResponse" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -1266,8 +1277,9 @@ paths:
           超出长度返回 `400`，**不截断**（截断等于悄悄改用户写的内容）；
         - 防刷屏：同一用户 **60 秒内最多 5 条**，超出 `429 RATE_LIMITED`；
         - 作品必须存在且属于当前登录用户的站点，否则 `404` / `403`；
-        - 新评论默认 `published`（先发后审）。站主/平台的审核与隐藏能力在 B2，
-          本轮只提供作者自删。
+        - 发布状态跟随站点开关：先发后审 → `published`，先审后发 → `pending`；
+        - 若站点接入了机器审核（#240 B2c）：判定不合规 → `400 CONTENT_REJECTED`（**不落库**），
+          拿不准 → 落 `pending` 转人工；未接入（默认）时行为与接入前完全一致。
       security:
         - bearerAuth: []
       requestBody:
@@ -1281,7 +1293,11 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/UgcComment" }
-        "400": { $ref: "#/components/responses/BadRequest" }
+        "400":
+          description: |
+            校验失败（`BAD_REQUEST`）；或机器审核判定内容不合规（`CONTENT_REJECTED`，
+            此时**不落库**，用户改完可直接重发）。
+          content:/n            application/json:/n              schema: { $ref: "#/components/schemas/ErrorResponse" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -1326,7 +1342,8 @@ paths:
           就是一条现成的绕过路径；
         - 校验与发表一致：空白 `400`、超 1000 字 `400`（不截断）；
         - 成功后 `200` + 评论本体，`edited_at` 有值。编辑响应里顶层评论的 `replies` 是空数组，
-          客户端应保留已有预览、只替换这条本身，不要把整条替换成「零回复」。
+          客户端应保留已有预览、只替换这条本身，不要把整条替换成「零回复」；
+        - 改完**重新过机器审核**：判定不合规 `400 CONTENT_REJECTED`，拿不准落 `pending`。
       security:
         - bearerAuth: []
       parameters:
@@ -1345,7 +1362,11 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/UgcComment" }
-        "400": { $ref: "#/components/responses/BadRequest" }
+        "400":
+          description: |
+            校验失败（`BAD_REQUEST`）；或机器审核判定内容不合规（`CONTENT_REJECTED`，
+            此时**不落库**，用户改完可直接重发）。
+          content:/n            application/json:/n              schema: { $ref: "#/components/schemas/ErrorResponse" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }

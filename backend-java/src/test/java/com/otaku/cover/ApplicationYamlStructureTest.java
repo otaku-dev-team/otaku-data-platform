@@ -61,4 +61,30 @@ class ApplicationYamlStructureTest {
         assertThat(retention).as("app.ugc.retention 必须存在").isNotNull();
         assertThat(retention.get("deleted-days")).isNotNull();
     }
+
+    /**
+     * 机器审核接入位必须**默认关闭**。
+     *
+     * <p>这条比结构更重要：{@code provider} 一旦被改成默认 {@code http} 而 endpoint 为空，
+     * 应用启动就会失败；默认值被写成 {@code provider: none} 之外的任何东西，
+     * 都意味着「上线即改行为」——而接入位的存在意义恰恰是「现在不改变任何行为」。
+     */
+    @Test
+    @DisplayName("机器审核默认不接入，配置挂在 app.ugc.moderation.machine 下")
+    @SuppressWarnings("unchecked")
+    void ugcMachineModerationDefaultsToNone() {
+        Map<String, Object> ugc = (Map<String, Object>) appSection().get("ugc");
+        assertThat(ugc).isNotNull();
+        Map<String, Object> moderation = (Map<String, Object>) ugc.get("moderation");
+        assertThat(moderation).as("app.ugc.moderation 必须存在").isNotNull();
+        Map<String, Object> machine = (Map<String, Object>) moderation.get("machine");
+        assertThat(machine).as("app.ugc.moderation.machine 必须存在").isNotNull();
+        assertThat((String) machine.get("provider"))
+                .as("默认必须是不接入（none），否则上线即改变评论发布行为")
+                .isEqualTo("${OTAKU_UGC_MACHINE_PROVIDER:none}");
+        assertThat((String) machine.get("on-error"))
+                .as("服务商不可用时默认放行")
+                .isEqualTo("${OTAKU_UGC_MACHINE_ON_ERROR:pass}");
+        assertThat(machine).containsKeys("endpoint", "token", "timeout-ms");
+    }
 }
