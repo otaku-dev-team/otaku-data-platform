@@ -70,12 +70,60 @@ sed "s/'CHANGE_ME'/'drill-a'/" scripts/site-offboarding.sql | mysql ... otaku
 **重复执行**也试了：第二次各表计数全 0，仍会再写一条 `comments=0 …` 的审计。
 这是**有意**的——它记录的是「有人又执行了一次」，不是「又删了东西」；头注释里写清了，免得下次有人以为脚本出错。
 
-## 5. 结论与边界
+## 5. 第二轮：数据交还也漏了（2026-10-31 晚）
+
+删干净只是那条承诺的**后半句**。完整的是「数据交还客户 → 副本按要求删除」——先交、后删。
+于是把前半句也真跑了一遍：站主登录后台，`GET /api/console/ugc/export?status=all`，
+然后看导出的 CSV 里到底有什么。
+
+库里当时是 2 条评论（1 条回复、1 条编辑过）、1 条点评（9 分）、1 条举报。
+
+| 导出 | 拿到 | 库里有 | 结论 |
+|---|---|---|---|
+| `GET /api/console/ugc/export?status=all` | 2 行评论 | 2 条评论 | ✅ |
+| 同一接口，再想拿点评 | **没有这个参数** | 1 条点评 | ❌ |
+| 同一接口，再想拿举报 | **没有这个参数** | 1 条举报 | ❌ |
+
+导出的 `X-Export-Rows=2`，站主会以为「我的数据就这些」。而删除脚本**三张表都删**。
+
+这就是上一节那个缺陷的镜像：删除侧漏了点评，交还侧也漏了点评与举报。两边都是
+「先写代码、后加表」——`ugc_review` 是 10-30 的 V24，导出接口写得更早。
+**只修一边没用**：删得干净但没交出去，等于把客户的数据删了。
+
+修法（`type` 参数，缺省仍是评论，老调用方不受影响）：
+
+| 请求 | 文件 | 列（首行） |
+|---|---|---|
+| `?type=comment`（缺省） | `ugc-<site>-<date>.csv` | comment_id, parent_id, work_id, work_title, author, status, created_at, body |
+| `?type=review` | `reviews-<site>-<date>.csv` | review_id, work_id, work_title, author, rating, status, created_at, edited_at, body |
+| `?type=report` | `reports-<site>-<date>.csv` | report_id, comment_id, work_id, work_title, reporter, reason, status, created_at |
+
+三份而不是一份：三种行字段天然不同（点评有评分、举报有理由），硬塞一张表站主分不清哪列对哪行；
+文件名也不同，三个文件下到同一个目录不会互相覆盖。响应头多了 `X-Export-Kind`。
+
+复验（同一套本地环境，真数据）：
+
+| 请求 | 行数 | 内容核对 |
+|---|---|---|
+| `type=comment` | 2 | 回复带 `parent_id=1`、编辑过的正文是新的 |
+| `type=review` | 1 | `rating=9`、两行正文按 RFC 4180 转义成一个带引号的字段 |
+| `type=report` | 1 | `reason` 里的逗号与引号正确转义、`comment_id` 能对回评论 |
+| `type=reviews`（拼错） | **400** | 「type 只能是 comment / review / report」——不静默导出评论让人以为拿到了点评 |
+
+### 现在的规矩：三个数字对不上，不许执行删除
+
+确认函里三份导出的条数，必须与 `scripts/site-offboarding.sql` 干跑输出的
+`comments` / `reviews` / `reports` **逐项相等**。少一份、或数字不等，说明交还还没做完，
+此时删就是数据丢失。这条写进了脚本输出与确认函模板——只写在文档某一节里，执行的人看不到。
+
+## 6. 结论与边界
 
 - 「删除副本」这条承诺现在有**可复现的证据**，确认函模板同步补了点评条数与停站步骤。
 - 脚本范围仍然是 **UGC only**（评论 / 回复 / 点评 / 举报）。收藏、账号、设备令牌按合同另行处理——
   混在一个脚本里删，迟早误伤。
 - `site` 行**不删**：它是站点注册与审计的锚点，下线用 `suspend`（状态 `suspended`），不是 `DELETE`。
 - 生产库这次**一行没动**：演练全程在本地容器里，跑完把容器和假数据一起删掉。
-- 还没验的：真实站点下线要走导出对账（`GET /api/console/ugc/export?status=all`）与客户书面确认，
-  这两步依赖商务流程，不是技术演练能覆盖的。
+- 交还与删除**现在范围一致**：三张表 `ugc_comment` / `ugc_review` / `ugc_report`，
+  导三份、删三张。以后再加表，两处必须同时改——这次两个缺陷都是「只改了一处」。
+- 还没验的：客户书面确认（商务流程），以及真实站点第一次下线时的**完整串联**
+  （停站 → 导三份 → 对账 → 删 → 确认函签字）。技术侧每一步都单独验过了。

@@ -39,11 +39,43 @@ public class UgcReviewRepository {
     ) {
     }
 
+    /**
+     * 导出用的一行：比 {@link Row} 多作品标题、少 userId。
+     *
+     * <p>为什么单独一个 record：导出是**给站主的凭据**，作品标题必须带上（他没有我们的
+     * work_id 索引，光看 `W-xxx` 认不出是哪部片子）；userId 是内部主键，不该出现在交还文件里。
+     */
+    public record ExportRow(
+            long id,
+            String siteKey,
+            String workId,
+            String workTitle,
+            String username,
+            Integer rating,
+            String body,
+            String status,
+            LocalDateTime createdAt,
+            LocalDateTime editedAt
+    ) {
+    }
+
     private static final RowMapper<Row> MAPPER = (rs, rowNum) -> new Row(
             rs.getLong("id"),
             rs.getString("site_key"),
             rs.getString("work_id"),
             rs.getLong("user_id"),
+            rs.getString("username"),
+            (Integer) rs.getObject("rating", Integer.class),
+            rs.getString("body"),
+            rs.getString("status"),
+            rs.getObject("created_at", LocalDateTime.class),
+            rs.getObject("edited_at", LocalDateTime.class));
+
+    private static final RowMapper<ExportRow> EXPORT_MAPPER = (rs, rowNum) -> new ExportRow(
+            rs.getLong("id"),
+            rs.getString("site_key"),
+            rs.getString("work_id"),
+            rs.getString("work_title"),
             rs.getString("username"),
             (Integer) rs.getObject("rating", Integer.class),
             rs.getString("body"),
@@ -107,6 +139,47 @@ public class UgcReviewRepository {
                 """, new MapSqlParameterSource()
                 .addValue("siteKey", siteKey)
                 .addValue("workId", workId), Long.class);
+        return total == null ? 0L : total;
+    }
+
+    /**
+     * 导出（数据交还）：按站点过滤，可按状态筛（null = 全部，含已删），最新在前。
+     *
+     * <p>与 {@link #findPublished} 的区别是**不限制 work_id、也不限制 published**——
+     * 交还要的是这个站的全部点评，包括被隐藏和被作者删掉的。
+     */
+    public List<ExportRow> findForExport(String siteKey, String status, int limit) {
+        StringBuilder sql = new StringBuilder("""
+                SELECT r.id, r.site_key, r.work_id, COALESCE(w.title, r.work_id) AS work_title,
+                       CASE WHEN u.deleted_at IS NULL THEN u.username
+                            ELSE '已注销用户' END AS username,
+                       r.rating, r.body, r.status, r.created_at, r.edited_at
+                  FROM ugc_review r
+                  JOIN app_user u ON u.id = r.user_id
+                  LEFT JOIN work w ON w.work_id = r.work_id
+                 WHERE r.site_key = :siteKey
+                """);
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("siteKey", siteKey)
+                .addValue("limit", limit);
+        if (status != null) {
+            sql.append(" AND r.status = :status");
+            params.addValue("status", status);
+        }
+        sql.append(" ORDER BY r.created_at DESC, r.id DESC LIMIT :limit");
+        return jdbc.query(sql.toString(), params, EXPORT_MAPPER);
+    }
+
+    /** 导出的总条数（用来判断有没有被上限截断）。 */
+    public long countForExport(String siteKey, String status) {
+        StringBuilder sql = new StringBuilder(
+                "SELECT COUNT(*) FROM ugc_review r WHERE r.site_key = :siteKey");
+        MapSqlParameterSource params = new MapSqlParameterSource().addValue("siteKey", siteKey);
+        if (status != null) {
+            sql.append(" AND r.status = :status");
+            params.addValue("status", status);
+        }
+        Long total = jdbc.queryForObject(sql.toString(), params, Long.class);
         return total == null ? 0L : total;
     }
 
