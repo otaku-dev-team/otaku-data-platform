@@ -129,6 +129,8 @@
         见 [`ugc-machine-moderation.md`](ugc-machine-moderation.md)）；客户端社区 UI 未接（@riceyu02）。
       - **等外部输入**：#242 的 secret 已于 10-29 注入生产（`site-login` 现在对假票据回 **401** 而不是 503），
         只差「真 ticket 走一次端到端」——那需要有人在站点完成一次授权，客户端 OAuth 流程接上即可；
+        **告警通道**（`ALERT_WEBHOOK`）：巡检失败现在只会进 syslog——服务器没有 MTA。
+        给一个企业微信 / 钉钉机器人地址就能真收到告警，代码侧已就绪（2026-10-31 #332）。
         另：#195 正式域名、#273 客户端渲染别名、#256 客户端人物区块。
       - **运维已验证**：备份可恢复（2026-10-31 真实 dump 演练，见 [`backup-restore-drill.md`](backup-restore-drill.md)）；
         巡检 7 项 / 发版冒烟 7 项 / 慢查询常开。
