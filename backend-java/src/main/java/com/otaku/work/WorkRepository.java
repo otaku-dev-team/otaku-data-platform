@@ -75,6 +75,16 @@ public class WorkRepository {
      * <p>未登记的来源返回 empty：宁可当作「不属于任何站点」拒绝写入，也不猜一个站点——
      * 猜错就是跨站越权。
      */
+    /**
+     * 库里是否已经登记过任何站点。导入时的来源校验用它区分两种情形：
+     * 「刚部署、还没建站」可以放行；「已经有站点了还导入未登记来源」是配置错误，必须拒。
+     */
+    public boolean hasAnySite() {
+        Integer count = jdbc.queryForObject("SELECT COUNT(*) FROM site",
+                new MapSqlParameterSource(), Integer.class);
+        return count != null && count > 0;
+    }
+
     public Optional<String> siteKeyOfSource(String source) {
         List<String> rows = jdbc.queryForList(
                 "SELECT site_key FROM site_source WHERE source = :source",
