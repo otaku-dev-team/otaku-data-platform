@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
-"""采一次「首站收录范围」：哪些 bangumi subject id 是首站收了的。
+"""采一次「首站收录范围」：首站到底收了哪些作品。
 
 用途：后端要按「首站有没有收录」决定 app 里显示什么（存全量、显示子集）。
-判定口径不自己写规则，直接问首站——它的每条作品都带 `bangumi_id`
-（首站 `contents.bangumi_id` 还建了唯一索引，`api.py` 的列表/详情都会带上）。
+判定口径不自己写规则，直接问首站——它的每条作品都带自己的 `id` 和
+`bangumi_id`（首站 `contents.bangumi_id` 还建了唯一索引，`api.py` 的列表/详情都会带上）。
+
+**两个键都要采**，因为两边要各按自己的键判：`content_id` 对我们库里
+`source='otaku_site'` 的行，`bangumi_id` 对 `source='bangumi'` 的行。
+只采一个键，另一边的判定就只能靠「本地有」来推，那会把首站已经下架的条目
+继续当成「首站有」（本地是快照，不跟着删）。
 
 输出的是清单，不是判定逻辑。首站改收录范围，重跑一次即可，我们不用改代码。
 
@@ -74,22 +79,35 @@ def fetch_type(base_url: str, work_type: str, interval: float, timeout: float) -
 
 
 def emit_sql(rows: list[dict]) -> None:
-    """把清单打成 INSERT 语句，供后端落一张 site_scope 表或回填标记。
+    """把清单打成 INSERT 语句，供后端落一张 `site_scope` 表。
 
-    只输出有 bangumi_id 的行——没有的那部分本来就是首站独有，不影响判定。
+    两列都要：`content_id` 是首站自己的主键，我们库里 `source='otaku_site'`
+    的 `source_id` 就是它；`subject_id` 是 bangumi 的条目 id，对应
+    `source='bangumi'` 的 `source_id`。**两边各按自己的键判**，不能拿一边的
+    「本地有」去推另一边的「首站有」——我们库里的 `otaku_site` 是某一时点的
+    快照，首站后来下架的、新收的，它都不知道。
     """
-    ids = sorted({int(r["bangumi_id"]) for r in rows if r.get("bangumi_id") is not None})
-    print("-- 首站收录的 bangumi subject id 清单，由 scripts/collect_site_scope.py 生成")
-    print("-- 用法：先建表，再批量插入，最后按集合回填 work.site_listed")
+    by_content = {
+        int(r["content_id"]): (int(r["bangumi_id"]) if r.get("bangumi_id") is not None else None)
+        for r in rows
+        if r.get("content_id") is not None
+    }
+    print("-- 首站收录范围快照，由 scripts/collect_site_scope.py 生成")
+    print("-- 用法：建表 → 批量插入 → 按两个键分别回填 work.site_listed")
     print("CREATE TABLE IF NOT EXISTS site_scope (")
-    print("    subject_id BIGINT UNSIGNED NOT NULL COMMENT '首站 contents.bangumi_id',")
+    print("    content_id  BIGINT UNSIGNED NOT NULL COMMENT '首站 contents.id，对 source=otaku_site 的 source_id',")
+    print("    subject_id  BIGINT UNSIGNED NULL COMMENT '首站 contents.bangumi_id，对 source=bangumi 的 source_id',")
     print("    collected_at DATETIME(3) NOT NULL,")
-    print("    PRIMARY KEY (subject_id)")
+    print("    PRIMARY KEY (content_id),")
+    print("    KEY idx_site_scope_subject (subject_id)")
     print(") ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT '首站收录范围快照';")
-    for start in range(0, len(ids), 500):
-        chunk = ids[start : start + 500]
-        values = ",".join(f"({i},NOW(3))" for i in chunk)
-        print(f"INSERT IGNORE INTO site_scope (subject_id, collected_at) VALUES {values};")
+    items = sorted(by_content.items())
+    for start in range(0, len(items), 500):
+        chunk = items[start : start + 500]
+        values = ",".join(
+            f"({cid},{'NULL' if sid is None else sid},NOW(3))" for cid, sid in chunk
+        )
+        print(f"INSERT IGNORE INTO site_scope (content_id, subject_id, collected_at) VALUES {values};")
 
 
 def main() -> int:
