@@ -31,23 +31,6 @@ import java.util.Optional;
 @Repository
 public class WorkRepository {
 
-    /**
-     * 列表不给档案来源的作品（2026-11-02 定：库里存全量，显示只给站上有的）。
-     *
-     * <p>反着写「排除 bangumi」而不是「只留 otaku_site」：后者把「谁能显示」写死成
-     * 一个站点，第二站接进来就得改代码——{@code SecondSourceIntegrationTest} 守的
-     * 正是这条（虚构的第二来源导进来就该出现在列表里）。档案来源不同：那 55.6 万条
-     * 是聚合底料，没封面、没原页、评分只有三分之一，当作品直接展示就是一屏点不进去
-     * 的条目，所以它只做底料，不单独出现。
-     *
-     * <p>这是按来源一刀切，不是「首站收录了哪些」的精确判定（下架、新收都不管）。
-     * 先解决 97% 的噪音；要做精确判定得落范围表，那时候才需要迁移。
-     *
-     * <p>只管列表相关的面：列表、搜索、榜单、标签、同标签推荐。
-     * {@link #findByWorkId} 不过滤——已收藏或分享出去的链接不该突然 404。
-     */
-    private static final String LIST_SCOPE = " AND w.source <> 'bangumi'";
-
     private static final String COLUMNS = """
             id, work_id, work_type, title, summary, release_year,
             title_original, aliases, media, episodes,
@@ -369,9 +352,6 @@ public class WorkRepository {
                                             boolean includeAdult) {
         // 调用方保证已 JOIN work w（见 findPage/count 各分支），这里才能过滤软删。
         sql.append(" AND w.deleted_at IS NULL");
-        // 与 appendConditions 同一口径（见 LIST_SCOPE）。work_tag 上没有 source 列，
-        // 所以只能用回表过的 w.source——这条分支本来就已经 JOIN work 了，不额外回表。
-        sql.append(LIST_SCOPE);
         // 用 work_tag 上的冗余列，与本方法里 type/rating/year 同一个理由：条件落在同一张索引上，
         // 不必回表看 work.is_adult。
         if (!includeAdult) {
@@ -407,8 +387,6 @@ public class WorkRepository {
                 + " WHERE id <> :excludeId"
                 + " AND deleted_at IS NULL"
                 + " AND is_adult = 0"
-                // 同 LIST_SCOPE（这里没有表别名，所以不引用常量）。推荐位不能推出档案条目。
-                + " AND source <> 'bangumi'"
                 + " AND tags IS NOT NULL"
                 + " AND JSON_OVERLAPS(tags, CAST(:tagsJson AS JSON))"
                 + " ORDER BY rating_value DESC, id DESC"
@@ -528,9 +506,6 @@ public class WorkRepository {
                                          Integer year, boolean includeAdult) {
         // 软删行（#249）对外一律不可见：列表、搜索、标签、年份四个面都从这里过。
         sql.append(" AND w.deleted_at IS NULL");
-        // 档案来源的作品不单独出现，口径见 LIST_SCOPE。与软删同级：这是「对外可见」的一部分，
-        // 不是某个调用方的额外要求，所以放在公共条件里，漏一处就是一条泄漏路径。
-        sql.append(LIST_SCOPE);
         // 成人内容（V25 迁移的那两列）：与软删同级，列表 / 搜索 / 标签 / 年份 / 排行同一口径。
         // 走的是已落库的 is_adult 列，不是查询时解析 tags——实测解析版把计数从 86ms 拖到 2.7s。
         if (!includeAdult) {
