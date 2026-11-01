@@ -430,8 +430,12 @@ def test_credits_filtered_by_role_whitelist(tmp_path):
     assert roles == {"导演", "作画监督"}
 
 
-def test_people_exported_when_entities_present(tmp_path):
-    """有 entities 表时，人物 / 公司实体进 people 表（credits / cast 的 person_ref 指向它）。"""
+def test_people_rekeyed_by_prefix(tmp_path):
+    """v3：people 的主键是前缀键，不是网站自增 id。
+
+    `bgm:` = 有 Bangumi 人物 id（关系表与 entities 两条来源都要收到），
+    `cname:` = 公司。关系行的 person_ref 必须能对上 people，否则人物页是死链。
+    """
     src = make_source(tmp_path / "site.db")
     conn = sqlite3.connect(src)
     conn.execute(
@@ -449,12 +453,65 @@ def test_people_exported_when_entities_present(tmp_path):
     report = export_dataset(src, out, MAPPING, snapshot=True)
 
     conn = sqlite3.connect(out)
-    rows = conn.execute(
-        "select source_id, name, entity_type, bangumi_person_id from people"
-    ).fetchall()
+    rows = set(
+        conn.execute(
+            "select source_id, name, entity_type, bangumi_person_id from people"
+        ).fetchall()
+    )
+    # 关系表里的 person_ref 全部命中 people——这是「没有死链」的判据
+    dangling = conn.execute(
+        "select count(*) from work_credits where person_ref not in"
+        " (select source_id from people)"
+    ).fetchone()[0]
+    dangling += conn.execute(
+        "select count(*) from work_cast where person_ref not in"
+        " (select source_id from people)"
+    ).fetchone()[0]
     conn.close()
-    assert rows == [("900", "庵野秀明", "person", "12345")]
-    assert report.row_counts["people"] == 1
+
+    # 声优（cast 901）、主创（credits 900）、entities 的 bangumi_person_id（12345）
+    assert ("bgm:900", "庵野秀明", "person", "900") in rows
+    assert ("bgm:901", "緒方恵美", "person", "901") in rows
+    assert ("bgm:12345", "庵野秀明", "person", "12345") in rows
+    # 公司从 content_studios 派生，不依赖 entities 有没有它
+    assert ("cname:GAINAX", "GAINAX", "company", None) in rows
+    assert dangling == 0
+    assert report.row_counts["people"] == len(rows)
+
+
+def test_person_without_bangumi_id_falls_back_to_name_key(tmp_path):
+    """没有 Bangumi id 的人名不能丢——网站有主创名，我们照做，走弱关联名字键。
+
+    名字里的全角空格与连续空白要先归一，否则同一个人的两种写法会拆成两条。
+    """
+    src = make_source(tmp_path / "site.db")
+    conn = sqlite3.connect(src)
+    # entities 缺失时整张 people 会按「缺表记账」跳过（与 v2 一致），这里给空表
+    conn.execute(
+        "create table entities(id integer primary key, name text, entity_type text,"
+        " bangumi_person_id integer, created_at text)"
+    )
+    conn.execute(
+        "insert into content_credits(content_id, person_id, role, name, tier, sort_order)"
+        " values (1, null, '音乐', '　鷺巣詩郎 ', 'main', 5)"
+    )
+    conn.commit()
+    conn.close()
+
+    out = tmp_path / "dataset.db"
+    export_dataset(src, out, MAPPING, snapshot=True)
+
+    conn = sqlite3.connect(out)
+    people = dict(conn.execute("select source_id, name from people").fetchall())
+    ref = conn.execute(
+        "select person_ref from work_credits where role = '音乐'"
+    ).fetchone()[0]
+    conn.close()
+
+    # 归一化后：全角空格变半角、首尾空白去掉
+    assert "pname:鷺巣詩郎" in people
+    assert people["pname:鷺巣詩郎"] == "　鷺巣詩郎 "
+    assert ref == "pname:鷺巣詩郎"
 
 
 def test_missing_entities_table_degrades_instead_of_failing(tmp_path):

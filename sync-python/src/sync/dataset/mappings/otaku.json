@@ -1,8 +1,8 @@
 {
-  "dataset_version": "2",
+  "dataset_version": "3",
   "source_id": "otaku",
   "_notes": [
-    "Otaku 网站（FastAPI + SQLite）→ 标准数据集 v2 的映射。",
+    "Otaku 网站（FastAPI + SQLite）→ 标准数据集 v3 的映射。",
     "改客户表只改本文件，不动代码——这是解耦的落点。",
     "on_missing 三档：break=关键列缺失就停机 / reject=该行拒绝 / degrade=置空继续。",
     "source_id、关联表的 content_id 一律 break：主键错了会静默产生几十万条重复脏数据。",
@@ -10,7 +10,8 @@
     "需要增量同步时，源侧必须补 updated_at 列或触发器；否则只能全量重扫或内容哈希比对。",
     "articles 用 filter 只取已发布，未审核草稿不进数据集。",
     "v2：work_credits 从「整表照搬」改成按 role 白名单过滤——源表 407,949 条里 91% 是原画等工序流水，详情页用不上。白名单与黑名单都写在本文件的 SQL 里，改词表不用改代码、不用发版。",
-    "v2：新增 people 表（源 entities），credits / cast 的 person_ref 指向它。没有实体的人名（Staff 侧大量如此）不进这张表，person_ref 留空。"
+    "v3：people.source_id 与 credits/cast 的 person_ref 换成前缀键（bgm:/pname:/cname:）。原因：原先 people 存网站自增 id、person_ref 存 Bangumi 人物 id，两套 id 数值会撞车，撞上就把名字挂错人。前缀键把「有 id 能跨源认人」与「只有名字只能站内聚合」分开，且关系行的 person_ref 不再留空——留空就是死链。",
+    "v3：没有 Bangumi id 的人名与公司不再丢弃。网站有公司页、有主创名，我们照做：名字归一化后作弱关联键。同名不同人只并列展示、不合并身份。"
   ],
   "tables": [
     {
@@ -61,35 +62,24 @@
     },
     {
       "target": "people",
-      "mode": "table",
-      "source": "entities",
-      "key": "id",
-      "fields": [
-        {"target": "source_id", "column": "id", "type": "str", "required": true, "on_missing": "break"},
-        {"target": "name", "column": "name", "type": "str", "required": true, "on_missing": "reject"},
-        {"target": "entity_type", "column": "entity_type", "type": "str"},
-        {"target": "bangumi_person_id", "column": "bangumi_person_id", "type": "str"}
-      ]
+      "mode": "query",
+      "required_sources": ["content_cast", "content_credits", "entities"],
+      "_note": "v3：主键改前缀键。bgm:=有 Bangumi 人物 id（强关联，可跨源合并）；pname:/cname:=只有名字（弱关联，只做站内聚合）。同一人在关系表与 entities 里都出现时，entities 的行最后写入（_prio 最大），名字以它为准。名字先做空白归一，否则尾空格会把同一个人拆成两条。",
+      "sql": "select source_id, name, entity_type, bangumi_person_id from (select 'bgm:' || cast(person_id as text) as source_id, min(actor) as name, 'person' as entity_type, cast(person_id as text) as bangumi_person_id, 1 as _prio from content_cast where person_id is not null and trim(cast(person_id as text)) <> '' group by cast(person_id as text) union all select 'bgm:' || cast(person_id as text), min(name), 'person', cast(person_id as text), 1 from content_credits where person_id is not null and trim(cast(person_id as text)) <> '' group by cast(person_id as text) union all select 'bgm:' || trim(cast(bangumi_person_id as text)), name, entity_type, trim(cast(bangumi_person_id as text)), 2 from entities where bangumi_person_id is not null and trim(cast(bangumi_person_id as text)) <> '' union all select 'pname:' || trim(replace(replace(replace(actor, '　', ' '), '  ', ' '), '  ', ' ')), min(actor), 'person', null, 3 from content_cast where person_id is null or trim(cast(person_id as text)) = '' group by 1 union all select 'pname:' || trim(replace(replace(replace(name, '　', ' '), '  ', ' '), '  ', ' ')), min(name), 'person', null, 3 from content_credits where person_id is null or trim(cast(person_id as text)) = '' group by 1 union all select 'cname:' || trim(replace(replace(replace(name, '　', ' '), '  ', ' '), '  ', ' ')), min(name), 'company', null, 3 from content_studios where name is not null and trim(name) <> '' group by 1 union all select (case when entity_type = 'company' then 'cname:' else 'pname:' end) || trim(replace(replace(replace(name, '　', ' '), '  ', ' '), '  ', ' ')), name, entity_type, null, 4 from entities where bangumi_person_id is null or trim(bangumi_person_id) = '') order by _prio"
     },
     {
       "target": "work_credits",
       "mode": "query",
       "required_sources": ["content_credits"],
-      "sql": "select cast(content_id as text) as source_id, role, name, cast(person_id as text) as person_ref, tier, sort_order from content_credits where (tier = 'main' and role not like '版本:%' and role not in ('发售日','作者','连载杂志','ISBN-10','ISBN-13','册数','链接','出版社','开始','结束','页数','价格','装帧','尺寸')) or role in ('作画监督','总作画监督','演出','分镜','机械作画监督','动作作画监督') order by content_id, sort_order"
+      "_note": "v3：person_ref 由原始 person_id 改成前缀键，不再留空——留空的关系行在人物页上就是死链。",
+      "sql": "select cast(content_id as text) as source_id, role, name, (case when person_id is not null and trim(cast(person_id as text)) <> '' then 'bgm:' || cast(person_id as text) else 'pname:' || trim(replace(replace(replace(name, '　', ' '), '  ', ' '), '  ', ' ')) end) as person_ref, tier, sort_order from content_credits where (tier = 'main' and role not like '版本:%' and role not in ('发售日','作者','连载杂志','ISBN-10','ISBN-13','册数','链接','出版社','开始','结束','页数','价格','装帧','尺寸')) or role in ('作画监督','总作画监督','演出','分镜','机械作画监督','动作作画监督') order by content_id, sort_order"
     },
     {
       "target": "work_cast",
-      "mode": "table",
-      "source": "content_cast",
-      "key": "content_id",
-      "fields": [
-        {"target": "source_id", "column": "content_id", "type": "str", "required": true, "on_missing": "break"},
-        {"target": "character", "column": "character", "type": "str", "required": true, "on_missing": "reject"},
-        {"target": "actor", "column": "actor", "type": "str", "required": true, "on_missing": "reject"},
-        {"target": "person_ref", "column": "person_id", "type": "str"},
-        {"target": "relation", "column": "relation", "type": "str"},
-        {"target": "sort_order", "column": "sort_order", "type": "int"}
-      ]
+      "mode": "query",
+      "required_sources": ["content_cast"],
+      "_note": "v3：与 work_credits 同一套前缀规则。声优侧 person_id 实测 100% 有值，name: 分支是兜底。",
+      "sql": "select cast(content_id as text) as source_id, character, actor, (case when person_id is not null and trim(cast(person_id as text)) <> '' then 'bgm:' || cast(person_id as text) else 'pname:' || trim(replace(replace(replace(actor, '　', ' '), '  ', ' '), '  ', ' ')) end) as person_ref, relation, sort_order from content_cast where content_id is not null order by content_id, sort_order"
     },
     {
       "target": "work_studios",

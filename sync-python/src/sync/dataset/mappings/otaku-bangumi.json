@@ -1,5 +1,5 @@
 {
-  "dataset_version": "2",
+  "dataset_version": "3",
   "source_id": "otaku-bangumi",
   "_notes": [
     "与 otaku.json 同一个源库，但 source_id 一律取 contents.bangumi_id（覆盖率 100%，2026-10-28 实测）。",
@@ -56,27 +56,22 @@
     },
     {
       "target": "people",
-      "mode": "table",
-      "source": "entities",
-      "key": "id",
-      "fields": [
-        {"target": "source_id", "column": "id", "type": "str", "required": true, "on_missing": "break"},
-        {"target": "name", "column": "name", "type": "str", "required": true, "on_missing": "reject"},
-        {"target": "entity_type", "column": "entity_type", "type": "str"},
-        {"target": "bangumi_person_id", "column": "bangumi_person_id", "type": "str"}
-      ]
+      "mode": "query",
+      "required_sources": ["content_cast", "content_credits", "entities"],
+      "_note": "v3：与 otaku.json 同一套前缀规则（bgm:/pname:/cname:），两份映射必须一致——口径分叉比缺数据更难查。人物不依赖作品键，所以这里不 join contents。",
+      "sql": "select source_id, name, entity_type, bangumi_person_id from (select 'bgm:' || cast(person_id as text) as source_id, min(actor) as name, 'person' as entity_type, cast(person_id as text) as bangumi_person_id, 1 as _prio from content_cast where person_id is not null and trim(cast(person_id as text)) <> '' group by cast(person_id as text) union all select 'bgm:' || cast(person_id as text), min(name), 'person', cast(person_id as text), 1 from content_credits where person_id is not null and trim(cast(person_id as text)) <> '' group by cast(person_id as text) union all select 'bgm:' || trim(cast(bangumi_person_id as text)), name, entity_type, trim(cast(bangumi_person_id as text)), 2 from entities where bangumi_person_id is not null and trim(cast(bangumi_person_id as text)) <> '' union all select 'pname:' || trim(replace(replace(replace(actor, '　', ' '), '  ', ' '), '  ', ' ')), min(actor), 'person', null, 3 from content_cast where person_id is null or trim(cast(person_id as text)) = '' group by 1 union all select 'pname:' || trim(replace(replace(replace(name, '　', ' '), '  ', ' '), '  ', ' ')), min(name), 'person', null, 3 from content_credits where person_id is null or trim(cast(person_id as text)) = '' group by 1 union all select 'cname:' || trim(replace(replace(replace(name, '　', ' '), '  ', ' '), '  ', ' ')), min(name), 'company', null, 3 from content_studios where name is not null and trim(name) <> '' group by 1 union all select (case when entity_type = 'company' then 'cname:' else 'pname:' end) || trim(replace(replace(replace(name, '　', ' '), '  ', ' '), '  ', ' ')), name, entity_type, null, 4 from entities where bangumi_person_id is null or trim(bangumi_person_id) = '') order by _prio"
     },
     {
       "target": "work_credits",
       "mode": "query",
       "required_sources": ["content_credits", "contents"],
-      "sql": "select cast(c.bangumi_id as text) as source_id, cr.role as role, cr.name as name, cast(cr.person_id as text) as person_ref, cr.tier, cr.sort_order from content_credits cr join contents c on c.id = cr.content_id where (cr.tier = 'main' and cr.role not like '版本:%' and cr.role not in ('发售日','作者','连载杂志','ISBN-10','ISBN-13','册数','链接','出版社','开始','结束','页数','价格','装帧','尺寸')) or cr.role in ('作画监督','总作画监督','演出','分镜','机械作画监督','动作作画监督') order by c.bangumi_id, cr.sort_order"
+      "sql": "select cast(c.bangumi_id as text) as source_id, cr.role as role, cr.name as name, (case when cr.person_id is not null and trim(cast(cr.person_id as text)) <> '' then 'bgm:' || cast(cr.person_id as text) else 'pname:' || trim(replace(replace(replace(cr.name, '　', ' '), '  ', ' '), '  ', ' ')) end) as person_ref, cr.tier, cr.sort_order from content_credits cr join contents c on c.id = cr.content_id where (cr.tier = 'main' and cr.role not like '版本:%' and cr.role not in ('发售日','作者','连载杂志','ISBN-10','ISBN-13','册数','链接','出版社','开始','结束','页数','价格','装帧','尺寸')) or cr.role in ('作画监督','总作画监督','演出','分镜','机械作画监督','动作作画监督') order by c.bangumi_id, cr.sort_order"
     },
     {
       "target": "work_cast",
       "mode": "query",
       "required_sources": ["content_cast", "contents"],
-      "sql": "select cast(c.bangumi_id as text) as source_id, cc.character as character, cc.actor as actor, cast(cc.person_id as text) as person_ref, cc.relation, cc.sort_order from content_cast cc join contents c on c.id = cc.content_id order by c.bangumi_id, cc.sort_order"
+      "sql": "select cast(c.bangumi_id as text) as source_id, cc.character as character, cc.actor as actor, (case when cc.person_id is not null and trim(cast(cc.person_id as text)) <> '' then 'bgm:' || cast(cc.person_id as text) else 'pname:' || trim(replace(replace(replace(cc.actor, '　', ' '), '  ', ' '), '  ', ' ')) end) as person_ref, cc.relation, cc.sort_order from content_cast cc join contents c on c.id = cc.content_id order by c.bangumi_id, cc.sort_order"
     },
     {
       "target": "work_studios",
