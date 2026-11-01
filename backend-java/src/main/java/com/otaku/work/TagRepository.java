@@ -42,13 +42,21 @@ public class TagRepository {
      * <p>成人作品不计数：它们的标签行 {@code is_adult = 1}，被这条条件整行排除，
      * 于是成人词自己的计数直接变 0、自然从词表里消失（不需要再传一份黑名单进来比对），
      * 正常词的计数也不会虚高——避免「词表说 949 部、点进去只有 700 部」。
+     *
+     * <p>同理不给档案来源的作品计数（口径见 {@code WorkRepository.LIST_SCOPE}）：
+     * 词表里出现一个只在 bangumi 档案里有的标签，点进去就是空列表。
+     * 代价是必须回表看 {@code work.source}——V25 的注释实测过这条路（词表 JOIN work
+     * 约 2.6 s，不 JOIN 190 ms），但词表由 {@code TagCache} 按类型缓存、导入才失效，
+     * 一次冷启动换正确性，值。真要抹掉这 2.6 s 就给 work_tag 冗余一列 source。
      */
     public List<TagDtos.TagItem> top(String workType, int limit) {
         StringBuilder sql = new StringBuilder(
-                "SELECT tag AS name, COUNT(*) AS work_count FROM work_tag WHERE is_adult = 0");
+                "SELECT t.tag AS name, COUNT(*) AS work_count FROM work_tag t"
+                        + " JOIN work w ON w.id = t.work_ref"
+                        + " WHERE t.is_adult = 0 AND w.source <> 'bangumi'");
         MapSqlParameterSource params = new MapSqlParameterSource().addValue("limit", limit);
         if (workType != null) {
-            sql.append(" AND work_type = :workType");
+            sql.append(" AND t.work_type = :workType");
             params.addValue("workType", workType);
         }
         sql.append(" GROUP BY tag ORDER BY work_count DESC, tag ASC LIMIT :limit");
