@@ -21,8 +21,12 @@
 --       演练时真删完发现「评论 0 条、点评还剩 2 条」——承诺写的是「删除 UGC 副本」，
 --       少删一张表就是没兑现。现在点评也计入统计与删除。
 --
--- 顺序建议：先在平台侧把站点停用（POST /internal/sites/{key}/suspend，撤销站主会话），
---       再跑本脚本。停用只是「不让进后台」，数据不动；删副本是不可逆的，必须有人签过字。
+-- 顺序（2026-11-01 演练定稿，**不能改**）：
+--       ① 导出三份（站点还必须是 active）→ ② 停站 → ③ 跑本脚本删副本。
+--       为什么导出必须在停站之前：停站会撤销该站全部站主会话并禁止后台登录
+--       （实测：停站后站主登录 403「站点已停用，后台不可用」，停站前的令牌 401），
+--       也就是说**一旦停站，数据就再也导不出来了**。先停后导 = 交还永远做不成。
+--       停用只是「不让进后台」，数据不动；删副本是不可逆的，必须有人签过字。
 -- 2026-10-31 再修：删除范围定了「三张表」，那「交还」也必须是三份——此前导出只有评论，
 --       点评与举报是「只删不交」（详见 docs/site-offboarding-drill.md §5）。
 --       现在干跑会多打一行对账要求：下面三个数字必须与三份导出的 X-Export-Rows 逐项相等。
@@ -55,6 +59,32 @@ BEGIN
                CONCAT('comments=', v_comments, ' ↔ type=comment；reviews=', v_reviews,
                       ' ↔ type=review；reports=', v_reports, ' ↔ type=report') AS must_match,
                '三个数字对不上 = 交还没做完，不许执行（p_dry=0）' AS rule;
+
+        -- 导出到底做没做：查审计里有没有对应 type 的导出记录（本脚本自己的证据链）。
+        -- 注意 #341 之前的导出没有 type 标记，会显示 NO——那就重导一次，别当成"没导过"纠结。
+        SELECT
+            IFNULL((SELECT IF(COUNT(*) > 0, 'YES', 'NO') FROM console_audit
+                     WHERE site_key = p_site AND action = 'ugc.export'
+                       AND detail LIKE '%type=comment%'), 'NO') AS export_comment,
+            IFNULL((SELECT IF(COUNT(*) > 0, 'YES', 'NO') FROM console_audit
+                     WHERE site_key = p_site AND action = 'ugc.export'
+                       AND detail LIKE '%type=review%'), 'NO') AS export_review,
+            IFNULL((SELECT IF(COUNT(*) > 0, 'YES', 'NO') FROM console_audit
+                     WHERE site_key = p_site AND action = 'ugc.export'
+                       AND detail LIKE '%type=report%'), 'NO') AS export_report,
+            IFNULL((SELECT status FROM site WHERE site_key = p_site), '(站点不存在)') AS site_status,
+            CASE
+                WHEN (SELECT status FROM site WHERE site_key = p_site) = 'suspended'
+                    THEN '站点已停用：若上面三份导出不是全 YES，现在也导不出来了（停站后登录 403、令牌 401）。先恢复站点 → 导出 → 再停站。'
+                WHEN EXISTS (SELECT 1 FROM console_audit WHERE site_key = p_site
+                              AND action = 'ugc.export' AND detail LIKE '%type=comment%')
+                 AND EXISTS (SELECT 1 FROM console_audit WHERE site_key = p_site
+                              AND action = 'ugc.export' AND detail LIKE '%type=review%')
+                 AND EXISTS (SELECT 1 FROM console_audit WHERE site_key = p_site
+                              AND action = 'ugc.export' AND detail LIKE '%type=report%')
+                    THEN '三份导出都有记录，继续对账数字'
+                ELSE '还有导出没有记录：NO 的那一类先导一次（新站/无该类内容也要导，空文件也是证据）'
+            END AS export_hint;
     END IF;
 
     IF p_dry = 0 THEN
