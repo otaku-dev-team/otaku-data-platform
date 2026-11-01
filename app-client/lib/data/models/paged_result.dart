@@ -10,6 +10,7 @@ class PagedResult<T> {
     required this.page,
     required this.pageSize,
     required this.totalPages,
+    this.hidden,
   });
 
   final List<T> items;
@@ -20,6 +21,13 @@ class PagedResult<T> {
   /// 契约 6.1：`page` 超过 `total_pages` 时服务端返回空 `items`，
   /// 客户端据此判断"没有更多"，不要用 HTTP 状态判断。
   final int totalPages;
+
+  /// 当前筛选条件下、因为内容策略被隐藏的条数。
+  ///
+  /// **只有作品列表会给**（`WorkPaging.hidden`）。`null` 与 `0` 语义不同：
+  /// - `null`：这个接口没有这个概念（资讯、收藏等），别显示「已隐藏 0 部」；
+  /// - `0`：确实一条都没藏。
+  final int? hidden;
 
   bool get hasNext => page < totalPages;
 
@@ -52,6 +60,8 @@ class PagedResult<T> {
       json['total_pages'],
       pageSize > 0 ? (total / pageSize).ceil() : 0,
     );
+    // 缺失就是缺失，别补 0：见字段注释里 null 与 0 的区别。
+    final rawHidden = json['hidden'];
 
     return PagedResult<T>(
       items: items,
@@ -59,6 +69,7 @@ class PagedResult<T> {
       page: page,
       pageSize: pageSize,
       totalPages: totalPages,
+      hidden: rawHidden is num ? rawHidden.toInt() : null,
     );
   }
 
@@ -75,6 +86,9 @@ class PagedResult<T> {
       'page_size': pageSize,
       'total_pages': totalPages,
       'items': [for (final item in items) itemToJson(item)],
+      // 只有非空才写：null 表示「这个接口没这个概念」，存成 null 会让离线时
+      // 看起来像「藏了 0 部」。
+      if (hidden != null) 'hidden': hidden,
     };
   }
 

@@ -235,13 +235,7 @@ paths:
           content:
             application/json:
               schema:
-                allOf:
-                  - $ref: "#/components/schemas/Paging"
-                  - type: object
-                    properties:
-                      items:
-                        type: array
-                        items: { $ref: "#/components/schemas/WorkSummary" }
+                $ref: "#/components/schemas/WorkPaging"
         "400": { $ref: "#/components/responses/BadRequest" }
         "429": { $ref: "#/components/responses/RateLimitedWithRetry" }
         "500": { $ref: "#/components/responses/InternalError" }
@@ -1138,6 +1132,7 @@ paths:
         "204":
           description: 已注销（所有设备会话已失效）
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "405": { $ref: "#/components/responses/MethodNotAllowed" }
         "500": { $ref: "#/components/responses/InternalError" }
 
   /api/me/collections:
@@ -2441,6 +2436,14 @@ components:
       content:
         application/json:
           schema: { $ref: "#/components/schemas/ErrorResponse" }
+    MethodNotAllowed:
+      description: |
+        请求方法不被支持（`METHOD_NOT_ALLOWED`，#345）。
+        例如对只接受 DELETE 的 `/api/me` 发 GET。这是「客户端用错」，不是服务端故障——
+        调用方不应重试、也不会成功。
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
     SiteNotFound:
       description: 站点不存在（`SITE_NOT_FOUND`）
       content:
@@ -2574,6 +2577,34 @@ components:
         items:
           type: array
           items: {}
+
+    WorkPaging:
+      description: |
+        作品列表的分页信封：`Paging` 的形状 + 一个 `hidden`。
+
+        **为什么不直接给 `Paging` 加字段**：那是资讯 / 收藏 / 评论 / 后台共用的信封，
+        加一个字段会让那些接口的 schema 全被要求带上它（契约漂移测试会当场报错）。
+        而「被过滤掉了多少」只有作品列表有这个概念。
+      allOf:
+        - $ref: "#/components/schemas/Paging"
+        - type: object
+          properties:
+            items:
+              type: array
+              items: { $ref: "#/components/schemas/WorkSummary" }
+            hidden:
+              type: integer
+              description: |
+                **因为成人内容遮挡、在当前筛选条件下被隐藏的条数。**
+
+                用户改了类型 / 标签 / 年份 / 关键词，这个数字跟着变——它是
+                「你眼前这个列表藏了几条」，不是全库成人总数。客户端据此显示
+                「已隐藏 N 部成人内容」，让用户明白「数据不全」是主动过滤，
+                不是抓取失败（铁律 3 的对外说法）。
+
+                别的分页接口**不返回这个字段**（序列化时整个消失）。
+                别把缺失当 0：0 的语义是「确实一条都没藏」。
+              example: 3
 
     SourceRating:
       type: object
@@ -3775,6 +3806,7 @@ components:
                 - COLLECTION_REQUIRED
                 - BATCH_TOO_LARGE
                 - RATE_LIMITED
+                - METHOD_NOT_ALLOWED
                 - INTERNAL
             message:
               type: string

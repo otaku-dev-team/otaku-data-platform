@@ -184,6 +184,8 @@ class ContractDriftTest {
     private static Map<String, Class<?>> responseTargets() {
         Map<String, Class<?>> targets = new java.util.LinkedHashMap<>();
         targets.put("RelatedWorks", com.otaku.work.dto.RelatedWorksDto.class);
+        // 作品列表的信封（比 Paging 多一个 hidden，见 #355 之后那条 openapi 注释）
+        targets.put("WorkPaging", com.otaku.work.dto.WorkPageResponse.class);
         // 档 B 关联数组的元素形状（#254 新增 schema）：数据接线归 #255，此处只钉形状
         targets.put("WorkStaff", com.otaku.work.dto.WorkStaffDto.class);
         targets.put("WorkCharacter", com.otaku.work.dto.WorkCharacterDto.class);

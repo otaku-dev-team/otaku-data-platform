@@ -26,6 +26,9 @@ class SettingsPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final mode = ref.watch(themeModeProvider);
     final usage = ref.watch(cacheUsageProvider);
+    // 入口行报的是**合计**（JSON 缓存 + 图片缓存）。只报前者会跟系统设置里
+    // 「应用占用」差出几十 MB——用户会以为缓存没清干净，其实是没算封面。
+    final imageUsage = ref.watch(imageCacheUsageProvider);
 
     return DesktopNavShell(
       child: Scaffold(
@@ -54,7 +57,7 @@ class SettingsPage extends ConsumerWidget {
                       _Entry(
                         icon: Icons.cloud_off_outlined,
                         title: '离线缓存',
-                        summary: describeCacheUsage(usage),
+                        summary: describeTotalCacheUsage(usage, imageUsage),
                         target: RoutePaths.storageSettings,
                       ),
                       const Divider(height: 1),

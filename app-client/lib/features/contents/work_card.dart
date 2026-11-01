@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/router/route_paths.dart';
 import '../../core/theme/app_layout.dart';
+import '../../core/theme/library_density.dart';
 import '../../data/models/work_summary.dart';
 import '../../shared/widgets/cover_image.dart';
 import '../../shared/widgets/poster_card.dart';
@@ -20,13 +21,24 @@ import 'contents_controller.dart';
 /// 硬要做只能靠逐条请求详情，代价远大于收益。
 /// 年份在 2026-10-22 补上（此前链路断在同步层），位置与站点一致：类型行末尾。
 class WorkCard extends ConsumerWidget {
-  const WorkCard({super.key, required this.work, this.showMissingRating = false});
+  const WorkCard({
+    super.key,
+    required this.work,
+    this.showMissingRating = false,
+    this.density = LibraryDensity.comfort,
+  });
 
   final WorkSummary work;
 
   /// 无评分时是否标出「暂无评分」（W1.5 D2）。只在按评分排序时由列表页打开：
   /// 那时无评分条目沉在末尾，不标出来会被当成加载失败。
   final bool showMissingRating;
+
+  /// 显示密度。见 [LibraryDensity]：舒适（现状）/ 紧凑（一行标题）/ 仅封面。
+  ///
+  /// 网格的纵向高度由 `AppLayout.gridCellExtent` 按同一密度算——
+  /// 两处必须一起改，否则卡片要么被裁、要么底下留白。
+  final LibraryDensity density;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -56,75 +68,80 @@ class WorkCard extends ConsumerWidget {
               source: work.source,
             ),
           ),
-          SizedBox(
-            height: AppLayout.cardBodyHeight * textScale,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // 固定两行高度：一行标题的卡片不会比两行的矮一截。
-                  // 高度跟着字号走，理由同上。
-                  SizedBox(
-                    height: 40 * textScale,
-                    child: Text(
-                      work.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        height: 1.35,
+          if (density != LibraryDensity.coversOnly)
+            SizedBox(
+              height: density.bodyHeight * textScale,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 固定行高：一行标题的卡片不会比两行的矮一截。
+                    // 高度跟着字号走，理由同上。
+                    SizedBox(
+                      height: (density == LibraryDensity.compact ? 20 : 40) * textScale,
+                      child: Text(
+                        work.title,
+                        maxLines: density == LibraryDensity.compact ? 1 : 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          height: 1.35,
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 6),
-                  Row(
-                    children: [
-                      WorkTypeTag(type: work.workType),
-                      const SizedBox(width: 6),
-                      // 契约 6.3：没有评分不能显示 0.0。默认整块不渲染，
-                      // 按评分排序时改成标出「暂无评分」。
-                      RatingBadge(
-                        rating: work.mainRating,
-                        compact: true,
-                        showMissingLabel: showMissingRating,
+                    // 紧凑档只留标题：类型 / 评分 / 年份 / 标签全部收起，
+                    // 换来一屏多放两三部。要这些信息就切回「舒适」。
+                    if (density == LibraryDensity.comfort) ...[
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          WorkTypeTag(type: work.workType),
+                          const SizedBox(width: 6),
+                          // 契约 6.3：没有评分不能显示 0.0。默认整块不渲染，
+                          // 按评分排序时改成标出「暂无评分」。
+                          RatingBadge(
+                            rating: work.mainRating,
+                            compact: true,
+                            showMissingLabel: showMissingRating,
+                          ),
+                          // 年份靠右，占掉剩余宽度：既不挤压标签与评分，也不会因
+                          // 文字变长把卡片撑破（溢出时省略）。
+                          Expanded(
+                            child: Align(
+                              alignment: Alignment.centerRight,
+                              child: ReleaseYearText(year: work.releaseYear),
+                            ),
+                          ),
+                        ],
                       ),
-                      // 年份靠右，占掉剩余宽度：既不挤压标签与评分，也不会因
-                      // 文字变长把卡片撑破（溢出时省略）。
+                      const SizedBox(height: 6),
+                      // 标签一行封顶：横向不滚动，超出部分裁掉，避免撑高卡片。
                       Expanded(
-                        child: Align(
-                          alignment: Alignment.centerRight,
-                          child: ReleaseYearText(year: work.releaseYear),
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          physics: const NeverScrollableScrollPhysics(),
+                          child: TagChips(
+                            tags: work.tags,
+                            maxVisible: 3,
+                            // 点标签即按该标签筛选：卡片上已经写着这个标签了，
+                            // 用户想「看同题材的」时，入口就在他眼睛盯着的地方。
+                            onTag: (tag) => ref
+                                .read(contentsFilterProvider.notifier)
+                                .toggleTag(tag),
+                            selectedTags: ref
+                                .watch(
+                                  contentsFilterProvider.select((f) => f.tags),
+                                )
+                                .toSet(),
+                          ),
                         ),
                       ),
                     ],
-                  ),
-                  const SizedBox(height: 6),
-                  // 标签一行封顶：横向不滚动，超出部分裁掉，避免撑高卡片。
-                  Expanded(
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      physics: const NeverScrollableScrollPhysics(),
-                      child: TagChips(
-                        tags: work.tags,
-                        maxVisible: 3,
-                        // 点标签即按该标签筛选：卡片上已经写着这个标签了，
-                        // 用户想「看同题材的」时，入口就在他眼睛盯着的地方。
-                        onTag: (tag) => ref
-                            .read(contentsFilterProvider.notifier)
-                            .toggleTag(tag),
-                        selectedTags: ref
-                            .watch(
-                              contentsFilterProvider.select((f) => f.tags),
-                            )
-                            .toSet(),
-                      ),
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
-          ),
         ],
       ),
     );

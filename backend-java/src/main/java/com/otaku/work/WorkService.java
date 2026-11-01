@@ -8,6 +8,7 @@ import com.otaku.common.LikePattern;
 import com.otaku.common.PageResponse;
 import com.otaku.config.PublicUrlResolver;
 import com.otaku.work.dto.RelatedWorksDto;
+import com.otaku.work.dto.WorkPageResponse;
 import com.otaku.work.dto.SourceRatingDto;
 import com.otaku.work.dto.WorkDto;
 import com.otaku.work.dto.WorkSummaryDto;
@@ -73,7 +74,7 @@ public class WorkService {
     /**
      * 单标签入口（旧调用方 / 测试用）：等价于只传一个值的 {@code tags}。
      */
-    public PageResponse<WorkSummaryDto> list(String typeParam, String qParam, String tagParam,
+    public WorkPageResponse list(String typeParam, String qParam, String tagParam,
                                              String sortParam, String minRatingParam,
                                              int page, int pageSize) {
         return list(typeParam, qParam, tagParam, null, sortParam, minRatingParam, null, page, pageSize);
@@ -86,7 +87,7 @@ public class WorkService {
      * 两者同时出现直接 400：不做「谁覆盖谁」的猜测——那会让调用方以为筛选生效了，
      * 实际只用了其中一个，结果集看起来"莫名多/少"。见 openapi 的 /api/works 参数说明。
      */
-    public PageResponse<WorkSummaryDto> list(String typeParam, String qParam, String tagParam,
+    public WorkPageResponse list(String typeParam, String qParam, String tagParam,
                                              String tagsParam, String sortParam, String minRatingParam,
                                              String yearParam, int page, int pageSize) {
         String workType = normalizeType(typeParam);
@@ -120,7 +121,32 @@ public class WorkService {
                         .stream()
                         .map(this::toSummary)
                         .toList();
-        return PageResponse.of(safePage, safeSize, total, items);
+
+        // 「因为成人遮挡被藏了多少部」：同条件再算一次**含成人**的总数，差值就是答案。
+        //
+        // 为什么要多跑一次 COUNT：三种标签分支的 SQL 是拼出来的，改成「一条 SQL 出两个数」
+        // 要动三处、每处都得重新验证口径一致；而这次 COUNT 与总数那次同价（~86ms），
+        // 走同一个缓存就能摊掉——键加后缀，与总数互不覆盖。
+        //
+        // 口径说明：这是**当前筛选条件下**被藏的条数（类型/标签/年份/关键词都生效），
+        // 不是全库成人总数。用户改了筛选，这个数字跟着变，才对得上他眼前的列表。
+        long hidden = 0L;
+        if (total > 0) {
+            String hiddenKey = countKey + "\u0001adult";
+            Long cachedIncludingAdult = countCache.get(hiddenKey);
+            long totalIncludingAdult;
+            if (cachedIncludingAdult != null) {
+                totalIncludingAdult = cachedIncludingAdult;
+            } else {
+                totalIncludingAdult =
+                        repository.count(workType, pattern, tags, minRating, year, true);
+                countCache.put(hiddenKey, totalIncludingAdult);
+            }
+            // 取 max：理论上含成人 ≥ 不含成人，但导入中途或缓存不同步时别把负数给客户端。
+            hidden = Math.max(0L, totalIncludingAdult - total);
+        }
+
+        return WorkPageResponse.of(safePage, safeSize, total, items, hidden);
     }
 
     /**

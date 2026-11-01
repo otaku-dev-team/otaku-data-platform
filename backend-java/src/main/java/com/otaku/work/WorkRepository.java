@@ -313,13 +313,21 @@ public class WorkRepository {
     private static StringBuilder multiTagSelect(MapSqlParameterSource params, String workType,
                                                 String titlePattern, List<String> tags,
                                                 BigDecimal minRating, Integer year) {
+        return multiTagSelect(params, workType, titlePattern, tags, minRating, year, false);
+    }
+
+    /** 同上，可以只跳过成人遮挡（算「被藏了多少部」时用）。 */
+    private static StringBuilder multiTagSelect(MapSqlParameterSource params, String workType,
+                                                String titlePattern, List<String> tags,
+                                                BigDecimal minRating, Integer year,
+                                                boolean includeAdult) {
         params.addValue("tags", tags);
         params.addValue("tagCount", tags.size());
         // 总是 JOIN work：软删过滤必须落在内层（#249），否则 LIMIT 分页会把已删行算进窗口。
         StringBuilder sql = new StringBuilder("SELECT t.work_ref AS id FROM work_tag t"
                 + " JOIN work w ON w.id = t.work_ref");
         sql.append(" WHERE t.tag IN (:tags)");
-        appendTagConditions(sql, params, workType, minRating, year);
+        appendTagConditions(sql, params, workType, minRating, year, includeAdult);
         if (titlePattern != null) {
             sql.append(" AND w.title LIKE :titlePattern");
             params.addValue("titlePattern", titlePattern);
@@ -330,11 +338,25 @@ public class WorkRepository {
     /** 落在 {@code work_tag} 冗余列上的过滤条件（类型 / 评分下限），外加软删过滤。 */
     private static void appendTagConditions(StringBuilder sql, MapSqlParameterSource params,
                                             String workType, BigDecimal minRating, Integer year) {
+        appendTagConditions(sql, params, workType, minRating, year, false);
+    }
+
+    /**
+     * 同上，可以只跳过成人遮挡（与 {@code appendConditions} 的重载同一用途）。
+     *
+     * <p>注意这里跳的是 {@code t.is_adult}（work_tag 上的冗余列），
+     * 与回表版本的 {@code w.is_adult} 语义相同——两列由导入时同一处维护。
+     */
+    private static void appendTagConditions(StringBuilder sql, MapSqlParameterSource params,
+                                            String workType, BigDecimal minRating, Integer year,
+                                            boolean includeAdult) {
         // 调用方保证已 JOIN work w（见 findPage/count 各分支），这里才能过滤软删。
         sql.append(" AND w.deleted_at IS NULL");
         // 用 work_tag 上的冗余列，与本方法里 type/rating/year 同一个理由：条件落在同一张索引上，
         // 不必回表看 work.is_adult。
-        sql.append(" AND t.is_adult = 0");
+        if (!includeAdult) {
+            sql.append(" AND t.is_adult = 0");
+        }
         if (workType != null) {
             sql.append(" AND t.work_type = :workType");
             params.addValue("workType", workType);
@@ -422,27 +444,43 @@ public class WorkRepository {
 
     public long count(String workType, String titlePattern, List<String> tags, BigDecimal minRating,
                       Integer year) {
+        return count(workType, titlePattern, tags, minRating, year, false);
+    }
+
+    /**
+     * 同一个计数，可选择**把成人内容也算进来**。
+     *
+     * <p>用途只有一个：算出「当前筛选条件下因为成人遮挡被藏掉了多少部」，
+     * 让客户端能显示一句「已隐藏 N 部」，而不是让用户以为数据缺了一块。
+     * 差值由调用方减（含成人 − 不含成人）：三种标签分支的 SQL 是拼出来的，
+     * 改成「一条 SQL 出两个数」要动三处，而多跑一次 count 只是几十毫秒。
+     *
+     * @param includeAdult true 时不加 {@code is_adult = 0}，其余条件与列表完全一致
+     */
+    public long count(String workType, String titlePattern, List<String> tags, BigDecimal minRating,
+                      Integer year, boolean includeAdult) {
         MapSqlParameterSource params = new MapSqlParameterSource();
         StringBuilder sql;
         if (tags == null || tags.isEmpty()) {
             sql = new StringBuilder("SELECT COUNT(*) FROM work w WHERE 1 = 1");
-            appendConditions(sql, params, workType, titlePattern, minRating, year);
+            appendConditions(sql, params, workType, titlePattern, minRating, year, includeAdult);
         } else if (tags.size() == 1) {
             params.addValue("tag", tags.get(0));
             // 同 findPage：标题必须回表；类型已冗余进 work_tag，不必 JOIN。
             if (titlePattern != null) {
                 sql = new StringBuilder("SELECT COUNT(*) FROM work_tag t"
                         + " JOIN work w ON w.id = t.work_ref WHERE t.tag = :tag");
-                appendConditions(sql, params, workType, titlePattern, minRating, year);
+                appendConditions(sql, params, workType, titlePattern, minRating, year, includeAdult);
             } else {
                 // 与 findPage 同一口径：JOIN 只为过滤软删，计数与列表不能各说各话。
                 sql = new StringBuilder("SELECT COUNT(*) FROM work_tag t"
                         + " JOIN work w ON w.id = t.work_ref WHERE t.tag = :tag");
-                appendTagConditions(sql, params, workType, minRating, year);
+                appendTagConditions(sql, params, workType, minRating, year, includeAdult);
             }
         } else {
             // 多标签：先按 work_ref 分组数出"命中了几个标签"，再取满足 n 个的组数。
-            StringBuilder inner = multiTagSelect(params, workType, titlePattern, tags, minRating, year);
+            StringBuilder inner = multiTagSelect(params, workType, titlePattern, tags, minRating, year,
+                    includeAdult);
             inner.append(" GROUP BY t.work_ref HAVING COUNT(DISTINCT t.tag) = :tagCount");
             sql = new StringBuilder("SELECT COUNT(*) FROM (").append(inner).append(") matched");
         }
@@ -454,11 +492,25 @@ public class WorkRepository {
     private static void appendConditions(StringBuilder sql, MapSqlParameterSource params,
                                          String workType, String titlePattern, BigDecimal minRating,
                                          Integer year) {
+        appendConditions(sql, params, workType, titlePattern, minRating, year, false);
+    }
+
+    /**
+     * 同上，但可以只跳过成人遮挡这一条。
+     *
+     * <p>只有「算被藏了多少部」时才会传 true（见 {@code count(..., includeAdult)}）；
+     * 软删过滤永远在——下架的作品不能因为要计数就重新出现在结果里。
+     */
+    private static void appendConditions(StringBuilder sql, MapSqlParameterSource params,
+                                         String workType, String titlePattern, BigDecimal minRating,
+                                         Integer year, boolean includeAdult) {
         // 软删行（#249）对外一律不可见：列表、搜索、标签、年份四个面都从这里过。
         sql.append(" AND w.deleted_at IS NULL");
         // 成人内容（V25 迁移的那两列）：与软删同级，列表 / 搜索 / 标签 / 年份 / 排行同一口径。
         // 走的是已落库的 is_adult 列，不是查询时解析 tags——实测解析版把计数从 86ms 拖到 2.7s。
-        sql.append(" AND w.is_adult = 0");
+        if (!includeAdult) {
+            sql.append(" AND w.is_adult = 0");
+        }
         if (workType != null) {
             sql.append(" AND w.work_type = :workType");
             params.addValue("workType", workType);

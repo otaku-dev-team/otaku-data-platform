@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/theme/library_density.dart';
+import 'display_settings.dart';
 import 'settings_controller.dart';
 import 'settings_widgets.dart';
 
@@ -14,7 +16,13 @@ class AppearanceSettingsPage extends ConsumerWidget {
       title: '外观',
       // 只有一张卡，卡里已经有「主题」标题了，再加一个小节标题就是同一个词
       // 在同一屏出现两次。
-      children: [_ThemeModeCard(), SizedBox(height: 12), _ExperimentCard()],
+      children: [
+        _ThemeModeCard(),
+        SizedBox(height: 12),
+        _LibraryDisplayCard(),
+        SizedBox(height: 12),
+        _ExperimentCard(),
+      ],
     );
   }
 }
@@ -99,6 +107,79 @@ class _ExperimentCard extends ConsumerWidget {
             value: appearance.glass,
             onChanged: (value) =>
                 ref.read(appearanceProvider.notifier).setGlass(value),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 作品库的显示密度与列数。
+///
+/// 放在「外观」而不是筛选栏：筛选栏已经塞了类型 chips、排序、年份，
+/// 再加一个控件会把 chips 挤到只剩一两个（当初把排序挪进 AppBar 就是这个原因）。
+/// 这是「一次性设好、长期不碰」的偏好，属于设置而不属于筛选项。
+class _LibraryDisplayCard extends ConsumerWidget {
+  const _LibraryDisplayCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final display = ref.watch(libraryDisplayProvider);
+    final controller = ref.read(libraryDisplayProvider.notifier);
+
+    return SettingsCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('作品库显示', style: theme.textTheme.bodyLarge),
+          const SizedBox(height: 2),
+          Text(
+            '只看列表时不受影响；这里管的是网格模式下的密度与列数。',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 12),
+          SegmentedButton<LibraryDensity>(
+            segments: [
+              for (final density in LibraryDensity.values)
+                ButtonSegment(value: density, label: Text(density.label)),
+            ],
+            selected: {display.density},
+            onSelectionChanged: (selection) =>
+                controller.setDensity(selection.first),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            display.density.description,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text('每行列数', style: theme.textTheme.bodySmall),
+          const SizedBox(height: 6),
+          SegmentedButton<int>(
+            segments: const [
+              // 0 代表「自适应」：null 没法直接放进 ButtonSegment<int>。
+              ButtonSegment(value: 0, label: Text('自适应')),
+              ButtonSegment(value: 2, label: Text('2')),
+              ButtonSegment(value: 3, label: Text('3')),
+              ButtonSegment(value: 4, label: Text('4')),
+            ],
+            selected: {display.columns ?? 0},
+            onSelectionChanged: (selection) {
+              final value = selection.first;
+              controller.setColumns(value == 0 ? null : value);
+            },
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '自适应按屏幕宽度算 2–4 列。手动选定后固定，窄屏上列多了会挤。',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
           ),
         ],
       ),

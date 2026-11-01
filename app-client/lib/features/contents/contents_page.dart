@@ -9,6 +9,8 @@ import '../../core/network/api_exception.dart';
 import '../../core/router/route_paths.dart';
 import '../../core/platform_info.dart';
 import '../../core/theme/app_layout.dart';
+import '../../shared/widgets/cover_prefetch.dart';
+import '../settings/display_settings.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/models/tag_vocabulary.dart';
 import '../../data/models/work_sort.dart';
@@ -412,9 +414,14 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
     final isStale = data != null && data.filter != filter;
 
     if (contents.isLoading && (data == null || isStale)) {
-      return view == CatalogView.list
-          ? const SkeletonList()
-          : const SkeletonGrid();
+      if (view == CatalogView.list) return const SkeletonList();
+      // 骨架屏用同一档密度与列数：按默认档画的话，切到紧凑 / 仅封面后
+      // 会看到「加载时 2 列宽卡 → 加载完 3 列窄卡」的跳动。
+      final display = ref.watch(libraryDisplayProvider);
+      return SkeletonGrid(
+        density: display.density,
+        columns: display.columns,
+      );
     }
 
     if (contents.hasError) {
@@ -552,14 +559,23 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
     // 海报网格：列数按可用宽度算，卡片高度写死，保证长短标题不会让行高参差。
     return LayoutBuilder(
       builder: (context, constraints) {
+        // 在 builder 里 watch：切密度只重建网格，不重建整页（搜索框、筛选栏
+        // 都不该跟着重来一遍）。
+        final display = ref.watch(libraryDisplayProvider);
         final usable = constraints.maxWidth - AppLayout.pagePadding * 2;
-        final metrics = AppLayout.gridMetrics(usable);
+        final metrics = AppLayout.gridMetrics(
+          usable,
+          density: display.density,
+          overrideColumns: display.columns,
+        );
         // 正文高度跟着系统字体缩放（与收藏页网格同一套做法）：大字体下固定
         // 高度会撑爆卡片，真机 font_scale 2.0 实测底部溢出 20px。
         final textScale = MediaQuery.textScalerOf(context).scale(1);
-        final extent =
-            metrics.cardWidth / AppLayout.posterAspect +
-            AppLayout.cardBodyHeight * textScale;
+        final extent = AppLayout.gridCellExtent(
+          cardWidth: metrics.cardWidth,
+          density: display.density,
+          textScale: textScale,
+        );
 
         return CustomScrollView(
           controller: _scrollController,
@@ -581,9 +597,10 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
                 ),
                 delegate: SliverChildBuilderDelegate(
                   (context, index) => WorkCard(
-                        work: data.items[index],
-                        showMissingRating: showMissingRating,
-                      ),
+                    work: data.items[index],
+                    showMissingRating: showMissingRating,
+                    density: display.density,
+                  ),
                   childCount: data.items.length,
                 ),
               ),
@@ -609,13 +626,18 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
           ),
           sliver: SliverList(
             delegate: SliverChildBuilderDelegate(
-              (context, index) => Padding(
-                padding: const EdgeInsets.only(bottom: AppLayout.gridGap),
-                child: WorkListTile(
-                  work: data.items[index],
-                  showMissingRating: showMissingRating,
-                ),
-              ),
+              (context, index) {
+                // 建到某一项时顺手把后面几张的封面预取进缓存：滚过去的时候
+                // 文件已经在磁盘里，不用从占位灰等起。重复调用会被 ImageCache 去重。
+                prefetchCovers(context, data.items.skip(index + 1));
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: AppLayout.gridGap),
+                  child: WorkListTile(
+                    work: data.items[index],
+                    showMissingRating: showMissingRating,
+                  ),
+                );
+              },
               childCount: data.items.length,
             ),
           ),
@@ -634,7 +656,46 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
           AppLayout.pagePadding,
           24,
         ),
-        child: _buildFooter(data),
+        child: Column(
+          children: [
+            _buildFooter(data),
+            if ((data.hidden ?? 0) > 0) _buildHiddenNotice(data.hidden!),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 「已隐藏 N 部成人内容」。
+  ///
+  /// 成人遮挡是后端的硬规则，但用户看不见它——20 条里少了几条，只会觉得
+  /// 「这数据不全」或者「抓取坏了」。这行字把「主动过滤」和「抓不到」分开
+  /// （铁律 3 的对外说法），同时**只说数量、不给标题**：不暴露被过滤的内容本身。
+  ///
+  /// 只在 hidden > 0 时出现。null（后端没这字段）与 0（确实没藏）都不显示。
+  Widget _buildHiddenNotice(int hidden) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.visibility_off_outlined,
+            size: 14,
+            color: theme.colorScheme.outline,
+          ),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              '已隐藏 $hidden 部成人内容',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.outline,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -10,6 +10,7 @@ import '../../features/collection/collection_page.dart';
 import '../../features/contents/contents_page.dart';
 import '../../features/detail/work_detail_page.dart';
 import '../../features/home/home_page.dart';
+import '../../features/recent/recent_history_page.dart';
 import '../../features/schedule/schedule_page.dart';
 import '../../features/settings/about_settings_page.dart';
 import '../../features/settings/appearance_settings_page.dart';
@@ -145,6 +146,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           }
           return SiteAuthWebViewPage(args: args);
         },
+      ),
+      GoRoute(
+        path: RoutePaths.recentHistory,
+        builder: (context, state) => const RecentHistoryPage(),
       ),
       GoRoute(
         path: RoutePaths.settings,

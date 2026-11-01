@@ -57,6 +57,13 @@ public enum ErrorCode {
     BATCH_TOO_LARGE(HttpStatus.PAYLOAD_TOO_LARGE),
     RATE_LIMITED(HttpStatus.TOO_MANY_REQUESTS),
     /**
+     * 请求方法不被支持（#345）。Spring 的 {@code HttpRequestMethodNotSupportedException}
+     * 默认落到兜底 500、还带完整堆栈进 ERROR 日志——任何爬虫随手 GET 一下都会刷一条，
+     * 把真正的 500 淹没。归到 405，和 {@code NoResourceFoundException→404} 同一类
+     * 「客户端用错」的处理：不打 ERROR、不诱导重试。
+     */
+    METHOD_NOT_ALLOWED(HttpStatus.METHOD_NOT_ALLOWED),
+    /**
      * 阶段 2 账号绑定（#242）：站点侧暂不可用（超时 / 5xx / 未配置）。
      *
      * <p>与 {@link #INVALID_CREDENTIALS} 分开：票据失效等**授权失败**用 401，

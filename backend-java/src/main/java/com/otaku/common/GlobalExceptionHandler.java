@@ -12,6 +12,7 @@ import org.springframework.web.bind.ServletRequestBindingException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 /**
@@ -48,6 +49,13 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleNoResource(NoResourceFoundException ex) {
         return ResponseEntity.status(ErrorCode.WORK_NOT_FOUND.status())
                 .body(ErrorResponse.of(ErrorCode.WORK_NOT_FOUND, "资源不存在"));
+    }
+
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ErrorResponse> handleMethodNotAllowed(HttpRequestMethodNotSupportedException ex) {
+        // #345：方法不支持是「客户端用错」，不是服务端故障——不打 ERROR、不诱导重试。
+        return ResponseEntity.status(ErrorCode.METHOD_NOT_ALLOWED.status())
+                .body(ErrorResponse.of(ErrorCode.METHOD_NOT_ALLOWED, "请求方法不被支持"));
     }
 
     @ExceptionHandler(Exception.class)
