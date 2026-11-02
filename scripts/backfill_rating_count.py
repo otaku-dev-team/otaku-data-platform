@@ -80,25 +80,6 @@ def fetch_total(api_base: str, subject_id: str, retries: int) -> int | None:
     return None
 
 
-def fetch_rows(limit: int):
-    # 在服务器上用 mysql CLI 取；本地 dry-run 时返回空
-    out = subprocess.run(
-        ["mysql", "-N", "-e", SUBJECTS_QUERY % limit],
-        capture_output=True, text=True,
-    )
-    if out.returncode != 0:
-        print(out.stderr, file=sys.stderr)
-        return []
-    rows = []
-    for line in out.stdout.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        wid, sid = line.split("\t")
-        rows.append((wid, sid))
-    return rows
-
-
 def build_sql(rows_with_count):
     lines = []
     for wid, count in rows_with_count:
