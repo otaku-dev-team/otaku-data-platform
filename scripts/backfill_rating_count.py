@@ -91,7 +91,7 @@ def build_sql(rows_with_count):
     lines = []
     for wid, count in rows_with_count:
         val = "NULL" if count is None else str(int(count))
-        lines.append(f"UPDATE work SET rating_count={val} WHERE work_id={wid};")
+        lines.append(f"UPDATE work SET rating_count={val} WHERE work_id='{wid}';")
     return "\n".join(lines) + "\n"
 
 
@@ -137,7 +137,7 @@ def main():
             if done % 200 == 0:
                 print(f"[backfill] progress {done}/{len(rows)}", file=sys.stderr)
 
-    results.sort(key=lambda r: int(r[0]))
+    results.sort(key=lambda r: r[0])
     sql = build_sql(results)
     if args.apply == "docker":
         apply_docker(sql)
