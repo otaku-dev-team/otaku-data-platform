@@ -20,6 +20,7 @@
     python scripts/backfill_rating_count.py --dry-run --limit 10
 """
 import argparse
+import json
 import os
 import subprocess
 import sys
