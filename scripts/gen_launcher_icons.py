@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""从选定的冰蓝版字标导出 Android 启动图标。
+"""从选定的冰蓝版字标导出 Android 启动图标与 Windows 程序图标。
 
 源图：app-client/assets/branding/otaku_app_icon.png。
 导出时按蓝色字标与浅底的色差提取透明前景，去掉展示边框和圆角；
 字形直接取自原图，不重新绘制。
 
 用法：python scripts/gen_launcher_icons.py
-产物仅写 Android res：五档旧版图标、432px 自适应前景及纯色背景 XML。
+产物：Android res 五档旧版图标、432px 自适应前景及纯色背景 XML，
+以及 windows/runner/resources/app_icon.ico（7 档尺寸，供 Runner.rc 与窗口用）。
 自适应字标宽 64dp，位于 108dp 画布中心的 66dp 安全区内。
 """
 
@@ -17,12 +18,16 @@ from PIL import Image, ImageChops, ImageDraw
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "app-client/assets/branding/otaku_app_icon.png"
 RES = ROOT / "app-client/android/app/src/main/res"
+WINDOWS_ICO = ROOT / "app-client/windows/runner/resources/app_icon.ico"
 
 BACKGROUND = (234, 246, 255, 255)  # #EAF6FF
 INK = (42, 154, 224, 255)         # #2A9AE0
 LEGACY_WORD_WIDTH = 0.81
 ADAPTIVE_SIZE = 432
 ADAPTIVE_WORD_WIDTH = 64 / 108
+# ico 一次塞多尺寸，Windows 按显示场景自取：任务栏 16/24、资源管理器 32/48、
+# 高 DPI 与大图标视图 128/256。缺哪档系统就硬缩，小尺寸会糊。
+ICO_SIZES = (16, 24, 32, 48, 64, 128, 256)
 TARGETS = {
     "mipmap-mdpi": 48,
     "mipmap-hdpi": 72,
@@ -111,6 +116,14 @@ def main() -> None:
         encoding="utf-8",
     )
     print("  drawable/ic_launcher_background.xml  #EAF6FF")
+
+    # Windows 侧：Runner.rc 的 IDI_APP_ICON 与窗口标题栏都读这个文件。
+    # 只渲最大一档，其余尺寸交给 ICO 编码器按 LANCZOS 缩，保证各档同一套设计。
+    WINDOWS_ICO.parent.mkdir(parents=True, exist_ok=True)
+    render(artwork, max(ICO_SIZES)).save(
+        WINDOWS_ICO, format="ICO", sizes=[(size, size) for size in ICO_SIZES]
+    )
+    print(f"  windows/runner/resources/app_icon.ico  {'/'.join(map(str, ICO_SIZES))}")
 
 
 if __name__ == "__main__":
