@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 /**
  * 接口⑤：每日新番档期。
@@ -34,6 +35,9 @@ public class ScheduleService {
             new TypeReference<>() {
             };
 
+    /** 真季度编码：四位年 + 两位月（202610 / 202604）。 */
+    private static final Pattern SEASON_CODE = Pattern.compile("^\\d{6}$");
+
     private final ScheduleRepository repository;
     private final ObjectMapper objectMapper;
 
@@ -48,14 +52,14 @@ public class ScheduleService {
     /**
      * 取一个季度的档期，按星期分组。
      *
-     * <p>{@code season} 省略时用库内最新季度；传了不存在的季度返回空分组
-     * （200，不是 404——「这个季度没数据」与「接口坏了」是两件事）。
+     * <p>{@code season} 省略时用库内最新的**真季度**（判定见 {@link #latestSeason}）；
+     * 传了不存在的季度返回空分组（200，不是 404——「这个季度没数据」与「接口坏了」是两件事）。
      * 库完全为空时 season 为 null、groups 为空。
      */
     public SchedulePage list(String seasonParam) {
         List<String> seasons = repository.findSeasonCodes();
         String season = seasonParam == null || seasonParam.isBlank()
-                ? repository.findLatestSeason()
+                ? latestSeason(seasons)
                 : seasonParam.trim();
 
         List<ScheduleRecord> records = season == null
@@ -63,6 +67,28 @@ public class ScheduleService {
                 : repository.findBySeason(season);
 
         return new SchedulePage(season, seasons, groupByWeekday(records));
+    }
+
+    /**
+     * 默认季度＝列表里第一个**形状合法**的季度。
+     *
+     * <p>不能直接取第一个：表里混着站点的伪季度码（{@code unreleased} / {@code ova_sp} /
+     * {@code cn_movie}），按字符串倒序排它们全在数字前面（{@code 'u' > 'o' > 'c' > '2'}），
+     * 取第一个就拿到 {@code unreleased}——而那一季的条目 weekday 全是 null，
+     * 全落在"待定"组，首页「本日新番」永远是空的（2026-11-02 线上就是这么空的）。
+     *
+     * <p>列表本身不过滤：伪季度仍有内容（未定档 / OVA / 剧场版），把它们从下拉里删掉
+     * 等于让那几百条消失。只在"取默认值"这一步挑数字季度。
+     *
+     * <p>一个数字季度都没有时退回第一个：那时候"最新"已经无从判断，给个非空值比给 null 诚实。
+     */
+    private static String latestSeason(List<String> seasons) {
+        for (String season : seasons) {
+            if (season != null && SEASON_CODE.matcher(season).matches()) {
+                return season;
+            }
+        }
+        return seasons.isEmpty() ? null : seasons.get(0);
     }
 
     /** 全部可用季度，新的在前。空库返回空列表。 */

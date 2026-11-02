@@ -606,14 +606,18 @@ paths:
 
         边界约定（与作品列表一致）：
         - 无匹配 → `200` + 空分组，不是错误；`season` 传不存在的值同样返回空分组，由客户端显示空状态。
-        - `season` 省略 → 取库内最新季度；库里没有任何数据时 `season` 与 `seasons` 均为 `null`，`groups` 为 8 个空组。
+        - `season` 省略 → 取库内最新的**真季度**（四位年 + 两位月）。表里还存着站点的伪季度码
+          `unreleased` / `ova_sp` / `cn_movie`，它们按字符串倒序会排在数字季度前面，
+          所以"最新"必须跳过它们——否则取到 `unreleased`（该季条目 `weekday` 全为 `null`，
+          只落在待定组），调用方拿到的是一屏空的"今天"。`seasons` 列表**不过滤**，伪季度仍可显式指定；
+          库里没有任何数据时 `season` 与 `seasons` 均为 `null`，`groups` 为 8 个空组。
         - `groups` 固定 8 组（周一…周日 + 待定），`weekday = null` 的待定组排在最后，与站点一致。
         - 某条档期命中本地作品时 `work_id` 非空，客户端可据此跳转本地详情；`null` 时只展示、不给死链。
       parameters:
         - name: season
           in: query
           required: false
-          description: 季度编码（如 202504）；省略取库内最新季度
+          description: 季度编码（如 202504）；省略取库内最新的真季度（跳过 unreleased / ova_sp / cn_movie 等伪季度码）
           schema: { type: string, pattern: "^[0-9]{6}$", example: "202504" }
       responses:
         "429": { $ref: "#/components/responses/RateLimitedWithRetry" }
