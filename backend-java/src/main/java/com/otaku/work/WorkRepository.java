@@ -56,9 +56,36 @@ public class WorkRepository {
      */
     private final AdultPolicy adultPolicy;
 
-    public WorkRepository(NamedParameterJdbcTemplate jdbc, AdultPolicy adultPolicy) {
+    /**
+     * 是否按「首站收录范围」过滤（{@code work.site_listed = 1}）。
+     *
+     * <p>默认开：线上每个部署都有 whitelist（`site_scope`）。集成测试关掉——
+     * 测试库里没有这份清单，开着会让所有「导入后能查到」的用例凭空变空。
+     * 关掉只影响**查询过不过滤**，不影响写入时打标（照旧按 site_scope 判）。
+     */
+    private final boolean siteScopeEnabled;
+
+    /**
+     * 「自站来源」：这些 source 的作品不走清单、直接可见（站点自己的内容，不存在"收没收录"）。
+     *
+     * <p>从配置读、**不在代码里写死站名**——这个后端是白标的，写死一个 `xxx_site`
+     * 就是替客户做了决定，`scripts/check-site-isolation.py` 也会直接拦下来。
+     * 留空 = 没有自站来源，全部按 `site_scope` 判。
+     */
+    private final java.util.Set<String> selfSources;
+
+    public WorkRepository(NamedParameterJdbcTemplate jdbc, AdultPolicy adultPolicy,
+                          @org.springframework.beans.factory.annotation.Value(
+                                  "${app.work.site-scope.enabled:true}") boolean siteScopeEnabled,
+                          @org.springframework.beans.factory.annotation.Value(
+                                  "${app.work.site-scope.self-sources:}") String selfSources) {
         this.jdbc = jdbc;
         this.adultPolicy = adultPolicy;
+        this.siteScopeEnabled = siteScopeEnabled;
+        this.selfSources = java.util.Arrays.stream(selfSources.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
     }
 
     public Optional<WorkRecord> findBySourceKey(String source, String sourceId) {
@@ -98,8 +125,10 @@ public class WorkRepository {
      * （漏一处就是一条泄漏路径）。内部统计（console）走自己的 SQL，不受影响。
      */
     public Optional<WorkRecord> findByWorkId(String workId) {
+        // 未收录的作品对外等于「不存在」：返 404 而不是 403，别暴露「有这条但你看不到」。
         List<WorkRecord> rows = jdbc.query(
-                "SELECT " + COLUMNS + " FROM work WHERE work_id = :workId AND is_adult = 0",
+                "SELECT " + COLUMNS + " FROM work WHERE work_id = :workId AND is_adult = 0"
+                        + (siteScopeEnabled ? " AND site_listed = 1" : ""),
                 new MapSqlParameterSource("workId", workId),
                 MAPPER);
         return rows.stream().findFirst();
@@ -111,18 +140,22 @@ public class WorkRepository {
                                   title_original, aliases, media, episodes,
                                   cover_source_url, cover_cache_key, cover_cached_at,
                                   tags, rating_value, rating_scale, rating_source,
-                                  source, source_id, source_url, created_at, updated_at, deleted_at)
+                                  source, source_id, source_url, created_at, updated_at, deleted_at,
+                                  site_listed)
                 VALUES (:workId, :workType, :title, :summary, :releaseYear,
                         :titleOriginal, :aliasesJson, :media, :episodes,
                         :coverSourceUrl, :coverCacheKey, :coverCachedAt,
                         :tagsJson, :ratingValue, :ratingScale, :ratingSource,
-                        :source, :sourceId, :sourceUrl, :createdAt, :updatedAt, :deletedAt)
+                        :source, :sourceId, :sourceUrl, :createdAt, :updatedAt, :deletedAt,
+                        :siteListed)
                 """;
         // 需要自增主键回填 work_tag.work_ref，所以走 KeyHolder 而不是普通 update。
         KeyHolder keyHolder = new GeneratedKeyHolder();
         jdbc.update(sql, baseParams(record)
                 .addValue("createdAt", record.createdAt())
-                .addValue("updatedAt", record.updatedAt()), keyHolder, new String[]{"id"});
+                .addValue("updatedAt", record.updatedAt())
+                .addValue("siteListed", siteListedFor(record.source(), record.sourceId())),
+                keyHolder, new String[]{"id"});
         Number key = keyHolder.getKey();
         if (key == null) {
             throw new IllegalStateException("插入 work 后拿不到自增主键：" + record.workId());
@@ -157,12 +190,16 @@ public class WorkRepository {
                                 rating_source = :ratingSource,
                                 source_url = :sourceUrl,
                                 deleted_at = :deletedAt,
-                                updated_at = :updatedAt
+                                updated_at = :updatedAt,
+                                -- 每次写入都按当前清单重判：首站可能昨天没收录、今天收了，
+                                -- 反过来下架也一样。只在"新增时算一次"会留下永远不更新的旧值。
+                                site_listed = :siteListed
                 WHERE id = :id
                 """;
         jdbc.update(sql, baseParams(record)
                 .addValue("id", record.id())
-                .addValue("updatedAt", record.updatedAt()));
+                .addValue("updatedAt", record.updatedAt())
+                .addValue("siteListed", siteListedFor(record.source(), record.sourceId())));
         // 评分/年份/标签都可能变，而 work_tag 的索引里冗余了前两者，必须整组重写。
         replaceTags(record.id(), record.tagsJson(), record.title(), record.workType(),
                 record.ratingValue(), record.releaseYear());
@@ -182,6 +219,23 @@ public class WorkRepository {
      * <p>顺带维护成人标记（见 {@link #applyAdultFlag}）：**只在这一条写入路径上算**，
      * 所以「标签改了、标记没跟上」这种状态不存在。
      */
+    /**
+     * 这条作品该不该出现在 app 里：otaku_site 是自己人，直接 1；bangumi 档案按白名单判。
+     *
+     * <p>每次写入都查一次（走 site_scope 的主键，18,828 行），一批 500 条就是 500 次点查——
+     * 相比这条链路里已有的 JSON_TABLE 拆标签 + 整组重写，这点开销可以忽略。
+     * 不缓存：清单是数据侧随时会改的东西，缓存住会让「改完不生效」重新变成谜。
+     */
+    private int siteListedFor(String source, String sourceId) {
+        if (selfSources.contains(source)) {
+            return 1;
+        }
+        Integer hit = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM site_scope WHERE subject_id = CAST(:sourceId AS UNSIGNED)",
+                new MapSqlParameterSource("sourceId", sourceId), Integer.class);
+        return hit != null && hit > 0 ? 1 : 0;
+    }
+
     private void replaceTags(long workRef, String tagsJson, String title, String workType,
                              BigDecimal ratingValue, Integer releaseYear) {
         MapSqlParameterSource params = new MapSqlParameterSource("workRef", workRef);
@@ -198,6 +252,11 @@ public class WorkRepository {
                     .addValue("workType", workType)
                     .addValue("ratingValue", ratingValue)
                     .addValue("releaseYear", releaseYear));
+            // 只在这里同步：work_tag.site_listed 是 work 的冗余，词表与标签筛选不 JOIN work
+            // （V25 实测一 JOIN 就是 14 倍），所以写入后必须立刻对齐，否则词表会冒出
+            // 「只有未收录作品才有」的标签，点进去是空列表。
+            jdbc.update("UPDATE work_tag t JOIN work w ON w.id = t.work_ref"
+                    + " SET t.site_listed = w.site_listed WHERE t.work_ref = :workRef", params);
         }
         applyAdultFlag(workRef, title, params);
     }
@@ -310,17 +369,17 @@ public class WorkRepository {
      * 条件用 {@code work_tag} 的冗余列（`work_type` / `rating_value`），
      * 只有标题关键词必须回表。
      */
-    private static StringBuilder multiTagSelect(MapSqlParameterSource params, String workType,
-                                                String titlePattern, List<String> tags,
-                                                BigDecimal minRating, Integer year) {
+    private StringBuilder multiTagSelect(MapSqlParameterSource params, String workType,
+                                         String titlePattern, List<String> tags,
+                                         BigDecimal minRating, Integer year) {
         return multiTagSelect(params, workType, titlePattern, tags, minRating, year, false);
     }
 
     /** 同上，可以只跳过成人遮挡（算「被藏了多少部」时用）。 */
-    private static StringBuilder multiTagSelect(MapSqlParameterSource params, String workType,
-                                                String titlePattern, List<String> tags,
-                                                BigDecimal minRating, Integer year,
-                                                boolean includeAdult) {
+    private StringBuilder multiTagSelect(MapSqlParameterSource params, String workType,
+                                         String titlePattern, List<String> tags,
+                                         BigDecimal minRating, Integer year,
+                                         boolean includeAdult) {
         params.addValue("tags", tags);
         params.addValue("tagCount", tags.size());
         // 总是 JOIN work：软删过滤必须落在内层（#249），否则 LIMIT 分页会把已删行算进窗口。
@@ -336,8 +395,8 @@ public class WorkRepository {
     }
 
     /** 落在 {@code work_tag} 冗余列上的过滤条件（类型 / 评分下限），外加软删过滤。 */
-    private static void appendTagConditions(StringBuilder sql, MapSqlParameterSource params,
-                                            String workType, BigDecimal minRating, Integer year) {
+    private void appendTagConditions(StringBuilder sql, MapSqlParameterSource params,
+                                     String workType, BigDecimal minRating, Integer year) {
         appendTagConditions(sql, params, workType, minRating, year, false);
     }
 
@@ -347,11 +406,15 @@ public class WorkRepository {
      * <p>注意这里跳的是 {@code t.is_adult}（work_tag 上的冗余列），
      * 与回表版本的 {@code w.is_adult} 语义相同——两列由导入时同一处维护。
      */
-    private static void appendTagConditions(StringBuilder sql, MapSqlParameterSource params,
-                                            String workType, BigDecimal minRating, Integer year,
-                                            boolean includeAdult) {
+    private void appendTagConditions(StringBuilder sql, MapSqlParameterSource params,
+                                     String workType, BigDecimal minRating, Integer year,
+                                     boolean includeAdult) {
         // 调用方保证已 JOIN work w（见 findPage/count 各分支），这里才能过滤软删。
         sql.append(" AND w.deleted_at IS NULL");
+        // 与 appendConditions 同一口径，但落在 work_tag 的冗余列上：这批查询本来就不回表。
+        if (siteScopeEnabled) {
+            sql.append(" AND t.site_listed = 1");
+        }
         // 用 work_tag 上的冗余列，与本方法里 type/rating/year 同一个理由：条件落在同一张索引上，
         // 不必回表看 work.is_adult。
         if (!includeAdult) {
@@ -387,6 +450,8 @@ public class WorkRepository {
                 + " WHERE id <> :excludeId"
                 + " AND deleted_at IS NULL"
                 + " AND is_adult = 0"
+                // 推荐位也不许漏出未收录作品：详情 404、推荐却推得出来，是最难解释的一种不一致。
+                + (siteScopeEnabled ? " AND site_listed = 1" : "")
                 + " AND tags IS NOT NULL"
                 + " AND JSON_OVERLAPS(tags, CAST(:tagsJson AS JSON))"
                 + " ORDER BY rating_value DESC, id DESC"
@@ -489,9 +554,9 @@ public class WorkRepository {
     }
 
     /** 列表的公共过滤条件。列统一带 {@code w.} 前缀，因为按标签查时是 JOIN。 */
-    private static void appendConditions(StringBuilder sql, MapSqlParameterSource params,
-                                         String workType, String titlePattern, BigDecimal minRating,
-                                         Integer year) {
+    private void appendConditions(StringBuilder sql, MapSqlParameterSource params,
+                                  String workType, String titlePattern, BigDecimal minRating,
+                                  Integer year) {
         appendConditions(sql, params, workType, titlePattern, minRating, year, false);
     }
 
@@ -501,11 +566,16 @@ public class WorkRepository {
      * <p>只有「算被藏了多少部」时才会传 true（见 {@code count(..., includeAdult)}）；
      * 软删过滤永远在——下架的作品不能因为要计数就重新出现在结果里。
      */
-    private static void appendConditions(StringBuilder sql, MapSqlParameterSource params,
-                                         String workType, String titlePattern, BigDecimal minRating,
-                                         Integer year, boolean includeAdult) {
+    private void appendConditions(StringBuilder sql, MapSqlParameterSource params,
+                                  String workType, String titlePattern, BigDecimal minRating,
+                                  Integer year, boolean includeAdult) {
         // 软删行（#249）对外一律不可见：列表、搜索、标签、年份四个面都从这里过。
         sql.append(" AND w.deleted_at IS NULL");
+        // 首站收录范围（#370）：与软删、成人同级，是「对外可见」的第三个条件。
+        // 全表扫描下只多 6ms（18.7 万行实测 176ms vs 170ms），不值得为它加索引。
+        if (siteScopeEnabled) {
+            sql.append(" AND w.site_listed = 1");
+        }
         // 成人内容（V25 迁移的那两列）：与软删同级，列表 / 搜索 / 标签 / 年份 / 排行同一口径。
         // 走的是已落库的 is_adult 列，不是查询时解析 tags——实测解析版把计数从 86ms 拖到 2.7s。
         if (!includeAdult) {

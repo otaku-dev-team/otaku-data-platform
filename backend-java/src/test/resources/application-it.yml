@@ -21,6 +21,12 @@ app:
   # 限流本身由 RateLimitIntegrationTest 用独立上下文 + 极小额度验证。
   rate-limit:
     enabled: false
+  work:
+    site-scope:
+      # 「只显示首站收录」在集成测试里关掉：测试库没有 site_scope 清单，
+      # 开着会让所有「导入后能查到」的用例凭空变空。规则本身由
+      # WorkSiteScopeIntegrationTest（properties 里单独打开）+ 生产验证覆盖。
+      enabled: false
   import:
     # 「来源必须登记到站点」的校验在集成测试里关掉：所有用例共用一个库，
     # 别的测试类建的站点会残留下来，开着会让导入用例因为「有站但来源没登记」而红。

@@ -332,6 +332,52 @@ def main(argv: list[str] | None = None) -> int:
     return exit_code
 
 
+def conclusion_line(results: dict, failures: list[dict], gate: dict | None,
+                    selection: dict) -> str:
+    """最后一行结论。
+
+    这里必须看**栈的状态**，不能只看「有没有失败卡片」：测试根本没起来时
+    （依赖缺失、解释器不对）退出码非 0 却一条用例都解析不出来，只看失败卡片
+    就会说「通过」——而这一行是使用者唯一会读的那行。
+    """
+    skipped = [_NAMES[s] for s in select.STACKS
+               if (results.get(s) or {}).get("status") == "skipped"]
+    ran = [_NAMES[s] for s in select.STACKS
+           if results.get(s) and results[s].get("status") != "skipped"]
+    unstable = [s for s in select.STACKS
+                if (results.get(s) or {}).get("status") == "flaky"]
+    broken = [s for s in select.STACKS
+              if (results.get(s) or {}).get("status") == "failed"]
+    gate_failed = gate_failures(gate)
+
+    if failures:
+        new_count = sum(1 for f in failures if f["badge"] == "新增失败")
+        extra = (f"{'、'.join(_GATE_LABELS.get(n, n) for n in gate_failed)}未通过。"
+                 if gate_failed else "")
+        return f"结论：{len(failures)} 项失败（{new_count} 项新增）。{extra}"
+    if broken:
+        return (
+            f"结论：{'、'.join(_NAMES[s] for s in broken)} 失败，但没能解析出失败用例"
+            "（多半是测试没跑起来：依赖缺失或解释器不对）。按失败算，看原始输出。"
+        )
+    if gate_failed:
+        return f"结论：测试通过，但 {'、'.join(_GATE_LABELS.get(n, n) for n in gate_failed)}未通过。"
+    if skipped and not ran:
+        # 「没选中」和「跑不成」是两回事：前者本来就没得跑，后者是工具链缺失。
+        selected_any = any((selection.get(stack) or {}).get("mode") != "none"
+                           for stack in select.STACKS)
+        if not selected_any:
+            gate_note = "，门禁通过。" if gate else "。"
+            return f"结论：没有选中任何测试（改动不触及这三个栈的代码）{gate_note}"
+        return f"结论：什么都没跑成（{'、'.join(skipped)} 都不可用），不等于通过。"
+    if unstable:
+        return (f"结论：{'、'.join(_NAMES[s] for s in unstable)} 疑似不稳定（首跑失败、复跑通过）。"
+                "CI 不会重试，这里按失败算。")
+    if skipped:
+        return f"结论：{'、'.join(ran)} 通过；{'、'.join(skipped)} 没执行（不算通过）。"
+    return "结论：全部通过。可以提交。"
+
+
 def _print_human(payload: dict, results: dict, failures: list[dict],
                  gate: dict | None, args, deploy: list[str] | None = None) -> None:
     for stack in select.STACKS:
@@ -362,36 +408,7 @@ def _print_human(payload: dict, results: dict, failures: list[dict],
         print_gate(gate)
 
     print()
-    skipped = [_NAMES[s] for s in select.STACKS
-               if (results.get(s) or {}).get("status") == "skipped"]
-    ran = [_NAMES[s] for s in select.STACKS
-           if results.get(s) and results[s].get("status") != "skipped"]
-    unstable = [s for s in select.STACKS if (results.get(s) or {}).get("status") == "flaky"]
-    gate_failed = gate_failures(gate)
-    if failures:
-        new_count = sum(1 for f in failures if f["badge"] == "新增失败")
-        extra = (f"{'、'.join(_GATE_LABELS.get(n, n) for n in gate_failed)}未通过。"
-                 if gate_failed else "")
-        print(f"结论：{len(failures)} 项失败（{new_count} 项新增）。{extra}")
-    elif gate_failed:
-        print(f"结论：测试通过，但 {'、'.join(_GATE_LABELS.get(n, n) for n in gate_failed)}未通过。")
-    elif skipped and not ran:
-        # 「没选中」和「跑不成」是两回事：前者本来就没得跑，后者是工具链缺失。
-        selection = payload.get("selection") or {}
-        selected_any = any((selection.get(stack) or {}).get("mode") != "none"
-                           for stack in select.STACKS)
-        if not selected_any:
-            gate_note = "，门禁通过。" if gate else "。"
-            print(f"结论：没有选中任何测试（改动不触及这三个栈的代码）{gate_note}")
-        else:
-            print(f"结论：什么都没跑成（{'、'.join(skipped)} 都不可用），不等于通过。")
-    elif unstable:
-        print(f"结论：{'、'.join(_NAMES[s] for s in unstable)} 疑似不稳定（首跑失败、复跑通过）。"
-              "CI 不会重试，这里按失败算。")
-    elif skipped:
-        print(f"结论：{'、'.join(ran)} 通过；{'、'.join(skipped)} 没执行（不算通过）。")
-    else:
-        print("结论：全部通过。可以提交。")
+    print(conclusion_line(results, failures, gate, payload.get("selection") or {}))
 
     # 改了配置/部署时选不到测试，光说「全部通过」会让人以为验过了——把人交给 smoke。
     if deploy and not any((results.get(stack) or {}).get("status") != "skipped"
