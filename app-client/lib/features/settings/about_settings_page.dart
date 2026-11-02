@@ -100,6 +100,11 @@ class _BrandCard extends StatelessWidget {
       color: theme.colorScheme.onSurfaceVariant,
     );
 
+    // 站点键与归属方都可能没注入（编辑器里直跑），空字符串就别硬摆出来，
+    // 否则界面上会留一个空白的右对齐文本、或一句「归属于 ；」。
+    final siteId = AppConfig.siteId;
+    final company = AppConfig.brandCompany;
+
     return SettingsCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -108,13 +113,14 @@ class _BrandCard extends StatelessWidget {
             children: [
               const BrandMark(size: 40),
               const Spacer(),
-              Text(AppConfig.siteId, style: soft),
+              if (siteId.isNotEmpty) Text(siteId, style: soft),
             ],
           ),
           const SizedBox(height: 12),
           Text(
-            '客户端与数据归属 ${AppConfig.brandCompany}；'
-            '作品与资讯的版权归来源站与原权利人所有。',
+            company.isEmpty
+                ? '作品与资讯的版权归来源站与原权利人所有。'
+                : '客户端与数据归属 $company；作品与资讯的版权归来源站与原权利人所有。',
             style: soft?.copyWith(height: 1.5),
           ),
         ],

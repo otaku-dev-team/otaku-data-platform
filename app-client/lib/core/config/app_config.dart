@@ -87,18 +87,14 @@ abstract final class AppConfig {
 
   /// 站点键，与后端 `site` 表的 `site_key` 同一个值。
   ///
-  /// 页面文案里不该出现它（那是给日志与排查用的），但「关于」页要能一眼看出
-  /// 这个包是哪个站烘出来的——换站交付时最常见的误装就是装错站。
-  static const String siteId = String.fromEnvironment(
-    'SITE_ID',
-    defaultValue: 'otaku_site',
-  );
+  /// 默认**留空**，不写死某个站的值：这是白标核心代码，
+  /// `scripts/check-site-isolation.py` 会把这些标记当成隔离被破坏
+  /// （2026-11-02 第一版就是因为默认值写了站名被 CI 拦下的）。
+  /// 「关于」页在它为空时不显示这一行。
+  static const String siteId = String.fromEnvironment('SITE_ID');
 
-  /// 品牌归属方（页脚版权行）。同样由 `site.conf` 注入。
-  static const String brandCompany = String.fromEnvironment(
-    'BRAND_COMPANY',
-    defaultValue: 'com.otaku',
-  );
+  /// 品牌归属方（页脚版权行）。同样由 `site.conf` 注入，默认留空。
+  static const String brandCompany = String.fromEnvironment('BRAND_COMPANY');
 
   /// 徽标上那个字：站名首字。
   ///
