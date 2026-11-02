@@ -28,6 +28,31 @@
             "args": [
                 "--dart-define=USE_MOCK=false"
             ]
+        },
+        {
+            // 模拟器一键更新：编译 debug 包 → 装进模拟器 → 保持热重载通道。
+            // 跑起来后改代码保存即热重载；改 pubspec/资源/原生代码要重启本次调试。
+            // 设备号取 `adb devices` 里显示的编号，换机型/多开模拟器时改这里。
+            "name": "otaku_app · Android 模拟器（联调真数据）",
+            "type": "dart",
+            "request": "launch",
+            "program": "${workspaceFolder}/app-client/lib/main.dart",
+            "cwd": "${workspaceFolder}/app-client",
+            "deviceId": "emulator-5554",
+            "args": [
+                "--dart-define=USE_MOCK=false",
+                "--dart-define=API_BASE_URL=http://154.8.194.198:8080",
+                "--dart-define=SITE_BASE_URL=http://154.8.194.198:8000"
+            ]
+        },
+        {
+            // 同一条命令的离线版：不连后端，走内置假数据，纯调 UI 用。
+            "name": "otaku_app · Android 模拟器（假数据，离线调 UI）",
+            "type": "dart",
+            "request": "launch",
+            "program": "${workspaceFolder}/app-client/lib/main.dart",
+            "cwd": "${workspaceFolder}/app-client",
+            "deviceId": "emulator-5554"
         }
     ]
 }

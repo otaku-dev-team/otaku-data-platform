@@ -41,3 +41,6 @@ devkit/.state/
 
 # AI 会话记忆目录（非项目代码，不应提交）
 .workbuddy/
+
+# IDE 工程配置（各人本地不同，不入库）
+.idea/

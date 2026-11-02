@@ -60,6 +60,29 @@ flutter run -d windows
 flutter run -d <device-id>
 ```
 
+### Android 模拟器（本机）
+
+模拟器是**空设备**，和工程没有绑定关系：`flutter emulators --launch` 只负责开机，**不装包**。
+所以顺序永远是「先开机、再 `flutter run`」——构建、安装、启动、热重载一条龙：
+
+```powershell
+flutter emulators --launch Pixel_5_API_35     # 只开机
+flutter run -d emulator-5554                  # 装包 + 启动（默认 USE_MOCK=true，不依赖后端）
+```
+
+- **本机 GPU 要用 `angle_indirect`。** 默认（auto/gfxstream）在 Intel Xe 上跑完 Flutter 应用后会黑屏：
+  窗口里只剩状态栏和导航条，`adb shell screencap` 抓出来也是黑的，重装 app 也没用。直接起模拟器时带上参数：
+
+  ```powershell
+  D:\Android\Sdk\emulator\emulator.exe -avd Pixel_5_API_35 -gpu angle_indirect
+  ```
+
+  探针脚本 `.workbuddy/tmp/mobile_shot.sh` 一直用的是 `-gpu angle_indirect`，同理。
+- 装过一次之后 app 会留在设备上，**重启模拟器仍在**；只有 `-wipe-data` 或删 userdata 才会丢
+  （`P5_probe` 是探针专用 AVD，userdata 清过就成空设备，用之前先装一次）。
+- 只想装包不调试：`flutter install -d emulator-5554`，或
+  `adb install -r build\app\outputs\flutter-apk\app-debug.apk`（改完代码要先 `flutter build apk --debug`）。
+
 ### 按站构建（交付用）
 
 日常 `flutter run` 不要用这个。它面向「给某个站点出一个包」：
