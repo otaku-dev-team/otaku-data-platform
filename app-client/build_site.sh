@@ -314,23 +314,28 @@ printf '[build_site] 产物：%s（%s）\n' "$artifact" "$(du -h "$artifact" | c
 # 所以 APK 必须按成员解出来再查，否则这个自检对 Android 包是**恒假阴性**——
 # 而它恰恰是「换站有没有真烘进去」唯一的自动证据。
 brand_hit() {
-  local target="$1" member tmp
+  local target="$1" member tmp hit=""
   if [ -d "$target" ]; then
     grep -qrla -- "$APP_NAME" "$target" 2>/dev/null | head -n 1
     return
   fi
   case "$target" in
     *.apk)
+      # 不用 mktemp：git-bash 下它回的是 `C:\Users\…\Temp/tmp.xxx`，带盘符的
+      # 路径会被删除拦截器拒绝（[safe-delete] SAFE_DELETE_INVALID_PATH），
+      # 每次构建刷一行假警报。临时文件就地放 build/（同盘、已忽略）。
+      tmp="build/.brand_hit.$$.tmp"
       for member in $(unzip -Z1 "$target" 2>/dev/null | grep -E '(kernel_blob\.bin|libapp\.so)$'); do
-        tmp="$(mktemp)"
-        unzip -p "$target" "$member" > "$tmp" 2>/dev/null
-        if grep -qa -- "$APP_NAME" "$tmp"; then
-          rm -f "$tmp"
-          printf '%s' "$member"
-          return
+        unzip -p "$target" "$member" > "$tmp" 2>/dev/null || true
+        if grep -qa -- "$APP_NAME" "$tmp" 2>/dev/null; then
+          hit="$member"
+          break
         fi
-        rm -f "$tmp"
       done
+      rm -f "$tmp" 2>/dev/null || true
+      if [ -n "$hit" ]; then
+        printf '%s' "$hit"
+      fi
       ;;
     *)
       if grep -qa -- "$APP_NAME" "$target" 2>/dev/null; then
