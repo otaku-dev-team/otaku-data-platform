@@ -3,10 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/network/api_exception.dart';
+import '../../core/platform_info.dart';
 import '../../core/router/route_paths.dart';
 import '../../core/theme/app_layout.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/theme/design_tokens.dart';
 import '../../data/models/article.dart';
+import '../../shared/widgets/account_menu.dart';
 import '../../shared/widgets/desktop_nav_shell.dart';
 import '../../shared/widgets/mobile_nav_bar.dart';
 import '../../shared/widgets/empty_state.dart';
@@ -52,6 +55,12 @@ class _ArticleListPageState extends ConsumerState<ArticleListPage> {
     }
   }
 
+  void _selectCategory(String? category) {
+    if (ref.read(articleFilterProvider).category == category) return;
+    if (_scrollController.hasClients) _scrollController.jumpTo(0);
+    ref.read(articleFilterProvider.notifier).selectCategory(category);
+  }
+
   @override
   Widget build(BuildContext context) {
     final filter = ref.watch(articleFilterProvider);
@@ -64,11 +73,13 @@ class _ArticleListPageState extends ConsumerState<ArticleListPage> {
         appBar: AppBar(
           title: const Text('最新资讯'),
           actions: [
-            IconButton(
-              tooltip: '作品库',
-              onPressed: () => context.go(RoutePaths.contents),
-              icon: const Icon(Icons.video_library_outlined),
-            ),
+            if (PlatformInfo.isDesktop)
+              IconButton(
+                tooltip: '作品库',
+                onPressed: () => context.go(RoutePaths.contents),
+                icon: const Icon(Icons.video_library_outlined),
+              ),
+            if (!PlatformInfo.isDesktop) const AccountMenuButton(),
           ],
         ),
         body: Center(
@@ -76,14 +87,22 @@ class _ArticleListPageState extends ConsumerState<ArticleListPage> {
             constraints: const BoxConstraints(maxWidth: AppLayout.listMaxWidth),
             child: Column(
               children: [
-                _CategoryRow(
-                  selected: filter.category,
-                  categories: categories.value ?? const [],
-                  total: list.value?.total,
-                  onSelected: (category) => ref
-                      .read(articleFilterProvider.notifier)
-                      .selectCategory(category),
-                ),
+                if (PlatformInfo.isDesktop)
+                  _CategoryRow(
+                    selected: filter.category,
+                    categories: categories.value ?? const [],
+                    total: list.value?.total,
+                    onSelected: _selectCategory,
+                  )
+                else
+                  _MobileCategoryPicker(
+                    selected: filter.category,
+                    categories: categories.value ?? const [],
+                    total: list.value?.filter == filter
+                        ? list.value?.total
+                        : null,
+                    onSelected: _selectCategory,
+                  ),
                 Expanded(child: _buildBody(filter, list)),
               ],
             ),
@@ -115,8 +134,9 @@ class _ArticleListPageState extends ConsumerState<ArticleListPage> {
         children: [
           _LoadMoreErrorBar(
             error: error,
+            message: '刷新失败，当前展示上次的资讯',
             onRetry: () =>
-                ref.read(articleListControllerProvider.notifier).loadMore(),
+                ref.read(articleListControllerProvider.notifier).refresh(),
           ),
           Expanded(child: _buildList(data)),
         ],
@@ -143,16 +163,21 @@ class _ArticleListPageState extends ConsumerState<ArticleListPage> {
                 ? Icons.newspaper_outlined
                 : Icons.filter_alt_off_outlined,
             title: category == null ? '还没有资讯' : '这个分类下暂时没有资讯',
-            message: category == null
-                ? '等同步任务跑完就有了'
-                : '换个分类看看，或点「全部」看所有资讯',
+            message: category == null ? '等同步任务跑完就有了' : '换个分类看看，或点「全部」看所有资讯',
             // 空态给一个明确出口：桌面端没有下拉手势，手机端也未必想得到。
-            action: FilledButton.tonalIcon(
-              onPressed: () =>
-                  ref.read(articleListControllerProvider.notifier).refresh(),
-              icon: const Icon(Icons.refresh_rounded),
-              label: const Text('刷新'),
-            ),
+            action: !PlatformInfo.isDesktop && category != null
+                ? FilledButton.tonalIcon(
+                    onPressed: () => _selectCategory(null),
+                    icon: const Icon(Icons.newspaper_outlined),
+                    label: const Text('查看全部资讯'),
+                  )
+                : FilledButton.tonalIcon(
+                    onPressed: () => ref
+                        .read(articleListControllerProvider.notifier)
+                        .refresh(),
+                    icon: const Icon(Icons.refresh_rounded),
+                    label: const Text('刷新'),
+                  ),
           ),
         ],
       ),
@@ -184,7 +209,11 @@ class _ArticleListPageState extends ConsumerState<ArticleListPage> {
             article: item,
             // 第一条走头条版式：一屏之内先给一条「今天的重点」，
             // 剩下的按时间排。资讯类列表全是同规格小卡时没有主次。
-            featured: index == 0,
+            // 大字号时采用内容自适应高度，避免固定头图把长标题或原文入口裁掉。
+            featured:
+                index == 0 &&
+                (PlatformInfo.isDesktop ||
+                    MediaQuery.textScalerOf(context).scale(1) <= 1.3),
             onTap: () => context.push(RoutePaths.articleDetail(item.articleId)),
           );
         },
@@ -219,13 +248,145 @@ class _ArticleListPageState extends ConsumerState<ArticleListPage> {
           child: Text(
             '已经到底了，共 ${data.total} 条',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
           ),
         ),
       );
     }
     return const SizedBox(height: 8);
+  }
+}
+
+/// 手机分类用一个明确入口，所有分类都能在可滚动面板里找到。
+class _MobileCategoryPicker extends StatelessWidget {
+  const _MobileCategoryPicker({
+    required this.selected,
+    required this.categories,
+    required this.total,
+    required this.onSelected,
+  });
+
+  final String? selected;
+  final List<ArticleCategory> categories;
+  final int? total;
+  final ValueChanged<String?> onSelected;
+
+  Future<void> _open(BuildContext context) => showModalBottomSheet<void>(
+    context: context,
+    useSafeArea: true,
+    isScrollControlled: true,
+    showDragHandle: true,
+    constraints: BoxConstraints(
+      maxHeight: MediaQuery.sizeOf(context).height * 0.75,
+    ),
+    builder: (sheetContext) => SafeArea(
+      top: false,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: Space.s4),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '资讯分类',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                ),
+                IconButton(
+                  tooltip: '关闭分类',
+                  onPressed: () => Navigator.pop(sheetContext),
+                  icon: const Icon(Icons.close_rounded),
+                ),
+              ],
+            ),
+          ),
+          Flexible(
+            child: ListView(
+              shrinkWrap: true,
+              padding: const EdgeInsets.all(Space.s4),
+              children: [
+                _categoryTile(sheetContext, '全部资讯', null, null),
+                for (final category in categories)
+                  _categoryTile(
+                    sheetContext,
+                    category.name,
+                    category.name,
+                    category.count,
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+
+  Widget _categoryTile(
+    BuildContext context,
+    String label,
+    String? value,
+    int? count,
+  ) {
+    final active = selected == value;
+    return ListTile(
+      selected: active,
+      selectedColor: AppTheme.brandInk(context),
+      title: Text(label),
+      subtitle: count == null ? null : Text('$count 条资讯'),
+      trailing: active ? const Icon(Icons.check_rounded) : null,
+      onTap: () {
+        Navigator.pop(context);
+        onSelected(value);
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        Space.s4,
+        Space.s2,
+        Space.s4,
+        Space.s2,
+      ),
+      child: OutlinedButton(
+        onPressed: () => _open(context),
+        style: OutlinedButton.styleFrom(
+          minimumSize: const Size(0, Space.s12),
+          padding: const EdgeInsets.all(Space.s3),
+          shape: RoundedRectangleBorder(borderRadius: Radii.circularMd()),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.filter_list_rounded),
+            const SizedBox(width: Space.s3),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    selected ?? '全部资讯',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (total != null)
+                    Text(
+                      '共 $total 条',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(width: Space.s2),
+            const Icon(Icons.expand_more_rounded),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -259,7 +420,13 @@ class _CategoryRow extends StatelessWidget {
             right: AppLayout.pagePadding,
           ),
           children: [
-            _chip(context, label: '全部', count: total, isSelected: selected == null, onTap: () => onSelected(null)),
+            _chip(
+              context,
+              label: '全部',
+              count: total,
+              isSelected: selected == null,
+              onTap: () => onSelected(null),
+            ),
             for (final category in categories)
               _chip(
                 context,
@@ -293,8 +460,8 @@ class _CategoryRow extends StatelessWidget {
               Text(
                 '$count',
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
             ],
           ],
@@ -337,10 +504,15 @@ class _ArticleSkeleton extends StatelessWidget {
 
 /// 加载更多失败时的条。保留已有内容，只把失败与重试入口摆在列表下方。
 class _LoadMoreErrorBar extends StatelessWidget {
-  const _LoadMoreErrorBar({required this.error, required this.onRetry});
+  const _LoadMoreErrorBar({
+    required this.error,
+    required this.onRetry,
+    this.message,
+  });
 
   final ApiException error;
   final VoidCallback onRetry;
+  final String? message;
 
   @override
   Widget build(BuildContext context) {
@@ -363,10 +535,9 @@ class _LoadMoreErrorBar extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              '加载更多失败：${error.message}',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: scheme.onErrorContainer,
-                  ),
+              message ?? '加载更多失败：${error.message}',
+              style: Theme.of(context).textTheme.bodySmall
+                  ?.copyWith(color: scheme.onErrorContainer),
             ),
           ),
           TextButton(

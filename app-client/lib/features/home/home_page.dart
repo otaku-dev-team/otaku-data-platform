@@ -13,7 +13,6 @@ import '../../core/theme/design_tokens.dart';
 import '../../data/models/article.dart';
 import '../../data/models/schedule.dart';
 import '../../data/models/work_summary.dart';
-import '../../data/models/work_type.dart';
 import '../../shared/widgets/account_menu.dart';
 import '../../shared/widgets/cover_image.dart';
 import '../../shared/widgets/compact_work_card.dart';
@@ -22,12 +21,14 @@ import '../../shared/widgets/desktop_nav_shell.dart';
 import '../../shared/widgets/mobile_nav_bar.dart';
 import '../../shared/widgets/desktop_shortcuts.dart';
 import '../article/article_card.dart';
-import '../contents/catalog_counts.dart';
 import '../contents/contents_controller.dart';
 import '../recent/recent_views_controller.dart';
 import 'home_controller.dart';
 
-/// 首页：把站点首页那四块聚合在一起——分类浏览 / 本日新番 / 高分作品 / 最新资讯。
+/// 首页：把站点首页那几块聚合在一起——高分精选 / 本日新番 / 高分作品 / 最新资讯。
+///
+/// 「分类浏览」这一排入口在 2026-11-02 下线：底部导航的「浏览」页已经有完整的
+/// 类型筛选，首页再放一排只会把「今天有什么」挤到第二屏。
 ///
 /// 三条设计取舍：
 ///
@@ -65,13 +66,13 @@ class HomePage extends ConsumerWidget {
                   onPressed: () => _refresh(ref),
                   icon: const Icon(Icons.refresh_rounded),
                 ),
-              // 手机上没有侧栏，设置只能从这里进。放在账号入口左边：
-              // 账号是「我是谁」，设置是「这个应用怎么表现」，都不是内容。
-              IconButton(
-                tooltip: '设置',
-                onPressed: () => context.push(RoutePaths.settings),
-                icon: const Icon(Icons.settings_outlined),
-              ),
+              // 手机设置集中到各主页面共用的「我的」，桌面保留直接入口。
+              if (PlatformInfo.isDesktop)
+                IconButton(
+                  tooltip: '设置',
+                  onPressed: () => context.push(RoutePaths.settings),
+                  icon: const Icon(Icons.settings_outlined),
+                ),
               const AccountMenuButton(),
               const SizedBox(width: 8),
             ],
@@ -83,17 +84,21 @@ class HomePage extends ConsumerWidget {
               // 内容不足一屏时也要能下拉：否则短屏/大字号下刷新手势失效。
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.only(top: 4, bottom: 24),
-              children: const [
+              children: [
                 // 公告条自己判有没有公告：没有时渲染 SizedBox.shrink()，
                 // 所以这里可以无条件放着，不用在页面里读一次配置
-                ConfigNoticeBar(),
-                _SearchEntry(),
-                _FeaturedHero(),
-                _RecentViewsSection(),
-                _TypeBrowseSection(),
-                _TodayScheduleSection(),
-                _TopRatedSection(),
-                _LatestArticlesSection(),
+                const ConfigNoticeBar(),
+                const _SearchEntry(),
+                if (PlatformInfo.isDesktop) ...[
+                  const _RecentViewsSection(),
+                  const _TodayScheduleSection(),
+                ] else ...[
+                  const _FeaturedHero(),
+                  const _TodayScheduleSection(),
+                  const _RecentViewsSection(),
+                ],
+                const _TopRatedSection(),
+                const _LatestArticlesSection(),
               ],
             ),
           ),
@@ -228,9 +233,9 @@ class _SearchEntry extends StatelessWidget {
           side: BorderSide(color: AppTheme.borderColor(context), width: 0.5),
         ),
         child: InkWell(
-          onTap: () => context.go(RoutePaths.contents),
+          onTap: () => context.go(RoutePaths.contentsSearch),
           child: SizedBox(
-            height: 46,
+            height: Space.s12 + Space.s2,
             child: Row(
               children: [
                 const SizedBox(width: 14),
@@ -242,7 +247,7 @@ class _SearchEntry extends StatelessWidget {
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    '搜索作品名或标签',
+                    '搜索感兴趣的作品',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.bodyMedium?.copyWith(
@@ -333,19 +338,20 @@ class _SectionHeader extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          Text(
-            title,
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w700,
+          Expanded(
+            child: Text(
+              title,
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
-          const Spacer(),
           ?trailing,
           if (onMore != null)
             TextButton(
               onPressed: onMore,
               style: TextButton.styleFrom(
-                minimumSize: const Size(0, 32),
+                minimumSize: const Size(0, Space.s12),
                 padding: const EdgeInsets.symmetric(horizontal: 8),
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
@@ -559,7 +565,7 @@ class _RecentViewsSection extends ConsumerWidget {
             trailing: TextButton(
               onPressed: () => context.push(RoutePaths.recentHistory),
               style: TextButton.styleFrom(
-                minimumSize: const Size(0, 32),
+                minimumSize: const Size(0, Space.s12),
                 padding: const EdgeInsets.symmetric(horizontal: 8),
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
@@ -583,18 +589,22 @@ class _RecentViewsSection extends ConsumerWidget {
   }
 }
 
-/// 首页顶部「高分精选」大图卡。
+/// 首页顶部的「高分精选」：三张海报同框，中间大、两边小，全部正面竖贴。
 ///
-/// 参考资讯类 / 番剧类客户端的 breaking banner：整行大图 + 底部渐变压暗 +
-/// 标题与元信息。**只在手机端出现**——桌面首屏已经有侧栏和更宽的横排，
-/// 再加一块大图会把首屏撑满。
+/// 版式取自站点首页那组作品轮换，但有三处**故意不同**：
 ///
-/// 数据复用「高分作品」的前几条，不新开请求：首页是入口，不值得为一张
-/// banner 多打一次接口。加载中给同高占位，避免数据到位后整页往下跳。
+/// 1. **不倾斜**。站点那组是斜着铺开的，海报四角会被裁掉；这里一律正面，
+///    封面信息完整——海报是内容，不是背景装饰。
+/// 2. **中间大、两边小**（约 1.4 倍）。三张等大时分不清哪张是「当前」，
+///    差得再多又像手风琴。
+/// 3. **作品、标题、左右按钮、页码全在一张卡里**。散在页面上会各走各的，
+///    看着像四个互不相干的组件。
 ///
-/// 手机端每 5 秒在「高分作品」里自动换一张（最多 5 张），右上角点状指示
-/// 当前是第几张。定时器随页面销毁取消、切后台暂停——否则测试会报
-/// pending timer，真机也会一直唤醒页面。
+/// 数据复用「高分作品」的前几条，不新开请求。最多 5 张：10 张全轮一遍要
+/// 近一分钟，用户看不到第一张之外的差别。
+///
+/// 自动轮换 5 秒；点两侧按钮或左右滑动**立即**切换并重新计时；切后台、
+/// 切主页面、开启减少动态效果时暂停（`Timer.periodic` 不会自己停）。
 class _FeaturedHero extends ConsumerStatefulWidget {
   const _FeaturedHero();
 
@@ -604,8 +614,6 @@ class _FeaturedHero extends ConsumerStatefulWidget {
 
 class _FeaturedHeroState extends ConsumerState<_FeaturedHero>
     with WidgetsBindingObserver {
-  static const double _height = 200;
-
   /// 一次最多轮几张。10 张全轮一遍要近一分钟，用户看不到第一张之外的差别。
   static const int _maxSlides = 5;
 
@@ -614,6 +622,7 @@ class _FeaturedHeroState extends ConsumerState<_FeaturedHero>
 
   Timer? _timer;
   int _index = 0;
+  double _dragDistance = 0;
 
   /// 当前分支是否在前台可见。
   ///
@@ -622,12 +631,13 @@ class _FeaturedHeroState extends ConsumerState<_FeaturedHero>
   /// 会自动停，但 `Timer.periodic` 不会——不处理的话，人在资讯页时首页
   /// 仍在每 5 秒重建一次（看不见，但白耗电）。这里跟着 TickerMode 停表。
   bool _visible = true;
+  bool _foreground = true;
+  bool _reduceMotion = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _startTimer();
   }
 
   @override
@@ -635,14 +645,12 @@ class _FeaturedHeroState extends ConsumerState<_FeaturedHero>
     super.didChangeDependencies();
     // `TickerMode.valuesOf` 建立了依赖：切 tab 时会回到这里。
     final visible = TickerMode.valuesOf(context).enabled;
-    if (visible == _visible) return;
+    final reduceMotion =
+        MediaQuery.disableAnimationsOf(context) ||
+        MediaQuery.accessibleNavigationOf(context);
     _visible = visible;
-    if (visible) {
-      _startTimer();
-    } else {
-      _timer?.cancel();
-      _timer = null;
-    }
+    _reduceMotion = reduceMotion;
+    _startTimer();
   }
 
   @override
@@ -657,29 +665,30 @@ class _FeaturedHeroState extends ConsumerState<_FeaturedHero>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // 后台停表：既省电，也避免回到前台时一次连跳好几张。
-    if (state == AppLifecycleState.resumed) {
-      _startTimer();
-    } else {
-      _timer?.cancel();
-      _timer = null;
-    }
+    _foreground = state == AppLifecycleState.resumed;
+    _startTimer();
   }
 
   void _startTimer() {
     _timer?.cancel();
     // 不可见就不排表：`didChangeAppLifecycleState(resumed)` 也会走到这里，
     // 回到前台时人在别的 tab，同样不该起表。
-    if (!_visible) return;
+    if (!_visible || !_foreground || _reduceMotion) return;
     _timer = Timer.periodic(_interval, (_) => _advance());
   }
 
-  void _advance() {
+  void _advance([int direction = 1]) {
     if (!mounted || PlatformInfo.isDesktop) return;
     final items = ref.read(homeTopRatedProvider).value;
     if (items == null) return;
     final count = items.length < _maxSlides ? items.length : _maxSlides;
     if (count <= 1) return;
-    setState(() => _index = (_index + 1) % count);
+    setState(() => _index = (_index + direction) % count);
+  }
+
+  void _browseSlide(int direction) {
+    _advance(direction);
+    _startTimer();
   }
 
   @override
@@ -688,22 +697,26 @@ class _FeaturedHeroState extends ConsumerState<_FeaturedHero>
 
     final theme = Theme.of(context);
     final topRated = ref.watch(homeTopRatedProvider);
-    final radius = BorderRadius.circular(AppTheme.cardRadius);
     const padding = EdgeInsets.fromLTRB(
       AppLayout.pagePadding,
-      4,
+      Space.s1,
       AppLayout.pagePadding,
-      4,
+      Space.s5,
     );
 
     if (!topRated.hasValue) {
+      // 高分区块自己会报错和重试，这里不长期保留占位。
+      if (topRated.hasError) return const SizedBox.shrink();
       return Padding(
         padding: padding,
-        child: Container(
-          height: _height,
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surfaceContainerHighest,
-            borderRadius: radius,
+        child: _FeaturedFrame(
+          child: AspectRatio(
+            aspectRatio: 1.45,
+            child: ColoredBox(
+              color: theme.colorScheme.surfaceContainerHighest.withValues(
+                alpha: 0.6,
+              ),
+            ),
           ),
         ),
       );
@@ -718,144 +731,163 @@ class _FeaturedHeroState extends ConsumerState<_FeaturedHero>
         : items;
     final slideIndex = _index % slides.length;
     final work = slides[slideIndex];
+    final hasSiblings = slides.length > 1;
+    final previous = hasSiblings
+        ? slides[(slideIndex - 1 + slides.length) % slides.length]
+        : null;
+    final following = hasSiblings
+        ? slides[(slideIndex + 1) % slides.length]
+        : null;
+
     final rating = work.mainRating;
     final meta = [
       work.workType.label,
       if (work.releaseYear != null) '${work.releaseYear}',
       if (rating != null) '★ ${rating.value.toStringAsFixed(1)}',
     ].join(' · ');
-    final firstChar = work.title.characters.isEmpty
-        ? null
-        : work.title.characters.first;
 
     return Padding(
       padding: padding,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          borderRadius: radius,
-          border: Border.all(color: AppTheme.borderColor(context), width: 0.5),
-          boxShadow: AppTheme.cardShadow,
-        ),
-        child: ClipRRect(
-          borderRadius: radius,
+      child: GestureDetector(
+        key: const ValueKey('home-featured-carousel'),
+        behavior: HitTestBehavior.opaque,
+        onHorizontalDragStart: (_) {
+          _dragDistance = 0;
+          _timer?.cancel();
+        },
+        onHorizontalDragUpdate: (details) =>
+            _dragDistance += details.primaryDelta ?? 0,
+        onHorizontalDragCancel: _startTimer,
+        onHorizontalDragEnd: (details) {
+          final velocity = details.primaryVelocity ?? 0;
+          if (_dragDistance.abs() >= Space.s10 || velocity.abs() > 80) {
+            final direction = velocity.abs() > 80 ? velocity : _dragDistance;
+            _browseSlide(direction < 0 ? 1 : -1);
+          } else {
+            _startTimer();
+          }
+        },
+        child: _FeaturedFrame(
           child: Material(
             color: Colors.transparent,
             child: InkWell(
               onTap: () => context.push(RoutePaths.workDetail(work.workId)),
-              child: SizedBox(
-                height: _height,
-                child: Stack(
-                  fit: StackFit.expand,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  Space.s2,
+                  Space.s3,
+                  Space.s2,
+                  Space.s3,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 450),
-                      switchInCurve: Curves.easeOut,
-                      switchOutCurve: Curves.easeIn,
-                      // 默认 layoutBuilder 只按子节点自身尺寸堆叠；这里的子节点是
-                      // `StackFit.expand`，必须显式给 expand 约束，否则切换瞬间
-                      // 会退回 0 尺寸、整块闪一下。
-                      layoutBuilder: (currentChild, previousChildren) => Stack(
-                        fit: StackFit.expand,
-                        children: [...previousChildren, ?currentChild],
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: Space.s1,
                       ),
-                      child: KeyedSubtree(
-                        key: ValueKey(work.workId),
-                        child: Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            // 头图背景不贴来源角标：它会被压在标题/元信息上，
-                            // 而且这张图的职责是氛围，不是「这条来自哪」。
-                            CoverImage(
-                              url: work.coverUrl,
-                              width: double.infinity,
-                              height: double.infinity,
-                              radius: 0,
-                              placeholderLabel: firstChar,
-                              // 无封面时走深色渐变占位，而不是海报用的斜纹——
-                              // 斜纹放大到 1000px 宽会变成一块喧宾夺主的条纹布。
-                              placeholderStyle: CoverPlaceholderStyle.hero,
+                      child: Row(
+                        children: [
+                          Text(
+                            '高分精选',
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                              letterSpacing: 1.5,
                             ),
-                            // 底部压暗，保证白字在浅色封面上也能读。
-                            const DecoratedBox(
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  begin: Alignment.topCenter,
-                                  end: Alignment.bottomCenter,
-                                  colors: [
-                                    Color(0x000B1620),
-                                    Color(0xE60B1620),
-                                  ],
-                                  stops: [0.35, 1],
-                                ),
+                          ),
+                          const Spacer(),
+                          if (hasSiblings)
+                            Text(
+                              '${slideIndex + 1} / ${slides.length}',
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
                               ),
                             ),
-                            Positioned(
-                              left: 16,
-                              right: 16,
-                              bottom: 14,
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: Space.s2),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        _CarouselArrow(
+                          tooltip: '上一部精选',
+                          icon: Icons.chevron_left_rounded,
+                          onPressed: hasSiblings
+                              ? () => _browseSlide(-1)
+                              : null,
+                        ),
+                        Expanded(
+                          child: AnimatedSwitcher(
+                            duration: _reduceMotion
+                                ? Duration.zero
+                                : const Duration(milliseconds: 220),
+                            switchInCurve: Curves.easeOut,
+                            switchOutCurve: Curves.easeIn,
+                            // 子节点是带 Expanded 的 Row：默认 layoutBuilder
+                            // 只按子节点自身尺寸堆叠，切换瞬间会缩成 0 宽再弹回，
+                            // 这里显式给 expand 约束。
+                            layoutBuilder: (currentChild, previousChildren) =>
+                                Stack(
+                                  alignment: Alignment.center,
+                                  children: [...previousChildren, ?currentChild],
+                                ),
+                            child: KeyedSubtree(
+                              key: ValueKey(work.workId),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.center,
                                 children: [
-                                  Text(
-                                    '高分精选',
-                                    style: theme.textTheme.labelSmall?.copyWith(
-                                      color: Colors.white.withValues(
-                                        alpha: 0.75,
-                                      ),
-                                      letterSpacing: 1,
+                                  if (previous != null)
+                                    Expanded(
+                                      flex: 85,
+                                      child: _PosterCard(work: previous),
+                                    ),
+                                  if (previous != null)
+                                    const SizedBox(width: Space.s2),
+                                  Expanded(
+                                    flex: 120,
+                                    child: _PosterCard(
+                                      work: work,
+                                      elevated: true,
                                     ),
                                   ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    work.title,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: theme.textTheme.titleLarge?.copyWith(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.w700,
-                                      height: 1.25,
+                                  if (following != null)
+                                    const SizedBox(width: Space.s2),
+                                  if (following != null)
+                                    Expanded(
+                                      flex: 85,
+                                      child: _PosterCard(work: following),
                                     ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    meta,
-                                    style: theme.textTheme.bodySmall?.copyWith(
-                                      color: Colors.white.withValues(
-                                        alpha: 0.85,
-                                      ),
-                                    ),
-                                  ),
                                 ],
                               ),
                             ),
-                          ],
+                          ),
                         ),
+                        _CarouselArrow(
+                          tooltip: '下一部精选',
+                          icon: Icons.chevron_right_rounded,
+                          onPressed: hasSiblings ? () => _browseSlide(1) : null,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: Space.s3),
+                    Text(
+                      work.title,
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
-                    // 指示点放右上角：底部左侧是标题/元信息，放右边会被长标题压住。
-                    if (slides.length > 1)
-                      Positioned(
-                        top: 12,
-                        right: 12,
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            for (var i = 0; i < slides.length; i++)
-                              AnimatedContainer(
-                                duration: const Duration(milliseconds: 250),
-                                margin: const EdgeInsets.only(left: 4),
-                                width: i == slideIndex ? 14 : 5,
-                                height: 5,
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withValues(
-                                    alpha: i == slideIndex ? 0.95 : 0.45,
-                                  ),
-                                  borderRadius: BorderRadius.circular(999),
-                                ),
-                              ),
-                          ],
-                        ),
+                    const SizedBox(height: 2),
+                    Text(
+                      meta,
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
                       ),
+                    ),
                   ],
                 ),
               ),
@@ -867,160 +899,84 @@ class _FeaturedHeroState extends ConsumerState<_FeaturedHero>
   }
 }
 
-/// 分类浏览：四个类型入口。
+/// 装下三张海报、标题和两侧按钮的那张大卡。
 ///
-/// 点了之后**重置筛选条件**再跳列表（见 `ContentsFilterController.showType`），
-/// 否则会带着上次在列表页选的标签/搜索词过去，结果条数对不上首页的承诺。
-class _TypeBrowseSection extends ConsumerWidget {
-  const _TypeBrowseSection();
+/// 底色用主色的极淡渐变而不是纯 surface：三张海报摞在白底上会显得飘，
+/// 有一层几乎看不出来的底才「站得住」。
+class _FeaturedFrame extends StatelessWidget {
+  const _FeaturedFrame({required this.child});
 
-  static const double _gap = 10;
-
-  static IconData _iconOf(WorkType type) => switch (type) {
-    WorkType.anime => Icons.movie_outlined,
-    WorkType.comic => Icons.auto_stories_outlined,
-    WorkType.game => Icons.sports_esports_outlined,
-    WorkType.novel => Icons.menu_book_outlined,
-    WorkType.unknown => Icons.category_outlined,
-  };
-
-  /// 每种类型一个色相，**顺序与色值都对齐首站 `.type-tab[data-type]`**：
-  /// 动画蓝 / 漫画粉 / 游戏青 / 小说紫（[TypeColor]）。
-  ///
-  /// 分类入口是首页唯一「按类逛」的入口，四个都涂同一个品牌蓝就分不出来；
-  /// 但分色也不能自己挑——同一部作品在网站和客户端必须是同一个颜色，
-  /// 否则用户切端时会觉得「看过的是另一部」。
-  static Color _colorOf(WorkType type) => switch (type) {
-    WorkType.anime => TypeColor.anime,
-    WorkType.comic => TypeColor.comic,
-    WorkType.game => TypeColor.game,
-    WorkType.novel => TypeColor.novel,
-    WorkType.unknown => TypeColor.unknown,
-  };
+  final Widget child;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    // 数量只是辅助信息：拿不到就只画标题，不占位、不显示 0。
-    final counts = ref.watch(catalogCountsProvider).value;
-
-    return _Section(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const _SectionHeader(title: '分类浏览'),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              // 手机两列、宽屏一行四个：四个胶囊式小按钮在手机上一眼找不到，
-              // 版面上也压不住首屏。
-              final columns = constraints.maxWidth >= 560 ? 4 : 2;
-              final tileWidth =
-                  (constraints.maxWidth - _gap * (columns - 1)) / columns;
-              return Wrap(
-                spacing: _gap,
-                runSpacing: _gap,
-                children: [
-                  for (final type in WorkType.selectable)
-                    SizedBox(
-                      width: tileWidth,
-                      child: _TypeTile(
-                        key: ValueKey('home-type-${type.value}'),
-                        type: type,
-                        icon: _iconOf(type),
-                        color: _colorOf(type),
-                        count: counts?.countOf(type),
-                        onTap: () {
-                          ref
-                              .read(contentsFilterProvider.notifier)
-                              .showType(type);
-                          context.go(RoutePaths.contents);
-                        },
-                      ),
-                    ),
-                ],
-              );
-            },
-          ),
-          const SizedBox(height: 20),
-        ],
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final radius = BorderRadius.circular(AppTheme.cardRadius);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: radius,
+        border: Border.all(color: AppTheme.borderColor(context), width: 0.5),
+        boxShadow: AppTheme.cardShadow,
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color.alphaBlend(
+              scheme.primary.withValues(alpha: 0.10),
+              scheme.surface,
+            ),
+            Color.alphaBlend(
+              scheme.primary.withValues(alpha: 0.03),
+              scheme.surfaceContainerHighest,
+            ),
+          ],
+        ),
       ),
+      child: ClipRRect(borderRadius: radius, child: child),
     );
   }
 }
 
-/// 分类磁贴：彩色图标块 + 类型名 + 数量。
-class _TypeTile extends StatelessWidget {
-  const _TypeTile({
-    super.key,
-    required this.type,
-    required this.icon,
-    required this.color,
-    required this.count,
-    required this.onTap,
-  });
+/// 一张海报。**正面竖贴，不做旋转**——斜着的海报四角会被裁掉。
+///
+/// 中间的比两边多一层投影：同一张卡里三张图等亮，靠阴影把「当前这张」
+/// 从平面上托起来，比加边框收敛。
+class _PosterCard extends StatelessWidget {
+  const _PosterCard({required this.work, this.elevated = false});
 
-  final WorkType type;
-  final IconData icon;
-  final Color color;
-  final int? count;
-  final VoidCallback onTap;
+  final WorkSummary work;
+  final bool elevated;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-
-    return Material(
-      color: AppTheme.cardColor(context),
-      clipBehavior: Clip.antiAlias,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppLayout.cardRadius),
-        side: BorderSide(color: AppTheme.borderColor(context), width: 0.5),
-      ),
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 14, 12, 14),
-          child: Row(
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.14),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Icon(icon, size: 24, color: color),
+    final radius = BorderRadius.circular(elevated ? 12 : 10);
+    final firstChar = work.title.characters.isEmpty
+        ? null
+        : work.title.characters.first;
+    return AspectRatio(
+      // 0.72 ≈ 常见的 3:4 竖版海报比例；再瘦会显得细长，再宽就不是海报了。
+      aspectRatio: 0.72,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: radius,
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF0B1620).withValues(
+                alpha: elevated ? 0.22 : 0.10,
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      type.label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    if (count != null) ...[
-                      const SizedBox(height: 3),
-                      Text(
-                        '${formatCompactCount(count!)} 部',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.labelSmall?.copyWith(
-                          color: scheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ],
+              blurRadius: elevated ? 16 : 8,
+              offset: Offset(0, elevated ? 8 : 4),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: radius,
+          child: CoverImage(
+            url: work.coverUrl,
+            width: double.infinity,
+            height: double.infinity,
+            radius: 0,
+            placeholderLabel: firstChar,
           ),
         ),
       ),
@@ -1028,11 +984,36 @@ class _TypeTile extends StatelessWidget {
   }
 }
 
-/// 数量压缩：198100 → 19.8 万。分类磁贴一行只有 ~120px，五位数字放不下。
-String formatCompactCount(int value) {
-  if (value < 10000) return '$value';
-  final wan = value / 10000;
-  return '${wan.toStringAsFixed(wan >= 100 ? 0 : 1)} 万';
+/// 两侧的切换按钮。压在卡片的左右留白里，不占海报宽度。
+class _CarouselArrow extends StatelessWidget {
+  const _CarouselArrow({
+    required this.tooltip,
+    required this.icon,
+    required this.onPressed,
+  });
+
+  final String tooltip;
+  final IconData icon;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return IconButton(
+      tooltip: tooltip,
+      onPressed: onPressed,
+      icon: Icon(icon, size: 20),
+      style: IconButton.styleFrom(
+        foregroundColor: scheme.primary,
+        backgroundColor: scheme.surface.withValues(alpha: 0.72),
+        disabledForegroundColor: scheme.onSurfaceVariant.withValues(alpha: 0.4),
+        minimumSize: const Size(30, 30),
+        fixedSize: const Size(30, 30),
+        padding: EdgeInsets.zero,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+    );
+  }
 }
 
 /// 本日新番：横向一排，点已收录的进详情。
@@ -1188,7 +1169,7 @@ class _TopRatedSection extends ConsumerWidget {
           _SectionHeader(
             title: '高分作品',
             onMore: () {
-              // 与「分类浏览」同理：先清条件再跳，
+              // 点「查看全部」先清条件再跳，
               // 否则"按评分看全部"会落到一个还带着标签筛选的列表上。
               ref.read(contentsFilterProvider.notifier).showTopRated();
               context.go(RoutePaths.contents);

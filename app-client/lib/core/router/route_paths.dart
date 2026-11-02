@@ -4,7 +4,10 @@ abstract final class RoutePaths {
 
   static const String contents = '/works';
 
-  /// 首页。落地页，把分类浏览 / 本日新番 / 高分作品 / 最新资讯四块聚在一起。
+  /// 首页搜索直接进入输入状态；作品库消费参数后恢复普通浏览路径。
+  static const String contentsSearch = '$contents?search=1';
+
+  /// 首页。落地页，把高分精选 / 本日新番 / 高分作品 / 最新资讯几块聚在一起。
   ///
   /// 路径就用 `/`：它是信息架构的根，也是深链接最自然的入口。
   static const String home = '/';
@@ -32,6 +35,13 @@ abstract final class RoutePaths {
   /// 冷启动直接落到收藏页时，用户需要知道「为什么看不到东西」。
   static const String collections = '/collections';
 
+  /// 个人空间：账号资料、收藏与浏览记录的汇总入口（二级页）。
+  ///
+  /// 以前这些收在「我的」底部弹层里。弹层只能竖着堆列表，放不下头像、
+  /// 统计带与分区，所以改成独立页面，版式与站点 `/me` 对齐。
+  /// 路径用 `/me`：与站点同一个语义，深链接进来也知道这是哪儿。
+  static const String profile = '/me';
+
   /// 每日新番档期。与列表/收藏平级：从任何地方都能直接进。
   static const String schedule = '/schedule';
 
@@ -56,7 +66,8 @@ abstract final class RoutePaths {
   static const String storageSettingsSegment = 'storage';
   static const String aboutSettingsSegment = 'about';
 
-  static const String appearanceSettings = '$settings/$appearanceSettingsSegment';
+  static const String appearanceSettings =
+      '$settings/$appearanceSettingsSegment';
   static const String storageSettings = '$settings/$storageSettingsSegment';
   static const String aboutSettings = '$settings/$aboutSettingsSegment';
 

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:otaku_app/app.dart';
+import 'package:otaku_app/core/platform_info.dart';
 import 'package:otaku_app/core/network/api_exception.dart';
 import 'package:otaku_app/data/datasources/article_data_source.dart';
 import 'package:otaku_app/data/datasources/schedule_data_source.dart';
@@ -64,8 +65,9 @@ class _FakeWorkSource implements WorkDataSource {
     int page = 1,
     int pageSize = 20,
     List<String>? tags,
-  
-    int? year,}) async {
+
+    int? year,
+  }) async {
     calls++;
     if (error != null) throw error!;
     return PagedResult<WorkSummary>(
@@ -201,8 +203,7 @@ class _RealWorkSource implements WorkDataSource {
     int pageSize = 20,
     List<String>? tags,
     int? year,
-  }) async =>
-      this.page;
+  }) async => this.page;
 
   @override
   Future<Work> fetchDetail(String workId) async => throw UnimplementedError();
@@ -223,6 +224,7 @@ void main() {
       overrides: [
         // 首页右上角有账号入口，任何 pump 到 OtakuApp 的用例都要给内存令牌。
         ...authOverrides(),
+        ...tagOverrides(),
         workDataSourceProvider.overrideWithValue(work ?? _FakeWorkSource()),
         articleDataSourceProvider.overrideWithValue(
           article ?? _FakeArticleSource(),
@@ -248,14 +250,13 @@ void main() {
     await tester.pump(const Duration(milliseconds: 50));
   }
 
-  testWidgets('落地页就是首页，四块内容都在', (tester) async {
+  testWidgets('落地页就是首页，各块内容都在', (tester) async {
     await pumpApp(tester, app());
 
     // 顶部不再是页面名「首页」，而是品牌行（底部导航已经写着首页）。
     expect(find.text('Otaku'), findsOneWidget);
     // 搜索入口：看作品要能一眼找到入口，不能只藏在作品库里。
-    expect(find.text('搜索作品名或标签'), findsOneWidget);
-    expect(find.text('分类浏览'), findsOneWidget);
+    expect(find.text('搜索感兴趣的作品'), findsOneWidget);
     expect(find.text('本日新番'), findsOneWidget);
     expect(find.text('高分作品'), findsOneWidget);
     expect(find.text('最新资讯'), findsOneWidget);
@@ -276,9 +277,161 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
 
-    expect(find.text('分类浏览'), findsOneWidget);
     expect(find.text('本日新番'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('手机首页精选支持滑动和按钮切换', (tester) async {
+    PlatformInfo.desktopOverride = false;
+    addTearDown(PlatformInfo.resetOverride);
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(app());
+    await tester.pumpAndSettle();
+
+    final carousel = find.byKey(const ValueKey('home-featured-carousel'));
+    expect(find.text('1 / 2'), findsOneWidget);
+    await tester.drag(carousel, const Offset(-150, 0));
+    await tester.pumpAndSettle();
+    expect(find.text('2 / 2'), findsOneWidget);
+    await tester.tap(find.byTooltip('上一部精选'));
+    await tester.pumpAndSettle();
+    expect(find.text('1 / 2'), findsOneWidget);
+    // 箭头压在整卡的 InkWell 上：点它只能切换，不能顺带把详情页也打开。
+    expect(find.text('作品详情'), findsNothing);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('首页搜索一次点按聚焦，返回首页后再次进入仍聚焦', (tester) async {
+    PlatformInfo.desktopOverride = false;
+    addTearDown(PlatformInfo.resetOverride);
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(app());
+    await tester.pumpAndSettle();
+    for (var i = 0; i < 2; i++) {
+      await tester.tap(find.text('搜索感兴趣的作品'));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<TextField>(find.byType(TextField).first)
+            .focusNode!
+            .hasFocus,
+        isTrue,
+      );
+      if (i == 0) {
+        FocusManager.instance.primaryFocus?.unfocus();
+        await tester.tap(find.text('首页'));
+        await tester.pumpAndSettle();
+      }
+    }
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('手机首页320宽双倍字号不溢出', (tester) async {
+    PlatformInfo.desktopOverride = false;
+    addTearDown(PlatformInfo.resetOverride);
+    tester.platformDispatcher.textScaleFactorTestValue = 2;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    await tester.binding.setSurfaceSize(const Size(320, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(app());
+    await tester.pumpAndSettle();
+    // 分类浏览下线后，首屏最挤的是精选那三张海报 + 双向箭头。
+    expect(find.byKey(const ValueKey('home-featured-carousel')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('手机五个主页面都有我的入口，设置返回保留原页面', (tester) async {
+    PlatformInfo.desktopOverride = false;
+    addTearDown(PlatformInfo.resetOverride);
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(app());
+    await tester.pumpAndSettle();
+    for (final label in ['浏览', '资讯', '收藏', '新番', '首页']) {
+      await tester.tap(find.text(label));
+      await tester.pumpAndSettle();
+      final index = tester
+          .widget<NavigationBar>(find.byType(NavigationBar))
+          .selectedIndex;
+      await tester.tap(find.byTooltip('我的'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('设置'));
+      await tester.pumpAndSettle();
+      expect(find.text('离线缓存'), findsOneWidget);
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      // 设置是从个人空间进去的：退回一层先回个人空间，再退一层才回到原 tab。
+      expect(find.text('个人空间'), findsOneWidget);
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex,
+        index,
+      );
+    }
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('手机筛选面板生效后显示条件，可就地清除', (tester) async {
+    PlatformInfo.desktopOverride = false;
+    addTearDown(PlatformInfo.resetOverride);
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(app());
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('浏览'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('筛选'));
+    await tester.pumpAndSettle();
+    expect(find.text('筛选与排序'), findsOneWidget);
+    await tester.tap(find.widgetWithText(ChoiceChip, '游戏'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('查看结果'));
+    await tester.pumpAndSettle();
+    expect(find.text('类型：游戏'), findsOneWidget);
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(ContentsPage)),
+    );
+    expect(container.read(contentsFilterProvider).type, WorkType.game);
+    await tester.tap(find.byTooltip('取消类型筛选'));
+    await tester.pumpAndSettle();
+    expect(container.read(contentsFilterProvider).type, isNull);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('手机搜索建议在键盘和大字号下可以滚动，提交收起输入焦点', (tester) async {
+    PlatformInfo.desktopOverride = false;
+    addTearDown(PlatformInfo.resetOverride);
+    tester.view.physicalSize = const Size(320, 844);
+    tester.view.devicePixelRatio = 1;
+    tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+    tester.platformDispatcher.textScaleFactorTestValue = 2;
+    addTearDown(tester.view.reset);
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    await tester.pumpWidget(app());
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('搜索感兴趣的作品'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    await tester.enterText(find.byType(TextField).first, '测试');
+    await tester.testTextInput.receiveAction(TextInputAction.search);
+    tester.view.viewInsets = const FakeViewPadding();
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<TextField>(find.byType(TextField).first)
+          .focusNode!
+          .hasFocus,
+      isFalse,
+    );
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
   });
 
   testWidgets('真实评分数据：手机宽度下「高分作品」把卡片画出来', (tester) async {
@@ -314,36 +467,39 @@ void main() {
   // 上面那条只断言「卡片在树里」（findsWidgets），而「在树里」不等于「有尺寸」——
   // 零宽度的卡片同样能被找到，#246 就是这么漏过的。这里量真实尺寸。
   for (final size in const [Size(390, 844), Size(1105, 762)]) {
-    testWidgets('「高分作品」的卡片有实际尺寸 @ ${size.width.toInt()}x${size.height.toInt()}',
-        (tester) async {
-      await tester.binding.setSurfaceSize(size);
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+    testWidgets(
+      '「高分作品」的卡片有实际尺寸 @ ${size.width.toInt()}x${size.height.toInt()}',
+      (tester) async {
+        await tester.binding.setSurfaceSize(size);
+        addTearDown(() => tester.binding.setSurfaceSize(null));
 
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            ...authOverrides(),
-            workDataSourceProvider.overrideWithValue(
-              _RealWorkSource(_loadRealWorks('real_works_by_rating')),
-            ),
-            articleDataSourceProvider.overrideWithValue(_FakeArticleSource()),
-            scheduleDataSourceProvider.overrideWithValue(_FakeScheduleSource()),
-            homeTodayWeekdayProvider.overrideWithValue(1),
-          ],
-          child: const OtakuApp(),
-        ),
-      );
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 50));
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              ...authOverrides(),
+              workDataSourceProvider.overrideWithValue(
+                _RealWorkSource(_loadRealWorks('real_works_by_rating')),
+              ),
+              articleDataSourceProvider.overrideWithValue(_FakeArticleSource()),
+              scheduleDataSourceProvider.overrideWithValue(
+                _FakeScheduleSource(),
+              ),
+              homeTodayWeekdayProvider.overrideWithValue(1),
+            ],
+            child: const OtakuApp(),
+          ),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 50));
 
-      final cards = find.byType(CompactWorkCard);
-      expect(cards, findsWidgets);
-      final rect = tester.getRect(cards.first);
-      // 148 是设计宽度；允许文本缩放带来的高度差，但宽度必须是正数。
-      expect(rect.width, greaterThan(0),
-          reason: '卡片宽度为 0 就是「整块空白」的成因');
-      expect(rect.height, greaterThan(0));
-    });
+        final cards = find.byType(CompactWorkCard);
+        expect(cards, findsWidgets);
+        final rect = tester.getRect(cards.first);
+        // 148 是设计宽度；允许文本缩放带来的高度差，但宽度必须是正数。
+        expect(rect.width, greaterThan(0), reason: '卡片宽度为 0 就是「整块空白」的成因');
+        expect(rect.height, greaterThan(0));
+      },
+    );
   }
 
   testWidgets('本日新番取的是「今天」那一组，不是全部', (tester) async {
@@ -378,19 +534,6 @@ void main() {
     expect(find.text('周一新番甲'), findsOneWidget);
     expect(find.byType(ArticleCard), findsNWidgets(3));
     expect(find.byType(CompactWorkCard), findsNothing);
-  });
-
-  testWidgets('点分类入口跳到列表页', (tester) async {
-    await pumpApp(tester, app());
-
-    // 「漫画」在首页出现两次（分类磁贴 + 高分卡片的类型标签），
-    // 必须按磁贴的 key 点，否则点到卡片里去了。
-    await tester.tap(find.byKey(const ValueKey('home-type-comic')));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 50));
-
-    expect(find.byType(ContentsPage), findsOneWidget);
-    expect(find.text('作品库'), findsOneWidget);
   });
 
   testWidgets('「高分作品 · 查看全部」带着评分排序进列表', (tester) async {

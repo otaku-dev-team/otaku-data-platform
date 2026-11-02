@@ -10,6 +10,7 @@ import '../../features/collection/collection_page.dart';
 import '../../features/contents/contents_page.dart';
 import '../../features/detail/work_detail_page.dart';
 import '../../features/home/home_page.dart';
+import '../../features/profile/profile_page.dart';
 import '../../features/recent/recent_history_page.dart';
 import '../../features/schedule/schedule_page.dart';
 import '../../features/settings/about_settings_page.dart';
@@ -79,7 +80,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             routes: [
               GoRoute(
                 path: RoutePaths.contents,
-                builder: (context, state) => const ContentsPage(),
+                builder: (context, state) => ContentsPage(
+                  focusSearch: state.uri.queryParameters['search'] == '1',
+                ),
                 routes: [
                   GoRoute(
                     path: RoutePaths.workDetailSegment,
@@ -150,6 +153,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: RoutePaths.recentHistory,
         builder: (context, state) => const RecentHistoryPage(),
+      ),
+      GoRoute(
+        path: RoutePaths.profile,
+        builder: (context, state) => const ProfilePage(),
       ),
       GoRoute(
         path: RoutePaths.settings,

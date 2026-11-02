@@ -346,7 +346,7 @@ void main() {
       final container = await pumpApp(tester);
       await goHome(tester, container);
 
-      expect(find.text('分类浏览'), findsOneWidget);
+      expect(find.text('本日新番'), findsOneWidget);
       // 首页也套着桌面外壳：侧栏在，落地页才出得去。
       expect(find.byType(NavigationRail), findsOneWidget);
       // 新用户的第一屏不该顶着一行空的「最近浏览」。
