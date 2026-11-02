@@ -80,7 +80,12 @@ class WorkSiteScopeIntegrationTest {
     @BeforeEach
     void setUp() {
         cleanUp();
-        baseline = workService.list(null, null, null, null, null, 1, 1).total();
+        // 直接查库，不走 workService：列表总数有 CountCache，而 cleanUp 是裸 JDBC 删的，
+        // 缓存不会失效——别的测试类刚清完的数据会留下一个过期的基线（踩过：基线 2、实际 0）。
+        Long dbBaseline = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM work WHERE site_listed = 1 AND deleted_at IS NULL AND is_adult = 0",
+                Long.class);
+        baseline = dbBaseline == null ? 0 : dbBaseline;
 
         // 清单先落库，再导入——写入路径按它判 site_listed。
         jdbc.update("INSERT IGNORE INTO site_scope (subject_id) VALUES (?), (?)",
@@ -175,6 +180,22 @@ class WorkSiteScopeIntegrationTest {
         assertThat(listed).as("清单补进来后应立刻变 1").isEqualTo(1);
         assertThat(workService.list(null, null, null, null, null, 1, 1).total())
                 .isEqualTo(baseline + 3);
+    }
+
+    @Test
+    @DisplayName("重新导入不会把未收录的作品冲出来（#370 点名担心的那条）")
+    void reimportDoesNotResurrectUnlisted() {
+        // #249 的 upsert 会把 deleted_at 置空——如果 site_listed 只在"新增时算一次"，
+        // 下一次全量导入就会让 17.9 万条未收录作品重新出现在列表里。
+        importService.importBatch(new ImportBatchRequest(BATCH_PREFIX + "4", SOURCE, null,
+                List.of(item(UNLISTED, TITLE_PREFIX + "未收录", List.of(TAG_COMMON), 10))));
+
+        Integer listed = jdbc.queryForObject(
+                "SELECT site_listed FROM work WHERE source = ? AND source_id = ?",
+                Integer.class, SOURCE, UNLISTED);
+        assertThat(listed).as("清单独没有它，导多少次都该是 0").isZero();
+        assertThat(workService.list(null, null, null, null, null, 1, 1).total())
+                .as("可见总数不该因为一次重导而变化").isEqualTo(baseline + 2);
     }
 
     @Test
