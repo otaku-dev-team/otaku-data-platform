@@ -25,6 +25,7 @@ import os
 import subprocess
 import sys
 import time
+import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -65,6 +66,7 @@ def fetch_rows(limit: int):
 
 def fetch_total(api_base: str, subject_id: str, retries: int) -> int | None:
     url = f"{api_base}/subjects/{subject_id}"
+    last = None
     for attempt in range(1, retries + 1):
         try:
             req = urllib.request.Request(url, headers={"User-Agent": "otaku-backfill/1.0"})
@@ -73,11 +75,15 @@ def fetch_total(api_base: str, subject_id: str, retries: int) -> int | None:
             rating = data.get("rating") or {}
             total = rating.get("total")
             return int(total) if total is not None else None
+        except urllib.error.HTTPError as he:
+            if he.code == 404:
+                return None  # 镜像确实没有该 subject，确定性结论，不重试
+            last = he
         except Exception as exc:  # noqa: BLE001
-            if attempt == retries:
-                print(f"  ! subject {subject_id} failed: {exc}", file=sys.stderr)
-                return None
+            last = exc
+        if attempt < retries:
             time.sleep(1.5 * attempt)
+    print(f"  ! subject {subject_id} failed: {last}", file=sys.stderr)
     return None
 
 
