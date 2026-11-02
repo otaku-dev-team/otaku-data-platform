@@ -65,12 +65,27 @@ public class WorkRepository {
      */
     private final boolean siteScopeEnabled;
 
+    /**
+     * 「自站来源」：这些 source 的作品不走清单、直接可见（站点自己的内容，不存在"收没收录"）。
+     *
+     * <p>从配置读、**不在代码里写死站名**——这个后端是白标的，写死一个 `xxx_site`
+     * 就是替客户做了决定，`scripts/check-site-isolation.py` 也会直接拦下来。
+     * 留空 = 没有自站来源，全部按 `site_scope` 判。
+     */
+    private final java.util.Set<String> selfSources;
+
     public WorkRepository(NamedParameterJdbcTemplate jdbc, AdultPolicy adultPolicy,
                           @org.springframework.beans.factory.annotation.Value(
-                                  "${app.work.site-scope.enabled:true}") boolean siteScopeEnabled) {
+                                  "${app.work.site-scope.enabled:true}") boolean siteScopeEnabled,
+                          @org.springframework.beans.factory.annotation.Value(
+                                  "${app.work.site-scope.self-sources:}") String selfSources) {
         this.jdbc = jdbc;
         this.adultPolicy = adultPolicy;
         this.siteScopeEnabled = siteScopeEnabled;
+        this.selfSources = java.util.Arrays.stream(selfSources.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
     }
 
     public Optional<WorkRecord> findBySourceKey(String source, String sourceId) {
@@ -212,7 +227,7 @@ public class WorkRepository {
      * 不缓存：清单是数据侧随时会改的东西，缓存住会让「改完不生效」重新变成谜。
      */
     private int siteListedFor(String source, String sourceId) {
-        if ("otaku_site".equals(source)) {
+        if (selfSources.contains(source)) {
             return 1;
         }
         Integer hit = jdbc.queryForObject(

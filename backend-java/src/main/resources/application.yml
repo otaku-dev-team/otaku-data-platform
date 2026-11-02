@@ -37,6 +37,10 @@ app:
       # 集成测试在 application-it.yml 里关掉：测试库没有 site_scope，开着会让所有
       # 「导入后能查到」的用例凭空变空（那是测试环境缺数据，不是代码错）。
       enabled: ${OTAKU_WORK_SITE_SCOPE_ENABLED:true}
+      # 自站来源（逗号分隔）：这些 source 的作品不走清单、直接可见。
+      # **不写死站名**——这个后端是白标的，写死一个站名就是替客户做决定，
+      # scripts/check-site-isolation.py 会拦。留空 = 全部按 site_scope 判。
+      self-sources: ${OTAKU_WORK_SITE_SCOPE_SELF_SOURCES:}
   # 留空则按请求 host 推导，便于 Android 模拟器(10.0.2.2)/桌面(127.0.0.1)/真机(局域网 IP) 共用一套代码。
   public-base-url: ${OTAKU_PUBLIC_BASE_URL:}
   cors:

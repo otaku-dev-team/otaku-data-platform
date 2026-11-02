@@ -34,7 +34,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * <p>所有断言都用「自己的数据 + 基线差值」而不是绝对总数：所有用例共用一个库，
  * 别的类留下的作品（尤其 {@code otaku_site}，它永远 listed）会把绝对数顶歪。
  */
-@SpringBootTest(properties = "app.work.site-scope.enabled=true")
+@SpringBootTest(properties = {
+        "app.work.site-scope.enabled=true",
+        // 自站来源用配置传，不在代码里写死站名（site-isolation 检查会拦）
+        "app.work.site-scope.self-sources=" + WorkSiteScopeIntegrationTest.SELF_SOURCE})
 @ActiveProfiles("it")
 @EnabledIfEnvironmentVariable(
         named = "IT_DB_PORT",
@@ -43,6 +46,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class WorkSiteScopeIntegrationTest {
 
     private static final String SOURCE = "it-scope-src";
+    /** 配置成「自站来源」的那个 source：不走清单。 */
+    static final String SELF_SOURCE = "it-scope-self";
     private static final String BATCH_PREFIX = "it-scope-batch-";
     private static final String TITLE_PREFIX = "范围测试-";
     private static final String TAG_COMMON = "范围测试标签";
@@ -173,18 +178,18 @@ class WorkSiteScopeIntegrationTest {
     }
 
     @Test
-    @DisplayName("otaku_site 不走清单：写入时直接标 1")
-    void otakuSiteIsAlwaysListed() {
-        importService.importBatch(new ImportBatchRequest(BATCH_PREFIX + "3", "otaku_site", null,
+    @DisplayName("自站来源不走清单：配置里的 source 写入时直接标 1")
+    void selfSourceIsAlwaysListed() {
+        importService.importBatch(new ImportBatchRequest(BATCH_PREFIX + "3", SELF_SOURCE, null,
                 List.of(item("777777", "自站作品", List.of("自站标签"), 7))));
 
         Integer listed = jdbc.queryForObject(
-                "SELECT site_listed FROM work WHERE source = 'otaku_site' AND source_id = '777777'",
-                Integer.class);
-        assertThat(listed).isEqualTo(1);
+                "SELECT site_listed FROM work WHERE source = ? AND source_id = '777777'",
+                Integer.class, SELF_SOURCE);
+        assertThat(listed).as("配置在 self-sources 里的来源，不该再看清单").isEqualTo(1);
 
         jdbc.update("DELETE FROM work_tag WHERE work_ref IN"
-                + " (SELECT id FROM work WHERE source = 'otaku_site' AND source_id = '777777')");
-        jdbc.update("DELETE FROM work WHERE source = 'otaku_site' AND source_id = '777777'");
+                + " (SELECT id FROM work WHERE source = ? AND source_id = '777777')", SELF_SOURCE);
+        jdbc.update("DELETE FROM work WHERE source = ? AND source_id = '777777'", SELF_SOURCE);
     }
 }
