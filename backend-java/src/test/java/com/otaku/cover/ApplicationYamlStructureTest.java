@@ -22,6 +22,17 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ApplicationYamlStructureTest {
 
     @SuppressWarnings("unchecked")
+    private Map<String, Object> springSection() {
+        try (InputStream in = getClass().getResourceAsStream("/application.yml")) {
+            assertThat(in).as("application.yml 必须在 classpath 根目录").isNotNull();
+            Map<String, Object> root = new Yaml().load(in);
+            return (Map<String, Object>) root.get("spring");
+        } catch (Exception ex) {
+            throw new IllegalStateException("读取 application.yml 失败", ex);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
     private Map<String, Object> appSection() {
         try (InputStream in = getClass().getResourceAsStream("/application.yml")) {
             assertThat(in).as("application.yml 必须在 classpath 根目录").isNotNull();
@@ -86,5 +97,28 @@ class ApplicationYamlStructureTest {
                 .as("服务商不可用时默认放行")
                 .isEqualTo("${OTAKU_UGC_MACHINE_ON_ERROR:pass}");
         assertThat(machine).containsKeys("endpoint", "token", "timeout-ms");
+    }
+
+    /**
+     * 三个清理任务（会话 04:30 / 设备 04:45 / UGC 04:50 UTC）默认共用 1 个调度线程：
+     * 前一个慢，后面全排队，日志上表现为「UGC 清理时有时无」。这条守住 pool.size ≥ 3，
+     * 免得以后有人「顺手清理配置」把它删掉——删了不会红任何功能测试，只会在某天夜里悄悄不跑。
+     */
+    @Test
+    @DisplayName("调度池 ≥ 3：三个清理任务不该挤一条线程")
+    @SuppressWarnings("unchecked")
+    void schedulerPoolFitsThreeCleanupJobs() {
+        Map<String, Object> task = (Map<String, Object>) springSection().get("task");
+        assertThat(task).as("spring.task 必须存在").isNotNull();
+        Map<String, Object> scheduling = (Map<String, Object>) task.get("scheduling");
+        assertThat(scheduling).as("spring.task.scheduling 必须存在").isNotNull();
+        Map<String, Object> pool = (Map<String, Object>) scheduling.get("pool");
+        assertThat(pool).as("spring.task.scheduling.pool 必须存在").isNotNull();
+
+        Object size = pool.get("size");
+        int value = size instanceof Number number
+                ? number.intValue()
+                : Integer.parseInt(String.valueOf(size).replaceAll(".*:(\\d+)\\}$", "$1"));
+        assertThat(value).as("调度池至少要能同时放下三个清理任务").isGreaterThanOrEqualTo(3);
     }
 }

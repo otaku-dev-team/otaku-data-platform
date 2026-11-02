@@ -1132,6 +1132,7 @@ paths:
         "204":
           description: 已注销（所有设备会话已失效）
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "405": { $ref: "#/components/responses/MethodNotAllowed" }
         "500": { $ref: "#/components/responses/InternalError" }
 
   /api/me/collections:
@@ -2432,6 +2433,14 @@ components:
           schema: { $ref: "#/components/schemas/ErrorResponse" }
     NotFound:
       description: 作品或批次不存在
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    MethodNotAllowed:
+      description: |
+        请求方法不被支持（`METHOD_NOT_ALLOWED`，#345）。
+        例如对只接受 DELETE 的 `/api/me` 发 GET。这是「客户端用错」，不是服务端故障——
+        调用方不应重试、也不会成功。
       content:
         application/json:
           schema: { $ref: "#/components/schemas/ErrorResponse" }
@@ -3797,6 +3806,7 @@ components:
                 - COLLECTION_REQUIRED
                 - BATCH_TOO_LARGE
                 - RATE_LIMITED
+                - METHOD_NOT_ALLOWED
                 - INTERNAL
             message:
               type: string
