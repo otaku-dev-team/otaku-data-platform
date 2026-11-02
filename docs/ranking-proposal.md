@@ -98,3 +98,49 @@ IT_DB_PORT=3307 ./mvnw -B test    # 116 项，0 skipped（真实 MySQL 8.0）
 - **客户端未接入**：本 PR 只有后端与契约；榜单页在 W1 客户端侧，需另行排期。
 - **`tag` + `q` + `min_rating` 三个条件同时上**未单独测；`tag+q` 本身已有约 720ms 的
   已知成本（LIKE 求交集的固有开销），加一个范围条件不会改变量级，但会略微增加过滤成本。
+
+## 8. 低票不进排序（#383）：别直接把 `ORDER BY` 改成 `CASE`
+
+首站口径（`app/rating.py`，`MIN_RATING_COUNT = 50`）三档，**展示与排序是两个函数**：
+
+| `rating_count` | 展示 | 排序 |
+|---|---|---|
+| `NULL` | 照常（不动存量） | 用 `rating_value` |
+| `< 50` | `--` | 按 **0** 算 |
+| `>= 50` | 照常 | 用 `rating_value` |
+
+### 8.1 现在的数据状态（2026-11-03 生产实测）
+
+- `work.rating_count` 列**已在生产**（11-02 急救期手工加的），补迁移在 PR #386 的 `V29__work_rating_count.sql`（幂等写法，列已存在则跳过）；
+- 但**回填一行都还没落库**：`site_listed=1` 的 18,828 条里 `rating_count` 非空 **0 条**。
+  也就是说现在把「按阈值展示」上线，页面上**什么都不会变**——`NULL` 按可信处理，17,856 条评分照旧显示。
+
+### 8.2 为什么排序不能直接改 ORDER BY（本轮实测）
+
+`WorkSort.RATING` 现在是 `rating_value DESC, id DESC`，靠 `idx_work_rating` 反向索引扫描取前 20 行。
+
+| 写法 | EXPLAIN | 首屏 |
+|---|---|---|
+| `ORDER BY rating_value DESC, id DESC` | `idx_work_rating`，**Backward index scan**，rows=**20** | API 实测 **9–14 ms**（第 100 页 38–40 ms） |
+| `ORDER BY (CASE WHEN rating_count < 50 THEN 0 ELSE rating_value END) DESC, id DESC` | `type=ALL`，扫 **163,229 行**，`Using filesort` | 单条 SQL **133 ms**（含客户端开销，实际约 90–100 ms） |
+
+同一个道理在标签路径上已经吃过一次：V7 建表时记录过「有序扫描 35 ms vs filesort 772 ms」。
+**排序键一旦变成表达式，索引就用不上了**，这是代价的来源，不是写法问题。
+
+### 8.3 建议做法（等 #386 合了再做）
+
+1. **加一个 STORED 生成列** `rating_sort`：
+   `CASE WHEN rating_count IS NOT NULL AND rating_count < 50 THEN 0 ELSE COALESCE(rating_value, 0) END`，
+   配 `(rating_sort, id)` 索引。生成列随行更新——写入路径零改动，回填 `rating_count` 时自动重算，
+   排序回到索引有序扫描。
+2. **展示层在 Java 映射时置空**（`rating_count < 50` → `ratingValue = null`），SQL 不动；
+   客户端拿到的就是 `null`，渲染 `--`，不需要新字段。
+3. `work_tag` 的冗余 `rating_value` 这轮不动：标签内排序要同样口径得再加冗余列，
+   属于第二批（现在标签内也没有「按评分排」的入口）。
+4. `min_rating` 语义**保持不变**（`0` = 只要有过评分）。改成「低票也算无评分」会让现有榜单口径
+   静默变化，要改另开一条。
+
+### 8.4 一个硬顺序约束
+
+`V29` 在 #386 里，**没合之前不能加 `V30`**：Flyway 按版本号顺序应用，先应用了 V30 再收到 V29，
+会被判成乱序迁移直接启动失败。所以 #383 的后端代码可以写，迁移必须等 #386 落地。
