@@ -7,6 +7,7 @@ import '../../core/theme/app_layout.dart';
 import '../../core/theme/library_density.dart';
 import '../../data/models/work_summary.dart';
 import '../../shared/widgets/cover_image.dart';
+import '../../shared/widgets/hero_cover.dart';
 import '../../shared/widgets/poster_card.dart';
 import '../../shared/widgets/rating_badge.dart';
 import '../../shared/widgets/release_year_text.dart';
@@ -26,6 +27,7 @@ class WorkCard extends ConsumerWidget {
     required this.work,
     this.showMissingRating = false,
     this.density = LibraryDensity.comfort,
+    this.heroTag,
   });
 
   final WorkSummary work;
@@ -40,6 +42,9 @@ class WorkCard extends ConsumerWidget {
   /// 两处必须一起改，否则卡片要么被裁、要么底下留白。
   final LibraryDensity density;
 
+  /// 封面转场标签（屏内唯一，由网格按 index 拼）。null = 不做转场。
+  final String? heroTag;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
@@ -53,19 +58,24 @@ class WorkCard extends ConsumerWidget {
         : work.title.characters.first;
 
     return PosterCardShell(
-      onTap: () => context.push(RoutePaths.workDetail(work.workId)),
+      onTap: () => context.push(
+        RoutePaths.workDetail(work.workId, heroTag: heroTag),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           AspectRatio(
             aspectRatio: AppLayout.posterAspect,
-            child: CoverImage(
-              url: work.coverUrl,
-              width: double.infinity,
-              height: double.infinity,
-              radius: 0,
-              placeholderLabel: firstChar,
-              source: work.source,
+            child: HeroCover(
+              tag: heroTag,
+              child: CoverImage(
+                url: work.coverUrl,
+                width: double.infinity,
+                height: double.infinity,
+                radius: 0,
+                placeholderLabel: firstChar,
+                source: work.source,
+              ),
             ),
           ),
           if (density != LibraryDensity.coversOnly)

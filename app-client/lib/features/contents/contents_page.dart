@@ -673,6 +673,8 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
                     work: data.items[index],
                     showMissingRating: showMissingRating,
                     density: display.density,
+                    // 标签只要屏内唯一即可：列表里 index 就是唯一的。
+                    heroTag: 'grid-$index',
                   ),
                   childCount: data.items.length,
                 ),

@@ -5,6 +5,7 @@ import '../../core/router/route_paths.dart';
 import '../../core/theme/app_layout.dart';
 import '../../data/models/work_summary.dart';
 import 'cover_image.dart';
+import 'hero_cover.dart';
 import 'rating_badge.dart';
 
 /// 横向滚动条里用的紧凑作品卡：竖版海报 + 两行标题 + 评分。
@@ -17,10 +18,18 @@ import 'rating_badge.dart';
 /// 详情页「同题材推荐」与首页「高分作品」共用这一张，
 /// 否则两个横向条会做出两种细微不同的卡片。
 class CompactWorkCard extends StatelessWidget {
-  const CompactWorkCard({super.key, required this.work, required this.width});
+  const CompactWorkCard({
+    super.key,
+    required this.work,
+    required this.width,
+    this.heroTag,
+  });
 
   final WorkSummary work;
   final double width;
+
+  /// 封面转场标签（屏内唯一，由横向条按 index 拼）。null = 不做转场。
+  final String? heroTag;
 
   /// 海报高度。宽高比与站点 `.work-cover-box` 一致（2:3）。
   static double coverHeightFor(double width) => width / AppLayout.posterAspect;
@@ -56,17 +65,22 @@ class CompactWorkCard extends StatelessWidget {
       width: width,
       child: InkWell(
         borderRadius: BorderRadius.circular(AppLayout.cardRadius),
-        onTap: () => context.push(RoutePaths.workDetail(work.workId)),
+        onTap: () => context.push(
+          RoutePaths.workDetail(work.workId, heroTag: heroTag),
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            CoverImage(
-              url: work.coverUrl,
-              width: width,
-              height: coverHeightFor(width),
-              radius: AppLayout.cardRadius,
-              placeholderLabel: firstChar,
-              source: work.source,
+            HeroCover(
+              tag: heroTag,
+              child: CoverImage(
+                url: work.coverUrl,
+                width: width,
+                height: coverHeightFor(width),
+                radius: AppLayout.cardRadius,
+                placeholderLabel: firstChar,
+                source: work.source,
+              ),
             ),
             const SizedBox(height: 6),
             SizedBox(
