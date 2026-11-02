@@ -30,6 +30,13 @@ spring:
 app:
   # 内部导入令牌。为空时 /internal/** 一律 401（安全默认），联调前必须设置。
   internal-token: ${OTAKU_INTERNAL_TOKEN:}
+  work:
+    site-scope:
+      # 只显示首站收录的作品（#370）：列表/搜索/标签/推荐/详情按 work.site_listed 过滤。
+      # 默认开——线上每个部署都有 whitelist；**关掉只是不过滤**，不改任何数据。
+      # 集成测试在 application-it.yml 里关掉：测试库没有 site_scope，开着会让所有
+      # 「导入后能查到」的用例凭空变空（那是测试环境缺数据，不是代码错）。
+      enabled: ${OTAKU_WORK_SITE_SCOPE_ENABLED:true}
   # 留空则按请求 host 推导，便于 Android 模拟器(10.0.2.2)/桌面(127.0.0.1)/真机(局域网 IP) 共用一套代码。
   public-base-url: ${OTAKU_PUBLIC_BASE_URL:}
   cors:
