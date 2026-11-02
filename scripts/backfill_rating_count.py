@@ -36,15 +36,14 @@ SUBJECTS_QUERY = (
 )
 
 
-def _mysql(args):
-    """经 docker 容器里的 mysql 客户端执行 SQL 文件（stdin），返回 (rc, stdout, stderr)。"""
-    cmd = [
-        "docker", "exec", "-i", os.environ["MYSQL_CONTAINER"],
-        "mysql", f"-u{os.environ['OTAKU_DB_USER']}",
-        f"-p{os.environ['OTAKU_DB_PASSWORD']}", os.environ["OTAKU_DB_NAME"],
-    ]
-    p = subprocess.run(cmd, input=args.encode("utf-8") if isinstance(args, str) else args,
-                       capture_output=True)
+def _mysql(sql_text: str) -> tuple:
+    """经 docker 容器里的 mysql 客户端执行 SQL（stdin）。shell=True 走 /bin/sh，PATH 正常。"""
+    cont = os.environ["MYSQL_CONTAINER"]
+    user = os.environ["OTAKU_DB_USER"]
+    pwd = os.environ["OTAKU_DB_PASSWORD"]
+    db = os.environ["OTAKU_DB_NAME"]
+    cmd = f"docker exec -i {cont} mysql -u{user} -p'{pwd}' {db}"
+    p = subprocess.run(cmd, input=sql_text.encode("utf-8"), shell=True, capture_output=True)
     return p.returncode, p.stdout.decode("utf-8", "replace"), p.stderr.decode("utf-8", "replace")
 
 
