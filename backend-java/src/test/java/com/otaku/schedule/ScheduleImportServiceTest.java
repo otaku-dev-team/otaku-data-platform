@@ -16,6 +16,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.transaction.support.TransactionCallback;
@@ -175,6 +176,31 @@ class ScheduleImportServiceTest {
 
         assertThat(result.counts().updated()).isEqualTo(1);
         verify(scheduleRepository).update(any());
+    }
+
+    @Test
+    @DisplayName("关联解析不出来时保留既有 work_id——例行重导不该把已建好的关联冲成 null")
+    void keepsExistingWorkIdWhenResolutionFails() {
+        // 现有这行的 content_id 仍指向 1234，但作品已不在可跳转范围内
+        // （被软删、或不在首站收录范围），解析结果为空。
+        ScheduleRecord existing = new ScheduleRecord(
+                7L, "S-existing", "otaku_site", "469",
+                "202504", "旧标题", null, null,
+                1, "22:00", null, null,
+                null, null, null, null,
+                "1234", "W-kept",
+                null, NOW, NOW);
+        when(scheduleRepository.findBySourceKey("otaku_site", "469"))
+                .thenReturn(Optional.of(existing));
+        when(workRepository.findBySourceKey("otaku_site", "1234"))
+                .thenReturn(Optional.empty());
+
+        ImportBatchResult result = service.importSchedules(request(item("469", 1, "1234", null)));
+
+        assertThat(result.counts().updated()).isEqualTo(1);
+        ArgumentCaptor<ScheduleRecord> captor = ArgumentCaptor.forClass(ScheduleRecord.class);
+        verify(scheduleRepository).update(captor.capture());
+        assertThat(captor.getValue().workId()).isEqualTo("W-kept");
     }
 
     @Test
