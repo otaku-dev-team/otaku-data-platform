@@ -71,4 +71,44 @@ abstract final class AppConfig {
   /// 空字符串 = 未配置 = 站点授权入口不可用（登录页隐藏它，不置灰）。
   /// 由 `sites/<site>/site.conf` 的 `SITE_BASE_URL` 在构建期注入，见 `build_site.sh`。
   static const String siteBaseUrl = String.fromEnvironment('SITE_BASE_URL');
+
+  /// 站点名（客户端显示的品牌名）。
+  ///
+  /// 以前这个名字是硬编码在四个页面里的字面量「Otaku」，于是换站只剩登录屏是新的，
+  /// 主体 UI 还写着上一家的名字。现在统一从这里取，构建期由 `site.conf` 的
+  /// `APP_NAME` 注入——`build_site.sh` 一直在传这个 `--dart-define`，
+  /// 只是没有人读它（2026-11-02 之前的状态）。
+  ///
+  /// 默认值给首站的名字：编辑器里不带参数直跑（`flutter run`）时仍然可用。
+  static const String appName = String.fromEnvironment(
+    'APP_NAME',
+    defaultValue: 'Otaku',
+  );
+
+  /// 站点键，与后端 `site` 表的 `site_key` 同一个值。
+  ///
+  /// 页面文案里不该出现它（那是给日志与排查用的），但「关于」页要能一眼看出
+  /// 这个包是哪个站烘出来的——换站交付时最常见的误装就是装错站。
+  static const String siteId = String.fromEnvironment(
+    'SITE_ID',
+    defaultValue: 'otaku_site',
+  );
+
+  /// 品牌归属方（页脚版权行）。同样由 `site.conf` 注入。
+  static const String brandCompany = String.fromEnvironment(
+    'BRAND_COMPANY',
+    defaultValue: 'com.otaku',
+  );
+
+  /// 徽标上那个字：站名首字。
+  ///
+  /// 站点 favicon 与我们无关，能跟着配置走的只有这个名字本身，
+  /// 所以徽标取首字——换站改 `APP_NAME` 就够了，不用重新出图。
+  static String get brandInitial {
+    final trimmed = appName.trim();
+    if (trimmed.isEmpty) return '?';
+    // 用 runes 而不是 `trimmed[0]`：`[]` 按 UTF-16 码元切，遇到代理对会把
+    // 一个字劈成半个（站名里有 emoji 时就是乱码方块）。
+    return String.fromCharCode(trimmed.runes.first).toUpperCase();
+  }
 }

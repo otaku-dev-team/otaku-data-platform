@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/network/api_exception.dart';
+import 'brand_mark.dart';
 
 /// 错误状态。契约第 7 节：错误必须有明确提示 + 重试入口，不能静默失败。
 ///
@@ -14,6 +15,7 @@ class ErrorState extends StatelessWidget {
     this.retryLabel = '重试',
     this.title,
     this.action,
+    this.showBrand = true,
   });
 
   final ApiException error;
@@ -25,6 +27,10 @@ class ErrorState extends StatelessWidget {
 
   /// 重试按钮之外的附加操作，例如"返回列表"。
   final Widget? action;
+
+  /// 底部是否压一行站点署名。理由同 [EmptyState.showBrand]：
+  /// 报错截图是最常被转发给客服的东西，署名让「是哪个客户端」一眼可辨。
+  final bool showBrand;
 
   @override
   Widget build(BuildContext context) {
@@ -76,6 +82,10 @@ class ErrorState extends StatelessWidget {
                 ?action,
               ],
             ),
+            if (showBrand) ...[
+              const SizedBox(height: 28),
+              const BrandSign(),
+            ],
           ],
         ),
       ),
