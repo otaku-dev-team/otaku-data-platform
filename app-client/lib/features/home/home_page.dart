@@ -14,6 +14,7 @@ import '../../data/models/article.dart';
 import '../../data/models/schedule.dart';
 import '../../data/models/work_summary.dart';
 import '../../shared/widgets/account_menu.dart';
+import '../../shared/widgets/brand_mark.dart';
 import '../../shared/widgets/cover_image.dart';
 import '../../shared/widgets/compact_work_card.dart';
 import '../../shared/widgets/config_notice_bar.dart';
@@ -140,69 +141,12 @@ class _HomeBrand extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final now = DateTime.now();
     final date = '${now.month} 月 ${now.day} 日 · ${_weekdays[now.weekday - 1]}';
 
-    return Row(
-      children: [
-        Container(
-          width: 34,
-          height: 34,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(11),
-            // 品牌蓝 → 站点那抹青，和封面占位、渐变头图同一族色。
-            gradient: const LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [AppTheme.brand, AppTheme.accent],
-            ),
-          ),
-          child: const Text(
-            'O',
-            style: TextStyle(
-              // 徽标底是天蓝 → 青的渐变（跟 favicon 同一族色）。深字而不是白字：
-              // 白字压在 `#66CCFF` 上只有 1.8:1，站点顶栏也是深字。
-              color: OnBright.onBright,
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
-              height: 1,
-            ),
-          ),
-        ),
-        const SizedBox(width: 10),
-        // AppBar 里标题的宽度是抢来的（右边还有设置与账号），所以这一列
-        // 必须能收缩：不包 Flexible，窄屏上两行文字会把工具条挤出 33px。
-        Flexible(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Otaku',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0.2,
-                  height: 1.1,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                date,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
+    // 站名与徽标一律从 AppConfig 取（构建期由 site.conf 的 APP_NAME 注入），
+    // 不在页面里写字面量——以前这里硬编码「Otaku」，换站就只剩登录屏是对的。
+    return BrandMark(subtitle: date);
   }
 }
 

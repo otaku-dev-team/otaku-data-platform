@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/config/app_config.dart';
 import '../../core/router/route_paths.dart';
 import '../../core/theme/app_layout.dart';
 import '../../core/theme/design_tokens.dart';
@@ -121,7 +122,7 @@ class _IdentityCard extends StatelessWidget {
     final label = signedIn ? user!.label : (checking ? '正在读取账号…' : '未登录');
     final badge = signedIn ? '已登录' : (checking ? '读取中' : '未登录');
     final meta = signedIn
-        ? '已连接 Otaku 账号 · 收藏在设备间同步'
+        ? '已连接 ${AppConfig.appName} 账号 · 收藏在设备间同步'
         : (checking ? '稍等一下' : '登录后收藏可在手机与桌面同步');
     // 头像用昵称首字，比一个通用小人更像「我」；没有昵称时退回图标。
     final initial = signedIn && label.isNotEmpty

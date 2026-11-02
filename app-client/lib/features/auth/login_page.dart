@@ -197,7 +197,7 @@ class _SiteLoginButton extends StatelessWidget {
               height: 18,
               child: CircularProgressIndicator(strokeWidth: 2),
             )
-          : const Text('用 Otaku 账号登录'),
+          : Text('用 ${AppConfig.appName} 账号登录'),
     );
   }
 }
