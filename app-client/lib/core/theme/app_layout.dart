@@ -110,7 +110,26 @@ abstract final class AppLayout {
     required LibraryDensity density,
     required double textScale,
   }) {
-    return cardWidth / posterAspect + density.bodyHeight * textScale;
+    return cardWidth / posterAspect +
+        gridCardBodyHeight(
+          cardWidth: cardWidth,
+          density: density,
+          textScale: textScale,
+        );
+  }
+
+  /// 窄卡或大字号时元信息会换行；真实卡片与骨架同步预留空间。
+  static double gridCardBodyHeight({
+    required double cardWidth,
+    required LibraryDensity density,
+    required double textScale,
+  }) {
+    final extra =
+        density == LibraryDensity.comfort &&
+            cardWidth < gridMinCardWidthCompact * textScale
+        ? Space.s12
+        : 0.0;
+    return (density.bodyHeight + extra) * textScale;
   }
 
   static const double detailCoverWidth = 220;

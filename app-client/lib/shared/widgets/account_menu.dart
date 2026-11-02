@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/router/route_paths.dart';
+import '../../core/platform_info.dart';
 import '../../features/auth/auth_controller.dart';
 
 /// 账号入口。
@@ -21,6 +22,17 @@ class AccountMenuButton extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final auth = ref.watch(authControllerProvider);
+
+    if (!PlatformInfo.isDesktop) {
+      return Tooltip(
+        message: '我的',
+        child: TextButton.icon(
+          onPressed: () => context.push(RoutePaths.profile),
+          icon: const Icon(Icons.account_circle_outlined),
+          label: const Text('我的'),
+        ),
+      );
+    }
 
     return switch (auth.status) {
       AuthStatus.checking => const Padding(
@@ -41,7 +53,9 @@ class AccountMenuButton extends ConsumerWidget {
       AuthStatus.signedIn => _SignedInMenu(label: auth.user!.label),
     };
   }
+
 }
+
 
 class _SignedInMenu extends ConsumerWidget {
   const _SignedInMenu({required this.label});
@@ -56,6 +70,10 @@ class _SignedInMenu extends ConsumerWidget {
       tooltip: '账号',
       icon: const Icon(Icons.account_circle_outlined),
       onSelected: (value) async {
+        if (value == 'profile') {
+          context.push(RoutePaths.profile);
+          return;
+        }
         if (value != 'logout') return;
         // 只结束当前会话：桌面端不受影响（C9）。
         await ref.read(authControllerProvider.notifier).logout();
@@ -74,6 +92,11 @@ class _SignedInMenu extends ConsumerWidget {
           ),
         ),
         const PopupMenuDivider(),
+        // 手机端点「我的」直接是这一页；桌面这轮仍是菜单，入口放这里对齐。
+        const PopupMenuItem<String>(
+          value: 'profile',
+          child: Text('个人空间'),
+        ),
         const PopupMenuItem<String>(value: 'logout', child: Text('退出登录')),
       ],
     );

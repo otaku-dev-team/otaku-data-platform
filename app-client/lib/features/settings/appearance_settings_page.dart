@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/theme/design_tokens.dart';
 import '../../core/theme/library_density.dart';
 import 'display_settings.dart';
 import 'settings_controller.dart';
@@ -48,22 +49,15 @@ class _ThemeModeCard extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 12),
-          // 三段的宽度在窄屏（320dp）上会顶到边，用 FittedBox 等比缩一点，
-          // 而不是让它在小屏上直接溢出报黄条。
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.centerLeft,
-            child: SegmentedButton<ThemeMode>(
-              showSelectedIcon: false,
-              segments: const [
-                ButtonSegment(value: ThemeMode.system, label: Text('跟随系统')),
-                ButtonSegment(value: ThemeMode.light, label: Text('浅色')),
-                ButtonSegment(value: ThemeMode.dark, label: Text('深色')),
-              ],
-              selected: {mode},
-              onSelectionChanged: (selection) =>
-                  ref.read(themeModeProvider.notifier).select(selection.first),
-            ),
+          _AdaptiveOptions<ThemeMode>(
+            segments: const [
+              ButtonSegment(value: ThemeMode.system, label: Text('跟随系统')),
+              ButtonSegment(value: ThemeMode.light, label: Text('浅色')),
+              ButtonSegment(value: ThemeMode.dark, label: Text('深色')),
+            ],
+            selected: {mode},
+            onSelectionChanged: (selection) =>
+                ref.read(themeModeProvider.notifier).select(selection.first),
           ),
         ],
       ),
@@ -89,21 +83,16 @@ class _ExperimentCard extends ConsumerWidget {
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
             title: const Text('跟随系统取色'),
-            subtitle: const Text(
-              '用壁纸配色代替品牌蓝（Android 12+）。关闭则恢复品牌色。',
-            ),
+            subtitle: const Text('用壁纸配色代替品牌蓝（Android 12+）。关闭则恢复品牌色。'),
             value: appearance.dynamicColor,
-            onChanged: (value) => ref
-                .read(appearanceProvider.notifier)
-                .setDynamicColor(value),
+            onChanged: (value) =>
+                ref.read(appearanceProvider.notifier).setDynamicColor(value),
           ),
           const Divider(height: 1),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
             title: const Text('玻璃质感'),
-            subtitle: const Text(
-              '半透明与模糊的层叠效果，需要更多图形计算，低端机可能更耗电。',
-            ),
+            subtitle: const Text('半透明与模糊的层叠效果，需要更多图形计算，低端机可能更耗电。'),
             value: appearance.glass,
             onChanged: (value) =>
                 ref.read(appearanceProvider.notifier).setGlass(value),
@@ -141,7 +130,7 @@ class _LibraryDisplayCard extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 12),
-          SegmentedButton<LibraryDensity>(
+          _AdaptiveOptions<LibraryDensity>(
             segments: [
               for (final density in LibraryDensity.values)
                 ButtonSegment(value: density, label: Text(density.label)),
@@ -160,7 +149,7 @@ class _LibraryDisplayCard extends ConsumerWidget {
           const SizedBox(height: 12),
           Text('每行列数', style: theme.textTheme.bodySmall),
           const SizedBox(height: 6),
-          SegmentedButton<int>(
+          _AdaptiveOptions<int>(
             segments: const [
               // 0 代表「自适应」：null 没法直接放进 ButtonSegment<int>。
               ButtonSegment(value: 0, label: Text('自适应')),
@@ -183,6 +172,53 @@ class _LibraryDisplayCard extends ConsumerWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// 小屏选项可以换行；保留系统字号与触控面积，不用缩字挤进一行。
+class _AdaptiveOptions<T> extends StatelessWidget {
+  const _AdaptiveOptions({
+    required this.segments,
+    required this.selected,
+    required this.onSelectionChanged,
+  });
+
+  final List<ButtonSegment<T>> segments;
+  final Set<T> selected;
+  final ValueChanged<Set<T>> onSelectionChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth >= 480 &&
+            MediaQuery.textScalerOf(context).scale(1) <= 1.3) {
+          return SegmentedButton<T>(
+            segments: segments,
+            selected: selected,
+            onSelectionChanged: onSelectionChanged,
+          );
+        }
+        return Wrap(
+          spacing: Space.s2,
+          runSpacing: Space.s2,
+          children: [
+            for (final segment in segments)
+              ChoiceChip(
+                label: segment.label!,
+                selected: selected.contains(segment.value),
+                showCheckmark: false,
+                materialTapTargetSize: MaterialTapTargetSize.padded,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: Space.s3,
+                  vertical: Space.s2,
+                ),
+                onSelected: (_) => onSelectionChanged({segment.value}),
+              ),
+          ],
+        );
+      },
     );
   }
 }
