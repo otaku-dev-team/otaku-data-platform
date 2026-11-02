@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/network/api_exception.dart';
+import '../../core/ui/feedback.dart';
 import '../../core/platform_info.dart';
 import '../../core/router/route_paths.dart';
 import '../../core/theme/app_layout.dart';
@@ -16,6 +17,7 @@ import '../../shared/widgets/mobile_nav_bar.dart';
 import '../../shared/widgets/desktop_shortcuts.dart';
 import '../../shared/widgets/collection_status_menu.dart';
 import '../../shared/widgets/cover_image.dart';
+import '../../shared/widgets/hero_cover.dart';
 import '../../shared/widgets/empty_state.dart';
 import '../../shared/widgets/error_state.dart';
 import '../../shared/widgets/offline_notice.dart';
@@ -212,6 +214,7 @@ class _CollectionBody extends ConsumerWidget {
             ),
             itemCount: data.length,
             itemBuilder: (context, index) => _CollectionTile(
+              heroTag: 'collection-$index',
               key: ValueKey(data[index].workId),
               entry: data[index],
             ),
@@ -258,9 +261,12 @@ class _StatusFilters extends StatelessWidget {
 }
 
 class _CollectionTile extends ConsumerStatefulWidget {
-  const _CollectionTile({super.key, required this.entry});
+  const _CollectionTile({super.key, required this.entry, this.heroTag});
 
   final CollectionEntry entry;
+
+  /// 封面转场标签（屏内唯一，由网格按 index 拼）。null = 不做转场。
+  final String? heroTag;
 
   @override
   ConsumerState<_CollectionTile> createState() => _CollectionTileState();
@@ -313,6 +319,7 @@ class _CollectionTileState extends ConsumerState<_CollectionTile> {
       final error = await ref
           .read(collectionControllerProvider.notifier)
           .remove(widget.entry.workId);
+      if (error == null) Haptics.done();
       // 删除成功后卡片会卸载，用页面的 messenger 保留操作结果提示。
       if (!messenger.mounted) return;
       messenger.showSnackBar(
@@ -338,19 +345,24 @@ class _CollectionTileState extends ConsumerState<_CollectionTile> {
     final textScale = MediaQuery.textScalerOf(context).scale(1);
 
     return PosterCardShell(
-      onTap: () => context.push(RoutePaths.workDetail(entry.workId)),
+      onTap: () => context.push(
+        RoutePaths.workDetail(entry.workId, heroTag: widget.heroTag),
+      ),
       overlay: _RemoveButton(onPressed: _busy ? null : _remove),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           AspectRatio(
             aspectRatio: AppLayout.posterAspect,
-            child: CoverImage(
-              url: entry.coverUrl,
-              width: double.infinity,
-              height: double.infinity,
-              radius: 0,
-              placeholderLabel: firstChar,
+            child: HeroCover(
+              tag: widget.heroTag,
+              child: CoverImage(
+                url: entry.coverUrl,
+                width: double.infinity,
+                height: double.infinity,
+                radius: 0,
+                placeholderLabel: firstChar,
+              ),
             ),
           ),
           SizedBox(

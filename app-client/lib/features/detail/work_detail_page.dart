@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/network/api_exception.dart';
+import '../../core/ui/feedback.dart';
 import '../../core/platform_info.dart';
 import '../../core/router/route_paths.dart';
 import '../../core/theme/app_layout.dart';
@@ -14,6 +15,7 @@ import '../../data/models/work.dart';
 import '../../data/repositories/work_repository.dart';
 import '../../shared/widgets/collection_status_menu.dart';
 import '../../shared/widgets/cover_image.dart';
+import '../../shared/widgets/hero_cover.dart';
 import '../../shared/widgets/desktop_shortcuts.dart';
 import '../../shared/widgets/error_state.dart';
 import '../../shared/widgets/offline_notice.dart';
@@ -44,9 +46,12 @@ import 'work_detail_controller.dart';
 /// 两块都是「有才有」——动画里约三分之二的作品没有，那是数据事实不是缺陷，
 /// 所以空态是不渲染整块，而不是挂一个「暂无」。
 class WorkDetailPage extends ConsumerStatefulWidget {
-  const WorkDetailPage({super.key, required this.workId});
+  const WorkDetailPage({super.key, required this.workId, this.heroTag});
 
   final String workId;
+
+  /// 从列表点进来时带的封面转场标签（`?hero=`）。深链接进来时为 null。
+  final String? heroTag;
 
   @override
   ConsumerState<WorkDetailPage> createState() => _WorkDetailPageState();
@@ -206,7 +211,11 @@ class _WorkDetailPageState extends ConsumerState<WorkDetailPage> {
     }
 
     final resolved = fetched.requireValue;
-    final body = _DetailBody(work: resolved.value, onTag: _openTag);
+    final body = _DetailBody(
+      work: resolved.value,
+      onTag: _openTag,
+      heroTag: widget.heroTag,
+    );
     if (!resolved.fromCache) return body;
 
     // 离线回退：内容照常展示，但顶部要说明这是上次同步的。
@@ -232,9 +241,12 @@ class _WorkDetailPageState extends ConsumerState<WorkDetailPage> {
 }
 
 class _DetailBody extends StatelessWidget {
-  const _DetailBody({required this.work, required this.onTag});
+  const _DetailBody({required this.work, required this.onTag, this.heroTag});
 
   final Work work;
+
+  /// 封面转场标签，透传给头图；null = 不做转场。
+  final String? heroTag;
 
   /// 点标签时回调，一路传到 [_Headline] 里的标签行。
   final ValueChanged<String> onTag;
@@ -249,7 +261,7 @@ class _DetailBody extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _DetailHero(work: work),
+            _DetailHero(work: work, heroTag: heroTag),
             Padding(
               padding: const EdgeInsets.all(AppLayout.pagePadding),
               child: Column(
@@ -433,9 +445,12 @@ class _DetailInfo extends StatelessWidget {
 /// 只用于手机端（桌面端仍是「封面 + 标题」的常规两栏）。长标题完整展开，
 /// 窄屏与大字号改用上下排列；无封面时使用深色占位保证白字可读。
 class _DetailHero extends StatelessWidget {
-  const _DetailHero({required this.work});
+  const _DetailHero({required this.work, this.heroTag});
 
   final Work work;
+
+  /// 封面转场标签；与列表那张卡的 tag 一致才配得上，见 `HeroCover`。
+  final String? heroTag;
 
   @override
   Widget build(BuildContext context) {
@@ -455,13 +470,16 @@ class _DetailHero extends StatelessWidget {
         final stacked =
             constraints.maxWidth < 360 ||
             MediaQuery.textScalerOf(context).scale(1) > 1.3;
-        final poster = CoverImage(
-          url: work.coverUrl,
-          width: Space.s12 * 2,
-          height: Space.s12 * 3,
-          radius: Radii.md,
-          placeholderLabel: firstChar,
-          source: work.source,
+        final poster = HeroCover(
+          tag: heroTag,
+          child: CoverImage(
+            url: work.coverUrl,
+            width: Space.s12 * 2,
+            height: Space.s12 * 3,
+            radius: Radii.md,
+            placeholderLabel: firstChar,
+            source: work.source,
+          ),
         );
         final headline = Column(
           mainAxisSize: MainAxisSize.min,
@@ -623,6 +641,8 @@ class _CollectBarState extends ConsumerState<_CollectBar> {
       }
       final error = await action();
       if (!mounted) return;
+      // 成功才震：失败还震一下，用户会以为"操作生效了"，然后看到错误提示。
+      if (error == null) Haptics.done();
       final message = error?.userMessage ?? successMessage;
       if (message == null) return;
       ScaffoldMessenger.of(context)

@@ -74,6 +74,13 @@ abstract final class RoutePaths {
   /// 相对 `contents` 的子路由。
   static const String workDetailSegment = ':workId';
 
-  static String workDetail(String workId) =>
-      '$contents/${Uri.encodeComponent(workId)}';
+  /// 作品详情。
+  ///
+  /// [heroTag] 只在列表里点进来时给：详情页用它把封面接成一次 [Hero] 转场。
+  /// 标签必须**屏内唯一**，所以由列表按「轨道 + 下标」拼，见 `HeroCover`。
+  static String workDetail(String workId, {String? heroTag}) {
+    final path = '$contents/${Uri.encodeComponent(workId)}';
+    if (heroTag == null || heroTag.isEmpty) return path;
+    return '$path?hero=${Uri.encodeQueryComponent(heroTag)}';
+  }
 }

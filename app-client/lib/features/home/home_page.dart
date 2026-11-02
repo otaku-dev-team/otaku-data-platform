@@ -522,8 +522,11 @@ class _RecentViewsSection extends ConsumerWidget {
               scrollDirection: Axis.horizontal,
               itemCount: preview.length,
               separatorBuilder: (_, _) => const SizedBox(width: 12),
-              itemBuilder: (context, index) =>
-                  CompactWorkCard(work: preview[index].work, width: _cardWidth),
+              itemBuilder: (context, index) => CompactWorkCard(
+                work: preview[index].work,
+                width: _cardWidth,
+                heroTag: 'home-preview-$index',
+              ),
             ),
           ),
           const SizedBox(height: 20),
@@ -1134,8 +1137,11 @@ class _TopRatedSection extends ConsumerWidget {
                 scrollDirection: Axis.horizontal,
                 itemCount: items.length,
                 separatorBuilder: (_, _) => const SizedBox(width: 12),
-                itemBuilder: (context, index) =>
-                    CompactWorkCard(work: items[index], width: _cardWidth),
+                itemBuilder: (context, index) => CompactWorkCard(
+                  work: items[index],
+                  width: _cardWidth,
+                  heroTag: 'home-rated-$index',
+                ),
               ),
             ),
           ),

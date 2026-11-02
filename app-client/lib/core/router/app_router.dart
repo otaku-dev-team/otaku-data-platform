@@ -88,6 +88,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                     path: RoutePaths.workDetailSegment,
                     builder: (context, state) => WorkDetailPage(
                       workId: state.pathParameters['workId'] ?? '',
+                      // 只从列表点进来时才有：详情页拿它接一次封面转场。
+                      heroTag: state.uri.queryParameters['hero'],
                     ),
                   ),
                 ],
