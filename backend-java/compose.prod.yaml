@@ -116,6 +116,10 @@ services:
       OTAKU_UGC_REMOVE_ON_ACCOUNT_DELETION: ${OTAKU_UGC_REMOVE_ON_ACCOUNT_DELETION:-false}
       # 机器审核**接入位**，协议见 docs/ugc-machine-moderation.md。
       # 默认 none = 不接入；站点选定服务商后填 endpoint 即可，不用改代码、不用发版。
+      # 只显示首站收录的作品（#370）；关掉只是不过滤，不改数据
+      OTAKU_WORK_SITE_SCOPE_ENABLED: ${OTAKU_WORK_SITE_SCOPE_ENABLED:-true}
+      # 自站来源（逗号分隔）：站点自己的内容，不走首站收录清单
+      OTAKU_WORK_SITE_SCOPE_SELF_SOURCES: ${OTAKU_WORK_SITE_SCOPE_SELF_SOURCES:-}
       OTAKU_UGC_MACHINE_PROVIDER: ${OTAKU_UGC_MACHINE_PROVIDER:-none}
       OTAKU_UGC_MACHINE_ENDPOINT: ${OTAKU_UGC_MACHINE_ENDPOINT:-}
       OTAKU_UGC_MACHINE_TOKEN: ${OTAKU_UGC_MACHINE_TOKEN:-}

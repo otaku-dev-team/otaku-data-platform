@@ -51,7 +51,18 @@ Java 侧权威记录，占据 ID；只有 Java 写新项目业务库。
 | `release_year` | int | **可空** | 来源字段名为 `year`，非空约 **95.9%**（2026-10-22 复核，旧记录「98.5% 为空」已作废）。有值时才填，**不得为缺失记录填 0** |
 | `tags` | string[] | 是 | 约 **38.5%** 为空（空值是 `[]`）。该站点的 `[]` **无法区分**"明确无标签"与"未录入"，适配器统一按未提供（`null`）处理，见第 6.3 节与 `stage1-minimal-contract.md` 第 4.4.3 节 |
 | `main_rating` | object | 是 | 见第 4 节 |
+| `site_listed` | bool | 否 | **首站是否收录**（#370）。`1` 才会出现在 app 的列表/搜索/标签/推荐/详情里；`0` 仍留在库、后台可见、可再被收录。由 `site_scope` 白名单在写入时判定，见 §2.1 |
 | `created_at` / `updated_at` | datetime | 否 | Java 维护 |
+
+### 2.1 可见范围：库里存全量，app 只显示首站收录的
+
+白名单在 `site_scope(subject_id)`，来自首站 `contents.bangumi_id`（18,828 条，2026-11-02）。
+`work.source_id`（`source=bangumi`）对上就是收录，写入时算成 `work.site_listed`，查询只认这一列。
+
+- **不是删除**：未收录只是不显示，`deleted_at` 仍为空。反过来，`deleted_at` 也不许再拿来当"隐藏"用
+  （2026-11-01 应急时用过哨兵值，V28 已全部清掉）；
+- `work_tag.site_listed` 是冗余：标签词表与标签筛选不 JOIN `work`，不冗余会冒出「搜得到、点进去 0 部」的词；
+- 白名单变更后**重新导入即生效**（写入路径按当前清单重判），不需要单独跑回填。
 
 ## 3. 来源映射 SourceRecord
 
