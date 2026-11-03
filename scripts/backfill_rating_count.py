@@ -52,14 +52,18 @@ def _mysql(sql_text: str) -> tuple:
 def fetch_rows(limit: int):
     rc, out, err = _mysql(SUBJECTS_QUERY % limit)
     if rc != 0:
-        print(err, file=sys.stderr)
-        return []
+        # 不再静默返回 []：mysql 抖动必须冒泡，否则上层会误判为"已无待处理行"而停止续跑
+        raise RuntimeError(f"fetch_rows mysql failed (rc={rc}): {err[:500]}")
     rows = []
     for line in out.splitlines():
         line = line.strip()
         if not line or line.startswith("work_id"):
             continue
-        wid, sid = line.split("\t")
+        parts = line.split("\t")
+        if len(parts) != 2:
+            print(f"  ! skip malformed row: {line!r}", file=sys.stderr)
+            continue
+        wid, sid = parts
         rows.append((wid, sid))
     return rows
 
@@ -79,6 +83,9 @@ def fetch_total(api_base: str, subject_id: str, retries: int) -> int | None:
             if he.code == 404:
                 return None  # 镜像确实没有该 subject，确定性结论，不重试
             last = he
+        except json.JSONDecodeError as je:
+            # 镜像偶发返回非 JSON（如 HTML 错误页），视为无数据，不重试
+            last = je
         except Exception as exc:  # noqa: BLE001
             last = exc
         if attempt < retries:
@@ -97,9 +104,24 @@ def build_sql(rows_with_count):
 
 def apply_docker(sql: str):
     rc, out, err = _mysql(sql)
-    if rc != 0:
-        print(err, file=sys.stderr)
-        raise RuntimeError("apply failed")
+    if rc == 0:
+        return out
+    # 整批 apply 失败（如管道偶发抖动），降级为逐条 apply：绝大多数能落盘，
+    # 仅真正坏的单条被跳过，避免整批 5000 行不落盘导致下轮重抓又失败死循环
+    print(f"  ! batch apply failed (rc={rc}): {err[:300]}, retrying per-statement", file=sys.stderr)
+    failed = 0
+    for stmt in sql.strip().split("\n"):
+        stmt = stmt.strip()
+        if not stmt:
+            continue
+        r2, _, e2 = _mysql(stmt)
+        if r2 != 0:
+            failed += 1
+            if failed <= 5:
+                print(f"  ! stmt failed: {stmt[:120]} -> {e2[:200]}", file=sys.stderr)
+    if failed:
+        print(f"  ! per-statement apply done with {failed} failed statements "
+              f"(kept as NULL, will retry next run)", file=sys.stderr)
     return out
 
 
@@ -114,13 +136,23 @@ def main():
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
 
-    rows = fetch_rows(args.limit)
+    try:
+        rows = fetch_rows(args.limit)
+    except RuntimeError as e:
+        # mysql 抖动：冒泡到非 0 退出，让外层循环 sleep 后重试，而非误判为"已完成"
+        print(f"[backfill] FETCH_ERROR: {e}", file=sys.stderr)
+        sys.exit(2)
     print(f"[backfill] fetched {len(rows)} rows needing rating_count", file=sys.stderr)
 
     if args.dry_run:
         for wid, sid in rows[:10]:
             print(f"  would fetch subject {sid} for work {wid}")
         print("[backfill] dry-run done", file=sys.stderr)
+        return
+
+    if not rows:
+        # 真正的完成信号：mysql 成功且已无待处理行。外层循环见此即停，避免把瞬态失败误判为完成
+        print("[backfill] ALL_DONE: no rows needing rating_count", file=sys.stderr)
         return
 
     done = 0
