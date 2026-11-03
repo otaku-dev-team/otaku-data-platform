@@ -127,20 +127,38 @@ IT_DB_PORT=3307 ./mvnw -B test    # 116 项，0 skipped（真实 MySQL 8.0）
 同一个道理在标签路径上已经吃过一次：V7 建表时记录过「有序扫描 35 ms vs filesort 772 ms」。
 **排序键一旦变成表达式，索引就用不上了**，这是代价的来源，不是写法问题。
 
-### 8.3 建议做法（等 #386 合了再做）
+### 8.3 做法（已实现，见 `V30__work_rating_sort.sql`）
 
-1. **加一个 STORED 生成列** `rating_sort`：
+1. **加一个 VIRTUAL 生成列** `rating_sort`：
    `CASE WHEN rating_count IS NOT NULL AND rating_count < 50 THEN 0 ELSE COALESCE(rating_value, 0) END`，
-   配 `(rating_sort, id)` 索引。生成列随行更新——写入路径零改动，回填 `rating_count` 时自动重算，
-   排序回到索引有序扫描。
-2. **展示层在 Java 映射时置空**（`rating_count < 50` → `ratingValue = null`），SQL 不动；
-   客户端拿到的就是 `null`，渲染 `--`，不需要新字段。
+   配 `(rating_sort, id)` 索引。选 VIRTUAL 而不是 STORED：虚拟列不重写表（只建索引），
+   索引仍把算好的值存下来，排序按索引取值、不逐行计算；写入零改动，回填 `rating_count` 时自动重算。
+2. **展示层在 Java 映射时置空**（`rating_count < 50` → `main_rating = null`），SQL 不动；
+   客户端拿到的就是 `null`，渲染 `--`，不需要新字段。`rating_count` 为 `null` 时**不隐藏**
+   （按「可信」处理，否则回填跑到一半会半屏没分）。
 3. `work_tag` 的冗余 `rating_value` 这轮不动：标签内排序要同样口径得再加冗余列，
-   属于第二批（现在标签内也没有「按评分排」的入口）。
+   属于第二批（现在标签内也没有「按评分排」的入口）。**已知差异**：带 `tag` 时低票作品仍按原分排。
 4. `min_rating` 语义**保持不变**（`0` = 只要有过评分）。改成「低票也算无评分」会让现有榜单口径
    静默变化，要改另开一条。
+5. 阈值在两处（Java 常量 `WorkService.MIN_RATING_COUNT`、V30 里的字面量），
+   由 `RatingThresholdConsistencyTest` 读迁移文件比对，改漏一处会红。
 
-### 8.4 一个硬顺序约束
+### 8.4 实测（2026-11-03，生产数据副本）
 
-`V29` 在 #386 里，**没合之前不能加 `V30`**：Flyway 按版本号顺序应用，先应用了 V30 再收到 V29，
-会被判成乱序迁移直接启动失败。所以 #383 的后端代码可以写，迁移必须等 #386 落地。
+生产 61MB dump → 本地 MySQL 8.0 副本（209,428 行 `work`）→ 让 Flyway 自己跑 V29 + V30：
+
+| 项 | 结果 |
+|---|---|
+| `V29`（`rating_count`，生产已有列 → 幂等跳过） | **14 ms** |
+| `V30`（虚拟生成列 + 索引，209,428 行） | **911 ms** |
+| 迁移后 `EXPLAIN`（`ORDER BY rating_sort DESC, id DESC`） | `idx_work_rating_sort`，**Backward index scan**，rows=**20** |
+| 真实数据验证 | 把一棵 9.4 分的头部作品 `rating_count` 改成 10 → 列表里不再排第一、`main_rating` 变 `null`；详情同样为 `null`；其余作品评分不受影响 |
+| 回归测试 | **401 通过 / 0 skipped**（新增 `RatingThresholdIntegrationTest` 2 项、`RatingThresholdConsistencyTest` 1 项） |
+
+反证也做了：把 `WorkSort.RATING` 改回 `rating_value DESC`，集成测试立刻红
+（`expected "it-rating-ok" but was "it-rating-low"`），说明这个测试真的打在排序上。
+
+### 8.5 一个硬顺序约束（已解除）
+
+`V29` 当时在 #386 里，**没合之前不能加 `V30`**：Flyway 按版本号顺序应用，先应用了 V30 再收到 V29，
+会被判成乱序迁移直接启动失败。#386 于 11-02 合入后此约束解除，本 PR 才带上 V30。

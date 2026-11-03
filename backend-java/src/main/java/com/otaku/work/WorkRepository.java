@@ -35,7 +35,7 @@ public class WorkRepository {
             id, work_id, work_type, title, summary, release_year,
             title_original, aliases, media, episodes,
             cover_source_url, cover_cache_key, cover_cached_at,
-            tags, rating_value, rating_scale, rating_source,
+            tags, rating_value, rating_scale, rating_source, rating_count,
             source, source_id, source_url, created_at, updated_at, deleted_at
             """;
 
@@ -647,6 +647,9 @@ public class WorkRepository {
                 rs.getBigDecimal("rating_value"),
                 rs.getString("rating_scale"),
                 rs.getString("rating_source"),
+                // 评分人数（#383）：同 release_year，必须 getObject，否则 NULL 会变成 0，
+                // 而 0 在口径里是「< 50 → 不展示评分」，等于把「没数据」误判成「票数不足」。
+                rs.getObject("rating_count", Integer.class),
                 rs.getString("source"),
                 rs.getString("source_id"),
                 rs.getString("source_url"),

@@ -49,7 +49,9 @@ class WorkSortTest {
         for (WorkSort sort : WorkSort.values()) {
             assertThat(sort.orderBy()).doesNotContain(":", "--", ";");
         }
-        assertThat(WorkSort.RATING.orderBy()).isEqualTo("rating_value DESC, id DESC");
+        // #383：评分排序排的是 V30 的生成列（低票按 0），不是 rating_value 本身。
+        // 排序键必须是一个**列**，写成 CASE 会让 idx_work_rating 失效（实测全表扫 + filesort）。
+        assertThat(WorkSort.RATING.orderBy()).isEqualTo("rating_sort DESC, id DESC");
         assertThat(WorkSort.YEAR.orderBy()).isEqualTo("release_year DESC, id DESC");
         assertThat(WorkSort.ID.orderBy()).isEqualTo("id ASC");
     }
@@ -57,7 +59,7 @@ class WorkSortTest {
     @Test
     @DisplayName("带别名版本：每列都加前缀，方向保留（两段式查询外层用）")
     void aliasedOrderBy() {
-        assertThat(WorkSort.RATING.orderBy("w")).isEqualTo("w.rating_value DESC, w.id DESC");
+        assertThat(WorkSort.RATING.orderBy("w")).isEqualTo("w.rating_sort DESC, w.id DESC");
         assertThat(WorkSort.YEAR.orderBy("w")).isEqualTo("w.release_year DESC, w.id DESC");
         assertThat(WorkSort.ID.orderBy("w")).isEqualTo("w.id ASC");
         // 别名传空等价于不带别名，避免拼出 ".id" 这种非法 SQL
