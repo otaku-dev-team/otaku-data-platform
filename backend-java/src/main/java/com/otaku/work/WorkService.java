@@ -42,6 +42,19 @@ public class WorkService {
     /** 多标签上限：再多就不是"筛选"而是"扫全库"，也挡住把整个词表塞进 URL。 */
     private static final int MAX_TAGS = 10;
 
+    /**
+     * 评分人数下限（#383）：低于它的作品**不展示评分**，排序按 0。
+     *
+     * <p>与来源站 `app/rating.py` 的 `MIN_RATING_COUNT = 50` 同一口径：
+     * 「1 个人打 10 分」不该既显示成 10 分、又占「评分最高」榜首。
+     *
+     * <p>这个数在**两处**存在：这里的常量、`V30__work_rating_sort.sql` 里生成列的
+     * `rating_count < 50`（排序不能读 Java 常量，只能是 SQL 字面量）。
+     * 只改一处会得到「展示藏了、排序还按原分」的错位，`RatingThresholdConsistencyTest`
+     * 读迁移文件比对，改漏了会红。
+     */
+    static final int MIN_RATING_COUNT = 50;
+
     /** 详情页推荐默认返回 6 条、最多 20 条——与来源站详情页的 6 条对齐，避免一次拉太多。 */
     static final int DEFAULT_RELATED_LIMIT = 6;
     static final int MAX_RELATED_LIMIT = 20;
@@ -259,6 +272,13 @@ public class WorkService {
 
     private static SourceRatingDto toRating(WorkRecord record) {
         if (record.ratingValue() == null) {
+            return null;
+        }
+        // #383：票数不足的不展示评分。rating_count 为 null 表示「还不知道」（镜像没返回 /
+        // 还没回填），按可信处理——否则回填跑到一半时，已跑到的行会被藏起来、没跑到的照旧展示，
+        // 同一屏里出现两种口径。
+        Integer ratingCount = record.ratingCount();
+        if (ratingCount != null && ratingCount < MIN_RATING_COUNT) {
             return null;
         }
         return new SourceRatingDto(record.ratingValue(), record.ratingScale(), record.ratingSource());

@@ -195,7 +195,7 @@ class CoverAllowlistTest {
         LocalDateTime now = LocalDateTime.now();
         return new WorkRecord(1L, workId, "anime", "标题", null, null,
                 null, null, null, null,
-                coverUrl, null, null, null, null, null, null,
+                coverUrl, null, null, null, null, null, null, null,
                 "otaku_site", "1", null, now, now, null);
     }
 }

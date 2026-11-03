@@ -340,7 +340,51 @@ class WorkServiceSortAndRelatedTest {
                 "https://example.invalid/cover.jpg", null, null,
                 tagsJson,
                 rating, "0-10", "otaku_site",
+                // 评分人数给足，免得样本被 #383 的低票口径隐藏掉
+                5000,
                 "otaku_site", "src-" + id, null,
                 NOW, NOW, null);
+    }
+
+    /** 指定评分人数的记录：#383 的展示口径只由 rating_count 决定。 */
+    private static WorkRecord ratedBy(long id, String workId, BigDecimal rating, Integer ratingCount) {
+        return new WorkRecord(
+                id, workId, "anime", "标题 " + workId, null, 2022,
+                null, null, null, null,
+                "https://example.invalid/cover.jpg", null, null,
+                "[]",
+                rating, "0-10", "otaku_site",
+                ratingCount,
+                "otaku_site", "src-" + id, null,
+                NOW, NOW, null);
+    }
+
+    @Test
+    @DisplayName("#383：票数不足的作品不展示评分（9.9 分 49 票 → rating 为 null）")
+    void hidesRatingWhenVoteCountBelowThreshold() {
+        when(repository.count(null, null, null, null, null)).thenReturn(2L);
+        when(repository.findPage(any(), any(), any(), eq(WorkSort.RATING), any(), any(), anyInt(), anyInt()))
+                .thenReturn(List.of(
+                        ratedBy(1L, "W-low", new BigDecimal("9.90"), WorkService.MIN_RATING_COUNT - 1),
+                        ratedBy(2L, "W-ok", new BigDecimal("7.80"), WorkService.MIN_RATING_COUNT)));
+
+        var page = service.list(null, null, null, "rating", null, 1, 20);
+
+        assertThat(page.items().get(0).mainRating()).isNull();
+        assertThat(page.items().get(1).mainRating()).isNotNull();
+        assertThat(page.items().get(1).mainRating().value()).isEqualByComparingTo("7.80");
+    }
+
+    @Test
+    @DisplayName("#383：rating_count 为 null 按「可信」处理——回填跑到一半不能半屏没分")
+    void keepsRatingWhenVoteCountUnknown() {
+        when(repository.count(null, null, null, null, null)).thenReturn(1L);
+        when(repository.findPage(any(), any(), any(), eq(WorkSort.RATING), any(), any(), anyInt(), anyInt()))
+                .thenReturn(List.of(ratedBy(1L, "W-unknown", new BigDecimal("8.50"), null)));
+
+        var page = service.list(null, null, null, "rating", null, 1, 20);
+
+        assertThat(page.items().get(0).mainRating()).isNotNull();
+        assertThat(page.items().get(0).mainRating().value()).isEqualByComparingTo("8.50");
     }
 }

@@ -17,6 +17,9 @@ import java.time.LocalDateTime;
  * - 时间统一存 UTC 的 LocalDateTime，出参时转 Instant（带 Z 的 RFC 3339）；
  * - deletedAt 是软删时间（#249）：null = 正常，非空 = 已下架。列表/搜索/筛选过滤掉，
  *   详情仍返回（`200 + deleted:true`），导入命中同一 (source, source_id) 时置空复活。
+ * - ratingCount 是评分人数（#383）：null = 镜像未返回 / 未回填，按「可信」处理；
+ *   非 null 且 < 50 时**不展示评分**（对外 rating 为 null），排序由库里生成列
+ *   {@code work.rating_sort} 处理，不在这一层做。
  */
 public record WorkRecord(
         Long id,
@@ -36,6 +39,7 @@ public record WorkRecord(
         BigDecimal ratingValue,
         String ratingScale,
         String ratingSource,
+        Integer ratingCount,
         String source,
         String sourceId,
         String sourceUrl,

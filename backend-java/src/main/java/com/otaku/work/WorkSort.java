@@ -21,8 +21,15 @@ public enum WorkSort {
     /** 默认：按物理主键升序，保持第一阶段以来的行为不变。 */
     ID("id ASC"),
 
-    /** 评分从高到低；无评分的排最后。需要索引 idx_work_rating。 */
-    RATING("rating_value DESC, id DESC"),
+    /**
+     * 评分从高到低；无评分的排最后。
+     *
+     * <p>排的是 `rating_sort` 而不是 `rating_value`：前者是 V30 加的生成列，
+     * 把「票数不足 50 的作品按 0 算」这件事物化掉了（#383）。
+     * 直接写成 `CASE ...` 会让索引失效——实测从 `idx_work_rating` 反向扫描 rows=20
+     * 变成全表扫 163,229 行 + filesort。要索引，就必须让排序键是一个**列**。
+     */
+    RATING("rating_sort DESC, id DESC"),
 
     /** 年份从新到旧；无年份的排最后。需要索引 idx_work_year。 */
     YEAR("release_year DESC, id DESC");
@@ -68,6 +75,11 @@ public enum WorkSort {
      * <p>列名**必须带别名**：{@code work} 与 {@code work_tag} 都有
      * {@code rating_value} / {@code release_year}，不限定表名时 MySQL 直接报
      * 「Column 'rating_value' in order clause is ambiguous」。
+     *
+     * <p>注意这里仍然排 {@code rating_value}，**不是** {@code rating_sort}：
+     * {@code work_tag} 没有评分人数，要同一口径得再冗余一列（#383 记为第二批）。
+     * 也就是说「带标签时低票作品仍按原分排」——这是已知且有意的差异，
+     * 不要为了让两处看起来一样就在标签路径上 JOIN work（那会把有序扫描变成 filesort）。
      */
     public String orderByOnTagTable(String alias) {
         String prefix = (alias == null || alias.isEmpty()) ? "" : alias + ".";
