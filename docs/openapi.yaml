@@ -4079,7 +4079,30 @@ components:
             related_work_ids:
               type: array
               items: { type: string }
-              description: 来源站「关联作品」的站点作品 id 原文，不回填本地 work_id
+              description: |
+                来源站「关联作品」区的**站点作品 id 原文**（`/contents/{数字}` 里的数字）。
+
+                与本地 `work_id`（`W-xxx`）、`work.source_id`（bangumi subject id）是三套号：
+                客户端**不得**拿它拼本地作品详情路由，也不得按数值当 subject id 撞号
+                （V28 实测会撞出 3,015 条假匹配）。要展示关联作品请用 `related_works`。
+            related_works:
+              type: array
+              nullable: true
+              description: |
+                来源站「关联作品」区**解析到本地作品**后的列表，元素形状与 `WorkSummary` 一致。
+                客户端只渲染、不自算：卡片的标题 / 封面 / 跳转用 `work_id` 全部取自这里。
+
+                解析链（服务端执行，#409）：content_id → 首站 `contents.bangumi_id`
+                → `work(source='bangumi' AND source_id=该 subject id AND site_listed=1
+                AND deleted_at IS NULL)` → WorkSummary。映射表（content_id → bangumi_id）
+                不在本库，需随 #409 落库 / 导入后才有值。
+                **不得**按 `(source='otaku_site', source_id=content_id)` 接：那批第二份目录
+                已被 V28 全部软删，详情一律 404。同样受成人内容可见性与收录范围约束。
+
+                `null` = 后端尚未启用解析（#409 落地前的兼容态）；`[]` = 已解析但无可用关联作品。
+                解析不到 / 已下架 / 不在收录范围的 content_id 一律跳过，顺序沿用来源站原始顺序。
+                客户端对 `null` 与 `[]` 一视同仁：整块不渲染，不显示「暂无关联作品」。
+              items: { $ref: "#/components/schemas/WorkSummary" }
 
     ArticleCategory:
       type: object

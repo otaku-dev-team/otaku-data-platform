@@ -14,6 +14,7 @@ import '../../shared/widgets/tag_chips.dart';
 import 'article_card.dart';
 import 'article_controller.dart';
 import 'article_meta_line.dart';
+import 'article_related_works_section.dart';
 
 /// 资讯详情。
 ///
@@ -232,6 +233,9 @@ class _ArticleDetailBody extends StatelessWidget {
               ),
               const SizedBox(height: 12),
             ],
+          // 后端尚未把站点 content_id 解析成本地作品时（#409 前），
+          // relatedWorks 为 null，区块自己整块不渲染。
+          ArticleRelatedWorksSection(works: article.relatedWorks),
         ],
       ),
     );
