@@ -117,3 +117,18 @@
 - asoron/AnimeMangaRecomandadtion（latent + cosine，相似度优先、人气/评分决胜）：<https://github.com/asoron/AnimeMangaRecomandadtion>
 - paras603/anime-recommendation（TF-IDF + cosine KNN）：<https://github.com/paras603/anime-recommendation>
 - 另：Bangumi 的 subject / 人物 / 制作公司关系模型可作为实体反查的权威参照（不抄其口径，仅借结构）。
+
+## 9. issue 跟踪（均挂 epic #403，2026-11-04 拆分）
+
+| 编号 | 场景 | 优先级 | 归属 | 三人确认项 |
+| --- | --- | --- | --- | --- |
+| #407 | 作品↔作品 匹配度打分重构（修 findRelated） | P0 | @pyxz0 | 权重初值 / reasons 结构 / rating_count 阈值 |
+| #408 | 资讯→作品 前端渲染（快赢，不动后端） | P0 | @riceyu02 | — |
+| #409 | 作品→资讯 反向查询接口 | P0 | @pyxz0 | — |
+| #410 | 作品→资讯 客户端展示（消费 #409） | P0 | @riceyu02 | — |
+| #411 | 系列关联 数据结构 + 反查接口 | P1 | @pyxz0 | series 数据结构 |
+| #412 | 实体反查 人物/公司→作品 列表接口 | P1 | @pyxz0 | — |
+| #413 | 召回/打分/排序 统一服务 + 曝光埋点 | P2 | @pyxz0 | 是否引入曝光/埋点表 |
+| #414 | 资讯↔资讯 共现关联（可选） | P2 | @pyxz0 | — |
+
+> 拆分原则：后端（@pyxz0）负责召回/打分/排序与数据契约，客户端（@riceyu02）只渲染、不自算；涉及数据结构 / 权重 / 埋点的条目需在 #403 决策日志三人确认后再动代码。
