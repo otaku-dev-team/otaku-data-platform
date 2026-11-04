@@ -466,8 +466,14 @@ bash scripts/post-deploy-check.sh http://127.0.0.1:8080
 
 ```cron
 # 每天 04:40 只补「上次之后新增」的作品（root 的 crontab）
-40 4 * * * /opt/otaku/data/run-rating-backfill-incremental.sh
+40 4 * * * flock -xn /tmp/rating-backfill.lock /opt/otaku/data/run-rating-backfill-incremental.sh
 ```
+
+`flock` 是防重叠：cron 不保证上一次跑完，加锁比假设「它一定很快」可靠。
+
+脚本的退出码是有意义的：**0 = 正常（包括「没有新行」），2 = 这轮失败**（mysql 连不上 /
+查询报错，内部会打 `FETCH_ERROR`）。失败时游标不动，下一次 cron 会重试同一段。
+这条是 #394 的教训——静默失败比报错难查得多，「一条都没补」和「根本没连上」在日志里必须能分开。
 
 为什么需要它：#383 的低票门槛（`rating_count < 50` 不显示分）依赖 `work.rating_count`，
 而这个值**导入时不带**——数据集里那一列 18,828 行只有 105 行有值（2026-11-04 查过，

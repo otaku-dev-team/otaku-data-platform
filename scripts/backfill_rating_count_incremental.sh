@@ -26,6 +26,14 @@ OUT=$(/opt/otaku/sync-venv/bin/python /opt/otaku/data/backfill_rating_count.py \
   echo "$OUT" | tail -3
 } >> "$LOG"
 
+# 失败要能被 cron 看见：这是 #394 教过的事——静默失败比报错难查得多。
+# 脚本内部对 mysql 抖动会打 FETCH_ERROR 并以 2 退出，这里把它透传出去，
+# 免得「一条都没补」和「根本没连上」在日志里长得一样。
+if echo "$OUT" | grep -q 'FETCH_ERROR'; then
+  echo "[cron] FETCH_ERROR，本轮失败，游标不动" >> "$LOG"
+  exit 2
+fi
+
 NEXT=$(echo "$OUT" | sed -n 's/.*next --after-id=\([0-9][0-9]*\).*/\1/p' | tail -1)
 if [ -n "$NEXT" ] && [ "$NEXT" -gt "$CURSOR" ]; then
   echo "$NEXT" > "$CURSOR_FILE.tmp" && mv "$CURSOR_FILE.tmp" "$CURSOR_FILE"
@@ -33,3 +41,4 @@ if [ -n "$NEXT" ] && [ "$NEXT" -gt "$CURSOR" ]; then
 else
   echo "[cron] 没有新行要补（fetched 0）" >> "$LOG"
 fi
+exit 0
