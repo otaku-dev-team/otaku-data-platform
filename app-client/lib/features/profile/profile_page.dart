@@ -343,6 +343,15 @@ class _SectionCard extends StatelessWidget {
             onTap: () => context.push(RoutePaths.persona),
           ),
           const Divider(height: 1),
+          // #378：账号数据的另一个视图。放这里而不是设置里——设备是「这个账号
+          // 登录过哪里」，跟主题、缓存那种设备级设置不是一回事。
+          _SectionTile(
+            icon: Icons.devices_other_outlined,
+            title: '登录设备',
+            subtitle: '登记过推送的设备，可解绑',
+            onTap: () => context.push(RoutePaths.devices),
+          ),
+          const Divider(height: 1),
           const _SectionTile(
             icon: Icons.article_outlined,
             title: '资讯收藏',
@@ -449,11 +458,34 @@ class _SessionFooter extends ConsumerWidget {
 
     return Column(
       children: [
-        TextButton.icon(
-          onPressed: auth.submitting ? null : () => _confirmLogout(context, ref),
-          icon: const Icon(Icons.logout_rounded),
-          label: const Text('退出登录'),
-          style: TextButton.styleFrom(foregroundColor: theme.colorScheme.error),
+        // 两个动作并排：登出是日常动作，注销是不可逆动作，放同一行既省纵向空间
+        // （下面还有一句说明要显示），也让「注销」自然显得更次要。
+        Wrap(
+          alignment: WrapAlignment.center,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: Space.s2,
+          children: [
+            TextButton.icon(
+              onPressed: auth.submitting
+                  ? null
+                  : () => _confirmLogout(context, ref),
+              icon: const Icon(Icons.logout_rounded),
+              label: const Text('退出登录'),
+              style: TextButton.styleFrom(
+                foregroundColor: theme.colorScheme.error,
+              ),
+            ),
+            TextButton(
+              onPressed: auth.submitting
+                  ? null
+                  : () => _confirmDeleteAccount(context, ref),
+              style: TextButton.styleFrom(
+                foregroundColor: theme.colorScheme.onSurfaceVariant,
+                textStyle: theme.textTheme.bodySmall,
+              ),
+              child: const Text('注销账号'),
+            ),
+          ],
         ),
         const SizedBox(height: Space.s2),
         Text(
@@ -498,5 +530,57 @@ class _SessionFooter extends ConsumerWidget {
         context,
       ).showSnackBar(const SnackBar(content: Text('退出登录失败，请稍后重试')));
     }
+  }
+
+  /// 注销账号（#378）。文案照契约 `DELETE /api/me` 的语义写，不夸大也不含糊：
+  /// 账号不能再登录、用户名不释放、评论保留但署名为「已注销用户」。
+  Future<void> _confirmDeleteAccount(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('注销这个账号？'),
+        content: const Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('注销后：'),
+            SizedBox(height: Space.s2),
+            Text('· 无法再用这个账号登录，用户名也不会释放；'),
+            Text('· 已发布的评论会保留，作者显示为「已注销用户」；'),
+            Text('· 收藏、浏览记录等账号数据会一并清除；'),
+            Text('· 这台与其他设备上的登录会立刻失效。'),
+            SizedBox(height: Space.s2),
+            Text('此操作不可撤销。'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+            child: const Text('注销账号'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    final error = await ref.read(authControllerProvider.notifier).deleteAccount();
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          error == null ? '账号已注销' : '注销失败：${error.message}',
+        ),
+      ),
+    );
   }
 }

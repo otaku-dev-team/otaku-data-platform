@@ -76,6 +76,12 @@ class AuthMockDataSource implements AuthDataSource {
     await Future<void>.delayed(delay);
   }
 
+  @override
+  Future<void> deleteAccount(String token) async {
+    // Mock 里不真的删账号：只模拟一次往返，让注销流程能被点通。
+    await Future<void>.delayed(delay);
+  }
+
   /// 站点授权登录的假实现。
   ///
   /// 五条可驱动的分支，对应真实链路上最常见的失败：
