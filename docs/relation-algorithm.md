@@ -87,6 +87,7 @@
   `work.source_id in (...)`，外加 `source='bangumi'` + `site_listed=1` + `deleted_at IS NULL` 三条件、一次 `IN` 禁 N+1、按原序重排；客户端只渲染 `related_works: WorkSummary[]`。
 - **不需要**：`work_content_map`、分页遍历 `/api/contents`、限流记账、失败页重跑、快照兜底。
 - 反向查（#409）同样不需要映射表：`related_work_ids` 里已是 subject_id，直接按包含关系匹配。
+- **更新频率**：资讯每日更新、新番档期与作品按季度更新。JOIN 方案每次导出都从源库实时取，季度新增作品自然被下一次导出带出来，不需要维护映射增量（这正是它比映射表强的地方）。新番同样带 `bangumi_id`（zm 确认，编辑流程保证）。
 
 ### 5.3 作品→资讯（相关资讯，P0）
 - 反向查 `article.related_work_ids` 含本作品的资讯，列表展示。
