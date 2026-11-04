@@ -7,7 +7,26 @@ import '../../core/config/app_config.dart';
 import '../../core/network/api_exception.dart';
 import '../models/article.dart';
 import '../models/paged_result.dart';
+import '../models/work_summary.dart';
+import '../models/work_type.dart';
 import 'article_data_source.dart';
+
+/// 开发期预览用的关联作品：id 与 `assets/mock/works_catalog.json` 前两条一致，
+/// 点进去在 mock 数据源里能找到详情。真数据由后端解析 `related_work_ids` 后给
+/// （见 #409），这里只保证「区块长什么样」在没接后端时也能看见。
+const List<WorkSummary> _mockRelatedWorks = <WorkSummary>[
+  WorkSummary(
+    workId: 'W-ff9d01',
+    workType: WorkType.anime,
+    title: 'NHK15个动画短片',
+  ),
+  WorkSummary(
+    workId: 'W-851b38',
+    workType: WorkType.anime,
+    title: '你的名字。',
+    coverUrl: 'https://picsum.photos/seed/otaku-90012/600/800',
+  ),
+];
 
 /// 后端未就绪时的本地资讯数据源。数据来自 `assets/mock/articles_catalog.json`。
 ///
@@ -128,6 +147,7 @@ class MockArticleDataSource implements ArticleDataSource {
         coverUrl: item.coverUrl,
         tags: item.tags,
         relatedWorkIds: const <String>[],
+        relatedWorks: _mockRelatedWorks,
       );
     }
     _details = details;

@@ -106,7 +106,11 @@ public class ArticleService {
                 record.sourceUrl(),
                 record.coverUrl(),
                 readTags(record.tagsJson()),
-                readStringList(record.relatedWorkIdsJson()));
+                readStringList(record.relatedWorkIdsJson()),
+                // content_id → 本地作品 的解析归 #409（需先落 content_id→bangumi_id
+                // 映射）。落地前显式给 null：客户端整块不渲染，而不是拿
+                // related_work_ids 去猜本地 work_id（那是站点号，见 V9 / V28）。
+                null);
     }
 
     /**
