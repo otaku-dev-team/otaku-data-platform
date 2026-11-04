@@ -26,10 +26,12 @@ from .manifest import (
     save_manifest,
 )
 from .mapping import DatasetMapping, MappingError, probe_sqlite, resolve
+from .article_publisher import ArticlePublishReport, publish_articles
 from .publisher import CHUNK_LIMIT, PublishReport, make_batch_id, publish_dataset
 from .schema import DATASET_TABLES, DATASET_VERSION, EXPORTER_VERSION
 
 __all__ = [
+    "ArticlePublishReport",
     "BreakingSchemaChange",
     "CHUNK_LIMIT",
     "DATASET_TABLES",
@@ -52,6 +54,7 @@ __all__ = [
     "make_batch_id",
     "probe_sqlite",
     "publish_dataset",
+    "publish_articles",
     "read_meta",
     "resolve",
     "save_manifest",
