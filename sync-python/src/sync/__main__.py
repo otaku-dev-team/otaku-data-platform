@@ -147,6 +147,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="把已导出的标准数据集提交到后端（默认预演，加 --apply 才写）",
     )
     parser.add_argument(
+        "--publish-articles",
+        action="store_true",
+        help="把数据集里的资讯提交到 /internal/import/articles（默认预演）。"
+        "related_work_ids 取数据集 article_links 里已 JOIN 好的 bangumi subject id；"
+        "资讯行的 source 固定 otaku_site（唯一键 uk_article_source），不跟 --backend-source",
+    )
+    parser.add_argument(
         "--dataset-in",
         default=None,
         help="要提交的数据集路径，默认 runs/dataset.db",
@@ -447,6 +454,78 @@ def _run_dataset_publish(args) -> int:
     return 0 if report.ok else 1
 
 
+def _run_article_publish(args) -> int:
+    """数据集里的资讯 → 后端 /internal/import/articles。默认预演，只读数据集。
+
+    与作品发布（--import-dataset）分开两条命令：资讯的 `source` 固定
+    `otaku_site`（唯一键 `uk_article_source`），而作品的 `backend_source` 是
+    `bangumi`。同一条命令里混着走，最容易出的错就是 source 串了、同一篇资讯
+    被当成新行再插一遍。
+    """
+    from .config import SOURCE_NAME
+    from .dataset import CHUNK_LIMIT, publish_articles
+    from .importer import JavaImporter
+
+    dataset = args.dataset_in or "runs/dataset.db"
+    chunk = args.batch_size or CHUNK_LIMIT
+    if chunk < 1 or chunk > CHUNK_LIMIT:
+        print(f"错误：单批上限 {CHUNK_LIMIT} 条", file=sys.stderr)
+        return 2
+
+    config = SyncConfig.from_env(java_base_url=args.java_base_url)
+    if args.apply and not config.internal_token:
+        print(
+            "错误：--apply 需要内部导入令牌，请设置环境变量 OTAKU_INTERNAL_TOKEN",
+            file=sys.stderr,
+        )
+        return 2
+
+    importer = None
+    if args.apply:
+        importer = JavaImporter(
+            config.java_base_url,
+            token=config.internal_token,
+            timeout=config.timeout_seconds,
+            max_attempts=config.max_attempts,
+            backoff_seconds=config.backoff_seconds,
+        )
+
+    try:
+        report = publish_articles(
+            dataset,
+            backend_source=args.backend_source or SOURCE_NAME,
+            chunk_size=chunk,
+            limit=args.limit,
+            apply=args.apply,
+            importer=importer,
+            report_path=f"{dataset}.articles-publish.json",
+        )
+    except FileNotFoundError as exc:
+        print(f"错误：{exc}", file=sys.stderr)
+        return 2
+
+    mode = (
+        "写入"
+        if args.apply
+        else "预演（未发送任何请求，加 --apply 才写入）"
+    )
+    print(f"资讯发布 · {mode}")
+    print(f"数据集: {report.dataset_path}")
+    print(
+        f"文章 {report.articles_scanned} 条，构建 {report.items_built} 条，"
+        f"分 {len(report.batches)} 批（source={report.article_source}）"
+    )
+    print(
+        f"关联: {report.articles_with_links} 篇有关联 / 共 {report.links_total} 条，"
+        f"命中 works.source_id {report.links_matched} 条"
+        f"（{report.link_hit_rate:.1%}）"
+    )
+    for warning in report.warnings:
+        print(f"注意: {warning}")
+    print(f"报告: {report.dataset_path}.articles-publish.json")
+    return 0 if report.ok else 1
+
+
 def _run_coverage_report(args) -> int:
     """扫描已导出的数据集，输出按类型的字段填充率与可上线数。
 
@@ -487,6 +566,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_dataset_export(args)
     if args.import_dataset:
         return _run_dataset_publish(args)
+    if args.publish_articles:
+        return _run_article_publish(args)
     if args.coverage_report:
         return _run_coverage_report(args)
     if args.retry_failed and (args.articles or args.schedule):
@@ -578,9 +659,10 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.apply:
-        # 走到这里说明 --import-dataset / --backfill-covers 都没给，--apply 没有合法同伴。
+        # 走到这里说明 --import-dataset / --publish-articles / --backfill-covers
+        # 都没给，--apply 没有合法同伴。
         print(
-            "错误：--apply 只与 --backfill-covers 或 --import-dataset 同用"
+            "错误：--apply 只与 --backfill-covers、--import-dataset 或 --publish-articles 同用"
             "（常规同步用 --dry-run 的相反面）",
             file=sys.stderr,
         )
