@@ -11,10 +11,14 @@
 设计红线（与 issue #415 一致）：
 - **演示数据标识**：所有 mock 数据以 `seed_mock_` 前缀 + 点评正文「演示数据」字样标注；仅用于开发期
   联调算法，**算法验证通过后必须执行 `--clear` 清空**，绝不带入生产。
-- 仅 `--seed-mock` 显式打开 + `--apply docker` 才落库；默认 dry-run（只打印计划，零写入）。
-- 生产守卫：若库里"非 mock 的真实用户"超过 50，拒绝播种，除非 `--allow-prod`。
-- 可幂等清空：`--clear` 删 seed_mock_ 前缀用户及其 collection/ugc_review/user_work_view，不清真数据。
+- 三道闸门才落库：`--seed-mock` + `--apply docker` + `--allow-dev-db`；缺任一条都只 dry-run。
+- 生产守卫（与闸门互补，两道都拦）：真实用户超过 50 直接拒绝，**不提供绕过开关**。
+  阈值这道管"看得出来的生产库"，`--allow-dev-db` 管"刚清过、真实用户为 0 的生产副本"。
+- 可幂等清空：`--clear` 删 `identity_source='mock'` 或 seed_mock_ 前缀的用户及其
+  collection/ugc_review/user_work_view，不清真数据。
 - 不碰 work 表、不碰真实用户；mock 账号 password_hash 写非法哨兵，BCrypt 校验必败 → 无法登录。
+- mock 用户在 `app_user.identity_source` 落 `'mock'`（与 #428 Java 版同一标记口径），
+  将来画像/推荐按该列排除演示数据时不会漏。
 - 不引模型；固定随机种子可复现；浏览写 V32 的 `user_work_view`（该迁移已随 #421 上线），
   表不存在时自动跳过并告警（`--skip-views` 显式关）。
 
@@ -26,8 +30,8 @@
     # 先看会做什么（不连库写入，仅拟计划）
     python scripts/seed_mock_users.py --dry-run --users 300
 
-    # 真正播种到 dev 库（需两条开关同时给）
-    python scripts/seed_mock_users.py --seed-mock --apply docker --users 300
+    # 真正播种到 dev 库（三条开关同时给，缺一条都只 dry-run）
+    python scripts/seed_mock_users.py --seed-mock --apply docker --allow-dev-db --users 300
 
     # 清空（幂等）
     python scripts/seed_mock_users.py --clear --apply docker
@@ -45,11 +49,21 @@ from datetime import datetime, timedelta, timezone
 
 # ---- 配置常量 --------------------------------------------------------------
 MOCK_USER_PREFIX = "seed_mock_"          # app_user.username / user_id 前缀，清空据此识别
+MOCK_IDENTITY_SOURCE = "mock"            # 与 #428 Java 版同一标记口径（app_user.identity_source）
 MOCK_PASSWORD_SENTINEL = "MOCK_ACCOUNT_NO_AUTH"  # 非 BCrypt，登录必败
 MOCK_DATA_LABEL = "演示数据"               # 点评正文标注，DB 内可直接肉眼识别
 DEFAULT_SEED = 20261104
 RETENTION_DAYS = 90                      # 与 #401 拍板的浏览/画像保留期一致
-PROD_USER_THRESHOLD = 50                 # 真实用户超过这个数视为生产库，拒绝播种
+PROD_USER_THRESHOLD = 50                 # 真实用户超过这个数视为生产库，硬拒绝（无绕过开关）
+
+# mock 行识别：标记列或用户名前缀任一命中。前缀兜住早期没写标记的数据，
+# 标记列兜住 #428 Java 版的 mock-* 用户 —— 两边混跑时 --clear 能一次清干净。
+MOCK_USER_WHERE = (f"(identity_source = '{MOCK_IDENTITY_SOURCE}' "
+                   f"OR username LIKE '{MOCK_USER_PREFIX}%')")
+# 真实用户 = 两条都不命中。identity_source 为 NULL 的行必须算真实用户：
+# 写成 NOT(identity_source='mock' OR ...) 会因为 NULL 参与比较而把整行筛掉。
+REAL_USER_WHERE = (f"COALESCE(identity_source, '') <> '{MOCK_IDENTITY_SOURCE}' "
+                   f"AND username NOT LIKE '{MOCK_USER_PREFIX}%'")
 
 # 生成模型默认规模（参考 acgn-test-platform 真实 28 账号分布校准）
 DEF_USERS = 300                          # 模拟用户数；1000 量级生成+落库成本高，不建议（见 #415）
@@ -373,7 +387,8 @@ def sql_users(users) -> list:
     for username, user_id in users:
         created = updated = _now_iso(datetime.now(timezone.utc))
         buf.append(
-            f"('{_esc(user_id)}','{_esc(username)}','{MOCK_PASSWORD_SENTINEL}','{created}','{updated}')"
+            f"('{_esc(user_id)}','{_esc(username)}','{MOCK_PASSWORD_SENTINEL}',"
+            f"'{MOCK_IDENTITY_SOURCE}','{created}','{updated}')"
         )
         if len(buf) >= DEF_BATCH:
             stmts.append(_users_insert(buf)); buf = []
@@ -383,7 +398,8 @@ def sql_users(users) -> list:
 
 
 def _users_insert(buf) -> str:
-    return ("INSERT IGNORE INTO app_user (user_id, username, password_hash, created_at, updated_at) "
+    return ("INSERT IGNORE INTO app_user "
+            "(user_id, username, password_hash, identity_source, created_at, updated_at) "
             "VALUES " + ",".join(buf) + ";")
 
 
@@ -440,6 +456,14 @@ def apply_users(users, apply_docker: bool):
         rc, out, err = _mysql(stmt)
         if rc != 0:
             raise RuntimeError(f"apply_users failed (rc={rc}): {err[:300]}")
+    # 补齐标记：早期没写 identity_source 的 mock 账号，重跑时一并补上（INSERT IGNORE 不会更新既有行）
+    rc, out, err = _mysql(
+        f"UPDATE app_user SET identity_source='{MOCK_IDENTITY_SOURCE}' "
+        f"WHERE username LIKE '{MOCK_USER_PREFIX}%' "
+        f"AND (identity_source IS NULL OR identity_source <> '{MOCK_IDENTITY_SOURCE}')"
+    )
+    if rc != 0:
+        raise RuntimeError(f"apply_users mark identity_source failed (rc={rc}): {err[:300]}")
     # 取回 mock 用户 PK
     rc, out, err = _mysql(
         f"SELECT id, username FROM app_user WHERE username LIKE '{MOCK_USER_PREFIX}%'"
@@ -502,9 +526,7 @@ def apply_views(batches, apply_docker: bool, skip: bool):
 
 # ---- 清空 ------------------------------------------------------------------
 def clear_mock(apply_docker: bool):
-    rc, out, err = _mysql(
-        f"SELECT id FROM app_user WHERE username LIKE '{MOCK_USER_PREFIX}%'"
-    )
+    rc, out, err = _mysql(f"SELECT id FROM app_user WHERE {MOCK_USER_WHERE}")
     if rc != 0:
         raise RuntimeError(f"clear: fetch mock ids failed (rc={rc}): {err[:300]}")
     ids = []
@@ -537,9 +559,7 @@ def clear_mock(apply_docker: bool):
 
 # ---- 生产守卫 --------------------------------------------------------------
 def prod_guard() -> int:
-    rc, out, err = _mysql(
-        f"SELECT COUNT(*) FROM app_user WHERE username NOT LIKE '{MOCK_USER_PREFIX}%'"
-    )
+    rc, out, err = _mysql(f"SELECT COUNT(*) FROM app_user WHERE {REAL_USER_WHERE}")
     if rc != 0:
         raise RuntimeError(f"prod_guard failed (rc={rc}): {err[:300]}")
     text = out.strip().splitlines()
@@ -557,8 +577,8 @@ def main():
                     help="**必须**显式打开才允许写入 mock 数据（红线：绝不进生产）")
     ap.add_argument("--clear", action="store_true", help="清空 mock 数据（幂等）")
     ap.add_argument("--dry-run", action="store_true", help="只打印计划，零写入")
-    ap.add_argument("--allow-prod", action="store_true",
-                    help="真实用户超阈值仍强制播种（仅限你确认是 dev 副本时）")
+    ap.add_argument("--allow-dev-db", action="store_true",
+                    help="声明目标库是 dev（写库必给；不给一律按 dry-run 处理）")
     ap.add_argument("--skip-views", action="store_true",
                     help="跳过浏览写入（V32 的 user_work_view）")
     ap.add_argument("--users", type=int, default=DEF_USERS,
@@ -600,17 +620,23 @@ def main():
     if args.dry_run:
         apply_docker = False
 
-    # 红线闸门：写 mock 必须双开关
+    # 红线闸门：写 mock 必须三开关（--seed-mock / --apply docker / --allow-dev-db）
     if apply_docker and not args.seed_mock:
         print("[seed] 拒绝：写入 mock 数据需同时给 --seed-mock 与 --apply docker。"
               "本次按 dry-run 处理。", file=sys.stderr)
         apply_docker = False
+    if apply_docker and not args.allow_dev_db:
+        print("[seed] 拒绝：写库还需显式声明目标库是 dev（--allow-dev-db）。"
+              "这道闸门挡的是「刚清过、真实用户为 0 的生产副本」——阈值守卫在那里不响。"
+              "本次按 dry-run 处理。", file=sys.stderr)
+        apply_docker = False
 
-    # 生产守卫
+    # 生产守卫：真实用户超阈值直接拒绝，不给绕过开关（声明 dev 也不能越过这道）
     real_users = prod_guard()
-    if real_users > PROD_USER_THRESHOLD and not args.allow_prod:
+    if real_users > PROD_USER_THRESHOLD:
         print(f"[seed] 拒绝：真实用户数 {real_users} > 阈值 {PROD_USER_THRESHOLD}，"
-              f"疑似生产库。开发副本请加 --allow-prod。", file=sys.stderr)
+              f"这不是开发库。脚本不提供强制写入开关，确认数据已废弃请先清库。",
+              file=sys.stderr)
         sys.exit(3)
 
     global site_map
@@ -640,8 +666,8 @@ def main():
           f"算法验证通过后请务必执行 `--clear --apply docker` 清空，禁止带入生产。", file=sys.stderr)
 
     if not apply_docker:
-        print("[seed] dry-run：以上为计划，未写入。加 --apply docker --seed-mock 落库。",
-              file=sys.stderr)
+        print("[seed] dry-run：以上为计划，未写入。"
+              "落库需 --seed-mock --apply docker --allow-dev-db。", file=sys.stderr)
         return
 
     apply_users(users, apply_docker)
