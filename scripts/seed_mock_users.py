@@ -17,6 +17,10 @@
 - 不碰 work 表、不碰真实用户；mock 账号 password_hash 写非法哨兵，BCrypt 校验必败 → 无法登录。
 - 不引模型；固定随机种子可复现；`views` 属 V32（pyxz0 未合）时自动跳过并告警（用 `--skip-views` 显式关）。
 
+参与度分层（参考 acgn-test-platform 真实 28 账号实测，校准而来）：
+    轻 60-120 / 中 120-220 / 重 220-400 / 超重度可达上千（封顶控成本）；
+    浏览 >> 收藏（观看量远大于收藏），点评只是一小部分。1000 用户量级生成+落库成本高，不建议。
+
 运行（仓库在 /opt/otaku 或同步后，凭据走环境变量，不写死）：
     # 先看会做什么（不连库写入，仅拟计划）
     python scripts/seed_mock_users.py --dry-run --users 300
@@ -46,15 +50,23 @@ DEFAULT_SEED = 20261104
 RETENTION_DAYS = 90                      # 与 #401 拍板的浏览/画像保留期一致
 PROD_USER_THRESHOLD = 50                 # 真实用户超过这个数视为生产库，拒绝播种
 
-# 生成模型默认规模
-DEF_USERS = 300
+# 生成模型默认规模（参考 acgn-test-platform 真实 28 账号分布校准）
+DEF_USERS = 300                          # 模拟用户数；1000 量级生成+落库成本高，不建议（见 #415）
 DEF_MAX_WORKS = 15000                    # 候选作品上限（id 游标采样，避免 ORDER BY RAND()）
-DEF_VIEWS_PER_USER = 30
-DEF_COLLECTIONS_PER_USER = 8
-DEF_REVIEWS_PER_USER = 4
-DEF_TASTE_TAGS = 3                       # 每个 mock 用户偏好的标签数
+DEF_TASTE_TAGS = 3                       # 每个 mock 用户偏好的标签数（真实账号题材种类约 42/300）
 DEF_VOCAB_SIZE = 200                     # 从 DB 实际标签频率取 top-N 当口味词表
 DEF_BATCH = 1000                         # 多行 INSERT 分块大小
+# 参与度分层（收藏数区间）—— 轻 60-120 / 中 120-220 / 重 220-400 / 超重度可达上千
+DEF_LIGHT_COLL = (60, 120)
+DEF_MEDIUM_COLL = (120, 220)
+DEF_HEAVY_COLL = (220, 400)
+DEF_SUPER_COLL = (600, 1000)             # 超重度封顶，控成本
+DEF_MEDIUM_FRAC = 0.30
+DEF_HEAVY_FRAC = 0.12
+DEF_SUPER_FRAC = 0.03                    # 轻 = 1 - 三者之和 = 0.55
+DEF_EXPLORE_RATE = 0.15                  # 无关探索曝光占比（参考站 exploration p50≈42 题材/300 部）
+DEF_VIEWS_MULT = (1.3, 2.2)              # 浏览 = 收藏 × 该区间（浏览 >> 收藏）
+DEF_REVIEW_FRAC = (0.10, 0.25)           # 点评 = 收藏 × 该区间
 
 # ---- 底层 DB 执行（复用 backfill 的 docker 通道）---------------------------
 def _mysql(sql_text: str) -> tuple:
@@ -96,11 +108,12 @@ def fetch_site_source_map() -> dict:
 def fetch_eligible_works(limit: int, cursor_start: int = 0, batch: int = 2000):
     """用 id 游标取候选作品（site_listed=1, is_adult=0, deleted_at IS NULL, tags 非空）。
 
-    返回 (rows, max_id)，rows = [(work_id, source, tags_json, rating_value, rating_count)]。
+    返回 (rows, max_id)，rows = [(work_id, source, tags_json, rating_value, rating_count, release_year)]。
     rating_value 为 DECIMAL，这里按字符串保留，转 float 时注意 None。
+    release_year 用于「偏热门+近年」采样权重（参考 acgn-test-platform 实测分布）。
     """
     q = (
-        "SELECT id, work_id, source, tags, rating_value, rating_count FROM work "
+        "SELECT id, work_id, source, tags, rating_value, rating_count, release_year FROM work "
         "WHERE site_listed=1 AND is_adult=0 AND deleted_at IS NULL AND tags IS NOT NULL "
         "AND id > %d ORDER BY id LIMIT %d"
     )
@@ -114,14 +127,14 @@ def fetch_eligible_works(limit: int, cursor_start: int = 0, batch: int = 2000):
         if not line or line.startswith("id\t"):
             continue
         parts = line.split("\t")
-        if len(parts) != 6:
+        if len(parts) != 7:
             continue
-        rid, wid, src, tags, rv, rcnt = parts
+        rid, wid, src, tags, rv, rcnt, ry = parts
         try:
             max_id = max(max_id, int(rid))
         except ValueError:
             pass
-        rows.append((wid, src, tags, rv, rcnt))
+        rows.append((wid, src, tags, rv, rcnt, ry))
         if len(rows) >= limit:
             break
     return rows, max_id
@@ -142,7 +155,7 @@ def load_works(limit: int) -> list:
 # ---- 生成核心 --------------------------------------------------------------
 def build_vocabulary(works, vocab_size: int) -> list:
     freq: dict[str, int] = {}
-    for _, _, tags_json, _, _ in works:
+    for _, _, tags_json, _, _, _ in works:
         try:
             tags = json.loads(tags_json) if tags_json else []
         except json.JSONDecodeError:
@@ -174,6 +187,35 @@ def score_work(taste: set, tags: list, rating_value: float | None) -> float:
     return overlap + 0.25 * (rv / 10.0)
 
 
+def parse_year(raw) -> int:
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return 2000
+
+
+def work_weight(rating_count, release_year) -> float:
+    """「偏热门 + 近年」采样权重（参考 acgn-test-platform 真实 28 账号分布）：
+    人气用 rating_count（我们刚回填的），年代档位 >=2021:3.0 / >=2015:2.0 / >=2005:1.0 / 更早:0.4。
+    追番表压倒性偏向「平台热门番 + 近年」，均匀抽会让分布失真。
+    """
+    try:
+        rc = float(rating_count or 0)
+    except (TypeError, ValueError):
+        rc = 0.0
+    wh = (rc + 1) ** 0.6
+    y = parse_year(release_year)
+    if y >= 2021:
+        wy = 3.0
+    elif y >= 2015:
+        wy = 2.0
+    elif y >= 2005:
+        wy = 1.0
+    else:
+        wy = 0.4
+    return wh * wy
+
+
 def weighted_sample(pairs, k: int, rng: random.Random):
     """pairs = [(item, weight)]，按 weight 采样最多 k 个不重复。weight<=0 跳过。"""
     pos = [(it, w) for it, w in pairs if w > 0]
@@ -200,53 +242,71 @@ def generate(rng: random.Random, works, vocab: list, args):
     reviews    = [(user_idx, work_id, site_key, rating, body, created_at, updated_at, edited_at)]
     """
     now = datetime.now(timezone.utc)
-    vocab_set = set(vocab)
 
     users = []
     views, collections, reviews = [], [], []
 
-    # 预解析每个作品的 tags / rating，便于打分
+    # 预解析每个作品的 tags / rating / 人气 / 年代，便于打分与采样权重
     parsed = []
     work_by_wid = {}
-    for wid, src, tags_json, rv, rcnt in works:
+    for wid, src, tags_json, rv, rcnt, ry in works:
         try:
             tags = json.loads(tags_json) if tags_json else []
         except json.JSONDecodeError:
             tags = []
         if not isinstance(tags, list):
             tags = []
-        parsed.append((wid, src, tags, parse_rating(rv)))
-        work_by_wid[wid] = (src, tags, parse_rating(rv))
+        rvf = parse_rating(rv)
+        year = parse_year(ry)
+        parsed.append((wid, src, tags, rvf, rcnt, year))
+        work_by_wid[wid] = (wid, src, tags, rvf, rcnt, year)
+
+    n_work = len(parsed)
+    all_indices = list(range(n_work))
 
     for i in range(args.users):
         username = f"{MOCK_USER_PREFIX}{i:04d}"
         user_id = f"{MOCK_USER_PREFIX}uid_{i:04d}"
         users.append((username, user_id))
 
-        # 口味：从词表随机取 TASTE_TAGS 个
+        # 口味：从词表随机取 TASTE_TAGS 个（真实账号题材种类约 42/300，3 个足够造出清晰信号）
         taste = set(rng.sample(vocab, min(args.taste_tags, len(vocab))))
 
-        # 参与度分层：轻/中/重收藏者，制造收藏量显著差（贴近真实长尾分布）
-        # 轻 60% / 中 30% / 重 10%；重用户看的、藏的、评的都明显更多
-        engagement = rng.choice([0.3, 1.0, 2.5], p=[0.6, 0.3, 0.1])
-        n_views = max(1, int(args.views_per_user * engagement * rng.uniform(0.7, 1.3)))
-        n_coll = max(1, int(args.collections_per_user * engagement * rng.uniform(0.7, 1.3)))
-        n_rev = max(1, int(args.reviews_per_user * engagement * rng.uniform(0.7, 1.3)))
+        # 参与度分层（参考 acgn-test-platform 真实 28 账号实测分布）：
+        # 轻 60-120 / 中 120-220 / 重 220-400 / 超重度可达上千。比例可调。
+        r = rng.random()
+        if r < args.super_frac:
+            tier, n_coll = "super", rng.randint(*args.super_coll)
+        elif r < args.super_frac + args.heavy_frac:
+            tier, n_coll = "heavy", rng.randint(*args.heavy_coll)
+        elif r < args.super_frac + args.heavy_frac + args.medium_frac:
+            tier, n_coll = "medium", rng.randint(*args.medium_coll)
+        else:
+            tier, n_coll = "light", rng.randint(*args.light_coll)
+        # 浏览 >> 收藏（真实用户浏览量远大于收藏）；点评只是一小部分
+        n_views = max(n_coll, int(n_coll * rng.uniform(*args.views_mult)))
+        n_rev = max(1, int(n_coll * rng.uniform(*args.review_frac)))
 
-        # 候选：与口味有标签重叠的作品（保证推荐算法有信号），外加少量随机发现
-        candidates = []  # (idx, weight)
-        for idx, (wid, src, tags, rv) in enumerate(parsed):
-            s = score_work(taste, tags, rv)
+        # 候选：与口味有标签重叠的作品（保证推荐算法有信号），权重 = 偏热门+近年
+        matched = []  # (idx, weight)
+        for idx, (wid, src, tags, rvf, rcnt, year) in enumerate(parsed):
+            s = score_work(taste, tags, rvf)
             if s > 0:
-                # 观看权重平缓：轻量放大匹配度，避免高热度过度集中（看的权重不大）
-                candidates.append((idx, 1.0 + 0.4 * s))
-        # 随机发现：从全部作品抽 5% 作为无关曝光（模拟探索）
-        discovery = rng.sample(range(len(parsed)), max(1, len(parsed) // 20))
-        for idx in discovery:
-            candidates.append((idx, 0.05))
+                matched.append((idx, work_weight(rcnt, year)))
 
         seen_wids = set()
-        picked = weighted_sample(candidates, n_views, rng)
+        # 同口味候选按「热门+近年」采样，留出 explore_rate 比例做无关探索曝光
+        explore_k = max(0, int(n_views * args.explore_rate))
+        picked = weighted_sample(matched, n_views - explore_k, rng)
+        for idx in rng.sample(all_indices, min(explore_k, n_work)):
+            if idx not in picked:
+                picked.append(idx)
+        # 同口味池太小（冷门口味）补不满时从全库随机补齐，保证深度达标
+        if len(picked) < n_views:
+            extra = [idx for idx in rng.sample(all_indices, n_views - len(picked))
+                     if idx not in picked]
+            picked += extra
+
         for idx in picked:
             wid = parsed[idx][0]
             if wid in seen_wids:
@@ -258,7 +318,7 @@ def generate(rng: random.Random, works, vocab: list, args):
             vc = rng.randint(1, 5)
             views.append((i, wid, first, last, vc))
 
-        # 收藏 = 观看子集（强意图），量随参与度分层差异显著
+        # 收藏 = 观看子集（强意图），量随分层差异显著（轻~60 / 重~400 / 超重上千）
         coll_wids = rng.sample(list(seen_wids), min(n_coll, len(seen_wids)))
         for wid in coll_wids:
             status = rng.choice(["want", "watching", "watched"])
@@ -268,9 +328,9 @@ def generate(rng: random.Random, works, vocab: list, args):
         # 点评 = 观看子集，rating 与口味匹配 + 作品评分正相关
         rev_wids = rng.sample(list(seen_wids), min(n_rev, len(seen_wids)))
         for wid in rev_wids:
-            src, tags, rv = work_by_wid[wid]
+            _, src, tags, rvf, _, _ = work_by_wid[wid]
             overlap = len(set(tags) & taste)
-            base = (rv if rv is not None else 5.0)
+            base = (rvf if rvf is not None else 5.0)
             # 口味命中拉高评分，噪声 ±1.5
             rating = base + overlap * 0.8 + rng.uniform(-1.5, 1.5)
             rating = int(max(1, min(10, round(rating))))
@@ -500,13 +560,28 @@ def main():
                     help="真实用户超阈值仍强制播种（仅限你确认是 dev 副本时）")
     ap.add_argument("--skip-views", action="store_true",
                     help="跳过 views 写入（V32 未合时使用）")
-    ap.add_argument("--users", type=int, default=DEF_USERS)
+    ap.add_argument("--users", type=int, default=DEF_USERS,
+                    help="模拟用户数；1000 量级生成+落库成本高，不建议（#415）")
     ap.add_argument("--max-works", type=int, default=DEF_MAX_WORKS)
-    ap.add_argument("--views-per-user", type=int, default=DEF_VIEWS_PER_USER)
-    ap.add_argument("--collections-per-user", type=int, default=DEF_COLLECTIONS_PER_USER)
-    ap.add_argument("--reviews-per-user", type=int, default=DEF_REVIEWS_PER_USER)
     ap.add_argument("--taste-tags", type=int, default=DEF_TASTE_TAGS)
     ap.add_argument("--vocab-size", type=int, default=DEF_VOCAB_SIZE)
+    ap.add_argument("--light-coll", type=int, nargs=2, default=DEF_LIGHT_COLL,
+                    metavar=("LO", "HI"), help="轻用户收藏区间（默认 60 120，参考站实测）")
+    ap.add_argument("--medium-coll", type=int, nargs=2, default=DEF_MEDIUM_COLL,
+                    metavar=("LO", "HI"))
+    ap.add_argument("--heavy-coll", type=int, nargs=2, default=DEF_HEAVY_COLL,
+                    metavar=("LO", "HI"))
+    ap.add_argument("--super-coll", type=int, nargs=2, default=DEF_SUPER_COLL,
+                    metavar=("LO", "HI"), help="超重度收藏区间（封顶控成本）")
+    ap.add_argument("--medium-frac", type=float, default=DEF_MEDIUM_FRAC)
+    ap.add_argument("--heavy-frac", type=float, default=DEF_HEAVY_FRAC)
+    ap.add_argument("--super-frac", type=float, default=DEF_SUPER_FRAC)
+    ap.add_argument("--explore-rate", type=float, default=DEF_EXPLORE_RATE,
+                    help="无关探索曝光占比（默认 0.15）")
+    ap.add_argument("--views-mult", type=float, nargs=2, default=DEF_VIEWS_MULT,
+                    metavar=("LO", "HI"), help="浏览 = 收藏 × 该区间")
+    ap.add_argument("--review-frac", type=float, nargs=2, default=DEF_REVIEW_FRAC,
+                    metavar=("LO", "HI"), help="点评 = 收藏 × 该区间")
     ap.add_argument("--seed", type=int, default=DEFAULT_SEED)
     ap.add_argument("--batch", type=int, default=DEF_BATCH)
     args = ap.parse_args()
@@ -555,8 +630,11 @@ def main():
 
     rng = random.Random(args.seed)
     users, views, collections, reviews = generate(rng, works, vocab, args)
+    nu = len(users) or 1
     print(f"[seed] 生成：用户 {len(users)} / views {len(views)} / "
           f"collections {len(collections)} / reviews {len(reviews)}。", file=sys.stderr)
+    print(f"[seed] 人均：收藏 {len(collections)/nu:.0f} / 浏览 {len(views)/nu:.0f} / "
+          f"点评 {len(reviews)/nu:.0f}（浏览>>收藏，符合真实长尾）。", file=sys.stderr)
     print(f"[seed] 【演示数据 DEMO】本脚本注入的是开发期模拟行为数据，仅供联调算法；"
           f"算法验证通过后请务必执行 `--clear --apply docker` 清空，禁止带入生产。", file=sys.stderr)
 
