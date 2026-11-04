@@ -2,6 +2,10 @@ import 'package:flutter/foundation.dart';
 
 /// 契约 2.1：`main_rating` 为 `{value, scale, source}`，**缺失不是 0 分**。
 /// 因此整个对象可空，而不是把 null 折算成 0。
+///
+/// #383 起 `null` 有第二种含义：**评分人数不足**（后端按 < 50 票把评分藏起来）。
+/// 客户端拿不到票数，也不需要区分「来源没给分」和「票数不够」——两种原因都按
+/// 「没有可展示的评分」处理，绝不渲染 `0.0`。
 @immutable
 class SourceRating {
   const SourceRating({

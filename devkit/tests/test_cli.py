@@ -3,6 +3,7 @@
 这几处坏掉的后果都不是「报错」，而是「看起来跑过了」——最贵的那种故障。
 """
 
+import json
 import sys
 
 from devkit import cache, cli, select
@@ -110,3 +111,51 @@ def test_conclusion_partial_skip_still_says_not_passed():
 
     assert "没执行" in line
     assert "全部通过" not in line
+
+
+def _no_changes(monkeypatch):
+    """fast-forward 拉完远端后：HEAD 与 origin/main 相同，changed 为空。"""
+    monkeypatch.setattr(select, "changed_files",
+                        lambda _: ([], "merge-base HEAD origin/main"))
+
+
+def _fake_gate(monkeypatch):
+    seen = []
+
+    def fake():
+        seen.append(True)
+        return {"contract": {"status": "passed"},
+                "site-isolation": {"status": "passed"}}
+
+    monkeypatch.setattr(cli, "run_gate", fake)
+    return seen
+
+
+def test_gate_runs_even_when_nothing_changed(monkeypatch, capsys):
+    """2026-11-04 实际踩到：ff 拉下 19 个提交后 `devtest --gate` 直接早退，
+    契约 / 站点隔离守卫一次都没跑，却让人以为门禁过了。
+
+    守卫与「这轮改了什么」无关，空改动也要单独跑一遍。
+    """
+    _no_changes(monkeypatch)
+    seen = _fake_gate(monkeypatch)
+
+    rc = cli.main(["--gate"])
+
+    assert seen == [True]
+    assert rc == 0
+    assert "门禁通过" in capsys.readouterr().out
+
+
+def test_gate_with_no_changes_stays_json_parseable(monkeypatch, capsys):
+    """--json 的 stdout 必须是纯 JSON，早退分支也不能退化成人话。"""
+    _no_changes(monkeypatch)
+    _fake_gate(monkeypatch)
+
+    rc = cli.main(["--gate", "--json"])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert rc == 0
+    assert payload["conclusion"] == "empty"
+    assert payload["gate_ok"] is True
+    assert set(payload["gate"]) == {"contract", "site-isolation"}

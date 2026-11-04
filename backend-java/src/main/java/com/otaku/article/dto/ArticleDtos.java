@@ -1,5 +1,7 @@
 package com.otaku.article.dto;
 
+import com.otaku.work.dto.WorkSummaryDto;
+
 import java.util.List;
 
 /**
@@ -8,7 +10,7 @@ import java.util.List;
  * <p>列表项与详情刻意分开：列表不带 {@code body}（正文可能几百 KB，
  * 一页 20 条就是几 MB，客户端列表页根本用不上），也不带
  * {@code related_work_ids}（客户端第一版不用，见 V9 迁移文件头）。
- * 详情才给全文。
+ * 详情才给全文与关联作品信息。
  */
 public final class ArticleDtos {
 
@@ -56,8 +58,17 @@ public final class ArticleDtos {
     }
 
     /**
-     * 详情。比列表多 {@code body}（正文纯文本，一行一段）
-     * 与 {@code relatedWorkIds}（来源站关联作品 id 原文）。
+     * 详情。比列表多 {@code body}（正文纯文本，一行一段）、
+     * {@code relatedWorkIds}（来源站关联作品 id 原文）与
+     * {@code relatedWorks}（解析到本地作品后的列表）。
+     *
+     * <p>{@code relatedWorkIds} 是 <b>站点 content_id</b>，与本地 {@code work_id}
+     * 及 bangumi subject id 是三套号，客户端不得拿它拼本地详情路由（见 V9 迁移文件头、
+     * 契约 ArticleDetail）。卡片所需的一切字段都在 {@code relatedWorks} 里。
+     *
+     * <p>{@code relatedWorks} 的解析（content_id → 首站 contents.bangumi_id →
+     * 本地 work）归 #409；#409 落地前这里恒为 {@code null}，客户端整块不渲染。
+     * 不在这里按数值猜 subject id：V28 实测会撞出 3,015 条假匹配。
      */
     public record ArticleDetail(
             String articleId,
@@ -70,7 +81,8 @@ public final class ArticleDtos {
             String sourceUrl,
             String coverUrl,
             List<String> tags,
-            List<String> relatedWorkIds
+            List<String> relatedWorkIds,
+            List<WorkSummaryDto> relatedWorks
     ) {
     }
 

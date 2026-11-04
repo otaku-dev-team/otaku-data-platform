@@ -77,6 +77,8 @@ tags:
     description: 阶段 2：登录、当前用户、退出。不开放自助注册
   - name: 个人收藏
     description: 阶段 2：本人收藏与观看状态，路径里永不出现 user_id
+  - name: 浏览记录
+    description: 画像信号之一：客户端在详情页打开时打点；重复提交只累加次数，不报错
   - name: 内部账号
     description: 阶段 2：仅内网可用的建号接口，客户端不得持有内部令牌
   - name: 站主后台
@@ -1138,6 +1140,37 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "405": { $ref: "#/components/responses/MethodNotAllowed" }
         "500": { $ref: "#/components/responses/InternalError" }
+
+  /api/me/views:
+    post:
+      tags: [浏览记录]
+      summary: 记一次浏览（打点）
+      operationId: recordView
+      description: |
+        客户端在**详情页打开**时调用一次，服务端据此积累画像信号（#401）。
+
+        三个约定：
+
+        1. **重复提交是正常的**——同一个人反复打开同一页只会让 `view_count` 累加，
+           不新增行、不报错。客户端不需要去重。
+        2. **不需要回执**，成功返回 `204`；失败按下面的状态码区分，客户端可以静默重试。
+        3. 时间以**服务端收到为准**，请求体不接受时间戳——客户端时钟不可信。
+
+        作品不存在、未收录（按站收口）或已软删，一律 `404 WORK_NOT_FOUND`：
+        不给「看不见的作品」积累浏览行。
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ViewRequest" }
+      responses:
+        "204":
+          description: 已记录（重复提交同样返回 204）
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/UnauthorizedSession" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /api/me/collections:
     get:
@@ -2617,9 +2650,11 @@ components:
         来源评分。`null` 表示来源没有评分，**不是 0 分**，客户端必须不显示评分区域，
         不得显示 `0.0`。
 
-        `null` 还有第二种含义（#383）：**票数不足**。平台按「评分人数 ≥ 50」决定是否展示——
-        1 个人打 10 分不该显示成 10 分。客户端不需要区分这两种原因，一律渲染成「--」
-        （与来源站 `rating_shown()` 的口径一致）。票数未知时不隐藏（按可信处理）。
+        `null` 还有第二种含义（#383）：**票数不足**。平台按「评分人数 ≥ 50」决定是否展示
+        （与来源站 `rating_shown()` 同口径）——1 个人打 10 分不该显示成 10 分。
+        客户端不需要区分这两种原因，一律按「无评分」处理：默认整块不渲染评分区域，
+        需要占位的场景（如按评分排序）显示「暂无评分」，**不得显示 `0.0`**。
+        票数未知时不隐藏（按可信处理）。
       required: [value, scale, source]
       properties:
         value:
@@ -3916,6 +3951,19 @@ components:
         user:
           $ref: "#/components/schemas/User"
 
+    ViewRequest:
+      type: object
+      description: 浏览打点的请求体
+      required: [work_id]
+      properties:
+        work_id:
+          type: string
+          maxLength: 64
+          description: |
+            作品标识（`work_id`，不是来源站的 `source_id`）。
+            超长或格式非法按「作品不存在」处理，返回 `404` 而不是 `400`——与详情接口同一口径。
+          example: W-4zpntdm06c7461r
+
     CollectionUpdateRequest:
       type: object
       description: 只接受「目标状态」，不提供 toggle——切换语义在网络重试时会反向操作
@@ -4033,7 +4081,30 @@ components:
             related_work_ids:
               type: array
               items: { type: string }
-              description: 来源站「关联作品」的站点作品 id 原文，不回填本地 work_id
+              description: |
+                来源站「关联作品」区的**站点作品 id 原文**（`/contents/{数字}` 里的数字）。
+
+                与本地 `work_id`（`W-xxx`）、`work.source_id`（bangumi subject id）是三套号：
+                客户端**不得**拿它拼本地作品详情路由，也不得按数值当 subject id 撞号
+                （V28 实测会撞出 3,015 条假匹配）。要展示关联作品请用 `related_works`。
+            related_works:
+              type: array
+              nullable: true
+              description: |
+                来源站「关联作品」区**解析到本地作品**后的列表，元素形状与 `WorkSummary` 一致。
+                客户端只渲染、不自算：卡片的标题 / 封面 / 跳转用 `work_id` 全部取自这里。
+
+                解析链（服务端执行，#409）：content_id → 首站 `contents.bangumi_id`
+                → `work(source='bangumi' AND source_id=该 subject id AND site_listed=1
+                AND deleted_at IS NULL)` → WorkSummary。映射表（content_id → bangumi_id）
+                不在本库，需随 #409 落库 / 导入后才有值。
+                **不得**按 `(source='otaku_site', source_id=content_id)` 接：那批第二份目录
+                已被 V28 全部软删，详情一律 404。同样受成人内容可见性与收录范围约束。
+
+                `null` = 后端尚未启用解析（#409 落地前的兼容态）；`[]` = 已解析但无可用关联作品。
+                解析不到 / 已下架 / 不在收录范围的 content_id 一律跳过，顺序沿用来源站原始顺序。
+                客户端对 `null` 与 `[]` 一视同仁：整块不渲染，不显示「暂无关联作品」。
+              items: { $ref: "#/components/schemas/WorkSummary" }
 
     ArticleCategory:
       type: object
