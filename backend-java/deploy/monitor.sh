@@ -5,12 +5,13 @@
 #   ./deploy/monitor.sh           # 逐项打印
 #   ./deploy/monitor.sh --quiet   # 只在失败时说话（cron 用这个，别每天发一封"一切正常"）
 #
-# 查四件事，任一失败 → 退出码 1：
+# 查五件事，任一失败 → 退出码 1：
 #
 #   1. 健康检查     后端 /actuator/health 是否返回 UP
 #   2. 容器状态     EXPECT_SERVICES 里的每个容器是否 healthy（有 docker 才查）
 #   3. 磁盘占用     超过阈值就报——磁盘满是最常见的"服务莫名其妙挂了"
 #   4. 备份新鲜度   最新备份必须 < 26 小时。备份停了但不报警 = 以为有备份
+#   5. 评分回填     增量 cron 有没有在跑、上次有没有失败（静默失效的典型）
 #
 # 另外查两条不算失败的（只告警，不改变退出码）：
 #
@@ -228,6 +229,38 @@ elif [ "$MEM_AVAIL_MB" -lt "${MEM_MIN_AVAIL_MB:-200}" ]; then
     warn "可用内存仅 ${MEM_AVAIL_MB}MB（阈值 ${MEM_MIN_AVAIL_MB:-200}MB），swap 已用 ${SWAP_USED_MB:-0}MB"
 else
     ok "可用内存 ${MEM_AVAIL_MB}MB，swap ${SWAP_USED_MB:-0}/${SWAP_TOTAL_MB:-0}MB"
+fi
+
+# ── 5. 评分人数增量回填（cron 在不在跑 / 上次有没有失败）─────────────
+# 这条不是「服务可用性」，但它是**静默失效的典型**：cron 被误删、脚本报错、镜像改了口径，
+# 表现都是「线上看不出问题，只是新导入的作品一直没有票数」——而低票门槛对新数据就静默失效了。
+# 脚本自己会在失败时 exit 2，但 cron 的输出只进 syslog（这台机器没有 MTA），
+# 所以必须由巡检来读那个日志文件。
+RATING_LOG=${RATING_LOG:-$(read_env RATING_LOG "/opt/otaku/data/rating-backfill.log")}
+RATING_MAX_AGE_H=${RATING_MAX_AGE_H:-$(read_env RATING_MAX_AGE_H 48)}
+if [ ! -f "$RATING_LOG" ]; then
+    skip "评分回填（没有 $RATING_LOG，可能这台机器不跑增量回填）"
+else
+    LAST_TS=$(grep '^===== ' "$RATING_LOG" 2>/dev/null | tail -1 | sed -E 's/^===== ([0-9-]+ [0-9:]+).*/\1/')
+    if [ -z "${LAST_TS:-}" ]; then
+        skip "评分回填（日志里还没有运行记录）"
+    else
+        LAST_EPOCH=$(date -d "$LAST_TS" +%s 2>/dev/null || echo "")
+        if [ -z "${LAST_EPOCH:-}" ]; then
+            skip "评分回填（日志时间戳读不懂：$LAST_TS）"
+        else
+            AGE_H=$(( ($(date +%s) - LAST_EPOCH) / 3600 ))
+            # 只看最后一段（每次运行以 "===== 时间" 开头），别把历史失败算到今天头上
+            LAST_BLOCK=$(awk '/^===== /{buf=""} {buf=buf $0 "\n"} END{printf "%s", buf}' "$RATING_LOG")
+            if [ "$AGE_H" -gt "$RATING_MAX_AGE_H" ]; then
+                fail "评分回填 ${AGE_H}h 没跑（阈值 ${RATING_MAX_AGE_H}h）——cron 被删了还是机器没起？"
+            elif printf '%s' "$LAST_BLOCK" | grep -q 'FETCH_ERROR'; then
+                fail "评分回填上次失败（${LAST_TS}）：$(printf '%s' "$LAST_BLOCK" | grep 'FETCH_ERROR' | head -1 | cut -c1-120)"
+            else
+                ok "评分回填 ${AGE_H}h 前跑过，最近一次无失败"
+            fi
+        fi
+    fi
 fi
 
 # 告警通道本身也要能被看见：没配就每轮 SKIP 一行，别等出事才发现"没人收得到"
