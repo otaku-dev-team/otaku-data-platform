@@ -38,6 +38,17 @@ public class ViewRepository {
                         .addValue("now", now));
     }
 
+    /**
+     * 账号注销时清掉这个用户的全部浏览行。
+     *
+     * <p>和评论不同，浏览记录**没有「保留」的理由**：它不是社区内容，删掉不会让任何楼层塌陷，
+     * 留着只会让「已注销用户看过什么」继续被画像读到。所以这里无条件物理删。
+     */
+    public int purgeUser(long userId) {
+        return jdbc.update("DELETE FROM user_work_view WHERE user_id = :userId",
+                new MapSqlParameterSource("userId", userId));
+    }
+
     /** 删掉最后浏览时间早于 {@code cutoff} 的行，返回删除条数。 */
     public int purgeBefore(LocalDateTime cutoff) {
         return jdbc.update("DELETE FROM user_work_view WHERE last_viewed_at < :cutoff",
