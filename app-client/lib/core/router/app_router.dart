@@ -10,6 +10,7 @@ import '../../features/collection/collection_page.dart';
 import '../../features/contents/contents_page.dart';
 import '../../features/detail/work_detail_page.dart';
 import '../../features/home/home_page.dart';
+import '../../features/devices/device_page.dart';
 import '../../features/persona/persona_page.dart';
 import '../../features/profile/profile_page.dart';
 import '../../features/recent/recent_history_page.dart';
@@ -165,6 +166,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: RoutePaths.personaSegment,
             builder: (context, state) => const PersonaPage(),
+          ),
+          // #378 登录设备：同上，账号数据的二级视图。
+          GoRoute(
+            path: RoutePaths.devicesSegment,
+            builder: (context, state) => const DevicePage(),
           ),
         ],
       ),

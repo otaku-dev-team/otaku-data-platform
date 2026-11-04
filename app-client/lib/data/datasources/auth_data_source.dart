@@ -58,6 +58,12 @@ abstract class AuthDataSource {
 
   /// 撤销当前令牌。其他端的会话不受影响（C9）。
   Future<void> logout(String token);
+
+  /// 注销账号（契约 `DELETE /api/me`）：匿名化保留、所有设备会话立刻失效。
+  ///
+  /// 与 [logout] 不同，**失败必须抛给调用方**——注销是用户明确表达的意图，
+  /// 吞掉错误会让人以为账号已经注销。
+  Future<void> deleteAccount(String token);
 }
 
 /// 401 有两层含义，客户端必须按 `code` 区分：

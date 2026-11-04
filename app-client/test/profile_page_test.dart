@@ -172,14 +172,18 @@ void main() {
     await tester.tap(find.byTooltip('我的'));
     await tester.pumpAndSettle();
 
-    await tester.ensureVisible(find.text('退出登录'));
+    // 分区卡多了「登录设备」一行后，页脚不再落在首屏内；ListView 是懒构建的，
+    // 得先滚过去才能拿到 element（同下面 320 宽那个用例）。
+    await tester.scrollUntilVisible(find.text('退出登录'), 200);
+    await tester.pumpAndSettle();
     await tester.tap(find.text('退出登录'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('取消'));
     await tester.pumpAndSettle();
     expect(container.read(authControllerProvider).isSignedIn, isTrue);
 
-    await tester.ensureVisible(find.text('退出登录'));
+    await tester.scrollUntilVisible(find.text('退出登录'), 200);
+    await tester.pumpAndSettle();
     await tester.tap(find.text('退出登录'));
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(FilledButton, '退出登录'));

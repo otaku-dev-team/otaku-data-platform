@@ -47,6 +47,11 @@ abstract final class RoutePaths {
   static const String personaSegment = 'persona';
   static const String persona = '$profile/persona';
 
+  /// 登录设备（#378）。与画像同一种形态：挂在 `/me` 下的二级页，
+  /// 从个人空间点进来、返回也回个人空间。
+  static const String devicesSegment = 'devices';
+  static const String devices = '$profile/devices';
+
   /// 每日新番档期。与列表/收藏平级：从任何地方都能直接进。
   static const String schedule = '/schedule';
 
