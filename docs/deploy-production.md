@@ -462,6 +462,34 @@ bash scripts/post-deploy-check.sh http://127.0.0.1:8080
 关键表校验和一致 / 恢复后后端直接可服务），步骤与结果见
 [`backup-restore-drill.md`](backup-restore-drill.md)——那份文档同时是可复现的操作清单。
 
+### 评分人数增量回填
+
+```cron
+# 每天 04:40 只补「上次之后新增」的作品（root 的 crontab）
+40 4 * * * /opt/otaku/data/run-rating-backfill-incremental.sh
+```
+
+为什么需要它：#383 的低票门槛（`rating_count < 50` 不显示分）依赖 `work.rating_count`，
+而这个值**导入时不带**——数据集里那一列 18,828 行只有 105 行有值（2026-11-04 查过，
+上游源库这一列基本是空的），唯一来源是镜像 `/v0/subjects/{id}` 的 `rating.total`。
+也就是说**每新导入一批作品，就长出一批没有票数的行**；没有这个 cron，它们会一直按「票数未知」照常显示评分。
+
+脚本只做一件事：读 `/opt/otaku/data/rating-backfill.cursor`（上次处理到的最大 `work.id`），
+带 `--after-id` 跑一轮，成功后把游标推进。**没有新行时就是一条查询、几秒退出**。
+
+```bash
+sudo cat /opt/otaku/data/rating-backfill.cursor     # 看到哪了
+sudo tail -20 /opt/otaku/data/rating-backfill.log   # 每次运行的痕迹
+```
+
+三个要知道的点：
+
+| 现象 | 解释 |
+|---|---|
+| 日志里 `PASS_DONE…仍有 8,841 行未填` | 那 8,841 行是**未收录存量**（`site_listed=0`），镜像对它们永久 404，不是漏跑 |
+| 游标不前进 | 正常——没有新行时脚本不动游标，避免把游标推到未来 |
+| 想从头重扫一遍 | 把游标文件写成 `0`，下次 cron 会全量扫（约 4 小时） |
+
 ### 巡检与证书续期
 
 ```cron
