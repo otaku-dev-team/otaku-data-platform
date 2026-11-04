@@ -23,6 +23,8 @@ import '../../shared/widgets/mobile_nav_bar.dart';
 import '../../shared/widgets/desktop_shortcuts.dart';
 import '../article/article_card.dart';
 import '../contents/contents_controller.dart';
+import '../persona/persona_data_source.dart';
+import '../persona/personalized_recommend_section.dart';
 import '../recent/recent_views_controller.dart';
 import 'home_controller.dart';
 
@@ -98,6 +100,9 @@ class HomePage extends ConsumerWidget {
                   const _TodayScheduleSection(),
                   const _RecentViewsSection(),
                 ],
+                // #376 个性化推荐：放在固定榜之前，登录用户先看自己的；
+                // 游客态这个区块只给一张登录引导卡，默认榜仍是下面这几块。
+                const PersonalizedRecommendSection(),
                 const _TopRatedSection(),
                 const _LatestArticlesSection(),
               ],
@@ -108,20 +113,22 @@ class HomePage extends ConsumerWidget {
     );
   }
 
-  /// 下拉 / 按钮刷新：三块一起重取。
+  /// 下拉 / 按钮刷新：各块一起重取。
   ///
-  /// 等三块都结束才收起下拉动画，否则动画一收起就被当成"刷完了"。
+  /// 等各块都结束才收起下拉动画，否则动画一收起就被当成"刷完了"。
   /// 但单块失败不能让刷新一直转圈，所以错误在这里被吞掉——
   /// 它已经在各自区块里呈现过一次了。
   Future<void> _refresh(WidgetRef ref) async {
     ref.invalidate(homeTodayScheduleProvider);
     ref.invalidate(homeTopRatedProvider);
     ref.invalidate(homeLatestArticlesProvider);
+    ref.invalidate(personaFeedProvider);
 
     await Future.wait<void>([
       _settle(ref.read(homeTodayScheduleProvider.future)),
       _settle(ref.read(homeTopRatedProvider.future)),
       _settle(ref.read(homeLatestArticlesProvider.future)),
+      _settle(ref.read(personaFeedProvider.future)),
     ]);
   }
 

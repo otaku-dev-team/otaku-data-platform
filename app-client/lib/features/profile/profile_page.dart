@@ -336,6 +336,13 @@ class _SectionCard extends StatelessWidget {
             onTap: () => context.push(RoutePaths.recentHistory),
           ),
           const Divider(height: 1),
+          _SectionTile(
+            icon: Icons.auto_awesome_outlined,
+            title: '阿宅画像',
+            subtitle: '六维雷达、锐评与口味偏好',
+            onTap: () => context.push(RoutePaths.persona),
+          ),
+          const Divider(height: 1),
           const _SectionTile(
             icon: Icons.article_outlined,
             title: '资讯收藏',
