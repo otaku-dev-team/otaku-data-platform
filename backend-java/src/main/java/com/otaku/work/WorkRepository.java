@@ -440,22 +440,58 @@ public class WorkRepository {
     /**
      * 同标签作品（详情页「相关内容推荐」）。
      *
-     * <p>用 {@code JSON_OVERLAPS} 求交集，配合 {@code idx_work_rating} 反向扫描：
-     * 只要前 N 条，命中密集时扫几十行就够，55.6 万条实测 3ms。
-     * 若改成「按共享标签数排序」则需要全表算分 + filesort（实测 1.0s），
-     * 所以这里只按评分排——推荐理由由调用方用 basis_tags 呈现。
+     * <p>排序口径（2026-11-04 改）：**先按共享标签数，再按评分**。原来只按评分排，会出现
+     * 「只共享一个冷门标签的 9.2 分作品」排在「共享 4 个标签的 8.3 分作品」前面——
+     * 详情页上看起来就像随机推荐（relation-algorithm.md §6 的 P0）。
+     *
+     * <p>为什么不直接在 {@code work.tags} 上算交集：JSON 求交集大小只能逐元素比，
+     * 实测 0.3 s/次；而 {@code work_tag} 的主键就是 {@code (tag, work_ref)}，按 tag 分组计数是
+     * 纯索引扫描，实测 0.06 s——快 5 倍，且「共享几个标签」就是分组计数本身。
+     *
+     * <p>代价是依赖标签索引的覆盖度：实测 {@code site_listed=1} 的 17,676 部有标签作品
+     * **0 部缺 work_tag 行**；全量 work 里那 63,888 部没有 tag 行的都是未收录存量，本来就不可见。
+     * 所以「按站收口」开启时走标签索引；关闭时退回 JSON 交集 + 左连打分，
+     * 保证开发 / 多站形态下的召回与改动前完全一致。
      */
     public List<WorkRecord> findRelated(long excludeId, String tagsJson, int limit) {
-        String sql = "SELECT " + COLUMNS + " FROM work"
-                + " WHERE id <> :excludeId"
-                + " AND deleted_at IS NULL"
-                + " AND is_adult = 0"
-                // 推荐位也不许漏出未收录作品：详情 404、推荐却推得出来，是最难解释的一种不一致。
-                + (siteScopeEnabled ? " AND site_listed = 1" : "")
-                + " AND tags IS NOT NULL"
-                + " AND JSON_OVERLAPS(tags, CAST(:tagsJson AS JSON))"
-                + " ORDER BY rating_value DESC, id DESC"
-                + " LIMIT :limit";
+        // 共享标签数：把入参 JSON 展开成行，再和标签索引按 tag 连起来分组计数。
+        //
+        // ⚠️ JSON_TABLE 的列**必须显式声明 CHARACTER SET utf8mb4**：不写时该列按连接默认字符集
+        // （latin1）解释，中文标签会变成乱码、`j.tag = t.tag` 一条都匹配不上——
+        // 实测只剩纯 ASCII 的标签能命中，而查询本身不报错，是最难发现的那类「静默少召回」。
+        String hits = """
+                SELECT t.work_ref, COUNT(*) AS hits
+                FROM work_tag t
+                JOIN JSON_TABLE(CAST(:tagsJson AS JSON), '$[*]'
+                     COLUMNS(tag VARCHAR(64) CHARACTER SET utf8mb4 PATH '$')) j ON j.tag = t.tag
+                GROUP BY t.work_ref
+                """;
+
+        String sql;
+        if (siteScopeEnabled) {
+            // 可见目录被 site_listed 收口过，标签索引对这批作品是完整的，直接用它召回 + 打分。
+            sql = "SELECT " + ALIASED_COLUMNS + " FROM work w"
+                    + " JOIN (" + hits + ") s ON s.work_ref = w.id"
+                    + " WHERE w.id <> :excludeId"
+                    + " AND w.deleted_at IS NULL"
+                    + " AND w.is_adult = 0"
+                    // 推荐位也不许漏出未收录作品：详情 404、推荐却推得出来，是最难解释的一种不一致。
+                    + " AND w.site_listed = 1"
+                    + " ORDER BY s.hits DESC, w.rating_value DESC, w.id DESC"
+                    + " LIMIT :limit";
+        } else {
+            // 没有收录范围可依时，标签索引可能没覆盖到全部作品——召回仍以 work.tags 为准，
+            // 只用标签索引来打分；不在索引里的候选得 0 分，落到按评分排的那一档（与改动前一致）。
+            sql = "SELECT " + ALIASED_COLUMNS + " FROM work w"
+                    + " LEFT JOIN (" + hits + ") s ON s.work_ref = w.id"
+                    + " WHERE w.id <> :excludeId"
+                    + " AND w.deleted_at IS NULL"
+                    + " AND w.is_adult = 0"
+                    + " AND w.tags IS NOT NULL"
+                    + " AND JSON_OVERLAPS(w.tags, CAST(:tagsJson AS JSON))"
+                    + " ORDER BY COALESCE(s.hits, 0) DESC, w.rating_value DESC, w.id DESC"
+                    + " LIMIT :limit";
+        }
         return jdbc.query(sql, new MapSqlParameterSource()
                 .addValue("excludeId", excludeId)
                 .addValue("tagsJson", tagsJson)
