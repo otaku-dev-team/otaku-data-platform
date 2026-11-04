@@ -42,6 +42,11 @@ abstract final class RoutePaths {
   /// 路径用 `/me`：与站点同一个语义，深链接进来也知道这是哪儿。
   static const String profile = '/me';
 
+  /// 阿宅画像（#375）。挂在 `/me` 下而不是顶层：它是「我的数据」的一种视图，
+  /// 从个人空间点进来、返回也回个人空间，和设置二级页同一种形态。
+  static const String personaSegment = 'persona';
+  static const String persona = '$profile/persona';
+
   /// 每日新番档期。与列表/收藏平级：从任何地方都能直接进。
   static const String schedule = '/schedule';
 

@@ -10,6 +10,7 @@ import '../../features/collection/collection_page.dart';
 import '../../features/contents/contents_page.dart';
 import '../../features/detail/work_detail_page.dart';
 import '../../features/home/home_page.dart';
+import '../../features/persona/persona_page.dart';
 import '../../features/profile/profile_page.dart';
 import '../../features/recent/recent_history_page.dart';
 import '../../features/schedule/schedule_page.dart';
@@ -159,6 +160,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: RoutePaths.profile,
         builder: (context, state) => const ProfilePage(),
+        routes: [
+          // #375 阿宅画像：个人空间的二级页，从 /me 点进来、返回也回 /me。
+          GoRoute(
+            path: RoutePaths.personaSegment,
+            builder: (context, state) => const PersonaPage(),
+          ),
+        ],
       ),
       GoRoute(
         path: RoutePaths.settings,
