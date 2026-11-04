@@ -13,9 +13,10 @@
   联调算法，**算法验证通过后必须执行 `--clear` 清空**，绝不带入生产。
 - 仅 `--seed-mock` 显式打开 + `--apply docker` 才落库；默认 dry-run（只打印计划，零写入）。
 - 生产守卫：若库里"非 mock 的真实用户"超过 50，拒绝播种，除非 `--allow-prod`。
-- 可幂等清空：`--clear` 删 seed_mock_ 前缀用户及其 collection/ugc_review/views，不清真数据。
+- 可幂等清空：`--clear` 删 seed_mock_ 前缀用户及其 collection/ugc_review/user_work_view，不清真数据。
 - 不碰 work 表、不碰真实用户；mock 账号 password_hash 写非法哨兵，BCrypt 校验必败 → 无法登录。
-- 不引模型；固定随机种子可复现；`views` 属 V32（pyxz0 未合）时自动跳过并告警（用 `--skip-views` 显式关）。
+- 不引模型；固定随机种子可复现；浏览写 V32 的 `user_work_view`（该迁移已随 #421 上线），
+  表不存在时自动跳过并告警（`--skip-views` 显式关）。
 
 参与度分层（参考 acgn-test-platform 真实 28 账号实测，校准而来）：
     轻 60-120 / 中 120-220 / 重 220-400 / 超重度可达上千（封顶控成本）；
@@ -387,7 +388,7 @@ def _users_insert(buf) -> str:
 
 
 def sql_views_compat(views) -> list:
-    """views 属 V32（pyxz0 未合）。若库里无该表则整批跳过。返回 (stmts, skipped)。"""
+    """把浏览记录切成批次，返回 INSERT 参数列表（表名与列名在 apply_views 里给）。"""
     stmts = []
     buf = []
     for u_idx, wid, first, last, vc in views:
@@ -484,17 +485,17 @@ def apply_related(batches, table, columns, apply_docker: bool):
 
 
 def apply_views(batches, apply_docker: bool, skip: bool):
-    # 守卫：V32 未合则跳过
-    rc, out, err = _mysql("SHOW TABLES LIKE 'views'")
-    exists = bool(out.strip()) and "views" in out
+    # 守卫：V32 已随 #421 上线，表名是 user_work_view（不是 views）；缺表说明库没跑到该迁移
+    rc, out, err = _mysql("SHOW TABLES LIKE 'user_work_view'")
+    exists = bool(out.strip()) and "user_work_view" in out
     if not exists:
-        print("[seed] WARN: `views` 表不存在（V32 未合？），跳过 views 写入。"
-              "待 #401 的 V32 迁移合入后重跑即可。", file=sys.stderr)
+        print("[seed] WARN: `user_work_view` 表不存在（V32 未应用？），跳过浏览写入。"
+              "先确认后端迁移已跑到 V32 再重跑。", file=sys.stderr)
         return
     if skip:
-        print("[seed] --skip-views 已设，跳过 views 写入。", file=sys.stderr)
+        print("[seed] --skip-views 已设，跳过浏览写入。", file=sys.stderr)
         return
-    apply_related(batches, "views",
+    apply_related(batches, "user_work_view",
                   "user_id, work_id, first_viewed_at, last_viewed_at, view_count",
                   apply_docker)
 
@@ -519,7 +520,7 @@ def clear_mock(apply_docker: bool):
         return
     id_list = ",".join(str(i) for i in ids)
     for table, col in [("ugc_review", "user_id"), ("collection", "user_id"),
-                       ("views", "user_id"), ("app_user", "id")]:
+                       ("user_work_view", "user_id"), ("app_user", "id")]:
         rc, out, err = _mysql(f"SHOW TABLES LIKE '{table}'")
         if not (out.strip() and table in out):
             continue
@@ -559,7 +560,7 @@ def main():
     ap.add_argument("--allow-prod", action="store_true",
                     help="真实用户超阈值仍强制播种（仅限你确认是 dev 副本时）")
     ap.add_argument("--skip-views", action="store_true",
-                    help="跳过 views 写入（V32 未合时使用）")
+                    help="跳过浏览写入（V32 的 user_work_view）")
     ap.add_argument("--users", type=int, default=DEF_USERS,
                     help="模拟用户数；1000 量级生成+落库成本高，不建议（#415）")
     ap.add_argument("--max-works", type=int, default=DEF_MAX_WORKS)
