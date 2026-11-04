@@ -36,6 +36,14 @@ spring:
     timeout-per-shutdown-phase: 20s
 
 app:
+  # 模拟用户行为种子（#415）：只在 dev profile 生效，生产包里那个 Runner 根本不存在。
+  # 打开方式见 MockSeedRunner 的注释；这里给默认值只是为了「配置项有据可查」。
+  mock-seed:
+    enabled: ${OTAKU_MOCK_SEED_ENABLED:false}
+    users: ${OTAKU_MOCK_SEED_USERS:300}
+    seed: ${OTAKU_MOCK_SEED_RANDOM:42}
+    days: ${OTAKU_MOCK_SEED_DAYS:60}
+    clear: ${OTAKU_MOCK_SEED_CLEAR:false}
   # 内部导入令牌。为空时 /internal/** 一律 401（安全默认），联调前必须设置。
   internal-token: ${OTAKU_INTERNAL_TOKEN:}
   work:
