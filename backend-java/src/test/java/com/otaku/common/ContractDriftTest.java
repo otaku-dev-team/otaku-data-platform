@@ -276,6 +276,8 @@ class ContractDriftTest {
         targets.put("SiteLoginRequest", com.otaku.auth.dto.SiteLoginRequest.class);
         targets.put("CreateAccountRequest", com.otaku.account.dto.CreateAccountRequest.class);
         targets.put("CollectionUpdateRequest", com.otaku.collection.dto.CollectionUpdateRequest.class);
+        // 浏览打点（#401）：只有 work_id；时间以服务端收到为准，不接受客户端时间戳
+        targets.put("ViewRequest", com.otaku.view.dto.ViewRequest.class);
         targets.put("ImportBatchRequest", com.otaku.importer.dto.ImportBatchRequest.class);
         targets.put("DeletionRequest", com.otaku.importer.dto.DeletionRequest.class);
         targets.put("UgcCommentRequest", com.otaku.ugc.dto.UgcCommentRequest.class);
