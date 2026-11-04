@@ -249,6 +249,28 @@ def main(argv: list[str] | None = None) -> int:
         else:
             changed, base_note = select.changed_files("origin/main")
         if not changed:
+            # fast-forward 拉下别人的提交后，本地 HEAD 与 origin/main 相同、changed 为空。
+            # 这时 --gate 不能跟着早退：契约/站点隔离守卫与「这轮改了什么」无关，
+            # 静默不跑会让人以为门禁过了。所以空改动时仍单独跑一遍门禁。
+            if args.gate:
+                gate = run_gate()
+                gate_failed = gate_failures(gate)
+                if args.json:
+                    print(json.dumps({
+                        "changed": [], "conclusion": "empty",
+                        "gate": gate, "gate_ok": not gate_failed,
+                    }, ensure_ascii=False))
+                else:
+                    print(f"没有检测到改动（{base_note}），没有测试要跑；仍按 --gate 跑一遍门禁。")
+                    print()
+                    print_gate(gate)
+                    print()
+                    if gate_failed:
+                        labels = "、".join(_GATE_LABELS.get(n, n) for n in gate_failed)
+                        print(f"结论：{labels}未通过。")
+                    else:
+                        print("结论：门禁通过。")
+                return 1 if gate_failed else 0
             if args.json:
                 print(json.dumps({"changed": [], "conclusion": "empty"}, ensure_ascii=False))
             else:
