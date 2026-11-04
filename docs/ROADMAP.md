@@ -423,6 +423,8 @@
    生产真实覆盖是动画 staff 35% / characters 30% / studios 20%。
    ⚠️ 人物页本身（B2）**仍不在本期**：`person_id` 在 Staff 侧实测 0% 有值，
    客户端不做跳转，等 B2 落地再一起开。
+   （v3 数据集起这句不再成立：`person_id` 变成 `bgm:` / `pname:` / `cname:` 前缀键，
+   见 #362 与 `person-id-unification.md` §10；人物页端点仍未落地，所以「客户端先别跳转」这个结论不变。）
    ~~#126 服务端推送~~：设备注册端点已由 zm 于 2026-10-26 拍板「现在做」，实现 #190 已合、
    迁移 `V11__user_device.sql` 已上线；**客户端侧尚未接**（推送通道是新依赖，且唯一事件源
    「导入完成」对用户价值低，押后）。方案仍留档在 [`w1.3-notification-proposal.md`](w1.3-notification-proposal.md)。
