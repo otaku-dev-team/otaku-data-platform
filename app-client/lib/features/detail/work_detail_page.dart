@@ -28,6 +28,7 @@ import '../auth/auth_controller.dart';
 import '../contents/contents_controller.dart';
 import '../recent/recent_views_controller.dart';
 import 'related_works_section.dart';
+import 'work_related_articles_section.dart';
 import 'work_collection_controller.dart';
 import 'work_credits_section.dart';
 import 'work_detail_controller.dart';
@@ -273,6 +274,7 @@ class _DetailBody extends StatelessWidget {
                   // 那是溯源和排障用的，普通用户看完这部作品并不需要知道
                   // 它在库里叫什么编号。需要时从接口和日志里查。
                   RelatedWorksSection(workId: work.workId),
+                  WorkRelatedArticlesSection(workId: work.workId),
                 ],
               ),
             ),
@@ -322,6 +324,7 @@ class _DetailBody extends StatelessWidget {
           // 相关推荐：正文之后唯一的延伸阅读。收录信息已不再展示（见手机端
           // 那段注释）。拿不到或没标签时组件自己渲染成 SizedBox.shrink()。
           RelatedWorksSection(workId: work.workId),
+          WorkRelatedArticlesSection(workId: work.workId),
         ],
       ),
     );
