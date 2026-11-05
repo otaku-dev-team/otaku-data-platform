@@ -59,16 +59,15 @@ public final class ArticleDtos {
 
     /**
      * 详情。比列表多 {@code body}（正文纯文本，一行一段）、
-     * {@code relatedWorkIds}（来源站关联作品 id 原文）与
-     * {@code relatedWorks}（解析到本地作品后的列表）。
+     * {@code relatedWorkIds}（来源站关联作品 id）与 {@code relatedWorks}（解析到本地作品后的列表）。
      *
-     * <p>{@code relatedWorkIds} 是 <b>站点 content_id</b>，与本地 {@code work_id}
-     * 及 bangumi subject id 是三套号，客户端不得拿它拼本地详情路由（见 V9 迁移文件头、
-     * 契约 ArticleDetail）。卡片所需的一切字段都在 {@code relatedWorks} 里。
+     * <p>{@code relatedWorkIds} 里的值 2026-11-05 起是 <b>bangumi subject id</b>
+     * （数据侧导出时 JOIN 好，见 #422）；切流前的存量行仍是站点 content_id。
+     * 两者都是纯数字、从值上分不出来，所以客户端**一律不得**拿它自己匹配本地作品，
+     * 卡片所需的一切字段都在 {@code relatedWorks} 里。
      *
-     * <p>{@code relatedWorks} 的解析（content_id → 首站 contents.bangumi_id →
-     * 本地 work）归 #409；#409 落地前这里恒为 {@code null}，客户端整块不渲染。
-     * 不在这里按数值猜 subject id：V28 实测会撞出 3,015 条假匹配。
+     * <p>{@code relatedWorks} 由服务端解析：{@code null} = 语义开关还没切（不解析），
+     * {@code []} = 已切但没有可用的本地作品。两者客户端都整块不渲染。
      */
     public record ArticleDetail(
             String articleId,
@@ -84,6 +83,18 @@ public final class ArticleDtos {
             List<String> relatedWorkIds,
             List<WorkSummaryDto> relatedWorks
     ) {
+
+        /**
+         * 填上解析后的关联作品（#408）。
+         *
+         * <p>解析要查 work 表、还要按收录范围与成人口径过滤，那套逻辑只在作品侧有一份
+         * （{@code WorkService.summariesBySubjectIds}）。资讯这边不复制一份口径——
+         * 复制出来的第二份早晚和第一份漂移，而漂移的表现是「详情页漏了某类作品」，不报错。
+         */
+        public ArticleDetail withRelatedWorks(List<WorkSummaryDto> resolved) {
+            return new ArticleDetail(articleId, title, summary, body, category, publishedAt,
+                    sourceName, sourceUrl, coverUrl, tags, relatedWorkIds, resolved);
+        }
     }
 
     /** 分类筛选项，附该分类的条数。 */

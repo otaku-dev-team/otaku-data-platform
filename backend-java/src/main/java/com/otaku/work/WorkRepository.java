@@ -97,6 +97,30 @@ public class WorkRepository {
     }
 
     /**
+     * 按来源侧 id 批量取（资讯「关联作品」解析用，一次 IN 出全部，禁 N+1）。
+     *
+     * <p>与 {@link #findByWorkId} 的过滤不同：这里**额外剔除已下架**（{@code deleted_at IS NULL}）。
+     * 详情页对已下架作品仍返回 {@code 200 + deleted:true}（用户可能刚收藏过），
+     * 但「关联作品」是一排卡片，挂一部点进去只有「已下架」的作品没有意义。
+     *
+     * <p>顺序不在这里保证：调用方按原始 id 顺序重排（来源站编辑排的顺序是内容的一部分）。
+     */
+    public List<WorkRecord> findBySourceIds(String source, List<String> sourceIds) {
+        if (sourceIds == null || sourceIds.isEmpty()) {
+            return List.of();
+        }
+        return jdbc.query(
+                "SELECT " + COLUMNS + " FROM work WHERE source = :source"
+                        + " AND source_id IN (:sourceIds)"
+                        + " AND deleted_at IS NULL AND is_adult = 0"
+                        + (siteScopeEnabled ? " AND site_listed = 1" : ""),
+                new MapSqlParameterSource()
+                        .addValue("source", source)
+                        .addValue("sourceIds", sourceIds),
+                MAPPER);
+    }
+
+    /**
      * 这个来源归属哪个站点（site_source 映射）。UGC 的站点隔离依据它，而不是请求参数。
      *
      * <p>未登记的来源返回 empty：宁可当作「不属于任何站点」拒绝写入，也不猜一个站点——

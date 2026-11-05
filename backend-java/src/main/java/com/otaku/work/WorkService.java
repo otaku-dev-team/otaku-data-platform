@@ -20,8 +20,11 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -62,6 +65,19 @@ public class WorkService {
     static final int MAX_RELATED_LIMIT = 20;
     /** 只用前 5 个标签做匹配：标签太多的作品用全集去求交集，命中会退化成"全站"。 */
     private static final int MAX_BASIS_TAGS = 5;
+
+    /**
+     * 资讯里的「关联作品」上限（#408）。
+     *
+     * <p>来源站关联作品区最多十来个，给上限只是防一条脏数据塞进几千个 id 把 IN 撑爆。
+     */
+    private static final int MAX_RELATED_WORKS = 30;
+
+    /**
+     * bangumi 来源标识：只有它家的 {@code source_id} 与资讯 {@code related_work_ids}
+     * 是同一套号（subject id）。
+     */
+    private static final String BANGUMI_SOURCE = "bangumi";
 
     private static final TypeReference<List<String>> TAG_LIST = new TypeReference<>() {
     };
@@ -222,8 +238,48 @@ public class WorkService {
      */
     public ArticlePage relatedArticles(String workId, int page, int pageSize) {
         WorkRecord current = requireWork(workId);
-        String subjectId = "bangumi".equalsIgnoreCase(current.source()) ? current.sourceId() : null;
+        String subjectId = BANGUMI_SOURCE.equalsIgnoreCase(current.source()) ? current.sourceId() : null;
         return articleService.listForWorkSubject(subjectId, page, pageSize);
+    }
+
+    /**
+     * 按 bangumi subject id 批量取作品摘要，**保留传入顺序**（资讯「关联作品」用，#408）。
+     *
+     * <p>顺序是内容的一部分：来源站编辑把哪部放第一，就是他想让人先看到哪部；按 id 或
+     * 按库里返回顺序重排会让这个意图丢失。所以这里按入参逐个取，取不到的直接跳过
+     * （下架 / 成人 / 未收录 / 号不存在都在 {@link WorkRepository#findBySourceIds} 里滤掉了）。
+     *
+     * <p>上限 30：来源站的关联作品区最多十来个，给一个上限只是防止某天一条脏数据里
+     * 塞进几千个 id 把 IN 撑爆。
+     */
+    public List<WorkSummaryDto> summariesBySubjectIds(List<String> subjectIds) {
+        if (subjectIds == null || subjectIds.isEmpty()) {
+            return List.of();
+        }
+        List<String> wanted = subjectIds.stream()
+                .filter(java.util.Objects::nonNull)
+                .map(String::trim)
+                .filter(id -> !id.isEmpty())
+                .distinct()
+                .limit(MAX_RELATED_WORKS)
+                .toList();
+        if (wanted.isEmpty()) {
+            return List.of();
+        }
+
+        Map<String, WorkSummaryDto> bySourceId = new HashMap<>();
+        for (WorkRecord record : repository.findBySourceIds(BANGUMI_SOURCE, wanted)) {
+            bySourceId.putIfAbsent(record.sourceId(), toSummary(record));
+        }
+
+        List<WorkSummaryDto> ordered = new ArrayList<>(wanted.size());
+        for (String id : wanted) {
+            WorkSummaryDto summary = bySourceId.get(id);
+            if (summary != null) {
+                ordered.add(summary);
+            }
+        }
+        return ordered;
     }
 
     /** 详情与相关推荐共用的「取作品或 404」逻辑。 */
