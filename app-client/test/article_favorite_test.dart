@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -13,9 +15,11 @@ import 'package:otaku_app/data/repositories/collection_repository.dart';
 import 'package:otaku_app/features/article/article_card.dart';
 import 'package:otaku_app/features/article_favorite/article_favorite_data_source.dart';
 import 'package:otaku_app/features/article_favorite/article_favorite_entry.dart';
+import 'package:otaku_app/features/article_favorite/article_favorite_list.dart';
 import 'package:otaku_app/features/collection/collection_page.dart';
 import 'package:otaku_app/shared/widgets/empty_state.dart';
 import 'package:otaku_app/shared/widgets/error_state.dart';
+import 'package:otaku_app/shared/widgets/skeleton_list.dart';
 
 import 'support/test_overrides.dart';
 
@@ -28,9 +32,13 @@ class _FakeArticleFavorites implements ArticleFavoriteDataSource {
   final bool fail;
   int calls = 0;
 
+  /// 非空时 `fetchAll` 会挂在这里，用来观察「刷新中」这一帧。
+  Completer<void>? gate;
+
   @override
   Future<List<ArticleFavoriteEntry>> fetchAll({required String userId}) async {
     calls++;
+    if (gate != null) await gate!.future;
     if (fail) throw StateError('boom');
     return items;
   }
@@ -180,6 +188,69 @@ void main() {
     await tester.tap(find.byTooltip('刷新'));
     await tester.pumpAndSettle();
     expect(source.calls, 2);
+  });
+
+  testWidgets('刷新期间保留旧列表，不闪骨架屏', (tester) async {
+    final source = _FakeArticleFavorites(
+      items: [
+        ArticleFavoriteEntry(
+          article: const ArticleSummary(articleId: 'A-1', title: '收藏的资讯'),
+        ),
+      ],
+    );
+    await pumpFavorites(tester, source: source);
+    await tester.tap(find.widgetWithText(ChoiceChip, '资讯'));
+    await tester.pumpAndSettle();
+    expect(find.byType(ArticleCard), findsOneWidget);
+
+    source.gate = Completer<void>();
+    await tester.tap(find.byTooltip('刷新'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 30));
+
+    // `invalidateSelf` 之后 `AsyncLoading` 会带上旧值：列表不该退回骨架屏。
+    expect(find.byType(ArticleCard), findsOneWidget);
+    expect(find.byType(SkeletonList), findsNothing);
+
+    source.gate!.complete();
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('切走再切回，资讯列表的滚动位置保留', (tester) async {
+    final items = [
+      for (var i = 0; i < 14; i++)
+        ArticleFavoriteEntry(
+          article: ArticleSummary(articleId: 'A-$i', title: '第 $i 条收藏的资讯'),
+        ),
+    ];
+    await pumpFavorites(tester, source: _FakeArticleFavorites(items: items));
+    await tester.tap(find.widgetWithText(ChoiceChip, '资讯'));
+    await tester.pumpAndSettle();
+
+    final list = find.descendant(
+      of: find.byType(ArticleFavoriteList),
+      matching: find.byType(Scrollable),
+    );
+    await tester.drag(list, const Offset(0, -320));
+    await tester.pumpAndSettle();
+    final before = tester.state<ScrollableState>(list).position.pixels;
+    expect(before, greaterThan(0));
+
+    await tester.tap(find.widgetWithText(ChoiceChip, '作品'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(ChoiceChip, '资讯'));
+    await tester.pumpAndSettle();
+
+    final after = tester
+        .state<ScrollableState>(
+          find.descendant(
+            of: find.byType(ArticleFavoriteList),
+            matching: find.byType(Scrollable),
+          ),
+        )
+        .position
+        .pixels;
+    expect(after, closeTo(before, 1));
   });
 
   testWidgets('未登录不显示分段，仍然是登录引导', (tester) async {

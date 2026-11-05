@@ -22,18 +22,16 @@ class ArticleFavoriteController
         .fetchAll(userId: userId);
   }
 
+  /// 刷新期间**保留旧列表**：与作品收藏同一写法（`invalidateSelf` + `await future`），
+  /// Riverpod 会把旧值带进 `AsyncLoading`。若这里改成 `state = AsyncLoading()`，
+  /// 列表会先变成骨架屏再回来——用户点一次刷新，眼睛被闪一下。
   Future<void> refresh() async {
-    final userId = ref.read(authControllerProvider).user?.userId;
-    if (userId == null) {
-      state = const AsyncData(<ArticleFavoriteEntry>[]);
-      return;
+    ref.invalidateSelf();
+    try {
+      await future;
+    } on Object {
+      // 忽略：错误已经进 AsyncError，由页面呈现。
     }
-    state = const AsyncLoading();
-    state = await AsyncValue.guard(
-      () => ref
-          .read(articleFavoriteDataSourceProvider)
-          .fetchAll(userId: userId),
-    );
   }
 }
 
