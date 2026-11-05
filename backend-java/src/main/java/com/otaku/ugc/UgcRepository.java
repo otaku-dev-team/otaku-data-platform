@@ -113,6 +113,49 @@ public class UgcRepository {
         return total == null ? 0L : total;
     }
 
+    /**
+     * 「我的评论」（#449）：当前用户在当前站的全部评论，最新的在前。
+     *
+     * <p>不复用 {@link #findPublished}：那条是「某个作品下的公开楼层」，限定
+     * {@code parent_id IS NULL AND status='published'}；这里是「我发过的话」，
+     * 回复也要算（否则用户回复完同样找不回来），且 {@code pending} / {@code hidden}
+     * 也要给——被隐藏或待审的评论如果直接消失，用户只会觉得「我明明发过」。
+     * 只有作者自己删的（{@code deleted}）不再出现。
+     *
+     * <p>排序带上 {@code id} 做次级键：同一毫秒发的两条若无次级键，翻页会重复或漏条。
+     * 走 {@code idx_ugc_user_created (site_key, user_id, created_at)}，前两列是等值、
+     * 第三列正好是排序键；{@code status <> 'deleted'} 只是残余过滤。
+     */
+    public List<Row> findMine(String siteKey, long userId, int limit, int offset) {
+        return jdbc.query("""
+                        SELECT c.id, c.site_key, c.work_id, c.user_id,
+                               CASE WHEN u.deleted_at IS NULL THEN u.username ELSE '已注销用户' END AS username,
+                               c.body, c.status, c.created_at, c.parent_id, c.edited_at
+                          FROM ugc_comment c
+                          JOIN app_user u ON u.id = c.user_id
+                         WHERE c.site_key = :siteKey AND c.user_id = :userId
+                           AND c.status <> 'deleted'
+                         ORDER BY c.created_at DESC, c.id DESC
+                         LIMIT :limit OFFSET :offset
+                        """, new MapSqlParameterSource()
+                        .addValue("siteKey", siteKey)
+                        .addValue("userId", userId)
+                        .addValue("limit", limit)
+                        .addValue("offset", offset), MAPPER);
+    }
+
+    /** 「我的评论」总数，与 {@link #findMine} 同一套筛选条件。 */
+    public long countMine(String siteKey, long userId) {
+        Long total = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM ugc_comment
+                 WHERE site_key = :siteKey AND user_id = :userId
+                   AND status <> 'deleted'
+                """, new MapSqlParameterSource()
+                .addValue("siteKey", siteKey)
+                .addValue("userId", userId), Long.class);
+        return total == null ? 0L : total;
+    }
+
     /** 按 id 取一行（删除鉴权、回复挂载校验用）：同样带 site_key，跨站 id 直接当不存在。 */
     public Optional<Row> findById(String siteKey, long id) {
         List<Row> rows = jdbc.query("""

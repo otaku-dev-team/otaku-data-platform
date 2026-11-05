@@ -4,6 +4,7 @@ import com.otaku.common.ApiException;
 import com.otaku.common.ErrorCode;
 import com.otaku.common.PageResponse;
 import com.otaku.common.TextLength;
+import com.otaku.ugc.dto.MyCommentDto;
 import com.otaku.ugc.dto.UgcCommentDto;
 import com.otaku.ugc.dto.UgcCommentEditRequest;
 import com.otaku.ugc.dto.UgcCommentRequest;
@@ -58,12 +59,17 @@ public class UgcService {
     private final UgcSettingsRepository settings;
     private final UgcModerationGate moderation;
 
+    /** 「我的评论」要内嵌作品卡片，口径只在作品侧有一份（{@link WorkSummaryMapper}）。 */
+    private final com.otaku.work.WorkService workService;
+
     public UgcService(UgcRepository repository, WorkRepository workRepository,
-                      UgcSettingsRepository settings, UgcModerationGate moderation) {
+                      UgcSettingsRepository settings, UgcModerationGate moderation,
+                      com.otaku.work.WorkService workService) {
         this.repository = repository;
         this.workRepository = workRepository;
         this.settings = settings;
         this.moderation = moderation;
+        this.workService = workService;
     }
 
     /**
@@ -122,6 +128,56 @@ public class UgcService {
                 .stream()
                 .map(UgcService::toReplyDto)
                 .toList();
+        return PageResponse.of(safePage, safeSize, total, items);
+    }
+
+    /**
+     * 「我的评论」：当前登录用户在当前站发过的话，最新的在前（#449）。
+     *
+     * <p>为什么需要它：改和删都要先知道 {@code comment_id}，而客户端除了发布响应那一次，
+     * 没有别的途径再拿到它——用户想撤回一句说错的话，只能去作品页翻到自己那条。
+     *
+     * <p>站点隔离按**登录会话的站点**（{@code user.siteKey()}），不按作品：一个人在两站各有账号时，
+     * 两边看到的东西不能混。回复也算进来（回复完同样要找得回来），并由 {@code parentId} 区分。
+     *
+     * <p>作品卡片可能取不到（成人被挡 / 移出收录范围）：这时 {@code work} 为 null，
+     * 评论正文照常返回。
+     */
+    public PageResponse<MyCommentDto> listMine(UserRecord user, int page, int pageSize) {
+        int safePage = Math.max(1, page);
+        int safeSize = Math.min(Math.max(1, pageSize), MAX_PAGE_SIZE);
+
+        String siteKey = user.siteKey();
+        if (siteKey == null || siteKey.isBlank()) {
+            // 没有站点归属 = 这条会话不该看到任何评论（fail-closed），不是「全站都给你」
+            return PageResponse.of(safePage, safeSize, 0, List.of());
+        }
+
+        long total = repository.countMine(siteKey, user.id());
+        if (total == 0) {
+            return PageResponse.of(safePage, safeSize, 0, List.of());
+        }
+        List<UgcRepository.Row> rows = repository.findMine(siteKey, user.id(), safeSize,
+                (safePage - 1) * safeSize);
+        if (rows.isEmpty()) {
+            return PageResponse.of(safePage, safeSize, total, List.of());
+        }
+
+        Map<String, com.otaku.work.dto.WorkSummaryDto> works = workService.summariesByWorkIds(
+                rows.stream().map(UgcRepository.Row::workId).toList());
+
+        List<MyCommentDto> items = new ArrayList<>(rows.size());
+        for (UgcRepository.Row row : rows) {
+            items.add(new MyCommentDto(
+                    String.valueOf(row.id()),
+                    row.workId(),
+                    row.body(),
+                    row.status(),
+                    row.createdAt() == null ? null : row.createdAt().toInstant(ZoneOffset.UTC),
+                    row.editedAt() == null ? null : row.editedAt().toInstant(ZoneOffset.UTC),
+                    row.parentId() == null ? null : String.valueOf(row.parentId()),
+                    works.get(row.workId())));
+        }
         return PageResponse.of(safePage, safeSize, total, items);
     }
 

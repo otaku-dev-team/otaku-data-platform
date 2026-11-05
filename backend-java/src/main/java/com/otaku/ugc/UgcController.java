@@ -3,6 +3,7 @@ package com.otaku.ugc;
 import com.otaku.auth.AuthFilter;
 import com.otaku.common.PageResponse;
 import com.otaku.ugc.dto.CommentReportDto;
+import com.otaku.ugc.dto.MyCommentDto;
 import com.otaku.ugc.dto.CommentReportRequest;
 import com.otaku.ugc.dto.SiteFeaturesDto;
 import com.otaku.ugc.dto.UgcCommentDto;
@@ -84,6 +85,20 @@ public class UgcController {
             @RequestParam(name = "page", defaultValue = "1") int page,
             @RequestParam(name = "page_size", defaultValue = "20") int pageSize) {
         return service.listReplies(workId, commentId, page, pageSize);
+    }
+
+    /**
+     * 我发过的评论（#449）。最新在前，含回复与被隐藏/待审的，不含自己删掉的。
+     *
+     * <p>没有它，「改」和「删」都无从下手：{@code comment_id} 除了发布响应那一次，
+     * 客户端再也拿不到。挂在 {@code /api/me/**} 下是为了复用统一会话校验。
+     */
+    @GetMapping("/api/me/comments")
+    public PageResponse<MyCommentDto> listMine(
+            @RequestAttribute(AuthFilter.ATTRIBUTE_USER) UserRecord user,
+            @RequestParam(name = "page", defaultValue = "1") int page,
+            @RequestParam(name = "page_size", defaultValue = "20") int pageSize) {
+        return service.listMine(user, page, pageSize);
     }
 
     @PostMapping("/api/me/comments")

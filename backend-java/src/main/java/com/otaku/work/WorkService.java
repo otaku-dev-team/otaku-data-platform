@@ -91,13 +91,16 @@ public class WorkService {
     /** 作品→资讯（#409）走资讯侧的分页与映射，不在这里重写一套。 */
     private final ArticleService articleService;
 
+    /** 作品卡片的口径（封面代理 / 低票藏分 / 成人标签）只此一份，见该类的类注释。 */
+    private final WorkSummaryMapper summaryMapper;
+
     /** 成人词表可热改，剔除逻辑读它（缺键回落默认值，见 {@link AdultPolicy}）。 */
     private final AdultPolicy adultPolicy;
 
     public WorkService(WorkRepository repository, PublicUrlResolver publicUrlResolver,
                        ObjectMapper objectMapper, CountCache countCache,
                        WorkRelationRepository relationRepository, AdultPolicy adultPolicy,
-                       ArticleService articleService) {
+                       ArticleService articleService, WorkSummaryMapper summaryMapper) {
         this.repository = repository;
         this.publicUrlResolver = publicUrlResolver;
         this.objectMapper = objectMapper;
@@ -105,6 +108,7 @@ public class WorkService {
         this.relationRepository = relationRepository;
         this.adultPolicy = adultPolicy;
         this.articleService = articleService;
+        this.summaryMapper = summaryMapper;
     }
 
     /**
@@ -282,6 +286,38 @@ public class WorkService {
         return ordered;
     }
 
+    /**
+     * 按对外 {@code work_id} 批量取作品摘要（我的评论内嵌卡片用，#449）。
+     *
+     * <p>与 {@link #summariesBySubjectIds} 的区别只在键：这边是平台自己发的 {@code W-xxx}，
+     * 那边是来源站 subject id。返回 Map 而不是 List——评论列表的顺序由评论时间决定，
+     * 作品卡片只是每行的附属信息，不该反过来影响行序。
+     *
+     * <p>查不到的作品（成人被挡 / 不在收录范围）**不出现在 Map 里**，由调用方决定怎么展示
+     * （我的评论那边把 {@code work} 置 null，保留评论正文——用户写过的字不能因为作品不可见就消失）。
+     */
+    public Map<String, WorkSummaryDto> summariesByWorkIds(List<String> workIds) {
+        if (workIds == null || workIds.isEmpty()) {
+            return Map.of();
+        }
+        List<String> wanted = workIds.stream()
+                .filter(java.util.Objects::nonNull)
+                .map(String::trim)
+                .filter(id -> !id.isEmpty())
+                .distinct()
+                .limit(MAX_RELATED_WORKS * 4)
+                .toList();
+        if (wanted.isEmpty()) {
+            return Map.of();
+        }
+
+        Map<String, WorkSummaryDto> byWorkId = new HashMap<>();
+        for (WorkRecord record : repository.findByWorkIds(wanted)) {
+            byWorkId.putIfAbsent(record.workId(), toSummary(record));
+        }
+        return byWorkId;
+    }
+
     /** 详情与相关推荐共用的「取作品或 404」逻辑。 */
     private WorkRecord requireWork(String workId) {
         if (workId == null || workId.isBlank() || workId.length() > MAX_WORK_ID_LENGTH) {
@@ -330,41 +366,20 @@ public class WorkService {
 
     /** 封面地址永远指向本服务，客户端不直连来源站（契约 2.1、8.1）。 */
     public String coverUrl(WorkRecord record) {
-        return coverUrl(record.workId(), record.coverSourceUrl());
+        return summaryMapper.coverUrl(record);
     }
 
     /** 供收藏列表等其它视图复用：有来源地址才给平台代理地址。 */
     public String coverUrl(String workId, String coverSourceUrl) {
-        if (coverSourceUrl == null) {
-            return null;
-        }
-        return publicUrlResolver.baseUrl() + "/api/covers/" + workId;
+        return summaryMapper.coverUrl(workId, coverSourceUrl);
     }
 
     private WorkSummaryDto toSummary(WorkRecord record) {
-        return new WorkSummaryDto(
-                record.workId(),
-                record.workType(),
-                record.title(),
-                record.releaseYear(),
-                coverUrl(record),
-                parseTags(record.tagsJson()),
-                toRating(record),
-                record.source());
+        return summaryMapper.toSummary(record);
     }
 
-    private static SourceRatingDto toRating(WorkRecord record) {
-        if (record.ratingValue() == null) {
-            return null;
-        }
-        // #383：票数不足的不展示评分。rating_count 为 null 表示「还不知道」（镜像没返回 /
-        // 还没回填），按可信处理——否则回填跑到一半时，已跑到的行会被藏起来、没跑到的照旧展示，
-        // 同一屏里出现两种口径。
-        Integer ratingCount = record.ratingCount();
-        if (ratingCount != null && ratingCount < MIN_RATING_COUNT) {
-            return null;
-        }
-        return new SourceRatingDto(record.ratingValue(), record.ratingScale(), record.ratingSource());
+    private SourceRatingDto toRating(WorkRecord record) {
+        return summaryMapper.rating(record);
     }
 
     /**
@@ -400,16 +415,7 @@ public class WorkService {
      * 剔除后只剩成人词的作品返回 {@code []}，与「来源明确没给标签」在展示上等价。
      */
     private List<String> parseTags(String tagsJson) {
-        if (tagsJson == null) {
-            return null;
-        }
-        try {
-            List<String> tags = objectMapper.readValue(tagsJson, TAG_LIST);
-            return tags.isEmpty() ? List.of() : adultPolicy.strip(tags);
-        } catch (Exception ex) {
-            log.warn("tags 字段不是合法 JSON，按未提供处理：{}", ex.getMessage());
-            return null;
-        }
+        return summaryMapper.tags(tagsJson);
     }
 
     private static String normalizeType(String typeParam) {
