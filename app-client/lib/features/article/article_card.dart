@@ -188,6 +188,9 @@ class ArticleCard extends StatelessWidget {
                 // 解码与磁盘都按显示尺寸压一档（见 _thumbCacheWidth）。
                 memCacheWidth: _thumbCacheWidth(context),
                 maxWidthDiskCache: _thumbCacheWidth(context),
+                // 与 CoverImage 用同一个淡入时长：默认 500ms 在长列表里会让人
+                // 觉得「图一直在慢慢浮出来」，滚动时尤其明显。
+                fadeInDuration: const Duration(milliseconds: 160),
                 placeholder: (_, _) => _thumbPlaceholder(scheme),
                 errorWidget: (_, _, _) => _thumbPlaceholder(scheme),
               ),

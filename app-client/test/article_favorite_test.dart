@@ -134,7 +134,7 @@ void main() {
               sourceName: 'Mock 新闻',
               publishedAt: '2026-11-02T10:00:00Z',
             ),
-            favoritedAt: DateTime.utc(2026, 11, 3),
+            favoritedAt: DateTime(2026, 11, 3, 12),
           ),
           ArticleFavoriteEntry(
             article: const ArticleSummary(articleId: 'A-2', title: '收藏的资讯二'),
@@ -149,6 +149,8 @@ void main() {
     expect(find.text('收藏的资讯一'), findsOneWidget);
     expect(find.text('收藏的资讯二'), findsOneWidget);
     expect(find.byType(ArticleCard), findsNWidgets(2));
+    // 有 favoritedAt 的显示「收藏于 日期」，没有的不硬编一个。
+    expect(find.text('收藏于 2026-11-03'), findsOneWidget);
   });
 
   testWidgets('没有收藏时给空态，而不是一片空白', (tester) async {
@@ -159,6 +161,8 @@ void main() {
 
     expect(find.byType(EmptyState), findsOneWidget);
     expect(find.text('还没有收藏的资讯'), findsOneWidget);
+    // 手机上没有常驻的资讯入口，空态要给一条路。
+    expect(find.text('去看看资讯'), findsOneWidget);
   });
 
   testWidgets('拉取失败给错误态与重试入口', (tester) async {
