@@ -55,7 +55,10 @@ class WorkServiceSortAndRelatedTest {
                 new WorkRelationRepository(org.mockito.Mockito.mock(org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate.class),
                         org.mockito.Mockito.mock(org.springframework.jdbc.core.JdbcTemplate.class)),
                 new com.otaku.common.AdultPolicy(() -> new com.otaku.appconfig.AppConfigService.Snapshot(0, java.util.Map.of())),
-                org.mockito.Mockito.mock(com.otaku.article.ArticleService.class));
+                org.mockito.Mockito.mock(com.otaku.article.ArticleService.class),
+                new WorkSummaryMapper(publicUrlResolver,
+                        new com.otaku.common.AdultPolicy(() -> new com.otaku.appconfig.AppConfigService.Snapshot(0, java.util.Map.of())),
+                        new ObjectMapper()));
     }
 
     @Test

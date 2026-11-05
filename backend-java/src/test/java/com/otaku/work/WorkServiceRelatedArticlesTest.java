@@ -61,7 +61,10 @@ class WorkServiceRelatedArticlesTest {
                                 org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate.class),
                         org.mockito.Mockito.mock(org.springframework.jdbc.core.JdbcTemplate.class)),
                 new AdultPolicy(() -> new AppConfigService.Snapshot(0, Map.of())),
-                articleService);
+                articleService,
+                new WorkSummaryMapper(new com.otaku.config.PublicUrlResolver(new com.otaku.config.AppProperties()),
+                        new AdultPolicy(() -> new AppConfigService.Snapshot(0, Map.of())),
+                        new ObjectMapper()));
     }
 
     @Test

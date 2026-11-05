@@ -121,6 +121,23 @@ public class WorkRepository {
     }
 
     /**
+     * 按对外 {@code work_id} 批量取（我的评论内嵌作品卡片用，一次 IN 禁 N+1）。
+     *
+     * <p>可见性口径与公开读一致（{@code is_adult = 0} + 收录范围），但**不剔已下架**：
+     * 评论过一部后来下架的作品，用户仍应看到自己写过什么、写在哪部上。
+     */
+    public List<WorkRecord> findByWorkIds(List<String> workIds) {
+        if (workIds == null || workIds.isEmpty()) {
+            return List.of();
+        }
+        return jdbc.query(
+                "SELECT " + COLUMNS + " FROM work WHERE work_id IN (:workIds) AND is_adult = 0"
+                        + (siteScopeEnabled ? " AND site_listed = 1" : ""),
+                new MapSqlParameterSource("workIds", workIds),
+                MAPPER);
+    }
+
+    /**
      * 这个来源归属哪个站点（site_source 映射）。UGC 的站点隔离依据它，而不是请求参数。
      *
      * <p>未登记的来源返回 empty：宁可当作「不属于任何站点」拒绝写入，也不猜一个站点——

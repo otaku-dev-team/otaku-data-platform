@@ -247,6 +247,9 @@ class ContractDriftTest {
         targets.put("UgcComment", com.otaku.ugc.dto.UgcCommentDto.class);
         targets.put("UgcCommentPage", PageResponse.class);
         targets.put("SiteFeatures", com.otaku.ugc.dto.SiteFeaturesDto.class);
+        // 「我的评论」（#449）：自己的评论 + 内嵌作品卡片；回复与被隐藏/待审的都在列表里
+        targets.put("MyComment", com.otaku.ugc.dto.MyCommentDto.class);
+        targets.put("MyCommentPage", PageResponse.class);
         // 点评（#240 B2c⑥）：与评论是两套形状，rating/body 都可空但至少一项有值
         targets.put("UgcReview", com.otaku.ugc.dto.UgcReviewDto.class);
         targets.put("UgcReviewPage", PageResponse.class);
