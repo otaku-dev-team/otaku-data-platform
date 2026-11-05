@@ -89,8 +89,17 @@
 - 反向查（#409）同样不需要映射表：`related_work_ids` 里已是 subject_id，直接按包含关系匹配。
 - **更新频率**：资讯每日更新、新番档期与作品按季度更新。JOIN 方案每次导出都从源库实时取，季度新增作品自然被下一次导出带出来，不需要维护映射增量（这正是它比映射表强的地方）。新番同样带 `bangumi_id`（zm 确认，编辑流程保证）。
 
-### 5.3 作品→资讯（相关资讯，P0）
-- 反向查 `article.related_work_ids` 含本作品的资讯，列表展示。
+### 5.3 作品→资讯（相关资讯，P0，**已落地** `GET /api/works/{work_id}/articles`）
+- 做法：`JSON_CONTAINS(article.related_work_ids, …)` 反查含本作品 subject id 的资讯，
+  按 `published_at DESC, id DESC` 分页（复用 `ArticlePage` 形状，不新造 DTO）。
+- 只对 `source='bangumi'` 的作品成立：`related_work_ids` 是 bangumi subject id，
+  其它来源的 `source_id` 是另一套号，拿去匹配会撞号（V28 实测 3,015 条假匹配），所以非 bangumi 直接返回空、不查库。
+- **语义开关**：`article.related_ids_semantic`（`app_config`，缺省 `content_id`）。
+  切流前库里还是 content_id，按 subject id 匹配会把**别的作品**的资讯挂上来且不报错；
+  数据侧 publisher 切换后把它置 `subject_id` 即生效，不用发版。切流前接口返回空。
+- 存储形态两种都匹配：`["11972"]`（Java 导入的 `List<String>`）与 `[11972]`
+  （数据侧从 SQLite 读出的整数）——`JSON_CONTAINS` 对类型敏感，只写一种会有一半数据静默查不到。
+- 没有为 JSON 列建索引：article 当前千级行，全表扫毫秒级；上万再考虑 `(article_id, subject_id)` 反查表。
 
 ### 5.4 系列关联（P1，需数据结构变更）
 - 引入 series 概念（清单 / 关系表），详情页"系列作品"区。
@@ -136,7 +145,7 @@
 | --- | --- | --- | --- | --- |
 | #407 | 作品↔作品 匹配度打分重构（修 findRelated） | P0 | @pyxz0 | 权重初值 / reasons 结构 / rating_count 阈值 |
 | #408 | 资讯→作品 渲染（**数据侧导出时 JOIN 成 subject_id**，后端/客户端零改动） | P0 | @riceyu02（客户端已随 #425 落地） | ~~映射表 D1~~ 已撤；只剩数据侧 publisher 切换（zm） |
-| #409 | 作品→资讯 反向查询接口（不需映射，直接按 subject_id 匹配） | P0 | @pyxz0 | 无结构变更，只剩解析实现 |
+| #409 | 作品→资讯 反向查询接口（不需映射，直接按 subject_id 匹配） | P0 | @pyxz0（已实现，端点 `GET /api/works/{work_id}/articles`） | 无结构变更；语义开关 `article.related_ids_semantic` 由运维在切流时打开 |
 | #410 | 作品→资讯 客户端展示（消费 #409） | P0 | @riceyu02 | — |
 | #411 | 系列关联 数据结构 + 反查接口 | P1 | @pyxz0 | series 数据结构 |
 | #412 | 实体反查 人物/公司→作品 列表接口 | P1 | @pyxz0 | — |

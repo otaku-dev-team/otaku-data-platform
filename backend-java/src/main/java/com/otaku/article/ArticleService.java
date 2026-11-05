@@ -32,10 +32,14 @@ public class ArticleService {
 
     private final AdultPolicy adultPolicy;
 
-    public ArticleService(ArticleRepository repository, ObjectMapper objectMapper, AdultPolicy adultPolicy) {
+    private final ArticleRelatedIdsSemantics semantics;
+
+    public ArticleService(ArticleRepository repository, ObjectMapper objectMapper, AdultPolicy adultPolicy,
+                          ArticleRelatedIdsSemantics semantics) {
         this.repository = repository;
         this.objectMapper = objectMapper;
         this.adultPolicy = adultPolicy;
+        this.semantics = semantics;
     }
 
     /**
@@ -48,7 +52,7 @@ public class ArticleService {
                 ? null
                 : categoryParam.trim();
 
-        int pageSize = Math.min(Math.max(pageSizeParam <= 0 ? 20 : pageSizeParam, 1), MAX_PAGE_SIZE);
+        int pageSize = clampPageSize(pageSizeParam);
         int page = Math.max(pageParam, 1);
 
         long total = repository.count(category);
@@ -62,6 +66,45 @@ public class ArticleService {
         }
         return new ArticlePage(total, page, pageSize,
                 PageResponse.totalPages(total, pageSize), items);
+    }
+
+    /**
+     * 作品→资讯（#409）：关联作品里含这个 subject id 的资讯，按发布时间倒序。
+     *
+     * <p>返回空有三种情况，响应形状都一样（{@code total=0} + 空 items）：
+     * <ol>
+     *   <li>这部作品本来就没有关联资讯；</li>
+     *   <li>调用方给的 {@code subjectId} 为 null（非 bangumi 来源的作品，
+     *       {@code related_work_ids} 里装的不是它的号）；</li>
+     *   <li>数据还没切到 subject id（见 {@link ArticleRelatedIdsSemantics}）——
+     *       这时宁可整块不显示，也不拿 content_id 去撞号。</li>
+     * </ol>
+     * 客户端对「空」的处理与「没有」一致：不渲染该区块。
+     */
+    public ArticlePage listForWorkSubject(String subjectId, int pageParam, int pageSizeParam) {
+        int pageSize = clampPageSize(pageSizeParam);
+        int page = Math.max(pageParam, 1);
+        if (subjectId == null || subjectId.isBlank() || !semantics.resolvedToSubjectId()) {
+            return new ArticlePage(0, page, pageSize, 0, List.of());
+        }
+
+        String normalized = subjectId.trim();
+        long total = repository.countRelatedToWork(normalized);
+        List<ArticleRecord> records = total == 0
+                ? List.of()
+                : repository.findRelatedToWork(normalized, pageSize, (page - 1) * pageSize);
+
+        List<ArticleSummary> items = new ArrayList<>(records.size());
+        for (ArticleRecord record : records) {
+            items.add(toSummary(record));
+        }
+        return new ArticlePage(total, page, pageSize,
+                PageResponse.totalPages(total, pageSize), items);
+    }
+
+    /** 每页条数：省略按 20，上限 50（与作品列表同口径，超了截断而不是报错）。 */
+    private static int clampPageSize(int pageSizeParam) {
+        return Math.min(Math.max(pageSizeParam <= 0 ? 20 : pageSizeParam, 1), MAX_PAGE_SIZE);
     }
 
     /** 详情。不存在返回 {@code null}，由控制器转 404。 */

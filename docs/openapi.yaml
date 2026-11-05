@@ -303,6 +303,53 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "500": { $ref: "#/components/responses/InternalError" }
 
+  /api/works/{work_id}/articles:
+    get:
+      tags: [作品查询]
+      summary: 相关资讯（作品→资讯 反查，新增）
+      operationId: getWorkArticles
+      description: |
+        取**来源站编辑手工关联**到这部作品的资讯，按发布时间倒序分页。
+
+        依据是 `article.related_work_ids` 里含本作品的 bangumi subject id——不是算出来的相似度，
+        所以不召回、不打分、不补位：有关联就给，没有就空。
+
+        边界约定：
+        - 作品不存在 / 格式非法 / 未收录 / 成人内容 → **404**（与详情、同标签推荐一致）。
+        - 作品存在但没有被任何资讯关联过 → `200` + `total: 0` + 空 `items`，不是 404。
+        - 只对 `source=bangumi` 的作品成立：`related_work_ids` 装的是 bangumi subject id，
+          其它来源的 `source_id` 是另一套号，拿去匹配会撞号（V28 实测两套号按数值 JOIN
+          得 3,015 条假匹配），所以非 bangumi 作品**不查库**、直接返回空。
+        - `page_size` 省略为 20、上限 50（超出截断不报错）；`page` 小于 1 按 1 处理。
+        - 成人资讯不出现（与资讯列表同一套过滤）。
+
+        响应形状复用资讯列表 `ArticlePage`（客户端已有该模型与分页组件），
+        刻意不新造 `WorkArticles`——多一层同构 DTO 只会在两边各多一次映射。
+
+        **上线时序**：数据侧把 `related_work_ids` 从 content_id 切到 subject id 之前，
+        本接口一律返回空。切流前用 content_id 去匹配会把**别的作品**的资讯挂上来，
+        而且不报错，所以服务端留了运行期开关 `article.related_ids_semantic`
+        （缺省 `content_id` = 不启用；切流后置 `subject_id` 即生效，不用发版）。
+      parameters:
+        - $ref: "#/components/parameters/WorkId"
+        - name: page
+          in: query
+          description: 页码，从 1 起；小于 1 按 1 处理
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: page_size
+          in: query
+          description: 每页条数，上限 50（超出按 50 截断，不报错）
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ArticlePage" }
+        "429": { $ref: "#/components/responses/RateLimitedWithRetry" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
   /api/site/features:
     get:
       tags: [社区]
@@ -973,8 +1020,11 @@ paths:
 
         幂等、单批上限、创建/更新/`null` 不覆盖、`(source, source_id)` 唯一键、来源侧消失不删除
         ——全部与 ImportBatchRequest 一致（见该 schema 说明）。
-        差异：条目字段为资讯侧（`ArticleImportItem`）；`related_work_ids` 收**站点作品 id 原文**，
-        不回填本地 work_id（来源站编辑推荐区块，回填会让客户端给出错误的本地跳转）。
+        差异：条目字段为资讯侧（`ArticleImportItem`）；`related_work_ids` 收 **bangumi subject id**
+        （2026-11-05 起由数据侧导出时 JOIN 好，见 #422），**不是**站点 content_id，
+        也不回填本地 `work_id`（`W-xxx` 是平台自己发的号，写进来只会随重建失效）。
+        两套号都是纯数字、从值上分不出来，混用不会报错——只会让关联作品全空或串到别的作品，
+        所以导入侧不做任何猜测性转换，传什么存什么。
       security:
         - internalToken: []
       requestBody:
@@ -4082,11 +4132,12 @@ components:
               type: array
               items: { type: string }
               description: |
-                来源站「关联作品」区的**站点作品 id 原文**（`/contents/{数字}` 里的数字）。
+                来源站「关联作品」区那几个号：**2026-11-05 起是 bangumi subject id**，
+                切流前的存量行仍是站点 content_id（`/contents/{数字}`）。
 
-                与本地 `work_id`（`W-xxx`）、`work.source_id`（bangumi subject id）是三套号：
-                客户端**不得**拿它拼本地作品详情路由，也不得按数值当 subject id 撞号
-                （V28 实测会撞出 3,015 条假匹配）。要展示关联作品请用 `related_works`。
+                两者都是纯数字、从值上分不出来，所以客户端**不得**拿它自己匹配本地作品——
+                要展示关联作品请用 `related_works`（服务端解析、可判语义）。
+                与本地 `work_id`（`W-xxx`）也是两套号，不得拼本地详情路由。
             related_works:
               type: array
               nullable: true
@@ -4094,15 +4145,17 @@ components:
                 来源站「关联作品」区**解析到本地作品**后的列表，元素形状与 `WorkSummary` 一致。
                 客户端只渲染、不自算：卡片的标题 / 封面 / 跳转用 `work_id` 全部取自这里。
 
-                解析链（服务端执行，#409）：content_id → 首站 `contents.bangumi_id`
-                → `work(source='bangumi' AND source_id=该 subject id AND site_listed=1
-                AND deleted_at IS NULL)` → WorkSummary。映射表（content_id → bangumi_id）
-                不在本库，需随 #409 落库 / 导入后才有值。
-                **不得**按 `(source='otaku_site', source_id=content_id)` 接：那批第二份目录
-                已被 V28 全部软删，详情一律 404。同样受成人内容可见性与收录范围约束。
+                解析（服务端执行）：`related_work_ids` 里的 subject id →
+                `work(source='bangumi' AND source_id=该 subject id AND site_listed=1
+                AND deleted_at IS NULL AND is_adult=0)` → WorkSummary。
+                不建映射表、不做 content_id 换算（2026-11-05 决定，见 #422）：
+                首站 `article_content_links` 实测 100% 能 JOIN 出 `bangumi_id`，映射那一步是多余的。
+                **不得**按 `(source='otaku_site', source_id=…)` 接：那批第二份目录已被 V28
+                全部软删，详情一律 404。
 
-                `null` = 后端尚未启用解析（#409 落地前的兼容态）；`[]` = 已解析但无可用关联作品。
-                解析不到 / 已下架 / 不在收录范围的 content_id 一律跳过，顺序沿用来源站原始顺序。
+                `null` = 后端尚未启用解析（语义开关 `article.related_ids_semantic` 还停在
+                `content_id`）；`[]` = 已启用但没有可用的本地作品。
+                解析不到 / 已下架 / 不在收录范围 / 成人的一并跳过，顺序沿用来源站原始顺序。
                 客户端对 `null` 与 `[]` 一视同仁：整块不渲染，不显示「暂无关联作品」。
               items: { $ref: "#/components/schemas/WorkSummary" }
 
@@ -4156,7 +4209,9 @@ components:
         related_work_ids:
           type: array
           items: { type: string }
-          description: 来源站「关联作品」的站点作品 id 原文，透传不回填
+          description: |
+            关联作品的 **bangumi subject id**（数据侧导出时 JOIN 好，不是站点 content_id，见 #422）。
+            导入侧原样透传：不换算、不回填本地 `work_id`。
 
     # -------------------------------------------------------------------------
     # 站主运营后台（Issue #144）
