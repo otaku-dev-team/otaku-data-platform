@@ -350,6 +350,41 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "500": { $ref: "#/components/responses/InternalError" }
 
+  /api/persons/{person_id}:
+    get:
+      tags: [人物]
+      summary: 人物详情 + 参与作品（档 B2，新增）
+      operationId: getPerson
+      description: |
+        一个人是谁、他参与过哪些作品。形状照来源站的 `cast_detail()`：
+        **按作品合并**——同一个人的同一部作品既可能挂「导演」又可能配音「鹿目圆」，
+        拆成两行会让页面出现两张一模一样的卡片。
+
+        `person_id` 是**来源侧实体标识，客户端一律当不透明字符串**：
+        现在是裸数字，切 v3 数据集后会是 `bgm:`（Bangumi 人物 id，强关联）/
+        `pname:`（只剩名字的主创）/ `cname:`（公司）前缀。不解析、不比大小、不自己拼。
+        无法识别的前缀按弱关联处理（宁可少合并，不可错合并），见 `docs/person-id-unification.md`。
+
+        口径：
+        - 人物不存在 / `person_id` 格式非法 / 超长 → **404**（不用 400 区分「存在与否」，
+          那等于给了一个探测接口）；
+        - `works` 按评分倒序（低票按 0 处理，与列表排序同一口径），无评分排最后；
+        - 每部作品内 `characters`（配音角色）与 `roles`（制作职责）各自成列，都可能为空数组；
+        - 成人作品、已下架作品、不在收录范围的作品**不出现**（客户端点进去只会 404）；
+        - 不分页：来源站也没分页，一个人的参与作品通常在几十部量级；真遇到几百部的声优，
+          响应会大一些但仍是单次可接受范围。
+      parameters:
+        - $ref: "#/components/parameters/PersonId"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PersonDetail" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimitedWithRetry" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
   /api/site/features:
     get:
       tags: [社区]
@@ -2513,6 +2548,15 @@ components:
       description: 平台内部标识，由 Java 生成，客户端只当不透明字符串使用
       schema: { type: string }
 
+    PersonId:
+      name: person_id
+      in: path
+      required: true
+      description: |
+        来源侧人物标识。现在是裸数字，切 v3 数据集后是 `bgm:123` / `pname:佐藤` / `cname:京都动画`。
+        客户端当不透明字符串，不要解析前缀。
+      schema: { type: string, maxLength: 128 }
+
     AdminId:
       name: admin_id
       in: path
@@ -4133,6 +4177,41 @@ components:
             items:
               type: array
               items: { $ref: "#/components/schemas/CollectionItem" }
+
+    PersonDetail:
+      type: object
+      properties:
+        person_id:
+          type: string
+          description: 原样回传请求里的键
+        person_name: { type: string }
+        entity_type:
+          type: string
+          nullable: true
+          description: 来源侧实体类型原值（`person` / `company` / null）
+        works:
+          type: array
+          description: 参与作品，按评分倒序；每部一条，同作品不会重复
+          items: { $ref: "#/components/schemas/PersonCredit" }
+        cast_count:
+          type: integer
+          description: 配音作品数（按作品去重，不含因不可见被过滤掉的）
+        credit_count:
+          type: integer
+          description: 制作作品数（按作品去重，同上）
+
+    PersonCredit:
+      type: object
+      properties:
+        work: { $ref: "#/components/schemas/WorkSummary" }
+        characters:
+          type: array
+          items: { type: string }
+          description: 配音角色名；只做制作时为 `[]`
+        roles:
+          type: array
+          items: { type: string }
+          description: 制作职责（导演 / 脚本 / 原画…，来源原值）；只配音时为 `[]`
 
     MyCommentPage:
       allOf:

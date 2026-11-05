@@ -131,6 +131,14 @@ infobox 主创要变成可跳转，必须先有 Bangumi 人物 id。两条路：
 
 ### 阶段 3 · 人物 / 公司端点（契约，**形状照首站**）
 
+> **2026-11-06：`GET /api/persons/{id}` 已实现**（#455，PR #461）。键当**不透明字符串**处理，
+> 因此 v2（裸数字）与 v3（`bgm:` / `pname:` / `cname:`）都能直接用，切流不需要改代码。
+> 还没做的：`/api/studios/{name}`、`/api/persons` 花名册（两者都在阶段 1 之后才有意义）。
+> 读模型的已知取舍：`work_staff` / `work_characters` **没有 person_id 索引**，人物页是两表全扫
+> （现约 22 万行、几十毫秒）。`V31` 已永久跳过、`V33` 留给本文件的迁移、`V34` 许给 #377/#378，
+> 所以不在 #455 里抢号——**建议与阶段 1 的 `V33` 同批加** `KEY idx_work_staff_person (person_id)` 与
+> `KEY idx_work_characters_person (person_id)`。
+
 口径已定：**网站（首站 `E:\projects\acgn-test-platform`）有什么，我们就有什么，形状照抄。**
 
 | 首站 | 键 | 我们对应 | 说明 |
