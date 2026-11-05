@@ -316,7 +316,10 @@ printf '[build_site] 产物：%s（%s）\n' "$artifact" "$(du -h "$artifact" | c
 brand_hit() {
   local target="$1" member tmp hit=""
   if [ -d "$target" ]; then
-    grep -qrla -- "$APP_NAME" "$target" 2>/dev/null | head -n 1
+    # 不能带 -q：-q 会连 -l 的文件名一起吞掉，于是这行永远输出空，
+    # 目录形态（Windows 的 data/）的品牌自检就会恒假阴性。
+    # 这里要的是「哪个文件命中」，不是布尔判断；布尔判断在下面 apk 分支才用 -q。
+    grep -rla -- "$APP_NAME" "$target" 2>/dev/null | head -n 1
     return
   fi
   case "$target" in
