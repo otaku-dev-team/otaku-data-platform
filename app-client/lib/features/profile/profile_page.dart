@@ -7,6 +7,7 @@ import '../../core/router/route_paths.dart';
 import '../../core/theme/app_layout.dart';
 import '../../core/theme/design_tokens.dart';
 import '../../shared/widgets/desktop_nav_shell.dart';
+import '../../shared/widgets/user_avatar.dart';
 import '../auth/auth_controller.dart';
 import '../recent/recent_views_controller.dart';
 import 'profile_stats.dart';
@@ -124,11 +125,8 @@ class _IdentityCard extends StatelessWidget {
     final meta = signedIn
         ? '已连接 ${AppConfig.appName} 账号 · 收藏在设备间同步'
         : (checking ? '稍等一下' : '登录后收藏可在手机与桌面同步');
-    // 头像用昵称首字，比一个通用小人更像「我」；没有昵称时退回图标。
-    final initial = signedIn && label.isNotEmpty
-        ? label.characters.first.toUpperCase()
-        : null;
-
+    // 头像用昵称首字，比一个通用小人更像「我」；抽成 UserAvatar 后，
+    // #378 第二层的 avatar_url 落地时只要把 URL 传进去，这里不用改。
     return Card(
       clipBehavior: Clip.antiAlias,
       child: Padding(
@@ -139,20 +137,7 @@ class _IdentityCard extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                CircleAvatar(
-                  radius: 26,
-                  backgroundColor: scheme.primaryContainer,
-                  foregroundColor: scheme.onPrimaryContainer,
-                  child: initial != null
-                      ? Text(
-                          initial,
-                          style: theme.textTheme.titleLarge?.copyWith(
-                            color: scheme.onPrimaryContainer,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        )
-                      : const Icon(Icons.person_outline_rounded),
-                ),
+                UserAvatar(label: label),
                 const SizedBox(width: Space.s3),
                 Expanded(
                   child: Column(
@@ -183,12 +168,27 @@ class _IdentityCard extends StatelessWidget {
             ),
                 const SizedBox(height: Space.s3),
                 const Divider(height: 1),
-                const SizedBox(height: Space.s3),            _StatsRow(
-              collected: stats?.collected,
-              viewed: viewed,
-              watched: stats?.watched,
-              wanted: stats?.wanted,
-            ),
+                const SizedBox(height: Space.s3),
+                _StatsRow(
+                  collected: stats?.collected,
+                  viewed: viewed,
+                  watched: stats?.watched,
+                  wanted: stats?.wanted,
+                ),
+                // 编辑资料放在身份卡底部，而不是挤进上面那行：窄屏 + 双倍字号时
+                // 昵称、徽章再加一个按钮会折得很难读。未登录不给入口，
+                // 编辑页自己也有登录引导，别在两处各写一套。
+                if (signedIn) ...[
+                  const SizedBox(height: Space.s1),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton.icon(
+                      onPressed: () => context.push(RoutePaths.profileEdit),
+                      icon: const Icon(Icons.edit_outlined, size: 18),
+                      label: const Text('编辑资料'),
+                    ),
+                  ),
+                ],
           ],
         ),
       ),

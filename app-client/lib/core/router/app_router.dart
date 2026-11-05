@@ -12,6 +12,7 @@ import '../../features/detail/work_detail_page.dart';
 import '../../features/home/home_page.dart';
 import '../../features/devices/device_page.dart';
 import '../../features/persona/persona_page.dart';
+import '../../features/profile/profile_edit_page.dart';
 import '../../features/profile/profile_page.dart';
 import '../../features/recent/recent_history_page.dart';
 import '../../features/schedule/schedule_page.dart';
@@ -171,6 +172,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: RoutePaths.devicesSegment,
             builder: (context, state) => const DevicePage(),
+          ),
+          // #378 第一层：昵称 / 简介编辑 + 首字色块头像兜底。
+          GoRoute(
+            path: RoutePaths.profileEditSegment,
+            builder: (context, state) => const ProfileEditPage(),
           ),
         ],
       ),
