@@ -24,6 +24,7 @@ import '../../shared/widgets/offline_notice.dart';
 import '../../shared/widgets/poster_card.dart';
 import '../../shared/widgets/skeleton_list.dart';
 import '../../shared/widgets/work_type_tag.dart';
+import '../article_favorite/article_favorite_controller.dart';
 import '../article_favorite/article_favorite_list.dart';
 import '../auth/auth_controller.dart';
 import 'collection_controller.dart';
@@ -55,8 +56,18 @@ class CollectionPage extends ConsumerWidget {
               if (auth.isSignedIn)
                 IconButton(
                   tooltip: '刷新',
-                  onPressed: () =>
-                      ref.read(collectionControllerProvider.notifier).refresh(),
+                  // 刷新要跟随当前分段：在「资讯」段点刷新却去拉作品列表，
+                  // 用户会以为刷新没生效（而且资讯段确实没更新）。
+                  onPressed: () {
+                    if (ref.read(collectionSegmentProvider) ==
+                        CollectionSegment.articles) {
+                      ref
+                          .read(articleFavoriteControllerProvider.notifier)
+                          .refresh();
+                      return;
+                    }
+                    ref.read(collectionControllerProvider.notifier).refresh();
+                  },
                   icon: const Icon(Icons.refresh),
                 ),
               // 登录/账号入口与作品库共用同一个组件，未登录时也要能看到「登录」，

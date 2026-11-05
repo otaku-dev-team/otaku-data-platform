@@ -163,6 +163,25 @@ void main() {
     expect(find.text('重试'), findsOneWidget);
   });
 
+  testWidgets('资讯段点刷新会重拉资讯，而不是刷作品列表', (tester) async {
+    final source = _FakeArticleFavorites(
+      items: [
+        ArticleFavoriteEntry(
+          article: const ArticleSummary(articleId: 'A-1', title: '收藏的资讯'),
+        ),
+      ],
+    );
+    await pumpFavorites(tester, source: source);
+
+    await tester.tap(find.widgetWithText(ChoiceChip, '资讯'));
+    await tester.pumpAndSettle();
+    expect(source.calls, 1);
+
+    await tester.tap(find.byTooltip('刷新'));
+    await tester.pumpAndSettle();
+    expect(source.calls, 2);
+  });
+
   testWidgets('未登录不显示分段，仍然是登录引导', (tester) async {
     await pumpFavorites(
       tester,
