@@ -52,6 +52,10 @@ abstract final class RoutePaths {
   static const String devicesSegment = 'devices';
   static const String devices = '$profile/devices';
 
+  /// 编辑资料（#378 第一层）：与画像、登录设备同形态的 `/me` 二级页。
+  static const String profileEditSegment = 'edit';
+  static const String profileEdit = '$profile/edit';
+
   /// 每日新番档期。与列表/收藏平级：从任何地方都能直接进。
   static const String schedule = '/schedule';
 
