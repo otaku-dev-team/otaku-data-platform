@@ -26,8 +26,12 @@ public class ArticleController {
 
     private final ArticleService service;
 
-    public ArticleController(ArticleService service) {
+    /** 详情要填「关联作品」，而解析只在作品侧有一份口径（见该类的类注释）。 */
+    private final ArticleDetailAssembler detailAssembler;
+
+    public ArticleController(ArticleService service, ArticleDetailAssembler detailAssembler) {
         this.service = service;
+        this.detailAssembler = detailAssembler;
     }
 
     /**
@@ -51,10 +55,10 @@ public class ArticleController {
         return service.categories();
     }
 
-    /** 详情。正文只在这里给，列表不带。 */
+    /** 详情。正文只在这里给，列表不带；关联作品在这里解析（#408）。 */
     @GetMapping("/{articleId}")
     public ArticleDetail detail(@PathVariable String articleId) {
-        ArticleDetail detail = service.detail(articleId);
+        ArticleDetail detail = detailAssembler.detail(articleId);
         if (detail == null) {
             throw new ApiException(ErrorCode.ARTICLE_NOT_FOUND, "资讯不存在");
         }

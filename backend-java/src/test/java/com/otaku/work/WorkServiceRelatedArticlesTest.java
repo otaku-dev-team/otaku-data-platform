@@ -9,6 +9,7 @@ import com.otaku.common.AdultPolicy;
 import com.otaku.common.ApiException;
 import com.otaku.common.ErrorCode;
 import com.otaku.config.PublicUrlResolver;
+import com.otaku.work.dto.WorkSummaryDto;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -24,6 +25,8 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -93,8 +96,7 @@ class WorkServiceRelatedArticlesTest {
 
     @Test
     @DisplayName("作品不存在仍是 404，与详情、同标签推荐一致")
-    void missingWorkIsNotFound() {
-        when(repository.findByWorkId("W-404")).thenReturn(Optional.empty());
+    void missingWorkIsNotFound() {        when(repository.findByWorkId("W-404")).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.relatedArticles("W-404", 1, 20))
                 .isInstanceOf(ApiException.class)
@@ -103,9 +105,66 @@ class WorkServiceRelatedArticlesTest {
         verifyNoInteractions(articleService);
     }
 
+    @Test
+    @DisplayName("资讯→作品：按入参顺序返回，不按库里的顺序——来源站编辑排的位次是内容的一部分")
+    void preservesRequestedOrder() {
+        when(repository.findBySourceIds(eq("bangumi"), anyList())).thenReturn(List.of(
+                work(2L, "W-2", "bangumi", "8899"),
+                work(1L, "W-1", "bangumi", "11972")));
+
+        List<WorkSummaryDto> summaries = service.summariesBySubjectIds(List.of("11972", "8899"));
+
+        assertThat(summaries).extracting(WorkSummaryDto::workId).containsExactly("W-1", "W-2");
+    }
+
+    @Test
+    @DisplayName("资讯→作品：解析不到的 id 直接跳过（下架/成人/未收录都在仓储侧滤掉了）")
+    void skipsUnresolvedIds() {
+        when(repository.findBySourceIds(eq("bangumi"), anyList())).thenReturn(List.of(
+                work(1L, "W-1", "bangumi", "11972")));
+
+        List<WorkSummaryDto> summaries = service.summariesBySubjectIds(
+                List.of("11972", "9799999", " "));
+
+        assertThat(summaries).extracting(WorkSummaryDto::workId).containsExactly("W-1");
+    }
+
+    @Test
+    @DisplayName("资讯→作品：重复 id 只查一次、只出一次；空入参不查库")
+    void dedupesAndShortCircuits() {
+        when(repository.findBySourceIds(eq("bangumi"), anyList())).thenReturn(List.of(
+                work(1L, "W-1", "bangumi", "11972")));
+
+        assertThat(service.summariesBySubjectIds(List.of("11972", " 11972 ")))
+                .extracting(WorkSummaryDto::workId).containsExactly("W-1");
+        verify(repository, org.mockito.Mockito.times(1)).findBySourceIds(eq("bangumi"), anyList());
+
+        assertThat(service.summariesBySubjectIds(List.of())).isEmpty();
+        assertThat(service.summariesBySubjectIds(null)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("资讯→作品：入参最多取 30 个，防一条脏数据把 IN 撑爆")
+    void capsIdCount() {
+        when(repository.findBySourceIds(eq("bangumi"), anyList())).thenReturn(List.of());
+
+        List<String> many = java.util.stream.IntStream.rangeClosed(1, 40)
+                .mapToObj(i -> String.valueOf(10000 + i)).toList();
+        service.summariesBySubjectIds(many);
+
+        org.mockito.ArgumentCaptor<List<String>> captor =
+                org.mockito.ArgumentCaptor.forClass(List.class);
+        verify(repository).findBySourceIds(eq("bangumi"), captor.capture());
+        assertThat(captor.getValue()).hasSize(30);
+    }
+
     private static WorkRecord work(String workId, String source, String sourceId) {
+        return work(1L, workId, source, sourceId);
+    }
+
+    private static WorkRecord work(long id, String workId, String source, String sourceId) {
         return new WorkRecord(
-                1L, workId, "anime", "标题", null, 2022,
+                id, workId, "anime", "标题", null, 2022,
                 null, null, null, null,
                 null, null, null,
                 "[\"科幻\"]",
