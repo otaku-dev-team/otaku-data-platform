@@ -226,6 +226,8 @@ class _CollectionBody extends ConsumerWidget {
               AppLayout.collectionCardBodyHeight * textScale;
 
           return GridView.builder(
+            // 切到「资讯」段再切回来时，靠这个 key 恢复滚动位置（PageStorage）。
+            key: const PageStorageKey<String>('collection-works-grid'),
             physics: PlatformInfo.isDesktop
                 ? null
                 : const AlwaysScrollableScrollPhysics(),

@@ -52,6 +52,9 @@ class ArticleFavoriteList extends ConsumerWidget {
       onRefresh: () =>
           ref.read(articleFavoriteControllerProvider.notifier).refresh(),
       child: ListView.separated(
+        // 切分段会销毁这一支；同一个 PageStorageKey 让滚动位置在切回来时恢复，
+        // 不用从顶部重新翻。
+        key: const PageStorageKey<String>('article-favorite-list'),
         padding: const EdgeInsets.fromLTRB(
           AppLayout.pagePadding,
           8,
