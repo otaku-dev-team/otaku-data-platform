@@ -24,6 +24,7 @@ import '../../shared/widgets/offline_notice.dart';
 import '../../shared/widgets/poster_card.dart';
 import '../../shared/widgets/skeleton_list.dart';
 import '../../shared/widgets/work_type_tag.dart';
+import '../article_favorite/article_favorite_list.dart';
 import '../auth/auth_controller.dart';
 import 'collection_controller.dart';
 
@@ -103,6 +104,25 @@ class _CollectionBody extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final segment = ref.watch(collectionSegmentProvider);
+
+    return Column(
+      children: [
+        // 分段在筛选之前：先决定「看哪一类收藏」，再决定「看哪个状态」。
+        _SegmentTabs(
+          selected: segment,
+          onSelected: (value) =>
+              ref.read(collectionSegmentProvider.notifier).select(value),
+        ),
+        if (segment == CollectionSegment.works)
+          ..._worksBody(context, ref)
+        else
+          const Expanded(child: ArticleFavoriteList()),
+      ],
+    );
+  }
+
+  List<Widget> _worksBody(BuildContext context, WidgetRef ref) {
     final filter = ref.watch(collectionFilterProvider);
     final collections = ref.watch(collectionControllerProvider);
 
@@ -111,22 +131,20 @@ class _CollectionBody extends ConsumerWidget {
     final cached = collections.value;
     final offline = cached != null && cached.fromCache;
 
-    return Column(
-      children: [
-        _StatusFilters(
-          selected: filter,
-          onSelected: (status) =>
-              ref.read(collectionFilterProvider.notifier).select(status),
+    return [
+      _StatusFilters(
+        selected: filter,
+        onSelected: (status) =>
+            ref.read(collectionFilterProvider.notifier).select(status),
+      ),
+      if (offline)
+        OfflineNotice(
+          cachedAt: cached.cachedAt,
+          onRetry: () =>
+              ref.read(collectionControllerProvider.notifier).refresh(),
         ),
-        if (offline)
-          OfflineNotice(
-            cachedAt: cached.cachedAt,
-            onRetry: () =>
-                ref.read(collectionControllerProvider.notifier).refresh(),
-          ),
-        Expanded(child: _buildList(context, ref, collections, filter)),
-      ],
-    );
+      Expanded(child: _buildList(context, ref, collections, filter)),
+    ];
   }
 
   Widget _buildList(
@@ -220,6 +238,40 @@ class _CollectionBody extends ConsumerWidget {
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+/// 作品 / 资讯两个分段。用 [ChoiceChip] 而不是 TabBar：
+/// 下面紧接着就是状态筛选的同款 chip，两者视觉一致，用户不会把
+/// 「换分段」和「换筛选」当成两种不同层级的操作。
+class _SegmentTabs extends StatelessWidget {
+  const _SegmentTabs({required this.selected, required this.onSelected});
+
+  final CollectionSegment selected;
+  final ValueChanged<CollectionSegment> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppLayout.pagePadding,
+        12,
+        AppLayout.pagePadding,
+        0,
+      ),
+      child: Row(
+        children: [
+          for (final segment in CollectionSegment.values) ...[
+            ChoiceChip(
+              label: Text(segment.label),
+              selected: selected == segment,
+              onSelected: (_) => onSelected(segment),
+            ),
+            const SizedBox(width: 8),
+          ],
+        ],
       ),
     );
   }

@@ -24,6 +24,35 @@ final collectionFilterProvider =
       CollectionFilterController.new,
     );
 
+/// 收藏页的两个分段：作品 / 资讯。
+///
+/// #377 拍板走「独立端点 + 客户端分段」——资讯收藏有自己的接口，
+/// 但入口与作品收藏同页，用户不用记两个地方。
+enum CollectionSegment {
+  works('作品'),
+  articles('资讯');
+
+  const CollectionSegment(this.label);
+
+  final String label;
+}
+
+/// 当前分段。默认作品：既有用户打开这一页时的预期不变。
+class CollectionSegmentController extends Notifier<CollectionSegment> {
+  @override
+  CollectionSegment build() => CollectionSegment.works;
+
+  void select(CollectionSegment segment) {
+    if (state == segment) return;
+    state = segment;
+  }
+}
+
+final collectionSegmentProvider =
+    NotifierProvider<CollectionSegmentController, CollectionSegment>(
+      CollectionSegmentController.new,
+    );
+
 /// 离线时写操作一律拒掉。
 ///
 /// 界面上这份数据是缓存的，改动**发不出去**，发出去也只会超时。与其让用户
