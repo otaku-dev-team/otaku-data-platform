@@ -19,6 +19,8 @@ public enum ErrorCode {
     COMMENT_NOT_FOUND(HttpStatus.NOT_FOUND),
     /** 点评不存在（#240 B2c⑥）。与评论分开：客户端要区分「这条点评没了」和「这条评论没了」。 */
     REVIEW_NOT_FOUND(HttpStatus.NOT_FOUND),
+    /** 人物不存在（B2 人物页 #455）。键是来源侧实体标识，格式非法同样用它。 */
+    PERSON_NOT_FOUND(HttpStatus.NOT_FOUND),
     /** 同一作品已经点评过（一人一条）。客户端应引导去编辑，而不是重新提交。 */
     REVIEW_EXISTS(HttpStatus.CONFLICT),
     /**
