@@ -130,4 +130,40 @@ class ArticleRepositorySqlTest {
 
         assertThat(capturedCountSql()).contains("WHERE category = :category");
     }
+
+    @Test
+    @DisplayName("作品→资讯反查：用 JSON_CONTAINS + JSON_QUOTE，字符串与数字两种存法都匹配")
+    void relatedToWorkMatchesStringAndNumericForms() {
+        stubQuery();
+        new ArticleRepository(jdbc).findRelatedToWork("11972", 20, 0);
+
+        String sql = capturedListSql();
+        // 字符串数组 ["11972"]：JSON_QUOTE 把参数包成 JSON 字符串再比
+        assertThat(sql).contains("JSON_CONTAINS(related_work_ids, JSON_QUOTE(:sourceId))");
+        // 数字数组 [11972]：JSON_CONTAINS 类型敏感，字符串 "11972" 与数字 11972 不相等
+        assertThat(sql).contains("JSON_CONTAINS(related_work_ids, CAST(:sourceId AS JSON))");
+        assertThat(sql).contains("ORDER BY published_at DESC, id DESC");
+    }
+
+    @Test
+    @DisplayName("反查的 id 不是纯数字时不拼 CAST 分支：CAST('abc' AS JSON) 在 MySQL 报 3141")
+    void relatedToWorkSkipsNumericBranchForNonNumericId() {
+        stubQuery();
+        new ArticleRepository(jdbc).findRelatedToWork("sg-abc", 20, 0);
+
+        String sql = capturedListSql();
+        assertThat(sql).contains("JSON_CONTAINS(related_work_ids, JSON_QUOTE(:sourceId))");
+        assertThat(sql).doesNotContain("CAST(:sourceId AS JSON)");
+    }
+
+    @Test
+    @DisplayName("反查的 count 与列表同一套条件：否则「有总数、没条目」")
+    void relatedToWorkCountUsesSamePredicate() {
+        stubCount();
+        new ArticleRepository(jdbc).countRelatedToWork("11972");
+
+        String sql = capturedCountSql();
+        assertThat(sql).contains("JSON_CONTAINS(related_work_ids, JSON_QUOTE(:sourceId))");
+        assertThat(sql).contains("FROM article WHERE");
+    }
 }

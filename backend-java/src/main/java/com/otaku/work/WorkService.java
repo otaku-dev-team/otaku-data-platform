@@ -2,6 +2,8 @@ package com.otaku.work;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.otaku.article.ArticleService;
+import com.otaku.article.dto.ArticleDtos.ArticlePage;
 import com.otaku.common.AdultPolicy;
 import com.otaku.common.ApiException;
 import com.otaku.common.LikePattern;
@@ -70,18 +72,23 @@ public class WorkService {
     private final CountCache countCache;
     private final WorkRelationRepository relationRepository;
 
+    /** 作品→资讯（#409）走资讯侧的分页与映射，不在这里重写一套。 */
+    private final ArticleService articleService;
+
     /** 成人词表可热改，剔除逻辑读它（缺键回落默认值，见 {@link AdultPolicy}）。 */
     private final AdultPolicy adultPolicy;
 
     public WorkService(WorkRepository repository, PublicUrlResolver publicUrlResolver,
                        ObjectMapper objectMapper, CountCache countCache,
-                       WorkRelationRepository relationRepository, AdultPolicy adultPolicy) {
+                       WorkRelationRepository relationRepository, AdultPolicy adultPolicy,
+                       ArticleService articleService) {
         this.repository = repository;
         this.publicUrlResolver = publicUrlResolver;
         this.objectMapper = objectMapper;
         this.countCache = countCache;
         this.relationRepository = relationRepository;
         this.adultPolicy = adultPolicy;
+        this.articleService = articleService;
     }
 
     /**
@@ -197,6 +204,26 @@ public class WorkService {
                 .limit(limit)
                 .toList();
         return new RelatedWorksDto(basis, items);
+    }
+
+    /**
+     * 相关资讯（#409 作品→资讯）。
+     *
+     * <p>「相关」的唯一依据是资讯侧的 {@code related_work_ids}——那是来源站编辑手工挑的
+     * 关联作品，不是我们算出来的相似度。所以这里不召回、不打分、不补位：
+     * 有就按时间倒序给，没有就空。
+     *
+     * <p>只对 {@code source='bangumi'} 的作品成立：{@code related_work_ids} 里存的是
+     * bangumi subject id，其它来源的 {@code source_id} 是另一套号，拿去匹配只会撞号
+     * （V28 实测两套号按数值 JOIN 得 3,015 条假匹配）。非 bangumi 直接返回空，
+     * 不查库。
+     *
+     * <p>作品不存在 / 未收录 / 成人内容仍然 404，与详情、同标签推荐一致。
+     */
+    public ArticlePage relatedArticles(String workId, int page, int pageSize) {
+        WorkRecord current = requireWork(workId);
+        String subjectId = "bangumi".equalsIgnoreCase(current.source()) ? current.sourceId() : null;
+        return articleService.listForWorkSubject(subjectId, page, pageSize);
     }
 
     /** 详情与相关推荐共用的「取作品或 404」逻辑。 */
