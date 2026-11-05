@@ -46,6 +46,11 @@ python -m devkit serve --port 8787    # 本地看板（失败卡片、慢用例�
 
 CI（`.github/workflows/`）按栈跑全量。**本地选跑过了不等于 CI 会过**，别把 devtest 当 CI 用。
 
+改 `scripts/` 或 `devkit/` 会触发 `scripts.yml`：只做 `py_compile`（全部 .py）+ `devkit/tests` 单测
+（约 3 秒，不依赖 flutter/maven/docker）。它不是「脚本能跑」的证明——需要真库/真站的脚本仍要在联调机
+跑一次（例如 `seed_mock_users.py` 的 `--dry-run` 与 `verify_related_ids.py` 的预检）。
+见 #431 / #448 两次「脚本改动零 CI」的教训。
+
 ## 部署后回归
 
 ```bash
