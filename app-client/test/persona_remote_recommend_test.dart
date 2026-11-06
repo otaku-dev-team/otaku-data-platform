@@ -6,7 +6,7 @@ import 'package:otaku_app/core/network/api_exception.dart';
 import 'package:otaku_app/features/persona/persona_data_source.dart';
 import 'package:otaku_app/features/persona/personalized_recommend_section.dart';
 
-/// #376 推荐位接真数据的回归测试。
+/// #376 推荐位 + #375 画像页的**远程数据源**回归测试。
 ///
 /// 钉的都是「接口上线后才会暴露」的事：`/api/me/recommend` 的路径与参数、
 /// `cold_start` 改标题、规则 key → 理由文案、游客不请求（否则 401 会踢会话）、
@@ -96,12 +96,29 @@ void main() {
     );
   });
 
-  test('画像页仍取演示数据（#375 不在本轮）', () async {
-    final stub = _Stub((options) => _ok(options, _page(items: <dynamic>[])));
+  test('画像页：#375 消费 /api/me/profile，六轴由 PersonaProfile 派生', () async {
+    final stub = _Stub(
+      (options) => _ok(options, <String, dynamic>{
+        'type_weights': <String, dynamic>{'anime': 1.0},
+        'tag_weights': <String, dynamic>{'科幻': 1.0, '群像': 0.4},
+        'rating_tendency': <String, dynamic>{
+          'mean': 7.2,
+          'count': 9,
+          'dist': List<int>.filled(10, 0),
+        },
+        'recent_active': <String>['w-1', 'w-2'],
+        'sample_size': 42,
+        'generated_at': '2026-11-07T00:00:00Z',
+      }),
+    );
+
     final insight = await PersonaRemoteDataSource(_dio(stub)).fetchInsight();
 
-    expect(insight.title, '深夜考据派');
-    expect(stub.requests, isEmpty);
+    // 路径错了会打到一个不存在的端点（404），比字段错更难查。
+    expect(stub.requests.single.path, '/api/me/profile');
+    expect(insight.title, '科幻派');
+    expect(insight.dimensions, hasLength(6));
+    expect(insight.topTags.first, '科幻');
   });
 
   testWidgets('正常结果：标题「为你推荐」+「按画像」，理由可见', (tester) async {
