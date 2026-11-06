@@ -1004,6 +1004,41 @@ paths:
         "429": { $ref: "#/components/responses/RateLimitedWithRetry" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /api/articles/{articleId}/related:
+    get:
+      tags: [最新资讯]
+      summary: 相关资讯（新增）
+      operationId: listRelatedArticles
+      description: |
+        同一站点内与这条资讯相关的其它资讯，供详情页「延伸阅读」区块。
+
+        召回与打分（纯规则）：
+        - 召回：**共享标签**（`JSON_OVERLAPS`）或**同分类**；
+        - 打分：`共享标签数 × 2 + 同分类 × 1`，同分按发布时间倒序；
+        - **同来源不计分**：同一家媒体的资讯天然同质，把它当相似证据等于
+          「只要是这家写的就相关」，噪声大于信息；
+        - 排除源资讯自己。
+
+        源资讯不存在返回 `404`；有资讯但没有相关资讯返回 `200` + 空 `items`
+        （「这条比较孤立」不是错误，客户端整块不渲染）。
+      parameters:
+        - name: articleId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: limit
+          in: query
+          description: 返回条数，默认 10、上限 20（超出按 20 截断，不报错）；小于 1 按 10
+          schema: { type: integer, minimum: 1, maximum: 20, default: 10 }
+      responses:
+        "200":
+          description: 成功；没有相关资讯时 `items` 为空数组
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ArticleRelated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimitedWithRetry" }
+
   /internal/app/config:
     put:
       tags: [内部导入]
@@ -4425,6 +4460,18 @@ components:
             **可能为 null**：作品后来被标成成人或移出收录范围时卡片不再可见，
             但评论正文照常返回（用户写过的字不能因为作品不可见就消失）。
             客户端此时渲染「作品不可见」占位，不要让整行消失。
+
+    ArticleRelated:
+      type: object
+      description: |
+        相关资讯（#414）。固定条数的「延伸阅读」，不是分页列表——所以**不给**
+        `total` / `total_pages`，避免客户端以为还能往下翻。
+        `items` 为空表示没有相关资讯，仍是 200。
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/ArticleSummary" }
 
     ArticlePage:
       allOf:

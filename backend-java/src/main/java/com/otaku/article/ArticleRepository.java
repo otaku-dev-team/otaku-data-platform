@@ -169,6 +169,37 @@ public class ArticleRepository {
     }
 
     /** 库里出现过的全部分类，条数多的在前。给客户端的分类筛选用。 */
+    /**
+     * 资讯↔资讯候选（#414）：**同标签重叠**或**同分类**。
+     *
+     * <p>召回故意宽一点（多取 `limit` 倍），精细排序交给 Service——共享标签数
+     * 要在 Java 里算（MySQL 8 没有数组交集函数，只有 `JSON_OVERLAPS` 判断「有没有重叠」）。
+     * 在 SQL 里排只能按时间，会把「只共享一个标签的新资讯」排在「共享三个标签的旧资讯」前面。
+     *
+     * <p>`tagsJson` 为 null 时只按分类召回；两个条件都为空时调用方不该调用本方法。
+     */
+    public List<ArticleRecord> findRelatedCandidates(String excludeArticleId, String tagsJson,
+                                                     String category, int limit) {
+        java.util.List<String> conditions = new java.util.ArrayList<>();
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("exclude", excludeArticleId)
+                .addValue("limit", limit);
+        if (tagsJson != null) {
+            // JSON_OVERLAPS 要求两边都是数组；CAST(... AS JSON) 把参数转成 JSON 值，
+            // 直接传字符串会被当成 JSON 字符串（"[\"a\"]"）而永远不重叠。
+            conditions.add("(tags IS NOT NULL AND JSON_OVERLAPS(tags, CAST(:tagsJson AS JSON)))");
+            params.addValue("tagsJson", tagsJson);
+        }
+        if (category != null) {
+            conditions.add("category = :category");
+            params.addValue("category", category);
+        }
+        String sql = "SELECT " + COLUMNS + " FROM article WHERE article_id <> :exclude"
+                + " AND (" + String.join(" OR ", conditions) + ")"
+                + " ORDER BY published_at DESC, id DESC LIMIT :limit";
+        return jdbc.query(sql, params, MAPPER);
+    }
+
     public List<String> findCategories() {
         return jdbc.queryForList(
                 "SELECT category FROM article WHERE category IS NOT NULL"
