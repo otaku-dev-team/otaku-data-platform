@@ -81,8 +81,11 @@ public class PersonService {
 
         // 计数从 credits 推导，不再各发一条 COUNT——那两条同样是「按 person_id 全表扫」，
         // 而 credits 已经把可见作品取回来了。三次全扫压成一次。
-        long castCount = credits.stream().filter(c -> !c.characters().isEmpty()).count();
-        long creditCount = credits.stream().filter(c -> !c.roles().isEmpty()).count();
+        // 计数按**实际展示出来的作品**算，而不是 credits：credits 里可能有作品因为成人词表 /
+        // 收录范围的二次过滤而拿不到卡片（见上面 `summaries.get(workId) == null` 的分支）。
+        // 用 credits 算会出现「页面写配音 193 部、列表只有 120 张卡」——线上实测过。
+        long castCount = works.stream().filter(w -> !w.characters().isEmpty()).count();
+        long creditCount = works.stream().filter(w -> !w.roles().isEmpty()).count();
         return new PersonDetail(person.personId(), person.name(), person.entityType(),
                 works, castCount, creditCount);
     }
