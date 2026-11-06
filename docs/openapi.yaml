@@ -2618,6 +2618,14 @@ components:
         请求方法不被支持（`METHOD_NOT_ALLOWED`，#345）。
         例如对只接受 DELETE 的 `/api/me` 发 GET。这是「客户端用错」，不是服务端故障——
         调用方不应重试、也不会成功。
+
+        同族的另一种「客户端用错」是 **Content-Type 不被支持**（`UNSUPPORTED_MEDIA_TYPE`，415）：
+        写接口声明了 `consumes: application/json`，发 `text/plain` 现在也是 415 而非 500。
+        两者都不进 ERROR 日志。
+      headers:
+        Allow:
+          description: 该路径支持的方法（RFC 9110 §15.5.6 要求 405 必须带）
+          schema: { type: string, example: "GET, HEAD" }
       content:
         application/json:
           schema: { $ref: "#/components/schemas/ErrorResponse" }
@@ -3990,6 +3998,7 @@ components:
                 - BATCH_TOO_LARGE
                 - RATE_LIMITED
                 - METHOD_NOT_ALLOWED
+                - UNSUPPORTED_MEDIA_TYPE
                 - INTERNAL
             message:
               type: string

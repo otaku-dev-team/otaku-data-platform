@@ -66,6 +66,12 @@ public enum ErrorCode {
      */
     METHOD_NOT_ALLOWED(HttpStatus.METHOD_NOT_ALLOWED),
     /**
+     * 请求的 Content-Type 不被支持（#345 顺带项）。与 405 同属「客户端用错」：
+     * {@code HttpMediaTypeNotSupportedException} 之前也落到兜底 500 并刷 ERROR 堆栈。
+     * 归到 415，调用方据此知道要改报文格式，而不是重试。
+     */
+    UNSUPPORTED_MEDIA_TYPE(HttpStatus.UNSUPPORTED_MEDIA_TYPE),
+    /**
      * 阶段 2 账号绑定（#242）：站点侧暂不可用（超时 / 5xx / 未配置）。
      *
      * <p>与 {@link #INVALID_CREDENTIALS} 分开：票据失效等**授权失败**用 401，
