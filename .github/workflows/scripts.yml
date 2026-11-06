@@ -4,8 +4,12 @@ name: scripts
 # workflow，其余脚本（seed_mock_users / verify_related_ids / backfill_rating_count / devkit）
 # 改了只能靠本机跑。结果就是 #431 那种「表名写错、静默跳过整批浏览数据」的 bug 只能靠人眼发现。
 #
-# 这里只做两件快事：全量 py_compile（挡住语法错误）+ devkit 的单元测试（挡住工具回归）。
+# 这里只做两件快事：全量 py_compile（挡住语法错误）+ scripts/devkit 的单元测试（挡住工具回归）。
 # 不跑 flutter / maven / docker——那些有各自的 workflow，也不该让脚本改动的反馈变慢。
+#
+# 2026-11-06：加入 scripts/tests。回填脚本（backfill_rating_count.py）出过两次**静默失败**
+# ——队列不前进（#395）、mysql 抖动被当成跑完（#394）——而它一直是「只有 py_compile」的状态。
+# 语法检查挡不住「返回 [] 让上层以为填完了」这一类问题。
 
 on:
   push:
@@ -36,7 +40,7 @@ jobs:
       - name: 语法检查（scripts + devkit 全部 .py）
         run: python -m py_compile $(find scripts devkit -name '*.py')
 
-      - name: devkit 单元测试
+      - name: scripts + devkit 单元测试
         run: |
           python -m pip install --quiet pytest
-          python -m pytest devkit/tests -q
+          python -m pytest scripts/tests devkit/tests -q
