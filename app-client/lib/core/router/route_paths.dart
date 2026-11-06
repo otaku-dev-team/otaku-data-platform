@@ -4,7 +4,10 @@ abstract final class RoutePaths {
 
   static const String contents = '/works';
 
-  /// 首页。落地页，把分类浏览 / 本日新番 / 高分作品 / 最新资讯四块聚在一起。
+  /// 首页搜索直接进入输入状态；作品库消费参数后恢复普通浏览路径。
+  static const String contentsSearch = '$contents?search=1';
+
+  /// 首页。落地页，把高分精选 / 本日新番 / 高分作品 / 最新资讯几块聚在一起。
   ///
   /// 路径就用 `/`：它是信息架构的根，也是深链接最自然的入口。
   static const String home = '/';
@@ -19,6 +22,14 @@ abstract final class RoutePaths {
   static String articleDetail(String articleId) =>
       '$articles/${Uri.encodeComponent(articleId)}';
 
+  /// 人物详情（#455）。`person_id` 是**不透明字符串**——现在库里是裸数字，
+  /// 切 v3 数据集后带 `bgm:` / `pname:` / `cname:` 前缀，整值编码后放进路径。
+  static const String persons = '/persons';
+  static const String personSegment = ':personId';
+
+  static String person(String personId) =>
+      '$persons/${Uri.encodeComponent(personId)}';
+
   /// 登录页。从收藏页跳来时用 push，登录成功后 pop 回去。
   static const String login = '/login';
 
@@ -31,6 +42,34 @@ abstract final class RoutePaths {
   /// 我的收藏。未登录时页面自己显示登录引导，不在这里做重定向——
   /// 冷启动直接落到收藏页时，用户需要知道「为什么看不到东西」。
   static const String collections = '/collections';
+
+  /// 个人空间：账号资料、收藏与浏览记录的汇总入口（二级页）。
+  ///
+  /// 以前这些收在「我的」底部弹层里。弹层只能竖着堆列表，放不下头像、
+  /// 统计带与分区，所以改成独立页面，版式与站点 `/me` 对齐。
+  /// 路径用 `/me`：与站点同一个语义，深链接进来也知道这是哪儿。
+  static const String profile = '/me';
+
+  /// 阿宅画像（#375）。挂在 `/me` 下而不是顶层：它是「我的数据」的一种视图，
+  /// 从个人空间点进来、返回也回个人空间，和设置二级页同一种形态。
+  static const String personaSegment = 'persona';
+  static const String persona = '$profile/persona';
+
+  /// 登录设备（#378）。与画像同一种形态：挂在 `/me` 下的二级页，
+  /// 从个人空间点进来、返回也回个人空间。
+  static const String devicesSegment = 'devices';
+  static const String devices = '$profile/devices';
+
+  /// 编辑资料（#378 第一层）：与画像、登录设备同形态的 `/me` 二级页。
+  static const String profileEditSegment = 'edit';
+  static const String profileEdit = '$profile/edit';
+
+  /// 我的评论（#449 客户端，与画像 / 登录设备同形态）。
+  ///
+  /// **路由注册但没有任何入口 push 它**：本轮按「有这个功能但不用」的口径，
+  /// 个人空间里的 tile 标「未开放」且不可点。启用时只需给那个 tile 补 `onTap`。
+  static const String myCommentSegment = 'comments';
+  static const String myComment = '$profile/$myCommentSegment';
 
   /// 每日新番档期。与列表/收藏平级：从任何地方都能直接进。
   static const String schedule = '/schedule';
@@ -56,13 +95,21 @@ abstract final class RoutePaths {
   static const String storageSettingsSegment = 'storage';
   static const String aboutSettingsSegment = 'about';
 
-  static const String appearanceSettings = '$settings/$appearanceSettingsSegment';
+  static const String appearanceSettings =
+      '$settings/$appearanceSettingsSegment';
   static const String storageSettings = '$settings/$storageSettingsSegment';
   static const String aboutSettings = '$settings/$aboutSettingsSegment';
 
   /// 相对 `contents` 的子路由。
   static const String workDetailSegment = ':workId';
 
-  static String workDetail(String workId) =>
-      '$contents/${Uri.encodeComponent(workId)}';
+  /// 作品详情。
+  ///
+  /// [heroTag] 只在列表里点进来时给：详情页用它把封面接成一次 [Hero] 转场。
+  /// 标签必须**屏内唯一**，所以由列表按「轨道 + 下标」拼，见 `HeroCover`。
+  static String workDetail(String workId, {String? heroTag}) {
+    final path = '$contents/${Uri.encodeComponent(workId)}';
+    if (heroTag == null || heroTag.isEmpty) return path;
+    return '$path?hero=${Uri.encodeQueryComponent(heroTag)}';
+  }
 }

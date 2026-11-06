@@ -10,7 +10,8 @@
     "bangumi_id 与源站 content id 不同源，用本映射重键后 source_url 恰好指向正确的原页。",
     "people / series 保持源站自身 id：它们是数据集内部引用（person_ref / series_key），后端本期不消费。",
     "aliases 走 bracket_list：源列是「JSON 数组里套一坨 {\\n[别名]\\n}」文本（18,828 行 100% 命中），用 json_list 会把整坨当成一个别名，客户端会露出花括号；空壳 {\\n} 直接置 null，避免出现空白别名条目。",
-    "articles / article_links / schedules 本期不经数据集发布，保持原样。",
+    "articles / schedules 本期不经数据集主链路发布（资讯仍走 --articles，档期走 --schedule）；article_links 供 #408 的数据侧发布使用。",
+    "article_links 在导出时就 JOIN 出 contents.bangumi_id：本映射下 works.source_id 就是 bangumi_id，article_links.work_source_id 必须与其同域，否则写进后端 article.related_work_ids 会成为两套号混用（不报错，只是关联全空或串号）。",
     "其余口径（credits 白名单、on_missing 三档）与 otaku.json 完全一致，见其 _notes。"
   ],
   "tables": [
@@ -130,7 +131,7 @@
       "target": "article_links",
       "mode": "query",
       "required_sources": ["article_content_links"],
-      "sql": "select article_id as article_source_id, content_id as work_source_id from article_content_links"
+      "sql": "select al.article_id as article_source_id, c.bangumi_id as work_source_id from article_content_links al join contents c on c.id = al.content_id where c.bangumi_id is not null and c.bangumi_id != ''"
     },
     {
       "target": "schedules",

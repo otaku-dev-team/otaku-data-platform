@@ -462,6 +462,40 @@ bash scripts/post-deploy-check.sh http://127.0.0.1:8080
 关键表校验和一致 / 恢复后后端直接可服务），步骤与结果见
 [`backup-restore-drill.md`](backup-restore-drill.md)——那份文档同时是可复现的操作清单。
 
+### 评分人数增量回填
+
+```cron
+# 每天 04:40 只补「上次之后新增」的作品（root 的 crontab）
+40 4 * * * flock -xn /tmp/rating-backfill.lock /opt/otaku/data/run-rating-backfill-incremental.sh
+```
+
+`flock` 是防重叠：cron 不保证上一次跑完，加锁比假设「它一定很快」可靠。
+
+脚本的退出码是有意义的：**0 = 正常（包括「没有新行」），2 = 这轮失败**（mysql 连不上 /
+查询报错，内部会打 `FETCH_ERROR`）。失败时游标不动，下一次 cron 会重试同一段。
+这条是 #394 的教训——静默失败比报错难查得多，「一条都没补」和「根本没连上」在日志里必须能分开。
+
+为什么需要它：#383 的低票门槛（`rating_count < 50` 不显示分）依赖 `work.rating_count`，
+而这个值**导入时不带**——数据集里那一列 18,828 行只有 105 行有值（2026-11-04 查过，
+上游源库这一列基本是空的），唯一来源是镜像 `/v0/subjects/{id}` 的 `rating.total`。
+也就是说**每新导入一批作品，就长出一批没有票数的行**；没有这个 cron，它们会一直按「票数未知」照常显示评分。
+
+脚本只做一件事：读 `/opt/otaku/data/rating-backfill.cursor`（上次处理到的最大 `work.id`），
+带 `--after-id` 跑一轮，成功后把游标推进。**没有新行时就是一条查询、几秒退出**。
+
+```bash
+sudo cat /opt/otaku/data/rating-backfill.cursor     # 看到哪了
+sudo tail -20 /opt/otaku/data/rating-backfill.log   # 每次运行的痕迹
+```
+
+三个要知道的点：
+
+| 现象 | 解释 |
+|---|---|
+| 日志里 `PASS_DONE…仍有 8,841 行未填` | 那 8,841 行是**未收录存量**（`site_listed=0`），镜像对它们永久 404，不是漏跑 |
+| 游标不前进 | 正常——没有新行时脚本不动游标，避免把游标推到未来 |
+| 想从头重扫一遍 | 把游标文件写成 `0`，下次 cron 会全量扫（约 4 小时） |
+
 ### 巡检与证书续期
 
 ```cron
@@ -470,8 +504,12 @@ bash scripts/post-deploy-check.sh http://127.0.0.1:8080
 19 4 * * * cd /path/to/otaku-data-platform/backend-java && ./deploy/renew-letsencrypt.sh 2>&1 | logger -t otaku-tls
 ```
 
-`deploy/monitor.sh` 查七件事：后端健康、容器状态、磁盘阈值、**备份新鲜度（< 26h）**、
-证书剩余天数（< 14 天 WARN）、慢查询日志体积、**可用内存与 swap**。任一失败退出码非 0。
+`deploy/monitor.sh` 查八件事：后端健康、容器状态、磁盘阈值、**备份新鲜度（< 26h）**、
+**评分回填新鲜度（< 48h 且上次没失败）**、证书剩余天数（< 14 天 WARN）、慢查询日志体积、
+**可用内存与 swap**。前五项任一失败退出码非 0。
+
+评分回填那项为什么算「失败」而不是「告警」：它坏了**线上完全看不出来**——服务健康、接口正常，
+只是新导入的作品一直没有票数，低票门槛对新数据静默失效。这种「不疼但要命」的，必须进退出码。
 
 **⚠️ 退出码非 0 ≠ 有人知道。** 这台机器**没有 MTA**，cron 把输出丢给 `logger` 之后就停在 syslog 里，
 不会有任何邮件发出去（此前这里写「cron 会因此发邮件」，是错的，2026-10-31 更正）。要真收到告警，

@@ -307,16 +307,54 @@ esac
 [ -n "${artifact:-}" ] && [ -f "$artifact" ] || die "构建结束了但没找到产物（$TARGET/$MODE）"
 printf '[build_site] 产物：%s（%s）\n' "$artifact" "$(du -h "$artifact" | cut -f1)"
 
-data_dir="$(dirname "$artifact")/data"
-hit=""
-for probe in "$data_dir/flutter_assets/kernel_blob.bin" "$data_dir/app.so"; do
-  if [ -f "$probe" ] && grep -qa -- "$APP_NAME" "$probe"; then
-    hit="$probe"
-    break
+# 在产物里找站名。
+#
+# ⚠️ APK 里的 dart 产物是**压缩存放**的，直接 `grep` 整个 zip 永远是 0：
+# 2026-11-02 实测「青空站」在 kernel_blob.bin 里出现 3 次，而 grep APK 是 0 次。
+# 所以 APK 必须按成员解出来再查，否则这个自检对 Android 包是**恒假阴性**——
+# 而它恰恰是「换站有没有真烘进去」唯一的自动证据。
+brand_hit() {
+  local target="$1" member tmp hit=""
+  if [ -d "$target" ]; then
+    # 不能带 -q：-q 会连 -l 的文件名一起吞掉，于是这行永远输出空，
+    # 目录形态（Windows 的 data/）的品牌自检就会恒假阴性。
+    # 这里要的是「哪个文件命中」，不是布尔判断；布尔判断在下面 apk 分支才用 -q。
+    grep -rla -- "$APP_NAME" "$target" 2>/dev/null | head -n 1
+    return
   fi
-done
+  case "$target" in
+    *.apk)
+      # 不用 mktemp：git-bash 下它回的是 `C:\Users\…\Temp/tmp.xxx`，带盘符的
+      # 路径会被删除拦截器拒绝（[safe-delete] SAFE_DELETE_INVALID_PATH），
+      # 每次构建刷一行假警报。临时文件就地放 build/（同盘、已忽略）。
+      tmp="build/.brand_hit.$$.tmp"
+      for member in $(unzip -Z1 "$target" 2>/dev/null | grep -E '(kernel_blob\.bin|libapp\.so)$'); do
+        unzip -p "$target" "$member" > "$tmp" 2>/dev/null || true
+        if grep -qa -- "$APP_NAME" "$tmp" 2>/dev/null; then
+          hit="$member"
+          break
+        fi
+      done
+      rm -f "$tmp" 2>/dev/null || true
+      if [ -n "$hit" ]; then
+        printf '%s' "$hit"
+      fi
+      ;;
+    *)
+      if grep -qa -- "$APP_NAME" "$target" 2>/dev/null; then
+        printf '%s' "$(basename "$target")"
+      fi
+      ;;
+  esac
+}
+
+hit="$(brand_hit "$artifact")"
+# Windows 的构建产物把 dart 数据摊在 exe 旁边的 data/ 目录里，单独再找一次。
+if [ -z "$hit" ]; then
+  hit="$(brand_hit "$(dirname "$artifact")/data")"
+fi
 if [ -n "$hit" ]; then
-  say "品牌自检：产物里找到了「$APP_NAME」（$(basename "$hit")）"
+  say "品牌自检：产物里找到了「$APP_NAME」（$hit）"
 else
   say "品牌自检：产物里没找到「$APP_NAME」——不一定是错（AOT 可能优化掉），"
   say "          但首站交付前请人工开一次 App 确认应用名与窗口标题"

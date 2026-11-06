@@ -71,6 +71,13 @@ def stack_line(report: StackReport, seconds: float, cached: bool = False) -> str
     if cached:
         return f"{name:<6} 跳过（同一状态上次已通过，{report.passed}/{report.total}）"
     if report.source == "console":
+        if report.total == 0:
+            # 退出码非 0 却一条用例都解析不出来：测试根本没起来（依赖缺失、
+            # 解释器不对）。说「0 条失败线索」会被读成「没问题」。
+            return (
+                f"{name:<6} 没跑起来（退出码非 0，0 条可解析用例）"
+                f"  {seconds:.1f}s  ← 看原始输出"
+            )
         return f"{name:<6} {report.total} 条失败线索  {seconds:.1f}s  ← 控制台兜底（无结构化报告）"
     parts = [f"{name:<6} {report.total} 项"]
     if report.failed:

@@ -111,7 +111,95 @@ public class ArticleRepository {
         return total == null ? 0L : total;
     }
 
+    /**
+     * 反查：关联作品里含这个 subject id 的资讯条数（#409 作品→资讯）。
+     *
+     * <p>语义前提见 {@link ArticleRelatedIdsSemantics}：只有在
+     * {@code related_work_ids} 已切到 bangumi subject id 时，拿 {@code work.source_id}
+     * 来匹配才成立。切流前调用方不该走到这里。
+     */
+    public long countRelatedToWork(String sourceId) {
+        Long total = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM article WHERE " + relatedToWorkPredicate(sourceId),
+                new MapSqlParameterSource("sourceId", sourceId),
+                Long.class);
+        return total == null ? 0L : total;
+    }
+
+    /**
+     * 反查一页资讯，按发布时间倒序。
+     *
+     * <p>排序键与列表接口一致（{@code published_at DESC, id DESC}）：同一分钟发布的多条
+     * 若无次级键，翻页会重复或漏条。
+     *
+     * <p>没有为 {@code related_work_ids} 建索引：它是 JSON 数组，MySQL 的多值索引要
+     * {@code CAST(... AS UNSIGNED ARRAY)}，而这一列混着两套纯数字号、长度也不定，
+     * 建了反而把「语义没切」的状态固化进索引。当前 article 只有千级行，全表扫一次
+     * 是毫秒级；等资讯上万再按 {@code (article_id, subject_id)} 引一张反查表。
+     */
+    public List<ArticleRecord> findRelatedToWork(String sourceId, int limit, int offset) {
+        return jdbc.query(
+                "SELECT " + COLUMNS + " FROM article WHERE " + relatedToWorkPredicate(sourceId)
+                        + " ORDER BY published_at DESC, id DESC LIMIT :limit OFFSET :offset",
+                new MapSqlParameterSource()
+                        .addValue("sourceId", sourceId)
+                        .addValue("limit", limit)
+                        .addValue("offset", offset),
+                MAPPER);
+    }
+
+    /**
+     * 匹配条件：{@code related_work_ids} 含该 id。
+     *
+     * <p>两种存法都算命中——导入请求把它声明成 {@code List<String>}，落库是字符串数组
+     * （{@code ["11972"]}）；而数据侧 publisher 是从 SQLite 读出来的整数
+     * （{@code bangumi_id}），如果哪天不经 Java 归一直接写库就是数字数组
+     * （{@code [11972]}）。{@code JSON_CONTAINS} 对类型敏感，字符串 {@code "11972"}
+     * 与数字 {@code 11972} **不相等**，只写一种就会有一半数据静默查不到。
+     *
+     * <p>数字分支只在 {@code sourceId} 全是数字时拼——{@code CAST('abc' AS JSON)}
+     * 在 MySQL 里直接报错 3141，不能无脑加。
+     */
+    static String relatedToWorkPredicate(String sourceId) {
+        String predicate = "JSON_CONTAINS(related_work_ids, JSON_QUOTE(:sourceId))";
+        if (sourceId != null && !sourceId.isEmpty() && sourceId.chars().allMatch(Character::isDigit)) {
+            predicate = "(" + predicate + " OR JSON_CONTAINS(related_work_ids, CAST(:sourceId AS JSON)))";
+        }
+        return predicate;
+    }
+
     /** 库里出现过的全部分类，条数多的在前。给客户端的分类筛选用。 */
+    /**
+     * 资讯↔资讯候选（#414）：**同标签重叠**或**同分类**。
+     *
+     * <p>召回故意宽一点（多取 `limit` 倍），精细排序交给 Service——共享标签数
+     * 要在 Java 里算（MySQL 8 没有数组交集函数，只有 `JSON_OVERLAPS` 判断「有没有重叠」）。
+     * 在 SQL 里排只能按时间，会把「只共享一个标签的新资讯」排在「共享三个标签的旧资讯」前面。
+     *
+     * <p>`tagsJson` 为 null 时只按分类召回；两个条件都为空时调用方不该调用本方法。
+     */
+    public List<ArticleRecord> findRelatedCandidates(String excludeArticleId, String tagsJson,
+                                                     String category, int limit) {
+        java.util.List<String> conditions = new java.util.ArrayList<>();
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("exclude", excludeArticleId)
+                .addValue("limit", limit);
+        if (tagsJson != null) {
+            // JSON_OVERLAPS 要求两边都是数组；CAST(... AS JSON) 把参数转成 JSON 值，
+            // 直接传字符串会被当成 JSON 字符串（"[\"a\"]"）而永远不重叠。
+            conditions.add("(tags IS NOT NULL AND JSON_OVERLAPS(tags, CAST(:tagsJson AS JSON)))");
+            params.addValue("tagsJson", tagsJson);
+        }
+        if (category != null) {
+            conditions.add("category = :category");
+            params.addValue("category", category);
+        }
+        String sql = "SELECT " + COLUMNS + " FROM article WHERE article_id <> :exclude"
+                + " AND (" + String.join(" OR ", conditions) + ")"
+                + " ORDER BY published_at DESC, id DESC LIMIT :limit";
+        return jdbc.query(sql, params, MAPPER);
+    }
+
     public List<String> findCategories() {
         return jdbc.queryForList(
                 "SELECT category FROM article WHERE category IS NOT NULL"

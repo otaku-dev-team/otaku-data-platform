@@ -3,14 +3,18 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/network/api_exception.dart';
+import '../../core/platform_info.dart';
 import '../../core/router/route_paths.dart';
 import '../../core/theme/app_layout.dart';
+import '../../core/theme/app_theme.dart';
+import '../../core/theme/design_tokens.dart';
 import '../../data/models/article.dart';
 import '../../shared/widgets/error_state.dart';
 import '../../shared/widgets/tag_chips.dart';
 import 'article_card.dart';
 import 'article_controller.dart';
 import 'article_meta_line.dart';
+import 'article_related_works_section.dart';
 
 /// 资讯详情。
 ///
@@ -108,75 +112,132 @@ class _ArticleDetailBody extends StatelessWidget {
     final paragraphs = article.paragraphs;
     final cover = article.coverUrl;
 
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(
-        AppLayout.pagePadding,
-        12,
-        AppLayout.pagePadding,
-        32,
-      ),
-      children: [
-        if (cover != null) ...[
-          ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: Image.network(
-              cover,
-              width: double.infinity,
-              height: 200,
-              fit: BoxFit.cover,
-              // 首图挂了不该让整页变空白：资讯的主体是文字。
-              errorBuilder: (context, error, stack) => const SizedBox.shrink(),
-            ),
-          ),
-          const SizedBox(height: 16),
-        ],
-        Text(article.title, style: theme.textTheme.headlineSmall),
-        const SizedBox(height: 8),
-        ArticleMetaLine(
-          category: article.category,
-          publishedAt: article.publishedAt,
-          sourceName: article.sourceName,
+    return SelectionArea(
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(
+          AppLayout.pagePadding,
+          12,
+          AppLayout.pagePadding,
+          32,
         ),
-        if (article.sourceUrl != null) ...[
-          const SizedBox(height: 4),
-          OriginalLinkButton(url: article.sourceUrl!),
-        ],
-        const SizedBox(height: 12),
-        if (article.tags != null) ...[
-          TagChips(tags: article.tags, maxVisible: 8),
-          const SizedBox(height: 12),
-        ],
-        if (article.summary != null) ...[
-          Text(
-            article.summary!,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: scheme.onSurfaceVariant,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 12),
-        ],
-        if (paragraphs.isEmpty)
-          Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: Text(
-              article.sourceUrl == null
-                  ? '这条资讯没有正文'
-                  : '这条资讯没有正文，可以去来源站看原文',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: scheme.onSurfaceVariant,
+        children: [
+          if (cover != null) ...[
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.network(
+                cover,
+                width: double.infinity,
+                height: 200,
+                fit: BoxFit.cover,
+                // 首图挂了不该让整页变空白：资讯的主体是文字。
+                errorBuilder: (context, error, stack) =>
+                    const SizedBox.shrink(),
               ),
             ),
-          )
-        else
-          for (final paragraph in paragraphs) ...[
+            const SizedBox(height: 16),
+          ],
+          Text(
+            article.title,
+            style: theme.textTheme.headlineSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          if (PlatformInfo.isDesktop)
+            ArticleMetaLine(
+              category: article.category,
+              publishedAt: article.publishedAt,
+              sourceName: article.sourceName,
+            )
+          else
+            Wrap(
+              spacing: Space.s3,
+              runSpacing: Space.s2,
+              children: [
+                if (article.category case final category?
+                    when category.isNotEmpty)
+                  Text(
+                    category,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: AppTheme.brandInk(context),
+                    ),
+                  ),
+                if (formatArticleDate(article.publishedAt) case final date?)
+                  Text(
+                    date,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                if (article.sourceName case final source?
+                    when source.isNotEmpty)
+                  Text(
+                    source,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+              ],
+            ),
+          if (article.sourceUrl != null) ...[
+            const SizedBox(height: 4),
+            if (PlatformInfo.isDesktop)
+              OriginalLinkButton(url: article.sourceUrl!)
+            else if ([
+              'http',
+              'https',
+            ].contains(Uri.tryParse(article.sourceUrl!)?.scheme.toLowerCase()))
+              Align(
+                alignment: Alignment.centerLeft,
+                child: OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size(0, Space.s12),
+                  ),
+                  onPressed: () =>
+                      launchExternalUrl(context, article.sourceUrl!),
+                  icon: const Icon(Icons.open_in_new_rounded),
+                  label: const Text('在来源站查看'),
+                ),
+              ),
+          ],
+          const SizedBox(height: 12),
+          if (article.tags != null) ...[
+            TagChips(tags: article.tags, maxVisible: 8),
+            const SizedBox(height: 12),
+          ],
+          if (article.summary != null) ...[
             Text(
-              paragraph,
-              style: theme.textTheme.bodyMedium?.copyWith(height: 1.7),
+              article.summary!,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: scheme.onSurfaceVariant,
+                fontWeight: FontWeight.w500,
+              ),
             ),
             const SizedBox(height: 12),
           ],
-      ],
+          if (paragraphs.isEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                article.sourceUrl == null ? '这条资讯没有正文' : '这条资讯没有正文，可以去来源站看原文',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+            )
+          else
+            for (final paragraph in paragraphs) ...[
+              Text(
+                paragraph,
+                style: theme.textTheme.bodyMedium?.copyWith(height: 1.7),
+              ),
+              const SizedBox(height: 12),
+            ],
+          // 后端尚未把站点 content_id 解析成本地作品时（#409 前），
+          // relatedWorks 为 null，区块自己整块不渲染。
+          ArticleRelatedWorksSection(works: article.relatedWorks),
+        ],
+      ),
     );
   }
 }
@@ -192,13 +253,13 @@ class _ArticleDetailSkeleton extends StatelessWidget {
     final base = scheme.surfaceContainerHighest;
 
     Widget block(double width, double height) => Container(
-          width: width,
-          height: height,
-          decoration: BoxDecoration(
-            color: base,
-            borderRadius: BorderRadius.circular(6),
-          ),
-        );
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        color: base,
+        borderRadius: BorderRadius.circular(6),
+      ),
+    );
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(

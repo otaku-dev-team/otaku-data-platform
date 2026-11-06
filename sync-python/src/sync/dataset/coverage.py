@@ -9,11 +9,17 @@
 - 源库有脏数据/未映射字段，扫它只会稀释信号；
 - 数据集 schema 固定（我们自己的），不必为客户的表结构写一堆分支。
 
-people 表特殊处理：v2 已建表、mapping 也挂了 `target:people`，但 publisher 不
-emit，所以数据集里恒空。报告会如实把「数据集 people=0」标成已知 gap
-（待 #1 把源库 `entities` 主数据 emit 进来），并可在传 `--source-db` 时顺带
-扫源库 `entities` 表，给出「源侧到底有多少人物/公司主数据可用」——这正是 #1
-的范围依据。
+people 表有两件要分开看的事，报告里也分两段：
+
+- **行数**：v2 起导出器按映射整表照搬源库 `entities`，行数随源库走，
+  不是「恒空」；
+- **id 对齐**：`people.source_id` 是源站 `entities` 的本地自增 id，而
+  `work_credits` / `work_cast.person_ref` 存的是 Bangumi 人物 id。两套空间
+  直接 join 会挂错名，所以单独算「person_ref 有多少能在 people 里找到」——
+  对齐率不足 100% 就是这件事还没做，见 `docs/person-id-unification.md`。
+
+传 `--source-db` 时顺带扫源库 `entities` 表，给出「源侧到底有多少人物/公司
+主数据可用」。
 
 用法：
     python -m sync --coverage-report --dataset-in runs/dataset.db
@@ -151,7 +157,7 @@ def coverage_report(
         for tbl, _ in RELATION_TABLES:
             rel_stats[tbl] = _rel_cover(tbl)
 
-        # people 表（v2 已建但 publisher 未 emit，恒空属已知 gap）
+        # people 主数据：行数是一件事，与 person_ref 的 id 对齐是另一件事
         people_exists = conn.execute(
             "select count(*) from sqlite_master where type='table' and name='people'"
         ).fetchone()[0]
@@ -167,6 +173,8 @@ def coverage_report(
                 ).fetchone()[0]
             except sqlite3.Error:
                 pass
+        # 必须在连接关闭前算：对齐率要 join people 与关系表
+        id_alignment = _person_id_alignment(conn, people_exists=bool(people_exists))
 
         # 可上线数（有封面），这是「无封面不展示」口径下的实际可发量
         online_total = conn.execute(
@@ -196,6 +204,7 @@ def coverage_report(
             "exists": bool(people_exists),
             "rows": people_rows,
             "with_bangumi_id": people_with_bgm,
+            "id_alignment": id_alignment,
         },
         "online_with_cover": {"total": online_total, "by_type": online_by_type},
     }
@@ -210,6 +219,74 @@ def coverage_report(
             json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
         )
     return report
+
+
+def _person_id_alignment(
+    conn: sqlite3.Connection, *, people_exists: bool
+) -> dict[str, Any]:
+    """算 `people.source_id` 与关系表 `person_ref` 的 id 对齐情况。
+
+    两个数必须分开看：行数是「导出了多少人物」，对齐率是「这些人能不能被
+    关系表引到」。两套 id 空间并存时（people 用源站自增 id、person_ref 用
+    Bangumi 人物 id），对齐率会接近 0——这不是导入 bug，是口径没统一。
+    """
+    if not people_exists:
+        return {"available": False}
+
+    tables = {
+        r[0] for r in conn.execute("select name from sqlite_master where type='table'")
+    }
+    ref_tables = [t for t in ("work_cast", "work_credits") if t in tables]
+    people_distinct = conn.execute(
+        "select count(distinct source_id) from people"
+    ).fetchone()[0]
+
+    if not ref_tables:
+        return {
+            "available": True,
+            "people_distinct": people_distinct,
+            "refs_by_table": {},
+            "refs_total": 0,
+            "refs_matched": 0,
+            "refs_dangling": 0,
+            "people_unreferenced": people_distinct,
+        }
+
+    refs_by_table: dict[str, int] = {}
+    for table in ref_tables:
+        refs_by_table[table] = conn.execute(
+            f"select count(distinct person_ref) from {table}"
+            " where person_ref is not null and trim(person_ref) <> ''"
+        ).fetchone()[0]
+
+    # union 天然去重：同一人既是声优又是制作人员时只算一个
+    ref_sql = " union ".join(
+        f"select person_ref from {table}"
+        " where person_ref is not null and trim(person_ref) <> ''"
+        for table in ref_tables
+    )
+    refs_total = conn.execute(f"select count(*) from ({ref_sql})").fetchone()[0]
+    refs_matched = conn.execute(
+        f"select count(*) from ({ref_sql}) r"
+        " join people p on p.source_id = r.person_ref"
+    ).fetchone()[0]
+    not_referenced = " and ".join(
+        f"not exists (select 1 from {table} where person_ref = p.source_id)"
+        for table in ref_tables
+    )
+    people_unreferenced = conn.execute(
+        f"select count(*) from people p where {not_referenced}"
+    ).fetchone()[0]
+
+    return {
+        "available": True,
+        "people_distinct": people_distinct,
+        "refs_by_table": refs_by_table,
+        "refs_total": refs_total,
+        "refs_matched": refs_matched,
+        "refs_dangling": refs_total - refs_matched,
+        "people_unreferenced": people_unreferenced,
+    }
 
 
 def _rel_label(tbl: str) -> str:
@@ -339,15 +416,35 @@ def format_coverage_report(report: dict[str, Any]) -> str:
     if not pe["exists"]:
         L.append("  数据集无 people 表（v1 或更早，未含人物主数据）")
     elif pe["rows"] == 0:
-        L.append(
-            f"  数据集 people 表: 0 行  ← 已知 gap：v2 已建表但 publisher 未 emit，待 #1"
-        )
+        L.append("  数据集 people 表: 0 行（源库 entities 为空，或映射未启用）")
     else:
         L.append(
             f"  数据集 people 表: {pe['rows']} 行，"
             f"其中带 bangumi_person_id {pe['with_bangumi_id']} 行"
         )
     L.append("")
+
+    # ---- 人物 id 对齐（people.source_id ↔ person_ref）----
+    al = pe.get("id_alignment") or {}
+    if al.get("available"):
+        L.append("== 人物 id 对齐（people.source_id ↔ 关系表 person_ref）==")
+        per = al.get("refs_by_table") or {}
+        detail = " / ".join(f"{_rel_label(t)} {n}" for t, n in per.items())
+        L.append(
+            f"  关系表引用去重: {al['refs_total']} 个 id"
+            + (f"（{detail}）" if detail else "")
+        )
+        refs_total = al["refs_total"]
+        rate = 100 * al["refs_matched"] / refs_total if refs_total else 0.0
+        L.append(f"  能在 people 里找到: {al['refs_matched']} ({rate:.1f}%)")
+        L.append(f"  悬空引用: {al['refs_dangling']}")
+        L.append(f"  people 里从未被引用: {al['people_unreferenced']} 行")
+        if refs_total and rate < 100.0:
+            L.append(
+                "  说明: 对齐率不足 100% 表示两套 id 空间并存，直接 join 会挂错名"
+            )
+            L.append("        （见 docs/person-id-unification.md）")
+        L.append("")
 
     # ---- 源库 entities（#1 范围依据）----
     se = report.get("source_entities")

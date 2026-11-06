@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import 'paged_result.dart';
+import 'work_summary.dart';
 
 /// 资讯的列表项与详情。
 ///
@@ -93,6 +94,7 @@ class ArticleDetail {
     this.coverUrl,
     this.tags,
     this.relatedWorkIds,
+    this.relatedWorks,
   });
 
   final String articleId;
@@ -110,12 +112,20 @@ class ArticleDetail {
   final String? coverUrl;
   final List<String>? tags;
 
-  /// 来源站给的关联作品 id 原文。
+  /// 来源站给的关联作品 id 原文（`/contents/{数字}` 里的站点 content_id）。
   ///
-  /// **客户端不用它跳本地详情**：那些是编辑推荐的周边作品，不是本文主角，
-  /// 拿来跳转会给出「这篇文章讲的就是这部作品」的错误结论。
-  /// 留着是为了将来做关联时不必重新抓页面。
+  /// **客户端不用它跳本地详情，也不解析它**：那些是编辑推荐的周边作品，
+  /// 不是本文主角；而且站点 content_id 与本地 `work_id`（`W-xxx`）、
+  /// bangumi subject id 是三套号，按数值撞会给出假匹配（V28 实测 3,015 条）。
+  /// 要展示关联作品请用下面的 [relatedWorks]。
   final List<String>? relatedWorkIds;
+
+  /// 关联作品（后端已把站点 content_id 解析成本地作品）。
+  ///
+  /// 元素形状与作品列表项一致：卡片的标题 / 封面 / 跳转用 `work_id` 全取自这里，
+  /// 客户端只渲染、不自算。`null` 与 `[]` 同义：整块不渲染。
+  /// `null` 也可能是「后端尚未启用解析」（#409 落地前的兼容态），不是错误。
+  final List<WorkSummary>? relatedWorks;
 
   factory ArticleDetail.fromJson(Map<String, dynamic> json) {
     final articleId = json['article_id'];
@@ -139,6 +149,7 @@ class ArticleDetail {
       coverUrl: coverUrl is String && coverUrl.isNotEmpty ? coverUrl : null,
       tags: _stringList(json['tags']),
       relatedWorkIds: _stringList(json['related_work_ids']),
+      relatedWorks: _workList(json['related_works']),
     );
   }
 
@@ -193,4 +204,20 @@ List<String>? _stringList(Object? raw) {
       .where((e) => e.isNotEmpty)
       .toList(growable: false);
   return values.isEmpty ? null : values;
+}
+
+/// 关联作品是附加信息：单条坏数据（缺 work_id / title、类型不对）只跳过那一条，
+/// 不能让整条资讯详情读不出来。空数组与 null 归一成同一个意思（不渲染）。
+List<WorkSummary>? _workList(Object? raw) {
+  if (raw is! List) return null;
+  final works = <WorkSummary>[];
+  for (final item in raw) {
+    if (item is! Map<String, dynamic>) continue;
+    try {
+      works.add(WorkSummary.fromJson(item));
+    } on FormatException {
+      continue;
+    }
+  }
+  return works.isEmpty ? null : works;
 }

@@ -9,22 +9,26 @@
 | Flutter SDK | `D:\dev\flutter` | 3.47.7 stable / Dart 3.13.5 / DevTools 2.60.0 |
 | pub 缓存 | `D:\dev\pub-cache` | 已重定向到 D 盘 |
 | VS Code | `D:\Microsoft VS Code` | 已装 Flutter、Dart、Error Lens、GitLens 四个扩展 |
-| Android SDK | `C:\Users\Administrator\AppData\Local\Android\Sdk` | platform 34/35/36、build-tools 34/35/36、NDK 28.2.13676358、cmdline-tools |
+| Android SDK | `D:\Android\Sdk` | platform 34/35/36、build-tools 34/35/36、NDK 28.2.13676358、cmdline-tools、emulator 37.2.12 |
 | JDK | `C:\Program Files\Java\jdk-17` | 17.0.12，`JAVA_HOME` 已配 |
 | Gradle 缓存 | `C:\Users\Administrator\.gradle` | 保留（2.9GB，迁移会全部重下，不划算） |
 | 模拟器 | AVD `Pixel_5_API_35` | 可用 |
 | VS Build Tools 2022 | `D:\Microsoft Visual Studio\2022\BuildTools` | 17.14.42，MSVC 14.44 + Win SDK 10.0.26100，vswhere 已能识别 |
 | VS Community 2022（残留） | `C:\Program Files\Microsoft Visual Studio\2022\Community` | 孤儿安装（文件在、注册丢失），已不使用，可择机清理 |
 
-> **注意：机器上有两套 Android SDK。** `C:\...\Local\Android\Sdk`（1.6GB+，含 system-images、AVD、NDK、build-tools 36）与 `D:\androidSDK`（1.6GB，只有 build-tools/platform-tools/platforms，没有系统镜像）。Flutter 当前使用前者，模拟器也依赖它。`D:\androidSDK` 很可能是 Android Studio 早期配置留下的，确认无用途后可删除以腾出 1.6GB，但**不要**用它作为 Flutter 的 SDK 路径，否则模拟器无法启动。
+> **注意：SDK 已整体迁到 `D:\Android\Sdk`**（2026-11-01 核实，7.9GB）。本文档早期版本的 `C:\Users\Administrator\AppData\Local\Android\Sdk` 与 `D:\androidSDK` **两个目录现在都不存在**了，别照着老路径配。
+>
+> 迁移留下过一个坑：AVD 的 `config.ini` 里 `skin.path` 还写着 C 盘老路径，模拟器会以 `ERROR | unknown skin name 'pixel_5'` 秒退，GUI 上毫无提示——看起来就像「VS Code 打不开模拟器」。修法见 §4 ⑤。
 
 ## 2. 已写入的用户环境变量
 | 变量 | 值 | 作用 |
 | --- | --- | --- |
 | `Path`（追加） | `D:\dev\flutter\bin` | 让 `flutter` / `dart` 全局可用 |
+| `Path`（**前插**） | `D:\Android\Sdk\platform-tools` | 终端里的 `adb` 用 SDK 自带那份（35.0.2），不掉进 scrcpy 自带的 37.0.1 |
 | `PUB_CACHE` | `D:\dev\pub-cache` | 依赖缓存放 D 盘，避免 C 盘膨胀 |
-| `ANDROID_HOME` | `C:\Users\Administrator\AppData\Local\Android\Sdk` | Gradle 与 flutter 定位 SDK |
+| `ANDROID_HOME` | `D:\Android\Sdk` | Gradle 与 flutter 定位 SDK |
 | `ANDROID_SDK_ROOT` | 同上 | 兼容旧工具 |
+| `ADB` | `D:\Android\Sdk\platform-tools\adb.exe` | scrcpy 优先读它；不设就用自带的 37.0.1，把 5037 上的 adb server 杀掉重启 |
 | `PUB_HOSTED_URL` | `https://pub.flutter-io.cn` | 官方中国镜像，实测比官方源稳定 |
 | `FLUTTER_STORAGE_BASE_URL` | `https://storage.flutter-io.cn` | 引擎产物镜像 |
 
@@ -58,7 +62,7 @@ Flutter 想自动装 NDK，但自动安装依赖 `sdkmanager`，而 SDK 里没�
 2026 年的 `cmdline-tools` 里 `sdkmanager` 只是壳，实际用 `android sdk`：
 
 ```bash
-android sdk install "ndk;28.2.13676358" --sdk "C:\Users\Administrator\AppData\Local\Android\Sdk"
+android sdk install "ndk;28.2.13676358" --sdk "D:\Android\Sdk"   # 换机器时换成自己的 SDK 根目录
 android sdk list --all          # 查看可安装包
 ```
 
@@ -68,6 +72,41 @@ android sdk list --all          # 查看可安装包
 只有 build-tools 34/35 时构建失败：`Failed to find Build Tools revision 36.0.0`。需补 `build-tools;36.0.0` 与 `platforms;android-36`。
 
 ④ 下载源。官方 `storage.googleapis.com` 实测约 2.3MB/s 且中途断连；`storage.flutter-io.cn` 约 4.8MB/s 且支持 Range 续传，启用镜像后一次通过。
+
+⑤ AVD 的皮肤路径不跟着 SDK 迁移，模拟器秒退。
+SDK 从 C 盘搬到 `D:\Android\Sdk` 之后，`Pixel_5_API_35` 起不来，日志里只有一行：
+
+```
+INFO  | Found systemPath D:\Android\Sdk\system-images\android-35\google_apis\x86_64\
+ERROR | unknown skin name 'pixel_5'
+```
+
+GUI 上没有任何提示，`flutter emulators` 还照常把这个 AVD 列出来，所以在编辑器里点「启动模拟器」的表现就是**什么都不发生**。
+
+根因：`%USERPROFILE%\.android\avd\<AVD>.avd\config.ini` 的 `skin.path` 存的是旧 SDK 的**绝对路径**。`image.sysdir.1` 反而没事（相对路径，按当前 SDK 解析）——所以系统镜像找得着、只有皮肤找不着。
+
+```powershell
+$cfg = "$env:USERPROFILE\.android\avd\Pixel_5_API_35.avd\config.ini"
+Select-String -Path $cfg -Pattern 'skin'       # 先看指向哪
+# 把 skin.path 改成 <当前 SDK 根>\skins\<皮肤名>，本机是：
+# skin.path=D:\Android\Sdk\skins\pixel_5
+```
+
+只删掉 `skin.path` **不管用**（实测过）：emulator 不会退回按名字去 `$ANDROID_HOME/skins` 找，必须给能解析的绝对路径。
+
+⑥ 两个 adb 版本抢同一个 server。
+`flutter doctor` 报 `! Multiple adb binaries found`：scrcpy 自带 `adb 37.0.1`，SDK 自带 `adb 35.0.2`。两者都用 `adb` 这个名字暴露，谁先起谁当 server；版本对不上时后来的客户端会把 server 杀掉重启，表现为设备**时有时无 / device offline**，而 emulator 和 flutter 本身没毛病。
+
+修法就是 §2 那两条：`Path` 前插 `platform-tools`（终端用 35.0.2）+ 设 `ADB` 指向同一个文件（scrcpy 也别用自带的 37.0.1；实测 scrcpy 5.0.1 配 adb 35.0.2 正常）。改完要新开终端、重启 VS Code 才生效。
+
+⑦ 探针 AVD `P5_probe` 每次跑完会留一个 3GB 的快速启动快照。
+`.workbuddy/tmp/mobile_shot.sh` 用的是 `-avd P5_probe … -no-snapshot`，但本机 emulator 37.2.12 退出时照样写 `snapshots/default_boot/ram.img`（3072MB，正好是 `-memory 3072` 的整块内存）。实测 `-no-snapshot`、`-no-snapshot-save` 都拦不住，改 `config.ini` 的 `firstboot.*`/`fastboot.*` 也没用，`quickbootChoice.ini` 里的 `saveOnExit=false` 会在启动时被改回 `true`。这个快照对 `-no-snapshot` 启动毫无用处，纯占 3GB：
+
+```powershell
+Remove-Item "$env:USERPROFILE\.android\avd\P5_probe.avd\snapshots" -Recurse -Force
+```
+
+2026-11-01 清过一次（连带 AVD 从 8.1GB 降到 1GB）：3GB 陈旧快照 + 4.95GB 攒下来的 userdata + 残留的 `*.lock` 目录 / `tmpAdbCmds`。清完冷启动实测 24–36 秒到 `sys.boot_completed`，比脚本里 180 秒的等待宽裕得多。
 
 ## 5. Windows 桌面端：VS 注册损坏的修复（已解决）
 

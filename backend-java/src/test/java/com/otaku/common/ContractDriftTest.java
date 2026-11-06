@@ -247,6 +247,21 @@ class ContractDriftTest {
         targets.put("UgcComment", com.otaku.ugc.dto.UgcCommentDto.class);
         targets.put("UgcCommentPage", PageResponse.class);
         targets.put("SiteFeatures", com.otaku.ugc.dto.SiteFeaturesDto.class);
+        // 「我的评论」（#449）：自己的评论 + 内嵌作品卡片；回复与被隐藏/待审的都在列表里
+        targets.put("MyComment", com.otaku.ugc.dto.MyCommentDto.class);
+        targets.put("MyCommentPage", PageResponse.class);
+        // 资讯↔资讯（#414）：固定条数的延伸阅读，复用 ArticleSummary 卡片
+        targets.put("ArticleRelated", com.otaku.article.dto.ArticleDtos.ArticleRelated.class);
+        // 阿宅画像（#401）：权重 0–1 归一化 + 评分倾向 10 桶，形状与 algorithm-design §3 对齐
+        targets.put("PersonaProfile", com.otaku.persona.dto.PersonaDtos.PersonaProfile.class);
+        targets.put("PersonaRatingTendency", com.otaku.persona.dto.PersonaDtos.RatingTendency.class);
+        // 个性化推荐（#402）：score 是组内归一化相对分，reasons 最多 3 条
+        targets.put("RecommendationPage", com.otaku.recommend.dto.RecommendDtos.RecommendationPage.class);
+        targets.put("Recommendation", com.otaku.recommend.dto.RecommendDtos.Recommendation.class);
+        targets.put("RecommendationReason", com.otaku.recommend.dto.RecommendDtos.RecommendationReason.class);
+        // 人物页（B2 #455）：按作品合并的参与列表，形状照来源站 cast_detail()
+        targets.put("PersonDetail", com.otaku.person.dto.PersonDtos.PersonDetail.class);
+        targets.put("PersonCredit", com.otaku.person.dto.PersonDtos.PersonCredit.class);
         // 点评（#240 B2c⑥）：与评论是两套形状，rating/body 都可空但至少一项有值
         targets.put("UgcReview", com.otaku.ugc.dto.UgcReviewDto.class);
         targets.put("UgcReviewPage", PageResponse.class);
@@ -276,6 +291,8 @@ class ContractDriftTest {
         targets.put("SiteLoginRequest", com.otaku.auth.dto.SiteLoginRequest.class);
         targets.put("CreateAccountRequest", com.otaku.account.dto.CreateAccountRequest.class);
         targets.put("CollectionUpdateRequest", com.otaku.collection.dto.CollectionUpdateRequest.class);
+        // 浏览打点（#401）：只有 work_id；时间以服务端收到为准，不接受客户端时间戳
+        targets.put("ViewRequest", com.otaku.view.dto.ViewRequest.class);
         targets.put("ImportBatchRequest", com.otaku.importer.dto.ImportBatchRequest.class);
         targets.put("DeletionRequest", com.otaku.importer.dto.DeletionRequest.class);
         targets.put("UgcCommentRequest", com.otaku.ugc.dto.UgcCommentRequest.class);

@@ -80,6 +80,25 @@ class AuthRepository {
       await _tokenStore.clear();
     }
   }
+
+  /// 注销账号（`DELETE /api/me`）。
+  ///
+  /// 与 [logout] 的两处不同：
+  /// 1. **不吞异常**——注销失败必须让用户看见，否则他会以为账号已经没了；
+  /// 2. 只有服务端确认（`204`）之后才清本地令牌，没成功就保持登录态，
+  ///    用户还能重试或去别处处理。
+  Future<void> deleteAccount() async {
+    final token = await _tokenStore.read();
+    if (token == null || token.isEmpty) {
+      throw const ApiException(
+        code: ApiErrorCode.unauthorized,
+        message: '登录状态已失效，请重新登录后再注销',
+        statusCode: 401,
+      );
+    }
+    await _dataSource.deleteAccount(token);
+    await _tokenStore.clear();
+  }
 }
 
 /// 默认走 Mock；联调时加 `--dart-define=USE_MOCK=false` 切真实接口。

@@ -3,6 +3,7 @@
 这几处坏掉的后果都不是「报错」，而是「看起来跑过了」——最贵的那种故障。
 """
 
+import json
 import sys
 
 from devkit import cache, cli, select
@@ -70,3 +71,91 @@ def test_cache_key_changes_with_selected_files():
     two = cache.make_key("py", ["pytest"], ["tests/test_b.py"], select.PY_DIR)
 
     assert one != two
+
+
+def test_conclusion_does_not_call_broken_stack_a_pass():
+    """测试没跑起来时一条用例都解析不出来，别把它说成通过。
+
+    2026-11-01 实际踩到：解释器里没有 pytest，devtest 打印「Python 通过」。
+    按 run.py 的状态其实是 failed，坏在结论只看「有没有失败卡片」。
+    """
+    results = {"py": {"status": "failed", "report": None}}
+    line = cli.conclusion_line(results, [], None, {})
+
+    assert "通过" not in line
+    assert "失败" in line
+
+
+def test_conclusion_counts_failure_cards_first():
+    results = {"py": {"status": "failed"}}
+    failures = [{"badge": "新增失败"}, {"badge": "上次也失败"}]
+
+    line = cli.conclusion_line(results, failures, None, {})
+
+    assert "2 项失败" in line
+    assert "1 项新增" in line
+
+
+def test_conclusion_full_pass():
+    results = {s: {"status": "passed"} for s in select.STACKS}
+
+    assert cli.conclusion_line(results, [], None, {}) == "结论：全部通过。可以提交。"
+
+
+def test_conclusion_partial_skip_still_says_not_passed():
+    """有栈没执行时不能说「全部通过」——那正是「以为验过了」的来源。"""
+    results = {"py": {"status": "passed"}, "java": {"status": "skipped"},
+               "dart": {"status": "skipped"}}
+
+    line = cli.conclusion_line(results, [], None, {})
+
+    assert "没执行" in line
+    assert "全部通过" not in line
+
+
+def _no_changes(monkeypatch):
+    """fast-forward 拉完远端后：HEAD 与 origin/main 相同，changed 为空。"""
+    monkeypatch.setattr(select, "changed_files",
+                        lambda _: ([], "merge-base HEAD origin/main"))
+
+
+def _fake_gate(monkeypatch):
+    seen = []
+
+    def fake():
+        seen.append(True)
+        return {"contract": {"status": "passed"},
+                "site-isolation": {"status": "passed"}}
+
+    monkeypatch.setattr(cli, "run_gate", fake)
+    return seen
+
+
+def test_gate_runs_even_when_nothing_changed(monkeypatch, capsys):
+    """2026-11-04 实际踩到：ff 拉下 19 个提交后 `devtest --gate` 直接早退，
+    契约 / 站点隔离守卫一次都没跑，却让人以为门禁过了。
+
+    守卫与「这轮改了什么」无关，空改动也要单独跑一遍。
+    """
+    _no_changes(monkeypatch)
+    seen = _fake_gate(monkeypatch)
+
+    rc = cli.main(["--gate"])
+
+    assert seen == [True]
+    assert rc == 0
+    assert "门禁通过" in capsys.readouterr().out
+
+
+def test_gate_with_no_changes_stays_json_parseable(monkeypatch, capsys):
+    """--json 的 stdout 必须是纯 JSON，早退分支也不能退化成人话。"""
+    _no_changes(monkeypatch)
+    _fake_gate(monkeypatch)
+
+    rc = cli.main(["--gate", "--json"])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert rc == 0
+    assert payload["conclusion"] == "empty"
+    assert payload["gate_ok"] is True
+    assert set(payload["gate"]) == {"contract", "site-isolation"}

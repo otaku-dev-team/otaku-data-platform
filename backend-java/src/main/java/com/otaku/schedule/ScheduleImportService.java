@@ -237,14 +237,24 @@ public class ScheduleImportService {
                 || !Objects.equals(current.sourceUpdatedAt(), next.sourceUpdatedAt());
     }
 
-    /** 用归一化后的条目覆盖可更新字段；schedule_id / source / source_id / created_at 不动。 */
+    /**
+     * 用归一化后的条目覆盖可更新字段；schedule_id / source / source_id / created_at 不动。
+     *
+     * <p>{@code work_id} 有一条额外规则：**解析不出来时保留原值**，不写 null。
+     * 因为它是"尽力而为"的关联，解析失败的原因里有一半是临时的或我们这边的
+     * （作品还没入库、作品被软删、作品不在首站收录范围内），写 null 等于把
+     * 已经建立起来的关联丢掉——而重导档期是例行操作，丢一次就要重新算一次。
+     * 真正的失效由运维侧显式清理，不在例行重导里悄悄发生。
+     */
     private ScheduleRecord merge(ScheduleRecord current, String source, NormalizedSchedule item) {
+        String resolved = resolveWorkId(source, item.contentId());
+        String workId = resolved != null ? resolved : current.workId();
         return new ScheduleRecord(
                 current.id(), current.scheduleId(), current.source(), current.sourceId(),
                 item.seasonCode(), item.titleMain(), item.titleCn(), item.titleJp(),
                 item.weekday(), item.broadcastTime(), item.broadcastNote(), item.workType(),
                 item.workTagsJson(), item.imageUrl(), item.platformsJson(), item.sourceUrl(),
-                item.contentId(), resolveWorkId(source, item.contentId()),
+                item.contentId(), workId,
                 item.sourceUpdatedAt(), current.createdAt(), LocalDateTime.now(ZoneOffset.UTC));
     }
 

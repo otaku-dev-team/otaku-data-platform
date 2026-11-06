@@ -20,6 +20,7 @@
   - `OTAKU_WORK_TYPES`：逗号分隔，默认 `anime,comic,game,novel`。
   - `OTAKU_BATCH_SIZE`：每批条数，默认 100（**上限 500**，超限直接报错退出）。
   - `OTAKU_SAMPLE_METHOD`：`head`（按档案顺序取前 N 条）或 `uniform`（蓄水池随机抽样）。
+  - `OTAKU_IMPORT_TIMEOUT_SECONDS`：提交导入批次的超时，默认 120。**和 `OTAKU_TIMEOUT_SECONDS`（抓取，默认 30）分开**：一批 500 条实测本机 9.5 s，生产慢 2–3 倍会压到 30 s 线上，压线就会整批重跑（#365）。
   - 其余限流参数（`OTAKU_SOURCE_PAGE_SIZE` / `OTAKU_REQUEST_INTERVAL_SECONDS` / `OTAKU_MAX_PAGES` / `OTAKU_TIMEOUT_SECONDS` / `OTAKU_MAX_ATTEMPTS` / `OTAKU_BACKOFF_SECONDS` / `OTAKU_OUTPUT_DIR`）均可环境变量覆盖，详见 `config.py`。
 
 ### 1.2 Bangumi 档案灌库（约 55.6 万条）

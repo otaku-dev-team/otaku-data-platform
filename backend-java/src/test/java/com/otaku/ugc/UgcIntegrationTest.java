@@ -9,6 +9,7 @@ import com.otaku.importer.ImportService;
 import com.otaku.importer.dto.ImportBatchRequest;
 import com.otaku.importer.dto.ImportBatchRequest.ImportItem;
 import com.otaku.ugc.dto.CommentReportDto;
+import com.otaku.ugc.dto.MyCommentDto;
 import com.otaku.ugc.dto.CommentReportRequest;
 import com.otaku.ugc.dto.UgcCommentDto;
 import com.otaku.ugc.dto.UgcCommentEditRequest;
@@ -767,6 +768,69 @@ class UgcIntegrationTest {
     }
 
     // ---- 辅助 ----
+
+    // ---------------------------------------------------------------------
+    // 「我的评论」（#449）：发出去要能找回来
+    // ---------------------------------------------------------------------
+
+    @Test
+    @DisplayName("我的评论：最新在前，回复也算，只含自己的")
+    void myCommentsTimeline() {
+        UgcCommentDto first = service.create(alice, new UgcCommentRequest(workId, "第一条"));
+        service.create(alice, new UgcCommentRequest(workId, "第二条"));
+        service.create(alice, new UgcCommentRequest(workId, "回复第一条", first.commentId()));
+        service.create(bob, new UgcCommentRequest(workId, "bob 的评论"));
+
+        PageResponse<MyCommentDto> page = service.listMine(alice, 1, 20);
+
+        assertThat(page.total()).as("bob 的不该混进来").isEqualTo(3);
+        assertThat(page.items()).extracting(MyCommentDto::body)
+                .containsExactly("回复第一条", "第二条", "第一条");
+        assertThat(page.items().get(0).parentId()).as("回复要能看出是在回谁")
+                .isEqualTo(first.commentId());
+        assertThat(page.items()).allSatisfy(item -> {
+            assertThat(item.work()).as("内嵌作品卡片，客户端直接渲染").isNotNull();
+            assertThat(item.work().title()).isEqualTo("评论用例作品");
+        });
+    }
+
+    @Test
+    @DisplayName("我的评论：被隐藏的还在（用户知道发过），自己删掉的没了")
+    void myCommentsKeepHiddenDropDeleted() {
+        UgcCommentDto hidden = service.create(alice, new UgcCommentRequest(workId, "会被站主隐藏"));
+        UgcCommentDto removed = service.create(alice, new UgcCommentRequest(workId, "会被自己删掉"));
+        consoleUgcService.hide(consoleAdmin(SITE), hidden.commentId());
+        service.deleteOwn(alice, removed.commentId());
+
+        PageResponse<MyCommentDto> page = service.listMine(alice, 1, 20);
+
+        assertThat(page.items()).extracting(MyCommentDto::body).containsExactly("会被站主隐藏");
+        assertThat(page.items().get(0).status()).isEqualTo("hidden");
+    }
+
+    @Test
+    @DisplayName("我的评论按站点隔离：别的站的账号看不到本站的")
+    void myCommentsAreSiteScoped() {
+        service.create(alice, new UgcCommentRequest(workId, "本站的评论"));
+
+        assertThat(service.listMine(outsider, 1, 20).total()).isZero();
+    }
+
+    @Test
+    @DisplayName("我的评论分页：total 是全部，items 只给本页")
+    void myCommentsPaginate() {
+        service.create(alice, new UgcCommentRequest(workId, "一"));
+        service.create(alice, new UgcCommentRequest(workId, "二"));
+        service.create(alice, new UgcCommentRequest(workId, "三"));
+
+        PageResponse<MyCommentDto> firstPage = service.listMine(alice, 1, 2);
+
+        assertThat(firstPage.total()).isEqualTo(3);
+        assertThat(firstPage.totalPages()).isEqualTo(2);
+        assertThat(firstPage.items()).extracting(MyCommentDto::body).containsExactly("三", "二");
+        assertThat(service.listMine(alice, 2, 2).items()).extracting(MyCommentDto::body)
+                .containsExactly("一");
+    }
 
     private UserRecord createUser(String username, String siteKey) {
         LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);

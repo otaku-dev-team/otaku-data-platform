@@ -3,9 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/network/api_exception.dart';
+import '../../core/ui/feedback.dart';
+import '../../core/platform_info.dart';
 import '../../core/router/route_paths.dart';
 import '../../core/theme/app_layout.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/theme/design_tokens.dart';
 import '../../data/models/collection_entry.dart';
 import '../../data/repositories/work_repository.dart' show Fetched;
 import '../../shared/widgets/account_menu.dart';
@@ -14,12 +17,15 @@ import '../../shared/widgets/mobile_nav_bar.dart';
 import '../../shared/widgets/desktop_shortcuts.dart';
 import '../../shared/widgets/collection_status_menu.dart';
 import '../../shared/widgets/cover_image.dart';
+import '../../shared/widgets/hero_cover.dart';
 import '../../shared/widgets/empty_state.dart';
 import '../../shared/widgets/error_state.dart';
 import '../../shared/widgets/offline_notice.dart';
 import '../../shared/widgets/poster_card.dart';
 import '../../shared/widgets/skeleton_list.dart';
 import '../../shared/widgets/work_type_tag.dart';
+import '../article_favorite/article_favorite_controller.dart';
+import '../article_favorite/article_favorite_list.dart';
 import '../auth/auth_controller.dart';
 import 'collection_controller.dart';
 
@@ -50,8 +56,18 @@ class CollectionPage extends ConsumerWidget {
               if (auth.isSignedIn)
                 IconButton(
                   tooltip: '刷新',
-                  onPressed: () =>
-                      ref.read(collectionControllerProvider.notifier).refresh(),
+                  // 刷新要跟随当前分段：在「资讯」段点刷新却去拉作品列表，
+                  // 用户会以为刷新没生效（而且资讯段确实没更新）。
+                  onPressed: () {
+                    if (ref.read(collectionSegmentProvider) ==
+                        CollectionSegment.articles) {
+                      ref
+                          .read(articleFavoriteControllerProvider.notifier)
+                          .refresh();
+                      return;
+                    }
+                    ref.read(collectionControllerProvider.notifier).refresh();
+                  },
                   icon: const Icon(Icons.refresh),
                 ),
               // 登录/账号入口与作品库共用同一个组件，未登录时也要能看到「登录」，
@@ -99,6 +115,25 @@ class _CollectionBody extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final segment = ref.watch(collectionSegmentProvider);
+
+    return Column(
+      children: [
+        // 分段在筛选之前：先决定「看哪一类收藏」，再决定「看哪个状态」。
+        _SegmentTabs(
+          selected: segment,
+          onSelected: (value) =>
+              ref.read(collectionSegmentProvider.notifier).select(value),
+        ),
+        if (segment == CollectionSegment.works)
+          ..._worksBody(context, ref)
+        else
+          const Expanded(child: ArticleFavoriteList()),
+      ],
+    );
+  }
+
+  List<Widget> _worksBody(BuildContext context, WidgetRef ref) {
     final filter = ref.watch(collectionFilterProvider);
     final collections = ref.watch(collectionControllerProvider);
 
@@ -107,22 +142,20 @@ class _CollectionBody extends ConsumerWidget {
     final cached = collections.value;
     final offline = cached != null && cached.fromCache;
 
-    return Column(
-      children: [
-        _StatusFilters(
-          selected: filter,
-          onSelected: (status) =>
-              ref.read(collectionFilterProvider.notifier).select(status),
+    return [
+      _StatusFilters(
+        selected: filter,
+        onSelected: (status) =>
+            ref.read(collectionFilterProvider.notifier).select(status),
+      ),
+      if (offline)
+        OfflineNotice(
+          cachedAt: cached.cachedAt,
+          onRetry: () =>
+              ref.read(collectionControllerProvider.notifier).refresh(),
         ),
-        if (offline)
-          OfflineNotice(
-            cachedAt: cached.cachedAt,
-            onRetry: () =>
-                ref.read(collectionControllerProvider.notifier).refresh(),
-          ),
-        Expanded(child: _buildList(context, ref, collections, filter)),
-      ],
-    );
+      Expanded(child: _buildList(context, ref, collections, filter)),
+    ];
   }
 
   Widget _buildList(
@@ -145,10 +178,34 @@ class _CollectionBody extends ConsumerWidget {
 
     final data = items ?? const <CollectionEntry>[];
     if (data.isEmpty) {
-      return EmptyState(
+      final mobile = !PlatformInfo.isDesktop;
+      final empty = EmptyState(
         icon: Icons.bookmark_border_rounded,
         title: filter == null ? '还没有收藏' : '没有「${filter.label}」的作品',
         message: filter == null ? '在作品详情页点收藏，就会出现在这里。' : '换个状态看看。',
+        action: mobile
+            ? FilledButton.tonal(
+                onPressed: () {
+                  if (filter != null) {
+                    ref.read(collectionFilterProvider.notifier).select(null);
+                    return;
+                  }
+                  context.go(RoutePaths.contents);
+                },
+                child: Text(filter == null ? '去作品库' : '查看全部收藏'),
+              )
+            : null,
+      );
+      if (!mobile) return empty;
+      // 空列表同样可以刷新，跨端新收藏后不必先退出这一页。
+      return RefreshIndicator(
+        color: AppTheme.brandStrong,
+        onRefresh: () =>
+            ref.read(collectionControllerProvider.notifier).refresh(),
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [SliverFillRemaining(hasScrollBody: false, child: empty)],
+        ),
       );
     }
 
@@ -169,6 +226,11 @@ class _CollectionBody extends ConsumerWidget {
               AppLayout.collectionCardBodyHeight * textScale;
 
           return GridView.builder(
+            // 切到「资讯」段再切回来时，靠这个 key 恢复滚动位置（PageStorage）。
+            key: const PageStorageKey<String>('collection-works-grid'),
+            physics: PlatformInfo.isDesktop
+                ? null
+                : const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.fromLTRB(
               AppLayout.pagePadding,
               4,
@@ -182,10 +244,47 @@ class _CollectionBody extends ConsumerWidget {
               mainAxisSpacing: AppLayout.gridGap,
             ),
             itemCount: data.length,
-            itemBuilder: (context, index) =>
-                _CollectionTile(entry: data[index]),
+            itemBuilder: (context, index) => _CollectionTile(
+              heroTag: 'collection-$index',
+              key: ValueKey(data[index].workId),
+              entry: data[index],
+            ),
           );
         },
+      ),
+    );
+  }
+}
+
+/// 作品 / 资讯两个分段。用 [ChoiceChip] 而不是 TabBar：
+/// 下面紧接着就是状态筛选的同款 chip，两者视觉一致，用户不会把
+/// 「换分段」和「换筛选」当成两种不同层级的操作。
+class _SegmentTabs extends StatelessWidget {
+  const _SegmentTabs({required this.selected, required this.onSelected});
+
+  final CollectionSegment selected;
+  final ValueChanged<CollectionSegment> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppLayout.pagePadding,
+        12,
+        AppLayout.pagePadding,
+        0,
+      ),
+      child: Row(
+        children: [
+          for (final segment in CollectionSegment.values) ...[
+            ChoiceChip(
+              label: Text(segment.label),
+              selected: selected == segment,
+              onSelected: (_) => onSelected(segment),
+            ),
+            const SizedBox(width: 8),
+          ],
+        ],
       ),
     );
   }
@@ -226,37 +325,79 @@ class _StatusFilters extends StatelessWidget {
   }
 }
 
-class _CollectionTile extends ConsumerWidget {
-  const _CollectionTile({required this.entry});
+class _CollectionTile extends ConsumerStatefulWidget {
+  const _CollectionTile({super.key, required this.entry, this.heroTag});
 
   final CollectionEntry entry;
 
-  Future<void> _changeStatus(
-    BuildContext context,
-    WidgetRef ref,
-    CollectionStatus? status,
-  ) async {
-    final error = await ref
-        .read(collectionControllerProvider.notifier)
-        .changeStatus(entry.workId, status);
-    if (!context.mounted || error == null) return;
-    // 失败必须说出来（C7）：不静默、不把界面留在「好像成功了」。
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(error.userMessage)));
+  /// 封面转场标签（屏内唯一，由网格按 index 拼）。null = 不做转场。
+  final String? heroTag;
+
+  @override
+  ConsumerState<_CollectionTile> createState() => _CollectionTileState();
+}
+
+class _CollectionTileState extends ConsumerState<_CollectionTile> {
+  bool _busy = false;
+
+  Future<void> _changeStatus(CollectionStatus? status) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final error = await ref
+          .read(collectionControllerProvider.notifier)
+          .changeStatus(widget.entry.workId, status);
+      if (!messenger.mounted || error == null) return;
+      // 失败必须说出来（C7）：不静默、不把界面留在「好像成功了」。
+      messenger.showSnackBar(SnackBar(content: Text(error.userMessage)));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
-  Future<void> _remove(BuildContext context, WidgetRef ref) async {
-    final error = await ref
-        .read(collectionControllerProvider.notifier)
-        .remove(entry.workId);
-    if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(error == null ? '已取消收藏' : error.userMessage)),
-    );
+  Future<void> _remove() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      if (!PlatformInfo.isDesktop) {
+        final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('取消收藏？'),
+            content: Text('将「${widget.entry.title}」移出收藏，观看状态也会清除。'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('保留收藏'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('取消收藏'),
+              ),
+            ],
+          ),
+        );
+        if (!mounted || confirmed != true) return;
+      }
+      final messenger = ScaffoldMessenger.of(context);
+      final error = await ref
+          .read(collectionControllerProvider.notifier)
+          .remove(widget.entry.workId);
+      if (error == null) Haptics.done();
+      // 删除成功后卡片会卸载，用页面的 messenger 保留操作结果提示。
+      if (!messenger.mounted) return;
+      messenger.showSnackBar(
+        SnackBar(content: Text(error == null ? '已取消收藏' : error.userMessage)),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
+    final entry = widget.entry;
     final theme = Theme.of(context);
     final status = entry.status;
     final firstChar = entry.title.characters.isEmpty
@@ -269,19 +410,24 @@ class _CollectionTile extends ConsumerWidget {
     final textScale = MediaQuery.textScalerOf(context).scale(1);
 
     return PosterCardShell(
-      onTap: () => context.push(RoutePaths.workDetail(entry.workId)),
-      overlay: _RemoveButton(onPressed: () => _remove(context, ref)),
+      onTap: () => context.push(
+        RoutePaths.workDetail(entry.workId, heroTag: widget.heroTag),
+      ),
+      overlay: _RemoveButton(onPressed: _busy ? null : _remove),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           AspectRatio(
             aspectRatio: AppLayout.posterAspect,
-            child: CoverImage(
-              url: entry.coverUrl,
-              width: double.infinity,
-              height: double.infinity,
-              radius: 0,
-              placeholderLabel: firstChar,
+            child: HeroCover(
+              tag: widget.heroTag,
+              child: CoverImage(
+                url: entry.coverUrl,
+                width: double.infinity,
+                height: double.infinity,
+                radius: 0,
+                placeholderLabel: firstChar,
+              ),
             ),
           ),
           SizedBox(
@@ -313,8 +459,8 @@ class _CollectionTile extends ConsumerWidget {
                       Flexible(
                         child: CollectionStatusMenu(
                           status: status,
-                          onSelected: (value) =>
-                              _changeStatus(context, ref, value),
+                          enabled: !_busy,
+                          onSelected: _changeStatus,
                         ),
                       ),
                     ],
@@ -342,10 +488,22 @@ class _CollectionTile extends ConsumerWidget {
 class _RemoveButton extends StatelessWidget {
   const _RemoveButton({required this.onPressed});
 
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {
+    if (!PlatformInfo.isDesktop) {
+      return IconButton.filled(
+        tooltip: '取消收藏',
+        onPressed: onPressed,
+        style: IconButton.styleFrom(
+          minimumSize: const Size.square(Space.s12),
+          backgroundColor: Theme.of(context).colorScheme.surface,
+          foregroundColor: Theme.of(context).colorScheme.onSurface,
+        ),
+        icon: const Icon(Icons.bookmark_remove_rounded, size: Space.s6),
+      );
+    }
     return Tooltip(
       message: '取消收藏',
       child: Material(

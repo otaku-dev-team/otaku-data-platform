@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/platform_info.dart';
+import '../../core/ui/feedback.dart';
 import '../../core/theme/app_theme.dart';
 import 'glass_backdrop.dart';
 import 'main_nav_destination.dart';
@@ -56,6 +57,9 @@ class MobileNavBar extends StatelessWidget {
           : null,
       selectedIndex: MainNavDestination.values.indexOf(current),
       onDestinationSelected: (index) {
+        Haptics.tap();
+        // 切换主页面时结束输入，键盘不跟着旧分支留在下一页上。
+        FocusManager.instance.primaryFocus?.unfocus();
         // 走 goBranch 而不是 go(path)：切 tab 只换显隐，页面不被销毁，
         // 作品库翻到第几页、滚到哪里都还在。`go(path)` 会整棵替换，
         // 切回来等于重开。

@@ -415,7 +415,7 @@ public class ImportService {
             if (role == null || name == null || role.length() > 64 || name.length() > 200) {
                 continue;
             }
-            String personId = normalizeBoundedText(entry.personId(), 64);
+            String personId = normalizeBoundedText(entry.personId(), 128);
             cleaned.add(new com.otaku.work.dto.WorkStaffDto(role, name, personId));
         }
         return cleaned.isEmpty() ? null : List.copyOf(cleaned);
@@ -439,7 +439,7 @@ public class ImportService {
             }
             cleaned.add(new com.otaku.work.dto.WorkCharacterDto(name, actor,
                     normalizeBoundedText(entry.characterType(), 16),
-                    normalizeBoundedText(entry.personId(), 64)));
+                    normalizeBoundedText(entry.personId(), 128)));
         }
         return cleaned.isEmpty() ? null : List.copyOf(cleaned);
     }

@@ -77,6 +77,8 @@ tags:
     description: 阶段 2：登录、当前用户、退出。不开放自助注册
   - name: 个人收藏
     description: 阶段 2：本人收藏与观看状态，路径里永不出现 user_id
+  - name: 浏览记录
+    description: 画像信号之一：客户端在详情页打开时打点；重复提交只累加次数，不报错
   - name: 内部账号
     description: 阶段 2：仅内网可用的建号接口，客户端不得持有内部令牌
   - name: 站主后台
@@ -301,6 +303,88 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "500": { $ref: "#/components/responses/InternalError" }
 
+  /api/works/{work_id}/articles:
+    get:
+      tags: [作品查询]
+      summary: 相关资讯（作品→资讯 反查，新增）
+      operationId: getWorkArticles
+      description: |
+        取**来源站编辑手工关联**到这部作品的资讯，按发布时间倒序分页。
+
+        依据是 `article.related_work_ids` 里含本作品的 bangumi subject id——不是算出来的相似度，
+        所以不召回、不打分、不补位：有关联就给，没有就空。
+
+        边界约定：
+        - 作品不存在 / 格式非法 / 未收录 / 成人内容 → **404**（与详情、同标签推荐一致）。
+        - 作品存在但没有被任何资讯关联过 → `200` + `total: 0` + 空 `items`，不是 404。
+        - 只对 `source=bangumi` 的作品成立：`related_work_ids` 装的是 bangumi subject id，
+          其它来源的 `source_id` 是另一套号，拿去匹配会撞号（V28 实测两套号按数值 JOIN
+          得 3,015 条假匹配），所以非 bangumi 作品**不查库**、直接返回空。
+        - `page_size` 省略为 20、上限 50（超出截断不报错）；`page` 小于 1 按 1 处理。
+        - 成人资讯不出现（与资讯列表同一套过滤）。
+
+        响应形状复用资讯列表 `ArticlePage`（客户端已有该模型与分页组件），
+        刻意不新造 `WorkArticles`——多一层同构 DTO 只会在两边各多一次映射。
+
+        **上线时序**：数据侧把 `related_work_ids` 从 content_id 切到 subject id 之前，
+        本接口一律返回空。切流前用 content_id 去匹配会把**别的作品**的资讯挂上来，
+        而且不报错，所以服务端留了运行期开关 `article.related_ids_semantic`
+        （缺省 `content_id` = 不启用；切流后置 `subject_id` 即生效，不用发版）。
+      parameters:
+        - $ref: "#/components/parameters/WorkId"
+        - name: page
+          in: query
+          description: 页码，从 1 起；小于 1 按 1 处理
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: page_size
+          in: query
+          description: 每页条数，上限 50（超出按 50 截断，不报错）
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ArticlePage" }
+        "429": { $ref: "#/components/responses/RateLimitedWithRetry" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /api/persons/{person_id}:
+    get:
+      tags: [人物]
+      summary: 人物详情 + 参与作品（档 B2，新增）
+      operationId: getPerson
+      description: |
+        一个人是谁、他参与过哪些作品。形状照来源站的 `cast_detail()`：
+        **按作品合并**——同一个人的同一部作品既可能挂「导演」又可能配音「鹿目圆」，
+        拆成两行会让页面出现两张一模一样的卡片。
+
+        `person_id` 是**来源侧实体标识，客户端一律当不透明字符串**：
+        现在是裸数字，切 v3 数据集后会是 `bgm:`（Bangumi 人物 id，强关联）/
+        `pname:`（只剩名字的主创）/ `cname:`（公司）前缀。不解析、不比大小、不自己拼。
+        无法识别的前缀按弱关联处理（宁可少合并，不可错合并），见 `docs/person-id-unification.md`。
+
+        口径：
+        - 人物不存在 / `person_id` 格式非法 / 超长 → **404**（不用 400 区分「存在与否」，
+          那等于给了一个探测接口）；
+        - `works` 按评分倒序（低票按 0 处理，与列表排序同一口径），无评分排最后；
+        - 每部作品内 `characters`（配音角色）与 `roles`（制作职责）各自成列，都可能为空数组；
+        - 成人作品、已下架作品、不在收录范围的作品**不出现**（客户端点进去只会 404）；
+        - 不分页：来源站也没分页，一个人的参与作品通常在几十部量级；真遇到几百部的声优，
+          响应会大一些但仍是单次可接受范围。
+      parameters:
+        - $ref: "#/components/parameters/PersonId"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PersonDetail" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimitedWithRetry" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
   /api/site/features:
     get:
       tags: [社区]
@@ -489,7 +573,9 @@ paths:
           description: |
             校验失败（`BAD_REQUEST`）；或机器审核判定内容不合规（`CONTENT_REJECTED`，
             此时**不落库**，用户改完可直接重发）。
-          content:/n            application/json:/n              schema: { $ref: "#/components/schemas/ErrorResponse" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -531,7 +617,9 @@ paths:
           description: |
             校验失败（`BAD_REQUEST`）；或机器审核判定内容不合规（`CONTENT_REJECTED`，
             此时**不落库**，用户改完可直接重发）。
-          content:/n            application/json:/n              schema: { $ref: "#/components/schemas/ErrorResponse" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -916,6 +1004,41 @@ paths:
         "429": { $ref: "#/components/responses/RateLimitedWithRetry" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /api/articles/{articleId}/related:
+    get:
+      tags: [最新资讯]
+      summary: 相关资讯（新增）
+      operationId: listRelatedArticles
+      description: |
+        同一站点内与这条资讯相关的其它资讯，供详情页「延伸阅读」区块。
+
+        召回与打分（纯规则）：
+        - 召回：**共享标签**（`JSON_OVERLAPS`）或**同分类**；
+        - 打分：`共享标签数 × 2 + 同分类 × 1`，同分按发布时间倒序；
+        - **同来源不计分**：同一家媒体的资讯天然同质，把它当相似证据等于
+          「只要是这家写的就相关」，噪声大于信息；
+        - 排除源资讯自己。
+
+        源资讯不存在返回 `404`；有资讯但没有相关资讯返回 `200` + 空 `items`
+        （「这条比较孤立」不是错误，客户端整块不渲染）。
+      parameters:
+        - name: articleId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: limit
+          in: query
+          description: 返回条数，默认 10、上限 20（超出按 20 截断，不报错）；小于 1 按 10
+          schema: { type: integer, minimum: 1, maximum: 20, default: 10 }
+      responses:
+        "200":
+          description: 成功；没有相关资讯时 `items` 为空数组
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ArticleRelated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimitedWithRetry" }
+
   /internal/app/config:
     put:
       tags: [内部导入]
@@ -971,8 +1094,11 @@ paths:
 
         幂等、单批上限、创建/更新/`null` 不覆盖、`(source, source_id)` 唯一键、来源侧消失不删除
         ——全部与 ImportBatchRequest 一致（见该 schema 说明）。
-        差异：条目字段为资讯侧（`ArticleImportItem`）；`related_work_ids` 收**站点作品 id 原文**，
-        不回填本地 work_id（来源站编辑推荐区块，回填会让客户端给出错误的本地跳转）。
+        差异：条目字段为资讯侧（`ArticleImportItem`）；`related_work_ids` 收 **bangumi subject id**
+        （2026-11-05 起由数据侧导出时 JOIN 好，见 #422），**不是**站点 content_id，
+        也不回填本地 `work_id`（`W-xxx` 是平台自己发的号，写进来只会随重建失效）。
+        两套号都是纯数字、从值上分不出来，混用不会报错——只会让关联作品全空或串到别的作品，
+        所以导入侧不做任何猜测性转换，传什么存什么。
       security:
         - internalToken: []
       requestBody:
@@ -1139,6 +1265,37 @@ paths:
         "405": { $ref: "#/components/responses/MethodNotAllowed" }
         "500": { $ref: "#/components/responses/InternalError" }
 
+  /api/me/views:
+    post:
+      tags: [浏览记录]
+      summary: 记一次浏览（打点）
+      operationId: recordView
+      description: |
+        客户端在**详情页打开**时调用一次，服务端据此积累画像信号（#401）。
+
+        三个约定：
+
+        1. **重复提交是正常的**——同一个人反复打开同一页只会让 `view_count` 累加，
+           不新增行、不报错。客户端不需要去重。
+        2. **不需要回执**，成功返回 `204`；失败按下面的状态码区分，客户端可以静默重试。
+        3. 时间以**服务端收到为准**，请求体不接受时间戳——客户端时钟不可信。
+
+        作品不存在、未收录（按站收口）或已软删，一律 `404 WORK_NOT_FOUND`：
+        不给「看不见的作品」积累浏览行。
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ViewRequest" }
+      responses:
+        "204":
+          description: 已记录（重复提交同样返回 204）
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/UnauthorizedSession" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /api/me/collections:
     get:
       tags: [个人收藏]
@@ -1266,7 +1423,123 @@ paths:
           description: 已取消（或本来就没收藏）
         "401": { $ref: "#/components/responses/UnauthorizedSession" }
 
+  /api/me/profile:
+    get:
+      tags: [账号]
+      summary: 我的阿宅画像（需登录，新增）
+      operationId: getMyPersonaProfile
+      description: |
+        当前登录用户的口味画像，供客户端画像页（#375）与个性化推荐（#376）消费。
+
+        **路径为什么是 `/api/me/profile` 而不是设计稿的 `/api/profile`**：`AuthFilter` 只拦
+        `/api/auth/me`、`/api/me`、`/api/me/**`，`/api/profile` 不在其中——挂上去等于匿名可读，
+        而画像是个人的行为数据。改鉴权器的白名单不如沿用它已有的路径约定。
+
+        口径：
+        - 三路信号：浏览（`user_work_view`，强调查看次数）、收藏（`collection`，按
+          `want`/`watching`/`watched` 递增）、点评（`ugc_review.rating`，7 分以上为正面、
+          4 分及以下为**负反馈**）；
+        - 权重**按维度归一化到 0–1**（各自除以绝对值最大者），客户端直接画条；
+          **负值保留**——低分作品的标签是「不喜欢」的证据，抹平成 0 等于丢掉负反馈；
+        - 标签按作品标签数均摊，避免「标签多的作品」主导画像；
+        - `sample_size` 是参与聚合的行为行数：只有 3 条行为时图画出来和 300 条一样
+          （都归一化到 1.0），客户端据此决定是否显示「口味还在形成中」；
+        - 没有任何行为时返回**空画像**（`type_weights` / `tag_weights` 空对象、
+          `rating_tendency.mean` 为 `null`、`sample_size` 为 0），不返回一堆 0.0；
+        - 软删（下架）的作品的行为**仍计入**：偏好是历史事实，不因作品下架而消失；
+        - 实时聚合，不落画像表；首版行为行数远小于上限，没有缓存问题。
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: 成功；没有行为数据时返回空画像（不是 404）
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PersonaProfile" }
+        "401": { $ref: "#/components/responses/UnauthorizedSession" }
+        "429": { $ref: "#/components/responses/RateLimitedWithRetry" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /api/me/recommend:
+    get:
+      tags: [账号]
+      summary: 我的个性化推荐（需登录，新增）
+      operationId: listMyRecommendations
+      description: |
+        基于我的画像算出的推荐列表，供客户端首页推荐位（#376）消费。
+
+        **路径为什么是 `/api/me/recommend` 而不是设计稿的 `/api/recommend`**：推荐是
+        基于个人行为算的（画像 + 已看/已收藏排除），不是公共榜单。`AuthFilter` 只拦
+        `/api/me/**`，挂 `/api/recommend` 会变成匿名可读，而且没有用户就不知道给谁算。
+
+        打分（纯规则、可解释）：`标签命中权重之和 + 类型权重 + 评分质量 × 0.3`。
+
+        - 候选来自画像里权重最高的 8 个**正标签**，每个标签取评分最高的 200 部（走 `work_tag` 索引）；
+        - **已浏览 / 已收藏的作品全量排除**（不是只排除最近 30 天）；
+        - 负权重标签会扣分——用户明确不喜欢的标签不该因为「其他标签还不错」被推上来；
+        - 评分质量只对 `rating_count >= 50`（或票数未知）的作品生效，与列表页 `sort=rating` 同一阈值；
+        - `score` 是**本次结果内归一化到 0–1 的相对分**（除以最高分），不是跨请求可比的绝对分；
+        - 同分按作品评分降序。
+
+        **冷启动**：画像为空（新用户 / 生产行为数据还没积累）时返回全站高分榜，
+        `cold_start: true` 且每项 `reasons` 为空、`score` 为 0——诚实表示「没有个性化成分」。
+        不返回空列表：空的第一屏对新用户最差。
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          description: 返回条数，默认 20、上限 50（超出按 50 截断，不报错）；小于 1 按 20
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+      responses:
+        "200":
+          description: 成功；候选全被排除或库里没有可推荐作品时 `items` 为空数组
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RecommendationPage" }
+        "401": { $ref: "#/components/responses/UnauthorizedSession" }
+        "429": { $ref: "#/components/responses/RateLimitedWithRetry" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
   /api/me/comments:
+    get:
+      tags: [社区]
+      summary: 我发过的评论（需登录，新增）
+      operationId: listMyComments
+      description: |
+        当前登录用户在当前站点发过的评论与回复，最新的在前。
+
+        存在的理由不是「多一个页面」，而是**发出去要能找回来**：改（`PATCH`）和删（`DELETE`）
+        都要先知道 `comment_id`，而客户端除了发布响应那一次，没有别的途径再拿到它。
+
+        口径：
+        - **按登录会话的站点隔离**（`site_key`），不按作品；一个人在两站各有账号时两边不混；
+        - 除作者自己删掉的 `deleted` 外都返回：`published` / `pending`（先审后发待审）/
+          `hidden`（被站主隐藏）。被隐藏或待审的如果直接消失，用户只会觉得「我明明发过」；
+          展示样式由客户端按 `status` 自己处理；
+        - 回复也算（`parent_id` 非空），否则回复完同样找不回来；
+        - 排序 `created_at DESC, id DESC`：`id` 做次级键，同一毫秒发的两条翻页不会重复或漏；
+        - `page_size` 默认 20、上限 50（超出截断不报错，与全站一致）。
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          description: 页码，从 1 起；小于 1 按 1 处理
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: page_size
+          in: query
+          description: 每页条数，上限 50（超出按 50 截断，不报错）
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+      responses:
+        "200":
+          description: 成功；没有评论时 `total` 为 0、`items` 为空数组
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MyCommentPage" }
+        "401": { $ref: "#/components/responses/UnauthorizedSession" }
+        "429": { $ref: "#/components/responses/RateLimitedWithRetry" }
+        "500": { $ref: "#/components/responses/InternalError" }
     post:
       tags: [社区]
       summary: 发表评论（需登录）
@@ -1299,7 +1572,9 @@ paths:
           description: |
             校验失败（`BAD_REQUEST`）；或机器审核判定内容不合规（`CONTENT_REJECTED`，
             此时**不落库**，用户改完可直接重发）。
-          content:/n            application/json:/n              schema: { $ref: "#/components/schemas/ErrorResponse" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -1368,7 +1643,9 @@ paths:
           description: |
             校验失败（`BAD_REQUEST`）；或机器审核判定内容不合规（`CONTENT_REJECTED`，
             此时**不落库**，用户改完可直接重发）。
-          content:/n            application/json:/n              schema: { $ref: "#/components/schemas/ErrorResponse" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -2384,6 +2661,15 @@ components:
       description: 平台内部标识，由 Java 生成，客户端只当不透明字符串使用
       schema: { type: string }
 
+    PersonId:
+      name: person_id
+      in: path
+      required: true
+      description: |
+        来源侧人物标识。现在是裸数字，切 v3 数据集后是 `bgm:123` / `pname:佐藤` / `cname:京都动画`。
+        客户端当不透明字符串，不要解析前缀。
+      schema: { type: string, maxLength: 128 }
+
     AdminId:
       name: admin_id
       in: path
@@ -2617,9 +2903,11 @@ components:
         来源评分。`null` 表示来源没有评分，**不是 0 分**，客户端必须不显示评分区域，
         不得显示 `0.0`。
 
-        `null` 还有第二种含义（#383）：**票数不足**。平台按「评分人数 ≥ 50」决定是否展示——
-        1 个人打 10 分不该显示成 10 分。客户端不需要区分这两种原因，一律渲染成「--」
-        （与来源站 `rating_shown()` 的口径一致）。票数未知时不隐藏（按可信处理）。
+        `null` 还有第二种含义（#383）：**票数不足**。平台按「评分人数 ≥ 50」决定是否展示
+        （与来源站 `rating_shown()` 同口径）——1 个人打 10 分不该显示成 10 分。
+        客户端不需要区分这两种原因，一律按「无评分」处理：默认整块不渲染评分区域，
+        需要占位的场景（如按评分排序）显示「暂无评分」，**不得显示 `0.0`**。
+        票数未知时不隐藏（按可信处理）。
       required: [value, scale, source]
       properties:
         value:
@@ -2908,13 +3196,11 @@ components:
 
             客户端要知道的三件事：
 
-            1. **不要按数值解析**。v3 之前这里是裸数字（`123`），之后是 `bgm:123`，两者不相等；
-               把它当不透明字符串存、比对、去重。
+            1. **不要按数值解析**。v3 之前这里是裸数字（`123`），之后是 `bgm:123`，两者不相等；把它当不透明字符串存、比对、去重。
             2. **`null` 仍会出现**——该条没有任何可用实体。不要因为 `null` 就隐藏这一条 staff/角色记录。
-            3. 键最长 64 字符，**超过的弱关联键平台会丢弃为 `null`**（极少数超长人名）。
-               客户端不要自己截断或补全，按原值透传即可。
+            3. 键最长 128 字符（v3 起 `work_staff`/`work_characters`.person_id 已扩到 `VARCHAR(128)`），超过的弱关联键平台会丢弃为 `null`（极少数超长人名）。客户端不要自己截断或补全，按原值透传即可。
 
-            人物页端点尚未落地：可以拿这个键做本地缓存与去重，但**先不要渲染可点击链接**。
+            人物页端点已落地（B2 / #455）：可以拿这个键做缓存、去重与跳转，但当不透明字符串处理。
 
     WorkCharacter:
       type: object
@@ -2944,11 +3230,9 @@ components:
           type: string
           nullable: true
           description: |
-            声优的人物实体标识。与 `WorkStaff.person_id` **同一套前缀键**（v3 起为 `bgm:<人物 id>`，
-            没有 id 时退化成 `pname:<人名>`）；解析规则见 `WorkStaff.person_id`。
+            声优的人物实体标识。与 `WorkStaff.person_id` **同一套前缀键**（v3 起为 `bgm:<人物 id>`，没有 id 时退化成 `pname:<人名>`）；解析规则见 `WorkStaff.person_id`。
 
-            与 Staff 侧不同，这一侧来源几乎都带 Bangumi 人物 id，实测绝大多数是 `bgm:` 形态。
-            人物页端点落地前，客户端可以先做缓存/去重，但不要渲染可点击链接。
+            与 Staff 侧不同，这一侧来源几乎都带 Bangumi 人物 id，实测绝大多数是 `bgm:` 形态。人物页端点已落地（B2 / #455），客户端可做跳转与去重。
 
     DeletionRequest:
       type: object
@@ -3932,6 +4216,19 @@ components:
         user:
           $ref: "#/components/schemas/User"
 
+    ViewRequest:
+      type: object
+      description: 浏览打点的请求体
+      required: [work_id]
+      properties:
+        work_id:
+          type: string
+          maxLength: 64
+          description: |
+            作品标识（`work_id`，不是来源站的 `source_id`）。
+            超长或格式非法按「作品不存在」处理，返回 `404` 而不是 `400`——与详情接口同一口径。
+          example: W-4zpntdm06c7461r
+
     CollectionUpdateRequest:
       type: object
       description: 只接受「目标状态」，不提供 toggle——切换语义在网络重试时会反向操作
@@ -4006,6 +4303,188 @@ components:
               type: array
               items: { $ref: "#/components/schemas/CollectionItem" }
 
+    PersonDetail:
+      type: object
+      properties:
+        person_id:
+          type: string
+          description: 原样回传请求里的键
+        person_name: { type: string }
+        entity_type:
+          type: string
+          nullable: true
+          description: 来源侧实体类型原值（`person` / `company` / null）
+        works:
+          type: array
+          description: 参与作品，按评分倒序；每部一条，同作品不会重复
+          items: { $ref: "#/components/schemas/PersonCredit" }
+        cast_count:
+          type: integer
+          description: 配音作品数（按作品去重，不含因不可见被过滤掉的）
+        credit_count:
+          type: integer
+          description: 制作作品数（按作品去重，同上）
+
+    PersonCredit:
+      type: object
+      properties:
+        work: { $ref: "#/components/schemas/WorkSummary" }
+        characters:
+          type: array
+          items: { type: string }
+          description: 配音角色名；只做制作时为 `[]`
+        roles:
+          type: array
+          items: { type: string }
+          description: 制作职责（导演 / 脚本 / 原画…，来源原值）；只配音时为 `[]`
+
+    RecommendationPage:
+      type: object
+      description: 个性化推荐结果（#402）。顺序即推荐顺序。
+      required: [items, cold_start, generated_at]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Recommendation" }
+        cold_start:
+          type: boolean
+          description: |
+            true = 画像为空，本次返回的是全站高分榜（`score` 恒 0、`reasons` 为空）。
+            客户端此时应显示「热门推荐」而不是「为你推荐」。
+        generated_at: { type: string, format: date-time }
+
+    Recommendation:
+      type: object
+      required: [work, score, reasons]
+      properties:
+        work: { $ref: "#/components/schemas/WorkSummary" }
+        score:
+          type: number
+          description: |
+            本次结果内归一化到 0–1 的相对分（除以最高分）。**不是跨请求可比的绝对分**——
+            别拿它做「今天比昨天更推荐」这类比较，只用来画列表内的强度条。
+        reasons:
+          type: array
+          description: 命中原因，按权重降序，最多 3 条；冷启动时为空数组
+          items: { $ref: "#/components/schemas/RecommendationReason" }
+
+    RecommendationReason:
+      type: object
+      required: [type, value, weight]
+      properties:
+        type:
+          type: string
+          enum: [tag, type]
+          description: tag = 命中的标签；type = 命中的作品类型
+        value:
+          type: string
+          description: type=tag 时是标签名，type=type 时是作品类型（anime / comic / game / novel）
+        weight:
+          type: number
+          description: 画像里的归一化权重（-1–1），不是最终得分
+
+    PersonaProfile:
+      type: object
+      description: |
+        阿宅画像（#401）。权重按维度各自归一化到 -1–1：最强的类型 / 标签恒为 ±1，
+        没有行为的维度返回空对象而不是一堆 0。
+      required: [type_weights, tag_weights, rating_tendency, recent_active, sample_size, generated_at]
+      properties:
+        type_weights:
+          type: object
+          description: 作品类型 → 权重。负值表示「这个类型我看得少 / 打低分」
+          additionalProperties: { type: number }
+          example: { anime: 1.0, game: 0.4, novel: -0.25 }
+        tag_weights:
+          type: object
+          description: 标签 → 权重。负值来自低分作品，是「不喜欢」的证据
+          additionalProperties: { type: number }
+          example: { 机战: 1.0, 科幻: 0.35, 后宫: -0.6 }
+        rating_tendency:
+          $ref: "#/components/schemas/PersonaRatingTendency"
+        recent_active:
+          type: array
+          description: 最近 30 天有行为的作品 id，按时间倒序去重，最多 20 个
+          items: { type: string }
+        sample_size:
+          type: integer
+          description: 参与聚合的行为行数（浏览 + 收藏 + 点评）。为 0 时其余字段都是空态
+        generated_at: { type: string, format: date-time }
+
+    PersonaRatingTendency:
+      type: object
+      required: [count, dist]
+      properties:
+        mean:
+          type: number
+          nullable: true
+          description: 打分均值（1–10，一位小数）；`count = 0` 时为 null，不给 0.0
+        count:
+          type: integer
+          description: 打过分的点评条数（只写正文不打分的不计）
+        dist:
+          type: array
+          description: 固定 10 个桶，下标 0 对应 1 分、下标 9 对应 10 分；长度不随数据变
+          minItems: 10
+          maxItems: 10
+          items: { type: integer }
+
+    MyCommentPage:
+      allOf:
+        - $ref: "#/components/schemas/Paging"
+        - type: object
+          properties:
+            items:
+              type: array
+              items: { $ref: "#/components/schemas/MyComment" }
+
+    MyComment:
+      type: object
+      properties:
+        comment_id: { type: string }
+        work_id:
+          type: string
+          description: 评论所属作品；作品后来不可见时这个值仍在，只是下面的 `work` 为 null
+        body: { type: string }
+        status:
+          type: string
+          enum: [published, pending, hidden]
+          description: |
+            `published` 正常展示 / `pending` 先审后发待审 / `hidden` 被站主隐藏。
+            作者自己删掉的 `deleted` 不会出现在本列表里。
+        created_at: { type: string, format: date-time, nullable: true }
+        edited_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: 非空表示作者改过正文（站主的隐藏/恢复不算编辑）
+        parent_id:
+          type: string
+          nullable: true
+          description: 非空表示这是一条回复，指向顶层评论 id
+        work:
+          allOf:
+            - $ref: "#/components/schemas/WorkSummary"
+          nullable: true
+          description: |
+            内嵌作品卡片，形状与全站一致，客户端直接喂现有作品卡组件。
+
+            **可能为 null**：作品后来被标成成人或移出收录范围时卡片不再可见，
+            但评论正文照常返回（用户写过的字不能因为作品不可见就消失）。
+            客户端此时渲染「作品不可见」占位，不要让整行消失。
+
+    ArticleRelated:
+      type: object
+      description: |
+        相关资讯（#414）。固定条数的「延伸阅读」，不是分页列表——所以**不给**
+        `total` / `total_pages`，避免客户端以为还能往下翻。
+        `items` 为空表示没有相关资讯，仍是 200。
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/ArticleSummary" }
+
     ArticlePage:
       allOf:
         - $ref: "#/components/schemas/Paging"
@@ -4049,7 +4528,33 @@ components:
             related_work_ids:
               type: array
               items: { type: string }
-              description: 来源站「关联作品」的站点作品 id 原文，不回填本地 work_id
+              description: |
+                来源站「关联作品」区那几个号：**2026-11-05 起是 bangumi subject id**，
+                切流前的存量行仍是站点 content_id（`/contents/{数字}`）。
+
+                两者都是纯数字、从值上分不出来，所以客户端**不得**拿它自己匹配本地作品——
+                要展示关联作品请用 `related_works`（服务端解析、可判语义）。
+                与本地 `work_id`（`W-xxx`）也是两套号，不得拼本地详情路由。
+            related_works:
+              type: array
+              nullable: true
+              description: |
+                来源站「关联作品」区**解析到本地作品**后的列表，元素形状与 `WorkSummary` 一致。
+                客户端只渲染、不自算：卡片的标题 / 封面 / 跳转用 `work_id` 全部取自这里。
+
+                解析（服务端执行）：`related_work_ids` 里的 subject id →
+                `work(source='bangumi' AND source_id=该 subject id AND site_listed=1
+                AND deleted_at IS NULL AND is_adult=0)` → WorkSummary。
+                不建映射表、不做 content_id 换算（2026-11-05 决定，见 #422）：
+                首站 `article_content_links` 实测 100% 能 JOIN 出 `bangumi_id`，映射那一步是多余的。
+                **不得**按 `(source='otaku_site', source_id=…)` 接：那批第二份目录已被 V28
+                全部软删，详情一律 404。
+
+                `null` = 后端尚未启用解析（语义开关 `article.related_ids_semantic` 还停在
+                `content_id`）；`[]` = 已启用但没有可用的本地作品。
+                解析不到 / 已下架 / 不在收录范围 / 成人的一并跳过，顺序沿用来源站原始顺序。
+                客户端对 `null` 与 `[]` 一视同仁：整块不渲染，不显示「暂无关联作品」。
+              items: { $ref: "#/components/schemas/WorkSummary" }
 
     ArticleCategory:
       type: object
@@ -4101,7 +4606,9 @@ components:
         related_work_ids:
           type: array
           items: { type: string }
-          description: 来源站「关联作品」的站点作品 id 原文，透传不回填
+          description: |
+            关联作品的 **bangumi subject id**（数据侧导出时 JOIN 好，不是站点 content_id，见 #422）。
+            导入侧原样透传：不换算、不回填本地 `work_id`。
 
     # -------------------------------------------------------------------------
     # 站主运营后台（Issue #144）

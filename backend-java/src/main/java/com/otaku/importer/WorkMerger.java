@@ -34,6 +34,9 @@ final class WorkMerger {
                 item.titleOriginal(), item.aliasesJson(), item.media(), item.episodes(),
                 item.coverUrl(), null, null, item.tagsJson(),
                 item.ratingValue(), item.ratingScale(), item.ratingSource(),
+                // 评分人数（#383）不来自导入：数据集里没有这一列，它由 scripts/backfill_rating_count.py
+                // 单独回填。新行先留 null = 「还不知道」，展示口径按可信处理。
+                null,
                 source, item.sourceId(), item.sourceUrl(), now, now, null);
     }
 
@@ -84,6 +87,9 @@ final class WorkMerger {
                 titleOriginal, aliasesJson, media, episodes,
                 cover, cacheKey, cachedAt, tagsJson,
                 ratingValue, ratingScale, ratingSource,
+                // 原样带过去：UPDATE 语句根本不写 rating_count（那是回填脚本的领地），
+                // 这里传旧值只是让内存对象与库里的行保持一致，不影响写入。
+                old.ratingCount(),
                 old.source(), old.sourceId(), sourceUrl, old.createdAt(), now, null), true);
     }
 

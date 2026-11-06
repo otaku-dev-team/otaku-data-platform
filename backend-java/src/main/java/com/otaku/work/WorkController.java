@@ -1,5 +1,6 @@
 package com.otaku.work;
 
+import com.otaku.article.dto.ArticleDtos.ArticlePage;
 import com.otaku.work.dto.WorkPageResponse;
 import com.otaku.work.dto.RelatedWorksDto;
 import com.otaku.work.dto.WorkDto;
@@ -50,5 +51,24 @@ public class WorkController {
             @PathVariable("workId") String workId,
             @RequestParam(name = "limit", required = false) Integer limit) {
         return service.related(workId, limit);
+    }
+
+    /**
+     * 相关资讯（#409）：来源站在资讯里手工关联到这部作品的那批，按发布时间倒序。
+     *
+     * <p>路径同样是 {@code /{workId}} 之下的子资源，与 {@code /related} 并列——
+     * 客户端详情页两个区块各拉各的，不必为了拿资讯把作品详情再放大一轮。
+     *
+     * <p>返回形状复用资讯列表（{@code ArticlePage}）：客户端已经有这个模型与分页组件，
+     * 再造一个 {@code WorkArticles} 只会在两边各多一层映射。
+     *
+     * <p>空结果不是 404：作品存在但没人给它关联过资讯，是正常状态。
+     */
+    @GetMapping("/{workId}/articles")
+    public ArticlePage articles(
+            @PathVariable("workId") String workId,
+            @RequestParam(name = "page", defaultValue = "1") int page,
+            @RequestParam(name = "page_size", defaultValue = "20") int pageSize) {
+        return service.relatedArticles(workId, page, pageSize);
     }
 }

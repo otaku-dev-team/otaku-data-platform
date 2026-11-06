@@ -193,6 +193,37 @@ class AuthController extends Notifier<AuthState> {
     state = const AuthState(status: AuthStatus.signedOut);
   }
 
+  /// 注销账号（#378，`DELETE /api/me`）。
+  ///
+  /// 与 [logout] 的两处不同，都是为了不让用户误以为账号已经没了：
+  /// - **失败不吞**：返回异常由页面提示，登录态保持不变，用户还能重试；
+  /// - 只有服务端确认成功后才清本地缓存与会话。
+  Future<ApiException?> deleteAccount() async {
+    if (!state.isSignedIn) return null;
+    state = state.copyWith(submitting: true, clearError: true);
+
+    try {
+      await ref.read(authRepositoryProvider).deleteAccount();
+    } on ApiException catch (error) {
+      if (!ref.mounted) return error;
+      state = state.copyWith(submitting: false, error: error);
+      return error;
+    } on Object {
+      if (!ref.mounted) return null;
+      const failure = ApiException(
+        code: ApiErrorCode.unknown,
+        message: '注销失败，请稍后重试',
+      );
+      state = state.copyWith(submitting: false, error: failure);
+      return failure;
+    }
+
+    await _clearCollectionCache();
+    if (!ref.mounted) return null;
+    state = const AuthState(status: AuthStatus.signedOut);
+    return null;
+  }
+
   // ---- 站点授权登录（W1 账号绑定，方案见 docs/w1-login-dual-entry.md）----
 
   /// 开始授权：生成 state、落盘、打开系统浏览器。

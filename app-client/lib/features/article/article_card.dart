@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -37,6 +38,23 @@ class ArticleCard extends StatelessWidget {
   /// 头条高度：够放两行标题 + 元信息，又不至于占掉半屏。
   static const double _featuredHeight = 204;
 
+  /// 行式卡片的缩略图尺寸。
+  static const double _thumbWidth = 96;
+  static const double _thumbHeight = 64;
+
+  /// 按显示宽度 × 屏幕像素比解码：96 逻辑像素在 3x 屏是 288 物理像素，
+  /// 而来源站首图常常 1200 宽——不压这一档，一张缩略图要按原图解码。
+  int _thumbCacheWidth(BuildContext context) =>
+      (_thumbWidth * MediaQuery.devicePixelRatioOf(context)).round();
+
+  /// 缩略图的占位与失败态：同一个色块。
+  /// 图片本来就不是这条资讯的主体，失败时不该出图标、更不该让整张卡崩掉。
+  Widget _thumbPlaceholder(ColorScheme scheme) => Container(
+    width: _thumbWidth,
+    height: _thumbHeight,
+    color: scheme.surfaceContainerHighest,
+  );
+
   @override
   Widget build(BuildContext context) {
     return Material(
@@ -71,8 +89,15 @@ class ArticleCard extends StatelessWidget {
         value,
     ].join(' · ');
 
+    // 大字号下「两行标题 + 元信息 + 原文链接」会顶出固定高度（Flutter 会裁切，
+    // 严重时画黄黑条纹）。按字体缩放比放大，上限 1.6——再大就不该让一条头条
+    // 吃掉整屏，那时宁可截断标题。
+    final textScale = MediaQuery.textScalerOf(
+      context,
+    ).scale(1).clamp(1.0, 1.6).toDouble();
+
     return SizedBox(
-      height: _featuredHeight,
+      height: _featuredHeight * textScale,
       child: Stack(
         fit: StackFit.expand,
         children: [
@@ -154,25 +179,20 @@ class ArticleCard extends StatelessWidget {
           if (cover != null) ...[
             ClipRRect(
               borderRadius: BorderRadius.circular(AppLayout.innerRadius),
-              child: Image.network(
-                cover,
-                width: 96,
-                height: 64,
+              child: CachedNetworkImage(
+                imageUrl: cover,
+                width: _thumbWidth,
+                height: _thumbHeight,
                 fit: BoxFit.cover,
-                // 资讯首图是来源站的静态文件，加载失败不该让整张卡片崩掉。
-                // 显示占位块而不是图标：图片本来就不是这条资讯的主体。
-                errorBuilder: (context, error, stack) => Container(
-                  width: 96,
-                  height: 64,
-                  color: scheme.surfaceContainerHighest,
-                ),
-                loadingBuilder: (context, child, progress) => progress == null
-                    ? child
-                    : Container(
-                        width: 96,
-                        height: 64,
-                        color: scheme.surfaceContainerHighest,
-                      ),
+                // 走磁盘缓存：冷启动回列表时不再重新下载已经看过的缩略图；
+                // 解码与磁盘都按显示尺寸压一档（见 _thumbCacheWidth）。
+                memCacheWidth: _thumbCacheWidth(context),
+                maxWidthDiskCache: _thumbCacheWidth(context),
+                // 与 CoverImage 用同一个淡入时长：默认 500ms 在长列表里会让人
+                // 觉得「图一直在慢慢浮出来」，滚动时尤其明显。
+                fadeInDuration: const Duration(milliseconds: 160),
+                placeholder: (_, _) => _thumbPlaceholder(scheme),
+                errorWidget: (_, _, _) => _thumbPlaceholder(scheme),
               ),
             ),
             const SizedBox(width: 12),

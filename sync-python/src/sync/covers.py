@@ -487,7 +487,7 @@ def run_backfill(
                 importer = JavaImporter(
                     config.java_base_url,
                     token=config.internal_token,
-                    timeout=config.timeout_seconds,
+                    timeout=config.import_timeout_seconds,
                     max_attempts=config.max_attempts,
                     backoff_seconds=config.backoff_seconds,
                 )

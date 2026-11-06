@@ -142,16 +142,6 @@ public class ScheduleRepository {
                 String.class);
     }
 
-    /** 当前有条目的最新季度；空表或全部缺 season_code 时返回 null。 */
-    public String findLatestSeason() {
-        List<String> rows = jdbc.queryForList(
-                "SELECT season_code FROM schedule WHERE season_code IS NOT NULL"
-                        + " ORDER BY season_code DESC LIMIT 1",
-                new MapSqlParameterSource(),
-                String.class);
-        return rows.isEmpty() ? null : rows.get(0);
-    }
-
     public void insert(ScheduleRecord record) {
         String sql = """
                 INSERT INTO schedule (schedule_id, source, source_id, season_code,

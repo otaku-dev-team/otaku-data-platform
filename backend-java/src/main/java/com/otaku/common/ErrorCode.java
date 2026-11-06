@@ -19,6 +19,8 @@ public enum ErrorCode {
     COMMENT_NOT_FOUND(HttpStatus.NOT_FOUND),
     /** 点评不存在（#240 B2c⑥）。与评论分开：客户端要区分「这条点评没了」和「这条评论没了」。 */
     REVIEW_NOT_FOUND(HttpStatus.NOT_FOUND),
+    /** 人物不存在（B2 人物页 #455）。键是来源侧实体标识，格式非法同样用它。 */
+    PERSON_NOT_FOUND(HttpStatus.NOT_FOUND),
     /** 同一作品已经点评过（一人一条）。客户端应引导去编辑，而不是重新提交。 */
     REVIEW_EXISTS(HttpStatus.CONFLICT),
     /**
@@ -63,6 +65,12 @@ public enum ErrorCode {
      * 「客户端用错」的处理：不打 ERROR、不诱导重试。
      */
     METHOD_NOT_ALLOWED(HttpStatus.METHOD_NOT_ALLOWED),
+    /**
+     * 请求的 Content-Type 不被支持（#345 顺带项）。与 405 同属「客户端用错」：
+     * {@code HttpMediaTypeNotSupportedException} 之前也落到兜底 500 并刷 ERROR 堆栈。
+     * 归到 415，调用方据此知道要改报文格式，而不是重试。
+     */
+    UNSUPPORTED_MEDIA_TYPE(HttpStatus.UNSUPPORTED_MEDIA_TYPE),
     /**
      * 阶段 2 账号绑定（#242）：站点侧暂不可用（超时 / 5xx / 未配置）。
      *

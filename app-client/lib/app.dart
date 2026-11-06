@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/platform_info.dart';
+import 'core/config/app_config.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
 import 'features/auth/site_auth_bootstrap.dart';
@@ -53,7 +54,7 @@ class OtakuApp extends ConsumerWidget {
       child: AppConfigBootstrap(
         child: UpdateBootstrap(
           child: MaterialApp.router(
-            title: 'Otaku',
+            title: AppConfig.appName,
             debugShowCheckedModeBanner: false,
             // 取不到系统配色时（机型不支持 / 桌面端）退回品牌色，
             // 而不是给一套残缺的配色。

@@ -2,6 +2,8 @@ package com.otaku.work;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.otaku.article.ArticleService;
+import com.otaku.article.dto.ArticleDtos.ArticlePage;
 import com.otaku.common.AdultPolicy;
 import com.otaku.common.ApiException;
 import com.otaku.common.LikePattern;
@@ -18,8 +20,11 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -42,11 +47,45 @@ public class WorkService {
     /** 多标签上限：再多就不是"筛选"而是"扫全库"，也挡住把整个词表塞进 URL。 */
     private static final int MAX_TAGS = 10;
 
+    /**
+     * 评分人数下限（#383）：低于它的作品**不展示评分**，排序按 0。
+     *
+     * <p>与来源站 `app/rating.py` 的 `MIN_RATING_COUNT = 50` 同一口径：
+     * 「1 个人打 10 分」不该既显示成 10 分、又占「评分最高」榜首。
+     *
+     * <p>这个数在**两处**存在：这里的常量、`V30__work_rating_sort.sql` 里生成列的
+     * `rating_count < 50`（排序不能读 Java 常量，只能是 SQL 字面量）。
+     * 只改一处会得到「展示藏了、排序还按原分」的错位，`RatingThresholdConsistencyTest`
+     * 读迁移文件比对，改漏了会红。
+     */
+    public static final int MIN_RATING_COUNT = 50;
+
     /** 详情页推荐默认返回 6 条、最多 20 条——与来源站详情页的 6 条对齐，避免一次拉太多。 */
     static final int DEFAULT_RELATED_LIMIT = 6;
     static final int MAX_RELATED_LIMIT = 20;
     /** 只用前 5 个标签做匹配：标签太多的作品用全集去求交集，命中会退化成"全站"。 */
     private static final int MAX_BASIS_TAGS = 5;
+
+    /**
+     * 资讯里的「关联作品」上限（#408）。
+     *
+     * <p>来源站关联作品区最多十来个，给上限只是防一条脏数据塞进几千个 id 把 IN 撑爆。
+     */
+    private static final int MAX_RELATED_WORKS = 30;
+    /**
+     * 批量取摘要时的安全阀。
+     *
+     * <p>人物页可能一两百部作品，**不能**复用 `MAX_RELATED_WORKS * 4`——那个截断是为
+     * 「相关作品」区块定的（最多几十个）。用错的表现不是报错，而是「页面写配音 193 部、
+     * 列表只有 120 张卡」（2026-11-06 生产实测，#455）。2000 只是防止有人把整库 id 传进来。
+     */
+    private static final int MAX_SUMMARY_BATCH = 2000;
+
+    /**
+     * bangumi 来源标识：只有它家的 {@code source_id} 与资讯 {@code related_work_ids}
+     * 是同一套号（subject id）。
+     */
+    private static final String BANGUMI_SOURCE = "bangumi";
 
     private static final TypeReference<List<String>> TAG_LIST = new TypeReference<>() {
     };
@@ -57,18 +96,27 @@ public class WorkService {
     private final CountCache countCache;
     private final WorkRelationRepository relationRepository;
 
+    /** 作品→资讯（#409）走资讯侧的分页与映射，不在这里重写一套。 */
+    private final ArticleService articleService;
+
+    /** 作品卡片的口径（封面代理 / 低票藏分 / 成人标签）只此一份，见该类的类注释。 */
+    private final WorkSummaryMapper summaryMapper;
+
     /** 成人词表可热改，剔除逻辑读它（缺键回落默认值，见 {@link AdultPolicy}）。 */
     private final AdultPolicy adultPolicy;
 
     public WorkService(WorkRepository repository, PublicUrlResolver publicUrlResolver,
                        ObjectMapper objectMapper, CountCache countCache,
-                       WorkRelationRepository relationRepository, AdultPolicy adultPolicy) {
+                       WorkRelationRepository relationRepository, AdultPolicy adultPolicy,
+                       ArticleService articleService, WorkSummaryMapper summaryMapper) {
         this.repository = repository;
         this.publicUrlResolver = publicUrlResolver;
         this.objectMapper = objectMapper;
         this.countCache = countCache;
         this.relationRepository = relationRepository;
         this.adultPolicy = adultPolicy;
+        this.articleService = articleService;
+        this.summaryMapper = summaryMapper;
     }
 
     /**
@@ -186,6 +234,98 @@ public class WorkService {
         return new RelatedWorksDto(basis, items);
     }
 
+    /**
+     * 相关资讯（#409 作品→资讯）。
+     *
+     * <p>「相关」的唯一依据是资讯侧的 {@code related_work_ids}——那是来源站编辑手工挑的
+     * 关联作品，不是我们算出来的相似度。所以这里不召回、不打分、不补位：
+     * 有就按时间倒序给，没有就空。
+     *
+     * <p>只对 {@code source='bangumi'} 的作品成立：{@code related_work_ids} 里存的是
+     * bangumi subject id，其它来源的 {@code source_id} 是另一套号，拿去匹配只会撞号
+     * （V28 实测两套号按数值 JOIN 得 3,015 条假匹配）。非 bangumi 直接返回空，
+     * 不查库。
+     *
+     * <p>作品不存在 / 未收录 / 成人内容仍然 404，与详情、同标签推荐一致。
+     */
+    public ArticlePage relatedArticles(String workId, int page, int pageSize) {
+        WorkRecord current = requireWork(workId);
+        String subjectId = BANGUMI_SOURCE.equalsIgnoreCase(current.source()) ? current.sourceId() : null;
+        return articleService.listForWorkSubject(subjectId, page, pageSize);
+    }
+
+    /**
+     * 按 bangumi subject id 批量取作品摘要，**保留传入顺序**（资讯「关联作品」用，#408）。
+     *
+     * <p>顺序是内容的一部分：来源站编辑把哪部放第一，就是他想让人先看到哪部；按 id 或
+     * 按库里返回顺序重排会让这个意图丢失。所以这里按入参逐个取，取不到的直接跳过
+     * （下架 / 成人 / 未收录 / 号不存在都在 {@link WorkRepository#findBySourceIds} 里滤掉了）。
+     *
+     * <p>上限 30：来源站的关联作品区最多十来个，给一个上限只是防止某天一条脏数据里
+     * 塞进几千个 id 把 IN 撑爆。
+     */
+    public List<WorkSummaryDto> summariesBySubjectIds(List<String> subjectIds) {
+        if (subjectIds == null || subjectIds.isEmpty()) {
+            return List.of();
+        }
+        List<String> wanted = subjectIds.stream()
+                .filter(java.util.Objects::nonNull)
+                .map(String::trim)
+                .filter(id -> !id.isEmpty())
+                .distinct()
+                .limit(MAX_RELATED_WORKS)
+                .toList();
+        if (wanted.isEmpty()) {
+            return List.of();
+        }
+
+        Map<String, WorkSummaryDto> bySourceId = new HashMap<>();
+        for (WorkRecord record : repository.findBySourceIds(BANGUMI_SOURCE, wanted)) {
+            bySourceId.putIfAbsent(record.sourceId(), toSummary(record));
+        }
+
+        List<WorkSummaryDto> ordered = new ArrayList<>(wanted.size());
+        for (String id : wanted) {
+            WorkSummaryDto summary = bySourceId.get(id);
+            if (summary != null) {
+                ordered.add(summary);
+            }
+        }
+        return ordered;
+    }
+
+    /**
+     * 按对外 {@code work_id} 批量取作品摘要（我的评论内嵌卡片用，#449）。
+     *
+     * <p>与 {@link #summariesBySubjectIds} 的区别只在键：这边是平台自己发的 {@code W-xxx}，
+     * 那边是来源站 subject id。返回 Map 而不是 List——评论列表的顺序由评论时间决定，
+     * 作品卡片只是每行的附属信息，不该反过来影响行序。
+     *
+     * <p>查不到的作品（成人被挡 / 不在收录范围）**不出现在 Map 里**，由调用方决定怎么展示
+     * （我的评论那边把 {@code work} 置 null，保留评论正文——用户写过的字不能因为作品不可见就消失）。
+     */
+    public Map<String, WorkSummaryDto> summariesByWorkIds(List<String> workIds) {
+        if (workIds == null || workIds.isEmpty()) {
+            return Map.of();
+        }
+        List<String> wanted = workIds.stream()
+                .filter(java.util.Objects::nonNull)
+                .map(String::trim)
+                .filter(id -> !id.isEmpty())
+                .distinct()
+                .limit(MAX_SUMMARY_BATCH)
+                .toList();
+        if (wanted.isEmpty()) {
+            return Map.of();
+        }
+
+        Map<String, WorkSummaryDto> byWorkId = new HashMap<>();
+        for (WorkRecord record : repository.findByWorkIds(wanted)) {
+            byWorkId.putIfAbsent(record.workId(), toSummary(record));
+        }
+        return byWorkId;
+    }
+
     /** 详情与相关推荐共用的「取作品或 404」逻辑。 */
     private WorkRecord requireWork(String workId) {
         if (workId == null || workId.isBlank() || workId.length() > MAX_WORK_ID_LENGTH) {
@@ -234,34 +374,20 @@ public class WorkService {
 
     /** 封面地址永远指向本服务，客户端不直连来源站（契约 2.1、8.1）。 */
     public String coverUrl(WorkRecord record) {
-        return coverUrl(record.workId(), record.coverSourceUrl());
+        return summaryMapper.coverUrl(record);
     }
 
     /** 供收藏列表等其它视图复用：有来源地址才给平台代理地址。 */
     public String coverUrl(String workId, String coverSourceUrl) {
-        if (coverSourceUrl == null) {
-            return null;
-        }
-        return publicUrlResolver.baseUrl() + "/api/covers/" + workId;
+        return summaryMapper.coverUrl(workId, coverSourceUrl);
     }
 
     private WorkSummaryDto toSummary(WorkRecord record) {
-        return new WorkSummaryDto(
-                record.workId(),
-                record.workType(),
-                record.title(),
-                record.releaseYear(),
-                coverUrl(record),
-                parseTags(record.tagsJson()),
-                toRating(record),
-                record.source());
+        return summaryMapper.toSummary(record);
     }
 
-    private static SourceRatingDto toRating(WorkRecord record) {
-        if (record.ratingValue() == null) {
-            return null;
-        }
-        return new SourceRatingDto(record.ratingValue(), record.ratingScale(), record.ratingSource());
+    private SourceRatingDto toRating(WorkRecord record) {
+        return summaryMapper.rating(record);
     }
 
     /**
@@ -297,16 +423,7 @@ public class WorkService {
      * 剔除后只剩成人词的作品返回 {@code []}，与「来源明确没给标签」在展示上等价。
      */
     private List<String> parseTags(String tagsJson) {
-        if (tagsJson == null) {
-            return null;
-        }
-        try {
-            List<String> tags = objectMapper.readValue(tagsJson, TAG_LIST);
-            return tags.isEmpty() ? List.of() : adultPolicy.strip(tags);
-        } catch (Exception ex) {
-            log.warn("tags 字段不是合法 JSON，按未提供处理：{}", ex.getMessage());
-            return null;
-        }
+        return summaryMapper.tags(tagsJson);
     }
 
     private static String normalizeType(String typeParam) {

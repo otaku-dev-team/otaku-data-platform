@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/config/app_config.dart';
+import '../../shared/widgets/brand_mark.dart';
 import '../update/update_controller.dart';
 import '../update/update_dialog.dart';
 import 'settings_widgets.dart';
@@ -15,6 +16,8 @@ class AboutSettingsPage extends ConsumerWidget {
     return const SettingsSubPage(
       title: '关于',
       children: [
+        SettingsSectionTitle('品牌'),
+        _BrandCard(),
         SettingsSectionTitle('版本'),
         _VersionCard(),
         SettingsSectionTitle('数据来源'),
@@ -80,6 +83,49 @@ class _VersionCard extends ConsumerWidget {
     }
 
     await showUpdateDialog(context, ref, manifest);
+  }
+}
+
+/// 品牌：站名、站点键、归属方。
+///
+/// 站点键平时不该出现在界面文案里，这里破例写出来：换站交付时最常见的误装
+/// 就是装成上一家的包，而两个包的界面在「关于」页之外几乎一样。
+class _BrandCard extends StatelessWidget {
+  const _BrandCard();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final soft = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+
+    // 站点键与归属方都可能没注入（编辑器里直跑），空字符串就别硬摆出来，
+    // 否则界面上会留一个空白的右对齐文本、或一句「归属于 ；」。
+    final siteId = AppConfig.siteId;
+    final company = AppConfig.brandCompany;
+
+    return SettingsCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const BrandMark(size: 40),
+              const Spacer(),
+              if (siteId.isNotEmpty) Text(siteId, style: soft),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            company.isEmpty
+                ? '作品与资讯的版权归来源站与原权利人所有。'
+                : '客户端与数据归属 $company；作品与资讯的版权归来源站与原权利人所有。',
+            style: soft?.copyWith(height: 1.5),
+          ),
+        ],
+      ),
+    );
   }
 }
 

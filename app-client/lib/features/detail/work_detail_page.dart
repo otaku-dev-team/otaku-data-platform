@@ -4,14 +4,18 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/network/api_exception.dart';
+import '../../core/ui/feedback.dart';
 import '../../core/platform_info.dart';
 import '../../core/router/route_paths.dart';
 import '../../core/theme/app_layout.dart';
+import '../../core/theme/app_theme.dart';
+import '../../core/theme/design_tokens.dart';
 import '../../data/models/collection_entry.dart';
 import '../../data/models/work.dart';
 import '../../data/repositories/work_repository.dart';
 import '../../shared/widgets/collection_status_menu.dart';
 import '../../shared/widgets/cover_image.dart';
+import '../../shared/widgets/hero_cover.dart';
 import '../../shared/widgets/desktop_shortcuts.dart';
 import '../../shared/widgets/error_state.dart';
 import '../../shared/widgets/offline_notice.dart';
@@ -24,6 +28,7 @@ import '../auth/auth_controller.dart';
 import '../contents/contents_controller.dart';
 import '../recent/recent_views_controller.dart';
 import 'related_works_section.dart';
+import 'work_related_articles_section.dart';
 import 'work_collection_controller.dart';
 import 'work_credits_section.dart';
 import 'work_detail_controller.dart';
@@ -42,9 +47,12 @@ import 'work_detail_controller.dart';
 /// 两块都是「有才有」——动画里约三分之二的作品没有，那是数据事实不是缺陷，
 /// 所以空态是不渲染整块，而不是挂一个「暂无」。
 class WorkDetailPage extends ConsumerStatefulWidget {
-  const WorkDetailPage({super.key, required this.workId});
+  const WorkDetailPage({super.key, required this.workId, this.heroTag});
 
   final String workId;
+
+  /// 从列表点进来时带的封面转场标签（`?hero=`）。深链接进来时为 null。
+  final String? heroTag;
 
   @override
   ConsumerState<WorkDetailPage> createState() => _WorkDetailPageState();
@@ -113,6 +121,10 @@ class _WorkDetailPageState extends ConsumerState<WorkDetailPage> {
 
     return DesktopShortcuts(
       child: Scaffold(
+        bottomNavigationBar:
+            !PlatformInfo.isDesktop && work != null && !fetched.hasError
+            ? _MobileDetailActions(work: work.value)
+            : null,
         appBar: AppBar(
           title: const Text('作品详情'),
           actions: [
@@ -131,7 +143,10 @@ class _WorkDetailPageState extends ConsumerState<WorkDetailPage> {
             const SizedBox(width: 4),
           ],
         ),
-        body: Center(
+        body: Align(
+          alignment: PlatformInfo.isDesktop
+              ? Alignment.center
+              : Alignment.topCenter,
           child: ConstrainedBox(
             constraints: const BoxConstraints(
               maxWidth: AppLayout.detailMaxWidth,
@@ -197,7 +212,11 @@ class _WorkDetailPageState extends ConsumerState<WorkDetailPage> {
     }
 
     final resolved = fetched.requireValue;
-    final body = _DetailBody(work: resolved.value, onTag: _openTag);
+    final body = _DetailBody(
+      work: resolved.value,
+      onTag: _openTag,
+      heroTag: widget.heroTag,
+    );
     if (!resolved.fromCache) return body;
 
     // 离线回退：内容照常展示，但顶部要说明这是上次同步的。
@@ -223,16 +242,19 @@ class _WorkDetailPageState extends ConsumerState<WorkDetailPage> {
 }
 
 class _DetailBody extends StatelessWidget {
-  const _DetailBody({required this.work, required this.onTag});
+  const _DetailBody({required this.work, required this.onTag, this.heroTag});
 
   final Work work;
+
+  /// 封面转场标签，透传给头图；null = 不做转场。
+  final String? heroTag;
 
   /// 点标签时回调，一路传到 [_Headline] 里的标签行。
   final ValueChanged<String> onTag;
 
   @override
   Widget build(BuildContext context) {
-    // 手机端：整屏宽的沉浸式头图，下面才是标签 / 收藏 / 简介。
+    // 手机端：整屏宽的沉浸式头图，下面是标签与简介，收藏操作固定在底部。
     // 桌面端保持原来的「封面 + 标题/信息」两栏（窄窗口退化为单列）——
     // 桌面首屏更看重信息密度，不套头图。
     if (!PlatformInfo.isDesktop) {
@@ -240,7 +262,7 @@ class _DetailBody extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _DetailHero(work: work),
+            _DetailHero(work: work, heroTag: heroTag),
             Padding(
               padding: const EdgeInsets.all(AppLayout.pagePadding),
               child: Column(
@@ -252,6 +274,7 @@ class _DetailBody extends StatelessWidget {
                   // 那是溯源和排障用的，普通用户看完这部作品并不需要知道
                   // 它在库里叫什么编号。需要时从接口和日志里查。
                   RelatedWorksSection(workId: work.workId),
+                  WorkRelatedArticlesSection(workId: work.workId),
                 ],
               ),
             ),
@@ -290,7 +313,9 @@ class _DetailBody extends StatelessWidget {
                 children: [
                   cover,
                   const SizedBox(width: 28),
-                  Expanded(child: _Headline(work: work, onTag: onTag)),
+                  Expanded(
+                    child: _Headline(work: work, onTag: onTag),
+                  ),
                 ],
               );
             },
@@ -299,6 +324,7 @@ class _DetailBody extends StatelessWidget {
           // 相关推荐：正文之后唯一的延伸阅读。收录信息已不再展示（见手机端
           // 那段注释）。拿不到或没标签时组件自己渲染成 SizedBox.shrink()。
           RelatedWorksSection(workId: work.workId),
+          WorkRelatedArticlesSection(workId: work.workId),
         ],
       ),
     );
@@ -378,10 +404,12 @@ class _DetailInfo extends StatelessWidget {
           TagChips(tags: tags, maxVisible: 10, onTag: onTag),
           const SizedBox(height: 16),
         ],
-        _CollectBar(work: work),
-        const SizedBox(height: 20),
-        const Divider(height: 1),
-        const SizedBox(height: 16),
+        if (PlatformInfo.isDesktop) ...[
+          _CollectBar(work: work),
+          const SizedBox(height: 20),
+          const Divider(height: 1),
+          const SizedBox(height: 16),
+        ],
         // 别名 / 制作公司：两个都是"有才有"的元信息，缺失时整行不出现。
         //
         // 别名 2026-10-29 起已是干净的字符串数组（Issue #273 把空壳 `{\n}`
@@ -405,7 +433,8 @@ class _DetailInfo extends StatelessWidget {
           const SizedBox(height: 20),
           StaffSection(staff: staff),
         ],
-        if (work.characters case final characters? when characters.isNotEmpty) ...[
+        if (work.characters case final characters?
+            when characters.isNotEmpty) ...[
           const SizedBox(height: 20),
           CharacterSection(characters: characters),
         ],
@@ -416,15 +445,15 @@ class _DetailInfo extends StatelessWidget {
 
 /// 手机端沉浸式头图：封面铺满、底部压暗，海报 + 标题 + 元信息浮在上面。
 ///
-/// 只用于手机端（桌面端仍是「封面 + 标题」的常规两栏）。标题最多三行，
-/// 长标题不会把海报挤出屏幕；无封面时 `CoverImage` 的占位 + 压暗层
-/// 仍然保证白字可读。
+/// 只用于手机端（桌面端仍是「封面 + 标题」的常规两栏）。长标题完整展开，
+/// 窄屏与大字号改用上下排列；无封面时使用深色占位保证白字可读。
 class _DetailHero extends StatelessWidget {
-  const _DetailHero({required this.work});
+  const _DetailHero({required this.work, this.heroTag});
 
   final Work work;
 
-  static const double _height = 300;
+  /// 封面转场标签；与列表那张卡的 tag 一致才配得上，见 `HeroCover`。
+  final String? heroTag;
 
   @override
   Widget build(BuildContext context) {
@@ -439,79 +468,127 @@ class _DetailHero extends StatelessWidget {
       if (rating != null) '★ ${rating.value.toStringAsFixed(1)}',
     ].join(' · ');
 
-    return SizedBox(
-      height: _height,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          CoverImage(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final stacked =
+            constraints.maxWidth < 360 ||
+            MediaQuery.textScalerOf(context).scale(1) > 1.3;
+        final poster = HeroCover(
+          tag: heroTag,
+          child: CoverImage(
             url: work.coverUrl,
-            width: double.infinity,
-            height: double.infinity,
-            radius: 0,
+            width: Space.s12 * 2,
+            height: Space.s12 * 3,
+            radius: Radii.md,
             placeholderLabel: firstChar,
-            // 整屏背景用深色渐变占位，斜纹只在下面那张小海报上用。
-            placeholderStyle: CoverPlaceholderStyle.hero,
+            source: work.source,
           ),
-          // 底部压暗：白字在浅色封面上也能读。
-          const DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Color(0x000B1620), Color(0xF20B1620)],
-                stops: [0.2, 1],
+        );
+        final headline = Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              work.title,
+              key: const ValueKey('detail-hero-title'),
+              style: theme.textTheme.headlineSmall?.copyWith(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+                height: 1.25,
               ),
             ),
-          ),
-          Positioned(
-            left: AppLayout.pagePadding,
-            right: AppLayout.pagePadding,
-            bottom: 16,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(AppLayout.innerRadius),
-                  child: CoverImage(
-                    url: work.coverUrl,
-                    width: 86,
-                    height: 129,
-                    radius: 0,
-                    placeholderLabel: firstChar,
-                    source: work.source,
-                  ),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        work.title,
-                        maxLines: 3,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.headlineSmall?.copyWith(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w700,
-                          height: 1.25,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        meta,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: Colors.white.withValues(alpha: 0.85),
-                        ),
-                      ),
+            const SizedBox(height: Space.s2),
+            Text(
+              meta,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: Colors.white.withValues(alpha: 0.85),
+              ),
+            ),
+          ],
+        );
+        // 内容参与头图高度计算：长标题和系统大字号向下展开，不被固定高度裁切。
+        return Stack(
+          alignment: Alignment.bottomLeft,
+          children: [
+            Positioned.fill(
+              child: CoverImage(
+                url: work.coverUrl,
+                width: double.infinity,
+                height: double.infinity,
+                radius: 0,
+                placeholderLabel: firstChar ?? '·',
+                placeholderStyle: CoverPlaceholderStyle.hero,
+              ),
+            ),
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Palette.brand900.withValues(alpha: 0.2),
+                      Palette.brand900.withValues(alpha: 0.95),
                     ],
                   ),
                 ),
-              ],
+              ),
             ),
+            ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: Space.s12 * 6),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  Space.s4,
+                  Space.s8,
+                  Space.s4,
+                  Space.s5,
+                ),
+                child: stacked
+                    ? Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          poster,
+                          const SizedBox(height: Space.s4),
+                          headline,
+                        ],
+                      )
+                    : Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          poster,
+                          const SizedBox(width: Space.s4),
+                          Expanded(child: headline),
+                        ],
+                      ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// 收藏入口常驻底部，读到简介或制作人员时也无需滚回顶部。
+class _MobileDetailActions extends StatelessWidget {
+  const _MobileDetailActions({required this.work});
+  final Work work;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      key: const ValueKey('detail-mobile-actions'),
+      color: AppTheme.cardColor(context),
+      shape: Border(top: BorderSide(color: AppTheme.borderColor(context))),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: Space.s4,
+            vertical: Space.s2,
           ),
-        ],
+          child: _CollectBar(key: ValueKey(work.workId), work: work),
+        ),
       ),
     );
   }
@@ -526,7 +603,7 @@ class _DetailHero extends StatelessWidget {
 /// - 查询失败 → 说明失败 + 重试，不假装「没收藏」（C7）；
 /// - 已收藏 → 按钮变「已收藏」，旁边出现状态选择器。
 class _CollectBar extends ConsumerStatefulWidget {
-  const _CollectBar({required this.work});
+  const _CollectBar({super.key, required this.work});
 
   final Work work;
 
@@ -540,18 +617,43 @@ class _CollectBarState extends ConsumerState<_CollectBar> {
   Future<void> _run(
     Future<ApiException?> Function() action, {
     String? successMessage,
+    bool confirmRemoval = false,
   }) async {
     if (_busy) return;
     setState(() => _busy = true);
-    final error = await action();
-    if (!mounted) return;
-    setState(() => _busy = false);
-
-    final message = error?.userMessage ?? successMessage;
-    if (message == null) return;
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(message)));
+    try {
+      if (confirmRemoval) {
+        final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('取消收藏？'),
+            content: Text('将「${widget.work.title}」移出收藏，观看状态也会清除。'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('保留收藏'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('取消收藏'),
+              ),
+            ],
+          ),
+        );
+        if (!mounted || confirmed != true) return;
+      }
+      final error = await action();
+      if (!mounted) return;
+      // 成功才震：失败还震一下，用户会以为"操作生效了"，然后看到错误提示。
+      if (error == null) Haptics.done();
+      final message = error?.userMessage ?? successMessage;
+      if (message == null) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(message)));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   Future<void> _toggle({required bool collected}) {
@@ -560,6 +662,7 @@ class _CollectBarState extends ConsumerState<_CollectBar> {
           .read(workCollectionProvider(widget.work.workId).notifier)
           .toggle(widget.work),
       successMessage: collected ? '已取消收藏' : '已加入收藏',
+      confirmRemoval: collected && !PlatformInfo.isDesktop,
     );
   }
 
@@ -603,16 +706,22 @@ class _CollectBarState extends ConsumerState<_CollectBar> {
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
           OutlinedButton.icon(
+            style: PlatformInfo.isDesktop
+                ? null
+                : OutlinedButton.styleFrom(
+                    minimumSize: const Size(0, Space.s12),
+                  ),
             onPressed: _signInThenCollect,
             icon: const Icon(Icons.bookmark_add_outlined, size: 18),
             label: const Text('登录后收藏'),
           ),
-          Text(
-            '收藏会同步到手机和桌面',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
+          if (PlatformInfo.isDesktop)
+            Text(
+              '收藏会同步到手机和桌面',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
             ),
-          ),
         ],
       );
     }
@@ -656,6 +765,9 @@ class _CollectBarState extends ConsumerState<_CollectBar> {
         Tooltip(
           message: collected ? '取消收藏' : '加入收藏',
           child: FilledButton.tonalIcon(
+            style: PlatformInfo.isDesktop
+                ? null
+                : FilledButton.styleFrom(minimumSize: const Size(0, Space.s12)),
             onPressed: _busy ? null : () => _toggle(collected: collected),
             icon: Icon(
               collected
@@ -667,10 +779,15 @@ class _CollectBarState extends ConsumerState<_CollectBar> {
           ),
         ),
         if (collected)
-          CollectionStatusMenu(
-            status: collection.status,
-            enabled: !_busy,
-            onSelected: _setStatus,
+          ConstrainedBox(
+            constraints: BoxConstraints(
+              minHeight: PlatformInfo.isDesktop ? 0 : Space.s12,
+            ),
+            child: CollectionStatusMenu(
+              status: collection.status,
+              enabled: !_busy,
+              onSelected: _setStatus,
+            ),
           ),
       ],
     );
@@ -697,7 +814,6 @@ class _CollectPlaceholder extends StatelessWidget {
     );
   }
 }
-
 
 /// 简介。`null` → "暂无简介"；超长 → 折叠 8 行，可展开。
 class _SummaryBlock extends StatefulWidget {

@@ -46,6 +46,11 @@ python -m devkit serve --port 8787    # 本地看板（失败卡片、慢用例�
 
 CI（`.github/workflows/`）按栈跑全量。**本地选跑过了不等于 CI 会过**，别把 devtest 当 CI 用。
 
+改 `scripts/` 或 `devkit/` 会触发 `scripts.yml`：只做 `py_compile`（全部 .py）+ `devkit/tests` 单测
+（约 3 秒，不依赖 flutter/maven/docker）。它不是「脚本能跑」的证明——需要真库/真站的脚本仍要在联调机
+跑一次（例如 `seed_mock_users.py` 的 `--dry-run` 与 `verify_related_ids.py` 的预检）。
+见 #431 / #448 两次「脚本改动零 CI」的教训。
+
 ## 部署后回归
 
 ```bash
@@ -55,6 +60,12 @@ python scripts/smoke.py --base-url <地址>          # 对比，退出码 0 无�
 
 只发 GET。有回归时会回溯 `scripts/smoke-history/`（每次跑自动留一条，20 份上限、不入库），
 直接给出「自哪一次起、上次正常是哪一次」。`--json` 的 stdout 是纯 JSON，可直接喂给脚本。
+
+## 巡检：不再作为待办
+
+`deploy/monitor.sh`、告警通道、`ALERT_WEBHOOK` 这类巡检相关的事**都不用再考虑**：
+不主动核查、不写进 `docs/` 下的文档、不作为待办或提醒列出来。
+除非用户明确要求恢复，否则一律不提；已有的巡检章节保持原样，不跟着改。
 
 ## 提交前的硬约束
 

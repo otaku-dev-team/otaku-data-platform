@@ -75,8 +75,11 @@ class RelatedWorksSection extends ConsumerWidget {
             primary: false,
             itemCount: data.items.length,
             separatorBuilder: (_, _) => const SizedBox(width: 10),
-            itemBuilder: (context, index) =>
-                CompactWorkCard(work: data.items[index], width: _cardWidth),
+            itemBuilder: (context, index) => CompactWorkCard(
+              work: data.items[index],
+              width: _cardWidth,
+              heroTag: 'related-$index',
+            ),
           ),
         ),
       ],

@@ -85,6 +85,22 @@ class RemoteAuthDataSource implements AuthDataSource {
   ///
   /// 仓储层的 `restoreSession` 写的是 `on ApiException`，网络错误若以
   /// `DioException` 的形态穿透出去，那一段的「断网不清令牌」分支就永远进不去。
+  @override
+  Future<void> deleteAccount(String token) async {
+    // 注意路径不是 `_mePath`：注销是 `DELETE /api/me`（账号资源本体），
+    // 而 `_mePath` 是 `/api/auth/me`（校验令牌）。
+    // 契约：成功后 204，本机与其他所有设备的会话立刻失效；已注销再调用是 401。
+    // 这里不吞异常——注销失败要让用户看见。
+    await _call(
+      () => _dio.delete<void>(
+        '/api/me',
+        options: Options(
+          headers: <String, dynamic>{'Authorization': 'Bearer $token'},
+        ),
+      ),
+    );
+  }
+
   static Future<T> _call<T>(Future<T> Function() run) async {
     try {
       return await run();

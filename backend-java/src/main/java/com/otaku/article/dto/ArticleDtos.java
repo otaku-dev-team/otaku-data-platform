@@ -1,5 +1,7 @@
 package com.otaku.article.dto;
 
+import com.otaku.work.dto.WorkSummaryDto;
+
 import java.util.List;
 
 /**
@@ -8,7 +10,7 @@ import java.util.List;
  * <p>列表项与详情刻意分开：列表不带 {@code body}（正文可能几百 KB，
  * 一页 20 条就是几 MB，客户端列表页根本用不上），也不带
  * {@code related_work_ids}（客户端第一版不用，见 V9 迁移文件头）。
- * 详情才给全文。
+ * 详情才给全文与关联作品信息。
  */
 public final class ArticleDtos {
 
@@ -56,8 +58,28 @@ public final class ArticleDtos {
     }
 
     /**
-     * 详情。比列表多 {@code body}（正文纯文本，一行一段）
-     * 与 {@code relatedWorkIds}（来源站关联作品 id 原文）。
+     * 相关资讯（#414）。
+     *
+     * <p>为什么不是 {@code ArticlePage}：这是固定条数的「延伸阅读」，不是分页列表——
+     * 给 `total` / `total_pages` 会让客户端以为还能翻页。`items` 为空表示没有相关资讯
+     * （照样 200，与「这个分类没数据」同口径）。
+     */
+    public record ArticleRelated(
+            List<ArticleSummary> items
+    ) {
+    }
+
+    /**
+     * 详情。比列表多 {@code body}（正文纯文本，一行一段）、
+     * {@code relatedWorkIds}（来源站关联作品 id）与 {@code relatedWorks}（解析到本地作品后的列表）。
+     *
+     * <p>{@code relatedWorkIds} 里的值 2026-11-05 起是 <b>bangumi subject id</b>
+     * （数据侧导出时 JOIN 好，见 #422）；切流前的存量行仍是站点 content_id。
+     * 两者都是纯数字、从值上分不出来，所以客户端**一律不得**拿它自己匹配本地作品，
+     * 卡片所需的一切字段都在 {@code relatedWorks} 里。
+     *
+     * <p>{@code relatedWorks} 由服务端解析：{@code null} = 语义开关还没切（不解析），
+     * {@code []} = 已切但没有可用的本地作品。两者客户端都整块不渲染。
      */
     public record ArticleDetail(
             String articleId,
@@ -70,8 +92,21 @@ public final class ArticleDtos {
             String sourceUrl,
             String coverUrl,
             List<String> tags,
-            List<String> relatedWorkIds
+            List<String> relatedWorkIds,
+            List<WorkSummaryDto> relatedWorks
     ) {
+
+        /**
+         * 填上解析后的关联作品（#408）。
+         *
+         * <p>解析要查 work 表、还要按收录范围与成人口径过滤，那套逻辑只在作品侧有一份
+         * （{@code WorkService.summariesBySubjectIds}）。资讯这边不复制一份口径——
+         * 复制出来的第二份早晚和第一份漂移，而漂移的表现是「详情页漏了某类作品」，不报错。
+         */
+        public ArticleDetail withRelatedWorks(List<WorkSummaryDto> resolved) {
+            return new ArticleDetail(articleId, title, summary, body, category, publishedAt,
+                    sourceName, sourceUrl, coverUrl, tags, relatedWorkIds, resolved);
+        }
     }
 
     /** 分类筛选项，附该分类的条数。 */

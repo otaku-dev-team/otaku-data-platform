@@ -32,8 +32,14 @@ public class TagRepository {
 
     private final NamedParameterJdbcTemplate jdbc;
 
-    public TagRepository(NamedParameterJdbcTemplate jdbc) {
+    /** 与 {@link WorkRepository} 同一个开关：词表不 JOIN work，只能靠 work_tag 上的冗余列过滤。 */
+    private final boolean siteScopeEnabled;
+
+    public TagRepository(NamedParameterJdbcTemplate jdbc,
+                         @org.springframework.beans.factory.annotation.Value(
+                                 "${app.work.site-scope.enabled:true}") boolean siteScopeEnabled) {
         this.jdbc = jdbc;
+        this.siteScopeEnabled = siteScopeEnabled;
     }
 
     /**
@@ -46,6 +52,10 @@ public class TagRepository {
     public List<TagDtos.TagItem> top(String workType, int limit) {
         StringBuilder sql = new StringBuilder(
                 "SELECT tag AS name, COUNT(*) AS work_count FROM work_tag WHERE is_adult = 0");
+        // 未收录作品的标签不计数：否则词表会冒出「搜得到这个标签、点进去 0 部」的词。
+        if (siteScopeEnabled) {
+            sql.append(" AND site_listed = 1");
+        }
         MapSqlParameterSource params = new MapSqlParameterSource().addValue("limit", limit);
         if (workType != null) {
             sql.append(" AND work_type = :workType");

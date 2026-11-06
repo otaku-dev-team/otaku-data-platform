@@ -7,6 +7,7 @@ import '../../core/theme/app_layout.dart';
 import '../../core/theme/library_density.dart';
 import '../../data/models/work_summary.dart';
 import '../../shared/widgets/cover_image.dart';
+import '../../shared/widgets/hero_cover.dart';
 import '../../shared/widgets/poster_card.dart';
 import '../../shared/widgets/rating_badge.dart';
 import '../../shared/widgets/release_year_text.dart';
@@ -26,6 +27,7 @@ class WorkCard extends ConsumerWidget {
     required this.work,
     this.showMissingRating = false,
     this.density = LibraryDensity.comfort,
+    this.heroTag,
   });
 
   final WorkSummary work;
@@ -40,6 +42,9 @@ class WorkCard extends ConsumerWidget {
   /// 两处必须一起改，否则卡片要么被裁、要么底下留白。
   final LibraryDensity density;
 
+  /// 封面转场标签（屏内唯一，由网格按 index 拼）。null = 不做转场。
+  final String? heroTag;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
@@ -53,92 +58,103 @@ class WorkCard extends ConsumerWidget {
         : work.title.characters.first;
 
     return PosterCardShell(
-      onTap: () => context.push(RoutePaths.workDetail(work.workId)),
+      onTap: () => context.push(
+        RoutePaths.workDetail(work.workId, heroTag: heroTag),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           AspectRatio(
             aspectRatio: AppLayout.posterAspect,
-            child: CoverImage(
-              url: work.coverUrl,
-              width: double.infinity,
-              height: double.infinity,
-              radius: 0,
-              placeholderLabel: firstChar,
-              source: work.source,
+            child: HeroCover(
+              tag: heroTag,
+              child: CoverImage(
+                url: work.coverUrl,
+                width: double.infinity,
+                height: double.infinity,
+                radius: 0,
+                placeholderLabel: firstChar,
+                source: work.source,
+              ),
             ),
           ),
           if (density != LibraryDensity.coversOnly)
-            SizedBox(
-              height: density.bodyHeight * textScale,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // 固定行高：一行标题的卡片不会比两行的矮一截。
-                    // 高度跟着字号走，理由同上。
-                    SizedBox(
-                      height: (density == LibraryDensity.compact ? 20 : 40) * textScale,
-                      child: Text(
-                        work.title,
-                        maxLines: density == LibraryDensity.compact ? 1 : 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.w600,
-                          height: 1.35,
+            LayoutBuilder(
+              builder: (context, constraints) => SizedBox(
+                height: AppLayout.gridCardBodyHeight(
+                  cardWidth: constraints.maxWidth,
+                  density: density,
+                  textScale: textScale,
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // 固定行高：一行标题的卡片不会比两行的矮一截。
+                      // 高度跟着字号走，理由同上。
+                      SizedBox(
+                        height:
+                            (density == LibraryDensity.compact ? 20 : 40) *
+                            textScale,
+                        child: Text(
+                          work.title,
+                          maxLines: density == LibraryDensity.compact ? 1 : 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            height: 1.35,
+                          ),
                         ),
                       ),
-                    ),
-                    // 紧凑档只留标题：类型 / 评分 / 年份 / 标签全部收起，
-                    // 换来一屏多放两三部。要这些信息就切回「舒适」。
-                    if (density == LibraryDensity.comfort) ...[
-                      const SizedBox(height: 6),
-                      Row(
-                        children: [
-                          WorkTypeTag(type: work.workType),
-                          const SizedBox(width: 6),
-                          // 契约 6.3：没有评分不能显示 0.0。默认整块不渲染，
-                          // 按评分排序时改成标出「暂无评分」。
-                          RatingBadge(
-                            rating: work.mainRating,
-                            compact: true,
-                            showMissingLabel: showMissingRating,
-                          ),
-                          // 年份靠右，占掉剩余宽度：既不挤压标签与评分，也不会因
-                          // 文字变长把卡片撑破（溢出时省略）。
-                          Expanded(
-                            child: Align(
-                              alignment: Alignment.centerRight,
-                              child: ReleaseYearText(year: work.releaseYear),
+                      // 紧凑档只留标题：类型 / 评分 / 年份 / 标签全部收起，
+                      // 换来一屏多放两三部。要这些信息就切回「舒适」。
+                      if (density == LibraryDensity.comfort) ...[
+                        const SizedBox(height: 6),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            WorkTypeTag(type: work.workType),
+                            // 契约 6.3：没有评分不能显示 0.0。默认整块不渲染，
+                            // 按评分排序时改成标出「暂无评分」。
+                            RatingBadge(
+                              rating: work.mainRating,
+                              compact: true,
+                              showMissingLabel: showMissingRating,
+                            ),
+                            // 大字号下分行显示，年份不会被挤成零宽再逐字折行。
+                            ReleaseYearText(year: work.releaseYear),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        // 标签一行封顶：横向不滚动，超出部分裁掉，避免撑高卡片。
+                        Expanded(
+                          child: SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            physics: const NeverScrollableScrollPhysics(),
+                            child: TagChips(
+                              tags: work.tags,
+                              maxVisible: 3,
+                              // 点标签即按该标签筛选：卡片上已经写着这个标签了，
+                              // 用户想「看同题材的」时，入口就在他眼睛盯着的地方。
+                              onTag: (tag) => ref
+                                  .read(contentsFilterProvider.notifier)
+                                  .toggleTag(tag),
+                              selectedTags: ref
+                                  .watch(
+                                    contentsFilterProvider.select(
+                                      (f) => f.tags,
+                                    ),
+                                  )
+                                  .toSet(),
                             ),
                           ),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      // 标签一行封顶：横向不滚动，超出部分裁掉，避免撑高卡片。
-                      Expanded(
-                        child: SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          physics: const NeverScrollableScrollPhysics(),
-                          child: TagChips(
-                            tags: work.tags,
-                            maxVisible: 3,
-                            // 点标签即按该标签筛选：卡片上已经写着这个标签了，
-                            // 用户想「看同题材的」时，入口就在他眼睛盯着的地方。
-                            onTag: (tag) => ref
-                                .read(contentsFilterProvider.notifier)
-                                .toggleTag(tag),
-                            selectedTags: ref
-                                .watch(
-                                  contentsFilterProvider.select((f) => f.tags),
-                                )
-                                .toSet(),
-                          ),
                         ),
-                      ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
               ),
             ),

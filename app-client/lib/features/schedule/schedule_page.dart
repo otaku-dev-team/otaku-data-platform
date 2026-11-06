@@ -3,10 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/network/api_exception.dart';
+import '../../core/platform_info.dart';
 import '../../core/router/route_paths.dart';
 import '../../core/theme/app_layout.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/theme/design_tokens.dart';
 import '../../data/models/schedule.dart';
+import '../../shared/widgets/account_menu.dart';
 import '../../shared/widgets/desktop_nav_shell.dart';
 import '../../shared/widgets/mobile_nav_bar.dart';
 import '../../shared/widgets/empty_state.dart';
@@ -14,6 +17,9 @@ import '../../shared/widgets/error_state.dart';
 import '../../shared/widgets/scroll_edge_fade.dart';
 import '../../shared/widgets/tag_chips.dart';
 import 'schedule_controller.dart';
+
+/// 页面使用的本地日期，测试可固定日期验证「今天」不依赖运行星期。
+final scheduleTodayProvider = Provider<DateTime>((ref) => DateTime.now());
 
 /// 每日新番档期页。
 ///
@@ -50,28 +56,31 @@ class SchedulePage extends ConsumerWidget {
         bottomNavigationBar: MobileNavBar.forScaffold(context),
         appBar: AppBar(
           title: const Text('每日新番'),
-        actions: [
-          // 季度切换。只有真的拿到多个季度才显示，否则一个孤零零的
-          // 下拉箭头会让人以为还有别的季度可看。
-          if (data != null && data.seasons.length > 1)
-            PopupMenuButton<String>(
-              tooltip: '切换季度',
-              icon: const Icon(Icons.calendar_month_outlined),
-              initialValue: data.season,
-              onSelected: (season) =>
-                  ref.read(scheduleSeasonProvider.notifier).select(season),
-              itemBuilder: (context) => [
-                for (final season in data.seasons)
-                  PopupMenuItem<String>(
-                    value: season,
-                    child: Text(_seasonLabel(season)),
-                  ),
-              ],
-            ),
-          const SizedBox(width: 8),
-        ],
-      ),
-      body: _buildBody(context, ref, schedule, selected, group),
+          actions: [
+            // 季度切换。只有真的拿到多个季度才显示，否则一个孤零零的
+            // 下拉箭头会让人以为还有别的季度可看。
+            if (PlatformInfo.isDesktop &&
+                data != null &&
+                data.seasons.length > 1)
+              PopupMenuButton<String>(
+                tooltip: '切换季度',
+                icon: const Icon(Icons.calendar_month_outlined),
+                initialValue: data.season,
+                onSelected: (season) =>
+                    ref.read(scheduleSeasonProvider.notifier).select(season),
+                itemBuilder: (context) => [
+                  for (final season in data.seasons)
+                    PopupMenuItem<String>(
+                      value: season,
+                      child: Text(_seasonLabel(season)),
+                    ),
+                ],
+              ),
+            if (!PlatformInfo.isDesktop) const AccountMenuButton(),
+            const SizedBox(width: 8),
+          ],
+        ),
+        body: _buildBody(context, ref, schedule, selected, group),
       ),
     );
   }
@@ -97,6 +106,10 @@ class SchedulePage extends ConsumerWidget {
     final data = schedule.value;
     if (data == null) {
       return const SizedBox.shrink();
+    }
+
+    if (!PlatformInfo.isDesktop) {
+      return _buildMobileBody(context, ref, data, selected, group);
     }
 
     if (data.isEmpty) {
@@ -130,7 +143,8 @@ class SchedulePage extends ConsumerWidget {
           selected: selected,
           onSelected: (weekday) =>
               ref.read(scheduleWeekdayProvider.notifier).select(weekday),
-        ),        if (data.season case final season?)
+        ),
+        if (data.season case final season?)
           Padding(
             padding: const EdgeInsets.fromLTRB(
               AppLayout.pagePadding,
@@ -160,7 +174,7 @@ class SchedulePage extends ConsumerWidget {
           child: items.isEmpty
               ? _buildEmptyDay(context, ref)
               : RefreshIndicator(
-                color: AppTheme.brandStrong,
+                  color: AppTheme.brandStrong,
                   onRefresh: () async => ref.invalidate(scheduleProvider),
                   child: ListView.separated(
                     padding: const EdgeInsets.fromLTRB(
@@ -193,6 +207,201 @@ class SchedulePage extends ConsumerWidget {
             title: '这天没有新番',
             message: '换一天看看，或者切到「全部」',
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMobileBody(
+    BuildContext context,
+    WidgetRef ref,
+    SchedulePageData data,
+    ScheduleWeekday selected,
+    ScheduleGroup? group,
+  ) {
+    final today = ref.watch(scheduleTodayProvider);
+    final currentMonth = ((today.month - 1) ~/ 3) * 3 + 1;
+    final currentSeason =
+        '${today.year}${currentMonth.toString().padLeft(2, '0')}';
+    final isCurrentSeason = data.season == currentSeason;
+    final canShowToday =
+        isCurrentSeason || data.seasons.contains(currentSeason);
+    final todayWeekday = ScheduleWeekday.values[today.weekday];
+    final items = group?.items ?? const <ScheduleEntry>[];
+    final theme = Theme.of(context);
+
+    Future<void> refresh() async {
+      ref.invalidate(scheduleProvider);
+      // 等实际请求结束再收起指示器；失败由页面的错误态承接。
+      try {
+        await ref.read(scheduleProvider.future);
+      } catch (_) {
+        // ErrorState 提供重试，避免刷新回调向 UI 抛出未处理异常。
+      }
+    }
+
+    return RefreshIndicator(
+      color: AppTheme.brandStrong,
+      onRefresh: refresh,
+      child: CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(
+              Space.s4,
+              Space.s2,
+              Space.s4,
+              Space.s4,
+            ),
+            sliver: SliverToBoxAdapter(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Wrap(
+                    spacing: Space.s2,
+                    runSpacing: Space.s2,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      if (data.seasons.length > 1)
+                        PopupMenuButton<String>(
+                          tooltip: '切换季度',
+                          initialValue: data.season,
+                          onSelected: (season) => ref
+                              .read(scheduleSeasonProvider.notifier)
+                              .select(season),
+                          itemBuilder: (_) => [
+                            for (final season in data.seasons)
+                              PopupMenuItem(
+                                value: season,
+                                child: Text(_seasonLabel(season)),
+                              ),
+                          ],
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              vertical: Space.s3,
+                            ),
+                            child: ConstrainedBox(
+                              constraints: BoxConstraints(
+                                maxWidth:
+                                    MediaQuery.sizeOf(context).width -
+                                    Space.s4 * 2,
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Flexible(
+                                    child: Text(
+                                      data.season == null
+                                          ? '选择季度'
+                                          : _seasonLabel(data.season!),
+                                      style: theme.textTheme.titleMedium,
+                                    ),
+                                  ),
+                                  const SizedBox(width: Space.s1),
+                                  const Icon(Icons.expand_more_rounded),
+                                ],
+                              ),
+                            ),
+                          ),
+                        )
+                      else
+                        Text(
+                          data.season == null
+                              ? '新番时间表'
+                              : _seasonLabel(data.season!),
+                          style: theme.textTheme.titleMedium,
+                        ),
+                      if (canShowToday)
+                        FilledButton.tonalIcon(
+                          onPressed: () {
+                            if (!isCurrentSeason) {
+                              ref
+                                  .read(scheduleSeasonProvider.notifier)
+                                  .select(currentSeason);
+                            }
+                            ref
+                                .read(scheduleWeekdayProvider.notifier)
+                                .select(todayWeekday);
+                          },
+                          icon: const Icon(Icons.today_outlined),
+                          label: const Text('今天'),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: Space.s2),
+                  Text(
+                    isCurrentSeason
+                        ? '今天是 ${today.month} 月 ${today.day} 日 · ${todayWeekday.label}'
+                        : '所选季度排期 · 按星期查看',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: Space.s3),
+                  Wrap(
+                    spacing: Space.s2,
+                    runSpacing: Space.s1,
+                    children: [
+                      for (final weekday in _chips)
+                        ChoiceChip(
+                          label: Text(
+                            isCurrentSeason && weekday == todayWeekday
+                                ? '${weekday.label} · 今天'
+                                : weekday.label,
+                          ),
+                          selected: selected == weekday,
+                          onSelected: (_) => ref
+                              .read(scheduleWeekdayProvider.notifier)
+                              .select(weekday),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: Space.s3),
+                  Text(
+                    '${selected.label} · ${items.length} 部',
+                    style: theme.textTheme.labelLarge,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (items.isEmpty)
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: EmptyState(
+                icon: Icons.event_busy_outlined,
+                title: data.isEmpty ? '还没有档期数据' : '这天没有新番',
+                message: data.isEmpty
+                    ? '暂时没有可展示的排期，可以下拉刷新。'
+                    : '换一天看看，或者查看全部排期。',
+                action: data.isEmpty
+                    ? FilledButton.tonalIcon(
+                        onPressed: refresh,
+                        icon: const Icon(Icons.refresh_rounded),
+                        label: const Text('刷新'),
+                      )
+                    : FilledButton.tonal(
+                        onPressed: () => ref
+                            .read(scheduleWeekdayProvider.notifier)
+                            .select(ScheduleWeekday.all),
+                        child: const Text('查看全部排期'),
+                      ),
+              ),
+            )
+          else
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(
+                Space.s4,
+                0,
+                Space.s4,
+                Space.s6,
+              ),
+              sliver: SliverList.separated(
+                itemCount: items.length,
+                separatorBuilder: (_, _) => const SizedBox(height: Space.s3),
+                itemBuilder: (_, index) => _ScheduleTile(entry: items[index]),
+              ),
+            ),
         ],
       ),
     );
@@ -278,9 +487,8 @@ class _ScheduleTile extends StatelessWidget {
                       ? Image.network(
                           entry.imageUrl!,
                           fit: BoxFit.cover,
-                          errorBuilder: (_, _, _) => _CoverPlaceholder(
-                            label: firstChar,
-                          ),
+                          errorBuilder: (_, _, _) =>
+                              _CoverPlaceholder(label: firstChar),
                         )
                       : _CoverPlaceholder(label: firstChar),
                 ),

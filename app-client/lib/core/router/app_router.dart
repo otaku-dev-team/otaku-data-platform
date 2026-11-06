@@ -10,6 +10,12 @@ import '../../features/collection/collection_page.dart';
 import '../../features/contents/contents_page.dart';
 import '../../features/detail/work_detail_page.dart';
 import '../../features/home/home_page.dart';
+import '../../features/devices/device_page.dart';
+import '../../features/my_comment/my_comment_page.dart';
+import '../../features/person/person_page.dart';
+import '../../features/persona/persona_page.dart';
+import '../../features/profile/profile_edit_page.dart';
+import '../../features/profile/profile_page.dart';
 import '../../features/recent/recent_history_page.dart';
 import '../../features/schedule/schedule_page.dart';
 import '../../features/settings/about_settings_page.dart';
@@ -79,12 +85,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             routes: [
               GoRoute(
                 path: RoutePaths.contents,
-                builder: (context, state) => const ContentsPage(),
+                builder: (context, state) => ContentsPage(
+                  focusSearch: state.uri.queryParameters['search'] == '1',
+                ),
                 routes: [
                   GoRoute(
                     path: RoutePaths.workDetailSegment,
                     builder: (context, state) => WorkDetailPage(
                       workId: state.pathParameters['workId'] ?? '',
+                      // 只从列表点进来时才有：详情页拿它接一次封面转场。
+                      heroTag: state.uri.queryParameters['hero'],
                     ),
                   ),
                 ],
@@ -150,6 +160,39 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: RoutePaths.recentHistory,
         builder: (context, state) => const RecentHistoryPage(),
+      ),
+      // #455 人物详情：从作品详情的 staff / 声优行点进来。挂在根级而不是某个
+      // tab 分支下——它可能从作品页、人物页自身或未来的搜索进来，不属于某个 tab。
+      GoRoute(
+        path: '${RoutePaths.persons}/${RoutePaths.personSegment}',
+        builder: (context, state) =>
+            PersonPage(personId: state.pathParameters['personId'] ?? ''),
+      ),
+      GoRoute(
+        path: RoutePaths.profile,
+        builder: (context, state) => const ProfilePage(),
+        routes: [
+          // #375 阿宅画像：个人空间的二级页，从 /me 点进来、返回也回 /me。
+          GoRoute(
+            path: RoutePaths.personaSegment,
+            builder: (context, state) => const PersonaPage(),
+          ),
+          // #378 登录设备：同上，账号数据的二级视图。
+          GoRoute(
+            path: RoutePaths.devicesSegment,
+            builder: (context, state) => const DevicePage(),
+          ),
+          // #378 第一层：昵称 / 简介编辑 + 首字色块头像兜底。
+          GoRoute(
+            path: RoutePaths.profileEditSegment,
+            builder: (context, state) => const ProfileEditPage(),
+          ),
+          // #449 我的评论：注册但不从任何入口 push——本轮「功能存在但不启用」。
+          GoRoute(
+            path: RoutePaths.myCommentSegment,
+            builder: (context, state) => const MyCommentPage(),
+          ),
+        ],
       ),
       GoRoute(
         path: RoutePaths.settings,

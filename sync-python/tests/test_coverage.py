@@ -4,6 +4,7 @@
 小型数据集，断言：
 - 字段填充率按 work_type 分组计数正确；
 - people 行数如实反映（这是 #1 的观测点：源有数据就应被导出）；
+- people 与 `person_ref` 的 id 对齐如实反映（行数不为 0 不等于人物能用）；
 - 可上线数 = 有封面的作品数（「无封面不展示」口径）；
 - CLI 入口与缺文件兜底正确。
 """
@@ -78,8 +79,67 @@ def test_format_contains_key_sections(tmp_path):
     out = format_coverage_report(coverage_report(str(ds)))
     assert "数据集覆盖率报告" in out
     assert "数据集 people 表: 2 行" in out
+    assert "人物 id 对齐" in out
     assert "可上线数" in out
     assert "字段填充率" in out
+
+
+def test_people_id_alignment_exposes_two_id_spaces(tmp_path):
+    """people 用源站自增 id、person_ref 用 Bangumi id 时，对齐率必须如实报低。
+
+    这是 docs/person-id-unification.md 里那个问题的观测点：行数不为 0
+    不代表人物能用，对齐率才是。
+    """
+    ds = tmp_path / "ds.db"
+    make_dataset(str(ds))
+    conn = sqlite3.connect(str(ds))
+    conn.execute(
+        "insert into work_cast(source_id, character, actor, person_ref)"
+        " values ('w1', '角色A', '张三', '9001')"
+    )
+    conn.execute(
+        "insert into work_credits(source_id, role, name, person_ref)"
+        " values ('w1', '导演', '李四', '9002')"
+    )
+    conn.commit()
+    conn.close()
+
+    al = coverage_report(str(ds))["people"]["id_alignment"]
+    assert al["available"] is True
+    assert al["people_distinct"] == 2
+    assert al["refs_by_table"] == {"work_cast": 1, "work_credits": 1}
+    assert al["refs_total"] == 2
+    assert al["refs_matched"] == 0      # 两套 id，一个都对不上
+    assert al["refs_dangling"] == 2
+    assert al["people_unreferenced"] == 2
+
+
+def test_people_id_alignment_counts_matched(tmp_path):
+    """people 也用 Bangumi id 之后，应能算出命中数与悬空数。"""
+    ds = tmp_path / "ds.db"
+    make_dataset(str(ds))
+    conn = sqlite3.connect(str(ds))
+    conn.execute(
+        "insert into people(source_id, name, entity_type, bangumi_person_id)"
+        " values ('9001', '张三', 'person', '9001')"
+    )
+    conn.executemany(
+        "insert into work_cast(source_id, character, actor, person_ref)"
+        " values (?,?,?,?)",
+        [
+            ("w1", "角色A", "张三", "9001"),
+            ("w1", "角色B", "王五", "9002"),
+        ],
+    )
+    conn.commit()
+    conn.close()
+
+    al = coverage_report(str(ds))["people"]["id_alignment"]
+    assert al["refs_total"] == 2
+    assert al["refs_matched"] == 1
+    assert al["refs_dangling"] == 1
+    # p1 / c1 / 9001 三行里只有 9001 被关系表引到
+    assert al["people_unreferenced"] == 2
 
 
 def test_coverage_cli(tmp_path, capsys):

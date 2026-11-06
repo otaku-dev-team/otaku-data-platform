@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../core/router/route_paths.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/models/work_character.dart';
 import '../../data/models/work_staff.dart';
@@ -27,7 +29,10 @@ class StaffSection extends StatelessWidget {
 
     return _CreditBlock(
       title: '制作人员',
-      rows: [for (final item in items) _StaffRow(item: item)],
+      rows: [
+        for (final item in items)
+          _StaffRow(item: item, onTap: _personTap(context, item.personId)),
+      ],
     );
   }
 }
@@ -47,7 +52,13 @@ class CharacterSection extends StatelessWidget {
 
     return _CreditBlock(
       title: '角色与声优',
-      rows: [for (final item in items) _CharacterRow(item: item)],
+      rows: [
+        for (final item in items)
+          _CharacterRow(
+            item: item,
+            onTap: _personTap(context, item.personId),
+          ),
+      ],
     );
   }
 }
@@ -136,12 +147,16 @@ class _CreditBlockState extends State<_CreditBlock> {
 
 /// 「职位：人名」。`role` 为空时只显示人名（来源侧有些记录只给了人名）。
 ///
-/// `person_id` 一律**不参与交互**：Staff 侧实测 0% 有值，人物页又在 B2 范围外，
-/// 做了跳转也是跳到一个不存在的页面。
+/// `person_id` 非空时这一行可点，跳人物页（#455 已落地）。Staff 侧实测 0% 有值，
+/// 所以绝大多数行仍然是纯文本——这不是「忘了接」，是数据还没有实体。
 class _StaffRow extends StatelessWidget {
-  const _StaffRow({required this.item});
+  const _StaffRow({required this.item, this.onTap});
 
   final WorkStaff item;
+
+  /// `person_id` 非空时可点（#455）。Staff 侧实测 **0% 有值**，所以绝大多数行
+  /// 仍然只是文本——不要因为拿不到 id 就把这一行藏掉。
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -149,8 +164,8 @@ class _StaffRow extends StatelessWidget {
     final base = theme.textTheme.bodyMedium;
     final muted = base?.copyWith(color: theme.colorScheme.onSurfaceVariant);
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+    return _TappableRow(
+      onTap: onTap,
       child: item.role.isEmpty
           ? Text(item.name, style: base)
           : Text.rich(
@@ -171,9 +186,12 @@ class _StaffRow extends StatelessWidget {
 /// 显示「未知类型」是拿没有的信息编了个说法；按类型分组更糟——
 /// 会撑出一个巨大的「未知」桶。
 class _CharacterRow extends StatelessWidget {
-  const _CharacterRow({required this.item});
+  const _CharacterRow({required this.item, this.onTap});
 
   final WorkCharacter item;
+
+  /// 声优侧 `person_id` 实测 **100% 有值**，所以这一列基本都可点（#455）。
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -181,8 +199,8 @@ class _CharacterRow extends StatelessWidget {
     final base = theme.textTheme.bodyMedium;
     final muted = base?.copyWith(color: theme.colorScheme.onSurfaceVariant);
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+    return _TappableRow(
+      onTap: onTap,
       child: item.actor.isEmpty
           ? Text(item.name, style: base)
           : Text.rich(
@@ -195,6 +213,59 @@ class _CharacterRow extends StatelessWidget {
             ),
     );
   }
+}
+
+/// 一行人物信息：有 [onTap] 才算「可跳转」，右边给一个小箭头。
+///
+/// 触摸高度 40 而不是 44：这一块最多 288 行（折叠后露 6 行），44 会把折叠区
+/// 拉长近一倍；40 是 Material dense list 的下限，比原来的 28 明显好按。
+class _TappableRow extends StatelessWidget {
+  const _TappableRow({required this.child, this.onTap});
+
+  final Widget child;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    if (onTap == null) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: child,
+      );
+    }
+
+    return Material(
+      // InkWell 需要 Material 祖先；详情页正文是 Column，没有现成的，
+      // 这里补一层透明 Material，别为了水波纹去改整页结构。
+      type: MaterialType.transparency,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(6),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 40),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Row(
+              children: [
+                Expanded(child: child),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  size: 16,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 只有拿到非空 `person_id` 才给跳转；否则这一行保持纯文本。
+VoidCallback? _personTap(BuildContext context, String? personId) {
+  if (personId == null || personId.isEmpty) return null;
+  return () => context.push(RoutePaths.person(personId));
 }
 
 /// 详情页正文里的一行元信息（别名 / 制作公司）。

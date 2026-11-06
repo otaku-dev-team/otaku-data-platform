@@ -12,6 +12,7 @@ import '../../core/theme/app_layout.dart';
 import '../../shared/widgets/cover_prefetch.dart';
 import '../settings/display_settings.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/theme/design_tokens.dart';
 import '../../data/models/tag_vocabulary.dart';
 import '../../data/models/work_sort.dart';
 import '../../data/models/work_type.dart';
@@ -63,7 +64,9 @@ final catalogViewProvider =
 /// - 首屏失败 → 错误状态 + 重试
 /// - 加载下一页失败 → 底部重试条，**不清空已有数据**
 class ContentsPage extends ConsumerStatefulWidget {
-  const ContentsPage({super.key});
+  const ContentsPage({super.key, this.focusSearch = false});
+
+  final bool focusSearch;
 
   @override
   ConsumerState<ContentsPage> createState() => _ContentsPageState();
@@ -108,6 +111,30 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
     _searchFocus.addListener(_handleSearchFocus);
     // 从详情返回时，搜索框要保留已经生效的关键词。
     _searchController.text = ref.read(contentsFilterProvider).query;
+    if (widget.focusSearch) _focusSearchFromRoute();
+  }
+
+  @override
+  void didUpdateWidget(covariant ContentsPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.focusSearch && !oldWidget.focusSearch) _focusSearchFromRoute();
+  }
+
+  void _focusSearchFromRoute() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _searchFocus.requestFocus();
+      // 消费一次性搜索意图：保留分支后，下次从首页进入仍可请求焦点。
+      final router = GoRouter.maybeOf(context);
+      if (router
+              ?.routeInformationProvider
+              .value
+              .uri
+              .queryParameters['search'] ==
+          '1') {
+        router!.replace(RoutePaths.contents);
+      }
+    });
   }
 
   @override
@@ -135,6 +162,7 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
   }
 
   void _handleQueryChanged(String value) {
+    setState(() {});
     // 输入时不要每个字符都打一次接口，300ms 后再查。
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 300), () {
@@ -155,6 +183,7 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
     _debounce?.cancel();
     ref.read(searchHistoryProvider.notifier).record(value);
     ref.read(contentsFilterProvider.notifier).search(value);
+    if (!PlatformInfo.isDesktop) _searchFocus.unfocus();
   }
 
   /// 点一条历史 chip：填回输入框并立刻搜。
@@ -175,7 +204,7 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
 
   void _clearQuery() {
     _debounce?.cancel();
-    _searchController.clear();
+    setState(_searchController.clear);
     ref.read(contentsFilterProvider.notifier).search('');
   }
 
@@ -202,7 +231,7 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
     // 聚焦 + 输入框为空 → 展开「前置面板」（历史 + 热门标签）。
     // 输入框里已经有词时不显示：那一栏会变成「建议 vs 当前查询」两个焦点，
     // 用户还得先分辨哪个才是自己在搜的。
-    final searchIdle = _searchFocused && filter.query.trim().isEmpty;
+    final searchIdle = _searchFocused && _searchController.text.trim().isEmpty;
     // 只在面板展开时才取热门标签：这一页不聚焦时不该为一个提示多打一次请求。
     final hotTags = searchIdle
         ? ref.watch(hotTagSuggestionsProvider).value ?? const <TagCount>[]
@@ -212,6 +241,10 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
 
     ref.listen<ContentsFilter>(contentsFilterProvider, (previous, next) {
       if (previous == null || previous == next) return;
+      if (!_searchFocus.hasFocus && _searchController.text != next.query) {
+        _debounce?.cancel();
+        _searchController.text = next.query;
+      }
       _requestScrollReset();
     });
     // 两种视图的行高完全不同，沿用旧偏移会落到毫无关系的位置。
@@ -289,20 +322,22 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
               ],
               // 年份筛选。与排序并列：两个都是「对整个结果集生效」的条件，
               // 塞进类型 chips 那条横向列表会被挤到看不见。
-              _YearMenu(
-                current: filter.year,
-                onChanged: (year) => ref
-                    .read(contentsFilterProvider.notifier)
-                    .selectYear(year),
-              ),
+              if (PlatformInfo.isDesktop)
+                _YearMenu(
+                  current: filter.year,
+                  onChanged: (year) => ref
+                      .read(contentsFilterProvider.notifier)
+                      .selectYear(year),
+                ),
               // 排序放在 AppBar 而不是筛选栏：筛选栏已经塞了类型 chips 和
               // 视图切换，再放一个控件会在手机上把 chips 挤到只剩一两个。
-              _SortMenu(
-                current: filter.sort,
-                onChanged: (sort) => ref
-                    .read(contentsFilterProvider.notifier)
-                    .selectSort(sort),
-              ),
+              if (PlatformInfo.isDesktop)
+                _SortMenu(
+                  current: filter.sort,
+                  onChanged: (sort) => ref
+                      .read(contentsFilterProvider.notifier)
+                      .selectSort(sort),
+                ),
               // 账号入口放在这里而不是收藏页：登录是全局动作，用户不该为了
               // 登录先进「我的收藏」再点右上角。三态（检查中/未登录/已登录）
               // 由组件自己处理，本页不关心。
@@ -329,11 +364,12 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
                       focusNode: _searchFocus,
                       onChanged: _handleQueryChanged,
                       onSubmitted: _submitSearch,
+                      onTapOutside: (_) => _searchFocus.unfocus(),
                       textInputAction: TextInputAction.search,
                       decoration: InputDecoration(
                         hintText: '搜索作品标题',
                         prefixIcon: const Icon(Icons.search),
-                        suffixIcon: filter.query.isEmpty
+                        suffixIcon: _searchController.text.isEmpty
                             ? null
                             : IconButton(
                                 tooltip: '清除',
@@ -345,33 +381,35 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
                       ),
                     ),
                   ),
-                  if (showSearchSuggestions)
+                  if (PlatformInfo.isDesktop && showSearchSuggestions)
                     _SearchSuggestions(
                       queries: searchHistory,
                       hotTags: hotTags,
                       onSelectHistory: _applyHistory,
                       onSelectTag: _applySuggestedTag,
                     ),
-                  _FilterRow(
-                    selected: filter.type,
-                    counts: counts,
-                    total: liveTotal,
-                    view: view,
-                    onSelected: (type) => ref
-                        .read(contentsFilterProvider.notifier)
-                        .selectType(type),
-                    onViewChanged: (next) =>
-                        ref.read(catalogViewProvider.notifier).select(next),
-                    tags: filter.tags,
-                    onTagsPressed: () => _openTagPicker(filter),
-                  ),
+                  if (PlatformInfo.isDesktop)
+                    _FilterRow(
+                      selected: filter.type,
+                      counts: counts,
+                      total: liveTotal,
+                      view: view,
+                      onSelected: (type) => ref
+                          .read(contentsFilterProvider.notifier)
+                          .selectType(type),
+                      onViewChanged: (next) =>
+                          ref.read(catalogViewProvider.notifier).select(next),
+                      tags: filter.tags,
+                      onTagsPressed: () => _openTagPicker(filter),
+                    ),
                   // 当前筛选状态 + 逐项清除入口。
                   //
                   // 筛选条件**必须显式可见**：卡片上的标签被标了色，但
                   // 一屏 50 张卡里只看一张时，用户很容易不知道自己筛过标签，
                   // 也不知道为什么结果变少了。空结果时尤其重要——
                   // 「按『科幻』筛出 0 部」和「库里没有科幻」是两回事。
-                  if (filter.tags.isNotEmpty || filter.year != null)
+                  if (PlatformInfo.isDesktop &&
+                      (filter.tags.isNotEmpty || filter.year != null))
                     _ActiveFiltersBar(
                       filter: filter,
                       // `tag` 与 `q` 同用约 720ms（后端实测：LIKE '%kw%' 与
@@ -382,16 +420,47 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
                     ),
                   // 离线提示。放在筛选栏下面、列表上面：用户先看到内容，
                   // 紧接着看到「这是缓存」的说明，而不是被一条横幅挡在内容之外。
-                  if (cacheNotice != null)
+                  if (!PlatformInfo.isDesktop && !_searchFocused) ...[
+                    _MobileCatalogToolbar(
+                      filter: filter,
+                      total: liveTotal,
+                      view: view,
+                      onFilter: _openMobileFilters,
+                      onViewChanged: (next) =>
+                          ref.read(catalogViewProvider.notifier).select(next),
+                    ),
+                    if (filter.type != null ||
+                        filter.tags.isNotEmpty ||
+                        filter.year != null)
+                      _MobileActiveFilters(filter: filter),
+                  ],
+                  if (cacheNotice != null &&
+                      (PlatformInfo.isDesktop || !_searchFocused))
                     OfflineNotice(
                       cachedAt: cacheNotice.cachedAt,
-                      onRetry: () =>
-                          ref.read(contentsControllerProvider.notifier).refresh(),
+                      onRetry: () => ref
+                          .read(contentsControllerProvider.notifier)
+                          .refresh(),
                     ),
-                  
-                  if (showRatingNotice) const _RatingSortNotice(),
+
+                  if (showRatingNotice &&
+                      (PlatformInfo.isDesktop || !_searchFocused))
+                    const _RatingSortNotice(),
                   Expanded(
-                    child: _buildBody(filter, contents, view, showMissingRating),
+                    child: !PlatformInfo.isDesktop && showSearchSuggestions
+                        ? ListView(
+                            keyboardDismissBehavior:
+                                ScrollViewKeyboardDismissBehavior.onDrag,
+                            children: [
+                              _SearchSuggestions(
+                                queries: searchHistory,
+                                hotTags: hotTags,
+                                onSelectHistory: _applyHistory,
+                                onSelectTag: _applySuggestedTag,
+                              ),
+                            ],
+                          )
+                        : _buildBody(filter, contents, view, showMissingRating),
                   ),
                 ],
               ),
@@ -418,10 +487,7 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
       // 骨架屏用同一档密度与列数：按默认档画的话，切到紧凑 / 仅封面后
       // 会看到「加载时 2 列宽卡 → 加载完 3 列窄卡」的跳动。
       final display = ref.watch(libraryDisplayProvider);
-      return SkeletonGrid(
-        density: display.density,
-        columns: display.columns,
-      );
+      return SkeletonGrid(density: display.density, columns: display.columns);
     }
 
     if (contents.hasError) {
@@ -459,8 +525,7 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
     // 按标签筛出 0 条与「库里没有东西」是两回事，文案必须分开：
     // 契约里未知标签返 `200 + 空数组`（不是 404），所以这一屏是**筛太窄**，
     // 不是**没数据**。说成「这里还没有作品」会让用户以为同步没跑完。
-    final filtering =
-        searching || hasType || tags.isNotEmpty || year != null;
+    final filtering = searching || hasType || tags.isNotEmpty || year != null;
     final (title, message) = switch (null) {
       // 多标签是 AND：选的越多越窄，空结果时最该解释的就是这层关系，
       // 否则用户会以为是「标签库里没数据」。
@@ -479,14 +544,8 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
         '「${tags.first}」是精确匹配——「科幻」不会包含「科幻机甲」。'
             '换个标签或清除筛选看看',
       ),
-      _ when year != null => (
-        '$year 年没有作品',
-        '年份是精确匹配；换一年，或清除筛选看看全部内容',
-      ),
-      _ when searching => (
-        '没有匹配的作品',
-        '换个更短的关键词试试，搜索只匹配标题，不支持拼音与别名',
-      ),
+      _ when year != null => ('$year 年没有作品', '年份是精确匹配；换一年，或清除筛选看看全部内容'),
+      _ when searching => ('没有匹配的作品', '换个更短的关键词试试，搜索只匹配标题，不支持拼音与别名'),
       _ when hasType => ('这个分类下暂时没有内容', '换个分类看看'),
       _ => ('这里还没有作品', '等同步任务跑完就有了'),
     };
@@ -519,7 +578,21 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
     );
   }
 
-  /// 打开标签面板；用户点了「应用」才替换条件（取消不动）。
+  /// 手机筛选集中展示、选择即生效；标签选择器仍保留自己的「应用」动作。
+  Future<void> _openMobileFilters() async {
+    _searchFocus.unfocus();
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (context) => FractionallySizedBox(
+        heightFactor: 0.85,
+        child: _MobileFiltersSheet(onClear: _clearFilters),
+      ),
+    );
+  }
+
   Future<void> _openTagPicker(ContentsFilter filter) async {
     final picked = await showTagPicker(
       context,
@@ -600,6 +673,8 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
                     work: data.items[index],
                     showMissingRating: showMissingRating,
                     density: display.density,
+                    // 标签只要屏内唯一即可：列表里 index 就是唯一的。
+                    heroTag: 'grid-$index',
                   ),
                   childCount: data.items.length,
                 ),
@@ -625,21 +700,18 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
             0,
           ),
           sliver: SliverList(
-            delegate: SliverChildBuilderDelegate(
-              (context, index) {
-                // 建到某一项时顺手把后面几张的封面预取进缓存：滚过去的时候
-                // 文件已经在磁盘里，不用从占位灰等起。重复调用会被 ImageCache 去重。
-                prefetchCovers(context, data.items.skip(index + 1));
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: AppLayout.gridGap),
-                  child: WorkListTile(
-                    work: data.items[index],
-                    showMissingRating: showMissingRating,
-                  ),
-                );
-              },
-              childCount: data.items.length,
-            ),
+            delegate: SliverChildBuilderDelegate((context, index) {
+              // 建到某一项时顺手把后面几张的封面预取进缓存：滚过去的时候
+              // 文件已经在磁盘里，不用从占位灰等起。重复调用会被 ImageCache 去重。
+              prefetchCovers(context, data.items.skip(index + 1));
+              return Padding(
+                padding: const EdgeInsets.only(bottom: AppLayout.gridGap),
+                child: WorkListTile(
+                  work: data.items[index],
+                  showMissingRating: showMissingRating,
+                ),
+              );
+            }, childCount: data.items.length),
           ),
         ),
         _buildFooterSliver(data),
@@ -991,9 +1063,8 @@ class _FilterRow extends StatelessWidget {
                   if (total != null)
                     Text(
                       _totalLabel(total!, narrow: narrow),
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: scheme.onSurfaceVariant,
-                      ),
+                      style: Theme.of(context).textTheme.bodySmall
+                          ?.copyWith(color: scheme.onSurfaceVariant),
                     ),
                   const Spacer(),
                   _ViewSwitch(value: view, onChanged: onViewChanged),
@@ -1106,8 +1177,8 @@ class _ViewSwitch extends StatelessWidget {
         onTap: () => onChanged(target),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
-          width: 34,
-          height: 28,
+          width: PlatformInfo.isDesktop ? 34 : Space.s12,
+          height: PlatformInfo.isDesktop ? 28 : Space.s12,
           decoration: BoxDecoration(
             color: isSelected
                 ? AppTheme.cardColor(context)
@@ -1286,8 +1357,9 @@ class _SearchSuggestions extends ConsumerWidget {
                       visualDensity: VisualDensity.compact,
                       onPressed: () => onSelectHistory(query),
                       deleteButtonTooltipMessage: '删除「$query」',
-                      onDeleted: () =>
-                          ref.read(searchHistoryProvider.notifier).remove(query),
+                      onDeleted: () => ref
+                          .read(searchHistoryProvider.notifier)
+                          .remove(query),
                     ),
                   TextButton(
                     onPressed: () =>
@@ -1324,6 +1396,249 @@ class _SearchSuggestions extends ConsumerWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// 手机常用操作留在结果旁，低频筛选收进有文字的面板入口。
+class _MobileCatalogToolbar extends StatelessWidget {
+  const _MobileCatalogToolbar({
+    required this.filter,
+    required this.total,
+    required this.view,
+    required this.onFilter,
+    required this.onViewChanged,
+  });
+
+  final ContentsFilter filter;
+  final int? total;
+  final CatalogView view;
+  final VoidCallback onFilter;
+  final ValueChanged<CatalogView> onViewChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: Space.s4,
+        vertical: Space.s2,
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  total == null
+                      ? '作品'
+                      : _FilterRow._totalLabel(total!, narrow: true),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.labelLarge,
+                ),
+                Text(
+                  filter.sort.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
+          TextButton.icon(
+            onPressed: onFilter,
+            icon: const Icon(Icons.tune_rounded),
+            label: const Text('筛选'),
+            style: TextButton.styleFrom(minimumSize: const Size(0, Space.s12)),
+          ),
+          const SizedBox(width: Space.s1),
+          _ViewSwitch(value: view, onChanged: onViewChanged),
+        ],
+      ),
+    );
+  }
+}
+
+class _MobileActiveFilters extends ConsumerWidget {
+  const _MobileActiveFilters({required this.filter});
+  final ContentsFilter filter;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final controller = ref.read(contentsFilterProvider.notifier);
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.fromLTRB(Space.s4, 0, Space.s4, Space.s2),
+      child: Row(
+        children: [
+          if (filter.type != null)
+            Padding(
+              padding: const EdgeInsets.only(right: Space.s2),
+              child: InputChip(
+                label: Text('类型：${filter.type!.label}'),
+                deleteButtonTooltipMessage: '取消类型筛选',
+                onDeleted: () => controller.selectType(null),
+              ),
+            ),
+          if (filter.year != null)
+            Padding(
+              padding: const EdgeInsets.only(right: Space.s2),
+              child: InputChip(
+                label: Text('年份：${filter.year} 年'),
+                deleteButtonTooltipMessage: '取消年份筛选',
+                onDeleted: () => controller.selectYear(null),
+              ),
+            ),
+          for (final tag in filter.tags)
+            Padding(
+              padding: const EdgeInsets.only(right: Space.s2),
+              child: InputChip(
+                label: Text('标签：$tag'),
+                deleteButtonTooltipMessage: '取消「$tag」',
+                onDeleted: () => controller.toggleTag(tag),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MobileFiltersSheet extends ConsumerWidget {
+  const _MobileFiltersSheet({required this.onClear});
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final filter = ref.watch(contentsFilterProvider);
+    final controller = ref.read(contentsFilterProvider.notifier);
+    final theme = Theme.of(context);
+    final latestYear = DateTime.now().year + 1;
+    final years = {
+      for (var year = latestYear; year >= 1950; year--) year,
+      if (filter.year != null) filter.year!,
+    }.toList()..sort((a, b) => b.compareTo(a));
+    Widget heading(String text) => Padding(
+      padding: const EdgeInsets.only(top: Space.s4, bottom: Space.s2),
+      child: Text(text, style: theme.textTheme.titleSmall),
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: Space.s4),
+          child: Row(
+            children: [
+              Expanded(child: Text('筛选与排序', style: theme.textTheme.titleLarge)),
+              TextButton(onPressed: onClear, child: const Text('清除筛选')),
+            ],
+          ),
+        ),
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.symmetric(horizontal: Space.s4),
+            children: [
+              Text('选择后立即生效', style: theme.textTheme.bodySmall),
+              heading('作品类型'),
+              Wrap(
+                spacing: Space.s2,
+                runSpacing: Space.s1,
+                children: [
+                  ChoiceChip(
+                    label: const Text('全部'),
+                    selected: filter.type == null,
+                    onSelected: (_) => controller.selectType(null),
+                  ),
+                  for (final type in WorkType.selectable)
+                    ChoiceChip(
+                      label: Text(type.label),
+                      selected: filter.type == type,
+                      onSelected: (_) => controller.selectType(type),
+                    ),
+                ],
+              ),
+              heading('排序方式'),
+              Wrap(
+                spacing: Space.s2,
+                runSpacing: Space.s1,
+                children: [
+                  for (final sort in WorkSort.values)
+                    ChoiceChip(
+                      label: Text(sort.label),
+                      selected: filter.sort == sort,
+                      onSelected: (_) => controller.selectSort(sort),
+                    ),
+                ],
+              ),
+              heading('发行年份'),
+              DropdownButtonFormField<int>(
+                key: ValueKey(filter.year),
+                initialValue: filter.year ?? 0,
+                isExpanded: true,
+                decoration: const InputDecoration(labelText: '年份'),
+                items: [
+                  const DropdownMenuItem(value: 0, child: Text('不限年份')),
+                  for (final year in years)
+                    DropdownMenuItem(value: year, child: Text('$year 年')),
+                ],
+                onChanged: (value) =>
+                    controller.selectYear(value == 0 ? null : value),
+              ),
+              heading('作品标签'),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.sell_outlined),
+                title: Text(
+                  filter.tags.isEmpty ? '选择标签' : '已选 ${filter.tags.length} 个标签',
+                ),
+                subtitle: Text(
+                  filter.tags.isEmpty ? '按题材、风格查找作品' : filter.tags.join(' · '),
+                ),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () async {
+                  final picked = await showTagPicker(
+                    context,
+                    selected: filter.tags,
+                    type: filter.type,
+                  );
+                  if (picked != null && context.mounted) {
+                    controller.selectTags(picked);
+                  }
+                },
+              ),
+              const Divider(),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.dashboard_customize_outlined),
+                title: const Text('显示设置'),
+                subtitle: const Text('调整卡片密度、每行列数和主题'),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () {
+                  final router = GoRouter.of(context);
+                  Navigator.pop(context);
+                  router.push(RoutePaths.appearanceSettings);
+                },
+              ),
+              const SizedBox(height: Space.s4),
+            ],
+          ),
+        ),
+        SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.all(Space.s4),
+            child: FilledButton(
+              style: FilledButton.styleFrom(
+                minimumSize: const Size(0, Space.s12),
+              ),
+              onPressed: () => Navigator.pop(context),
+              child: const Text('查看结果'),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

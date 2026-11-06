@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'app.dart';
+import 'core/config/app_config.dart';
 import 'core/diagnostics/frame_stats.dart';
 import 'core/storage/collection_cache_provider.dart';
 import 'core/storage/local_prefs_provider.dart';
@@ -69,8 +70,9 @@ Future<void> _setupDesktopWindow() async {
         AppLayout.minWindowHeight,
       ),
       center: true,
-      // 窗口标题固定，不随构建配置变化。
-      title: 'Otaku',
+      // 窗口标题跟站名走：桌面端是交付形态之一，换站后标题栏还写着上一家
+      // 就等于这个包没换干净（#366）。
+      title: AppConfig.appName,
     ),
     () async {
       await windowManager.show();
