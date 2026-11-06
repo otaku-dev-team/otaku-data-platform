@@ -7,15 +7,19 @@ import '../../core/network/dio_client.dart';
 import '../../data/models/work_summary.dart';
 import '../../data/models/work_type.dart';
 import '../auth/auth_controller.dart';
+import 'persona_insight_mapper.dart';
 import 'persona_mock_data.dart';
 import 'persona_view_data.dart';
 
 /// 画像 / 个性化推荐的**唯一数据入口**。
 ///
-/// 2026-11-06：`GET /api/me/profile`（#401）与 `GET /api/me/recommend`（#402）
-/// 均已上线，形状在 `docs/openapi.yaml` 定稿。本轮接的是 **#376 推荐位**：
-/// [PersonaRemoteDataSource] 消费 `/api/me/recommend`；#375 画像页仍用演示数据
-/// （理由见 [PersonaRemoteDataSource.fetchInsight]），不在本轮范围内。
+/// 2026-11-07：`GET /api/me/profile`（#401）与 `GET /api/me/recommend`（#402）
+/// 均已上线，**两个都接了真数据**：
+///
+/// - #376 推荐位：[PersonaRemoteDataSource.fetchFeed] 消费 `/api/me/recommend`；
+/// - #375 画像页：[PersonaRemoteDataSource.fetchInsight] 消费 `/api/me/profile`，
+///   六轴由 [PersonaInsightMapper] 按固定公式派生（口径见
+///   `docs/persona-mapping-proposal.md` §3A）。
 ///
 /// 换实现只改 [personaDataSourceProvider]；测试用 `overrideWithValue` 注入假数据源。
 abstract interface class PersonaDataSource {
@@ -51,18 +55,31 @@ class PersonaRemoteDataSource implements PersonaDataSource {
 
   static const String recommendPath = '/api/me/recommend';
 
+  static const String profilePath = '/api/me/profile';
+
   /// 首页横排用 20 条：契约默认 20、上限 50，取默认值即可。
   static const int _limit = 20;
 
-  /// #375 画像页本轮不接真数据。
+  /// #375 画像页：把 `PersonaProfile` 的权重映射成展示模型。
   ///
-  /// 不是「接口还没好」：`/api/me/profile` 返回的是类型 / 标签权重与评分倾向，
-  /// 而画像页的展示模型要「称号 + 锐评 + 六维」，这几项服务端并不提供。
-  /// 拿权重硬凑六维等于编造，所以保留演示数据 + 页面上的「界面预览」横幅，
-  /// 等 #375 单独定展示口径。
+  /// ⚠️ 这不等于「服务端算了六维」——服务端只给类型 / 标签权重与评分倾向，
+  /// 六根轴是**客户端按固定公式派生**的（[PersonaInsightMapper]，口径见
+  /// `docs/persona-mapping-proposal.md` §3A）。
+  ///
+  /// 代价是轴名与早期设计稿不同：设计稿的「热度」「社交」没有数据源
+  /// （前者要全站基准，后者要拆分的点评条数），已经放弃，换成能追溯来源的六轴。
   @override
-  Future<PersonaInsight> fetchInsight() =>
-      const PersonaMockDataSource().fetchInsight();
+  Future<PersonaInsight> fetchInsight() async {
+    final response = await _dio.get<Map<String, dynamic>>(profilePath);
+    final data = response.data;
+    if (data == null) {
+      throw const ApiException(
+        code: ApiErrorCode.unknown,
+        message: '服务端返回了空响应',
+      );
+    }
+    return PersonaInsightMapper.fromProfile(data);
+  }
 
   @override
   Future<PersonaFeed> fetchFeed({required bool signedIn}) async {
@@ -157,6 +174,16 @@ final personalizedAudienceProvider = Provider<bool>(
 
 /// 画像页数据。
 final personaInsightProvider = FutureProvider<PersonaInsight>((ref) async {
+  // 游客不请求：`/api/me/profile` 要登录，硬打会拿 401，而 dio 的 401 拦截器
+  // 会广播「会话已过期」——等于打开画像页把登录态踢掉。
+  // 与 [PersonaRemoteDataSource.fetchFeed] 同一处理方式。
+  if (!ref.watch(personalizedAudienceProvider)) {
+    return const PersonaInsight(
+      title: '',
+      review: '',
+      dimensions: <PersonaDimension>[],
+    );
+  }
   return ref.watch(personaDataSourceProvider).fetchInsight();
   // 所有 provider 都关掉 Riverpod 3 的自动重试：默认重试 10 次会留下 Timer，
   // 失败态变成 AsyncLoading(error:…) 一直挂在骨架屏上。

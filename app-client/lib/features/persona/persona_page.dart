@@ -11,13 +11,14 @@ import 'persona_data_source.dart';
 import 'persona_radar_chart.dart';
 import 'persona_view_data.dart';
 
-/// #375 阿宅画像（UI 壳）。
+/// #375 阿宅画像。
 ///
 /// 对标网站 `/me/persona`：六维雷达 + 锐评 + 偏好标签 + 生成设置入口。
 ///
-/// #401 的 `GET /api/me/profile` 已上线，但它给的是类型 / 标签权重与评分倾向，
-/// 没有这里的「称号 + 锐评 + 六维」。展示口径属于 #375，本轮（#376 推荐接真数据）
-/// 不改这一页，继续用 [PersonaMockDataSource] + 「界面预览」横幅标清数据来源。
+/// **六根轴是客户端派生的，不是服务端算的**：`GET /api/me/profile` 只给类型 /
+/// 标签权重与评分倾向，轴值由 `PersonaInsightMapper` 按固定公式折算
+/// （口径见 `docs/persona-mapping-proposal.md` §3A）。设计稿里的「热度」
+/// 「社交」没有数据源，已换成每个数字都能追溯来源的轴。
 ///
 /// 生成 / 绑定 / 语气这一排刻意「未开放」：点了没反应比明说更糟，
 /// 沿用个人空间 `_SectionTile` 的口径。
@@ -27,6 +28,8 @@ class PersonaPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final insight = ref.watch(personaInsightProvider);
+    // 未登录时 provider 直接返回空画像（一个请求都不发），这里只决定空态说什么。
+    final signedIn = ref.watch(personalizedAudienceProvider);
 
     return DesktopNavShell(
       child: Scaffold(
@@ -42,15 +45,16 @@ class PersonaPage extends ConsumerWidget {
                 Space.s6,
               ),
               children: [
-                const _ShellNotice(),
-                const SizedBox(height: Space.s4),
+                const SizedBox(height: Space.s2),
                 SectionStateView<PersonaInsight>(
                   value: insight,
                   onRetry: () => ref.invalidate(personaInsightProvider),
                   skeletonHeight: 340,
                   emptyIcon: Icons.auto_awesome_outlined,
-                  emptyTitle: '还没有可展示的画像',
-                  emptyMessage: '等画像接口就绪、或攒够一些浏览与收藏后再来看看。',
+                  emptyTitle: signedIn ? '还没有可展示的画像' : '登录后查看画像',
+                  emptyMessage: signedIn
+                      ? '画像来自你的浏览、收藏与打分——攒够一些记录再来看看。'
+                      : '画像由你的浏览、收藏与打分算出来，登录后才会生成。',
                   isEmpty: (data) => data.dimensions.isEmpty,
                   builder: (data) => _InsightBody(data: data),
                 ),
@@ -60,44 +64,6 @@ class PersonaPage extends ConsumerWidget {
             ),
           ),
         ),
-      ),
-    );
-  }
-}
-
-/// 演示数据标记。**不要删**：#418 的种子脚本也要求演示数据必须标注，
-/// 免得有人拿这张截图当成真实用户画像去对数。
-class _ShellNotice extends StatelessWidget {
-  const _ShellNotice();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    return Container(
-      padding: const EdgeInsets.all(Space.s3),
-      decoration: BoxDecoration(
-        color: scheme.secondaryContainer.withValues(alpha: 0.55),
-        borderRadius: Radii.circularMd(),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(
-            Icons.science_outlined,
-            size: 20,
-            color: scheme.onSecondaryContainer,
-          ),
-          const SizedBox(width: Space.s2),
-          Expanded(
-            child: Text(
-              '界面预览：以下为演示数据。画像页展示口径（#375）未定，暂不消费 /api/me/profile。',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: scheme.onSecondaryContainer,
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }

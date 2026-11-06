@@ -116,8 +116,8 @@ void main() {
     expect(find.text('深夜考据派'), findsOneWidget);
     expect(find.textContaining('设定集'), findsOneWidget);
     expect(find.text('阿宅画像'), findsOneWidget);
-    // 演示数据标记必须跟着页面走，别让截图被当成真实画像。
-    expect(find.textContaining('界面预览'), findsOneWidget);
+    // 这里用的是假数据源，验的是「页面能渲染任何 PersonaInsight」——
+    // 真数据下长什么样由 PersonaInsightMapper 决定（见同名 _test 文件）。
     // 「待接口」那一排在 ListView 底部，默认视口里可能还没被 build，
     // 这里不钉它的数量，只钉首屏能看见的内容。
   });
