@@ -253,6 +253,10 @@ class ContractDriftTest {
         // 阿宅画像（#401）：权重 0–1 归一化 + 评分倾向 10 桶，形状与 algorithm-design §3 对齐
         targets.put("PersonaProfile", com.otaku.persona.dto.PersonaDtos.PersonaProfile.class);
         targets.put("PersonaRatingTendency", com.otaku.persona.dto.PersonaDtos.RatingTendency.class);
+        // 个性化推荐（#402）：score 是组内归一化相对分，reasons 最多 3 条
+        targets.put("RecommendationPage", com.otaku.recommend.dto.RecommendDtos.RecommendationPage.class);
+        targets.put("Recommendation", com.otaku.recommend.dto.RecommendDtos.Recommendation.class);
+        targets.put("RecommendationReason", com.otaku.recommend.dto.RecommendDtos.RecommendationReason.class);
         // 人物页（B2 #455）：按作品合并的参与列表，形状照来源站 cast_detail()
         targets.put("PersonDetail", com.otaku.person.dto.PersonDtos.PersonDetail.class);
         targets.put("PersonCredit", com.otaku.person.dto.PersonDtos.PersonCredit.class);

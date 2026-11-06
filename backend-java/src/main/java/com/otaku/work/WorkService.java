@@ -58,7 +58,7 @@ public class WorkService {
      * 只改一处会得到「展示藏了、排序还按原分」的错位，`RatingThresholdConsistencyTest`
      * 读迁移文件比对，改漏了会红。
      */
-    static final int MIN_RATING_COUNT = 50;
+    public static final int MIN_RATING_COUNT = 50;
 
     /** 详情页推荐默认返回 6 条、最多 20 条——与来源站详情页的 6 条对齐，避免一次拉太多。 */
     static final int DEFAULT_RELATED_LIMIT = 6;
