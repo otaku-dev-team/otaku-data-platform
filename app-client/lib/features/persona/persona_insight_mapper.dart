@@ -106,6 +106,13 @@ class PersonaInsightMapper {
       ),
       dimensions: List<PersonaDimension>.unmodifiable(dimensions),
       topTags: List<String>.unmodifiable(_sortedPositive(positives).take(8)),
+      // 少一根轴必须解释。不解释的话，用户看到五边形只会觉得「怪」，
+      // 不知道「打个分就会长出来」——而打分恰恰是 App 目前唯一缺的输入（#488）。
+      hints: ratingMean == null
+          ? const <String>[
+              '还没有打分记录，所以少一根「评分态度」——给作品打个分它就会出现。',
+            ]
+          : const <String>[],
     );
   }
 

@@ -102,6 +102,30 @@ class _InsightBody extends StatelessWidget {
             child: PersonaRadarChart(dimensions: data.dimensions),
           ),
         ),
+        // 「为什么少一块」放在图下方而不是图里：图要保持干净，
+        // 这句话是给「觉得图怪但说不上哪里怪」的人看的。
+        for (final hint in data.hints) ...[
+          const SizedBox(height: Space.s2),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                Icons.info_outline_rounded,
+                size: 14,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: Space.s1),
+              Expanded(
+                child: Text(
+                  hint,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
         const SizedBox(height: Space.s3),
         Card(
           clipBehavior: Clip.antiAlias,

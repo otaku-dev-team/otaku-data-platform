@@ -64,6 +64,13 @@ void main() {
       isNot(contains('评分态度')),
     );
     expect(insight.review, isNot(contains('均分')));
+    // 少一根必须解释：否则用户看到五边形只会觉得「怪」，不知道打分后会多出来。
+    expect(insight.hints, hasLength(1));
+    expect(insight.hints.single, contains('评分态度'));
+  });
+
+  test('打过分的用户：不需要任何解释', () {
+    expect(PersonaInsightMapper.fromProfile(profile()).hints, isEmpty);
   });
 
   test('权重全零：不除零、不产生 NaN', () {
