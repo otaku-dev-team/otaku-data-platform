@@ -23,8 +23,8 @@ class WorkCharacter {
   /// - 不按类型分组——分组会撑出一个巨大的「未知」桶。
   final String? characterType;
 
-  /// 人物实体标识。与 [WorkStaff.personId] 不同，这一侧实测 **100% 有值**；
-  /// 但人物页属 B2、本期范围外，所以当前同样不做跳转。
+  /// 人物实体标识。与 [WorkStaff.personId] 不同，这一侧实测 **100% 有值**，
+  /// 人物页落地（#455）后基本都可点。
   final String? personId;
 
   factory WorkCharacter.fromJson(Map<String, dynamic> json) {
