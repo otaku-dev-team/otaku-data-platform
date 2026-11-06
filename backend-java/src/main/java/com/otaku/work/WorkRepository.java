@@ -175,6 +175,47 @@ public class WorkRepository {
         return rows.stream().findFirst();
     }
 
+    /**
+     * 推荐候选：某个标签下「评分最高的一批可见作品」（#402）。
+     *
+     * <p>为什么按单标签循环而不是一条 `tag IN (...)` + DISTINCT：后者要临时表去重，
+     * 55 万行上会退化成全表扫；这里每个标签走 `work_tag` 的 `(tag, rating_value)` 索引
+     * 取一段就停，8 个标签就是 8 次毫秒级查询。
+     *
+     * <p>可见性口径与公开读一致（下架 / 成人 / 收录范围），推荐列表不该给出点进去 404 的卡片。
+     */
+    public List<WorkRecord> findVisibleByTag(String tag, int limit) {
+        // 子查询里带 LIMIT 不能直接放进 IN (...)——MySQL 8 报
+        // 「This version of MySQL doesn't yet support 'LIMIT & IN/ALL/ANY/SOME subquery'」，
+        // 必须包成派生表再 JOIN。
+        return jdbc.query(
+                "SELECT w.* FROM work w JOIN ("
+                        + " SELECT work_ref FROM work_tag WHERE tag = :tag"
+                        + " ORDER BY rating_value DESC LIMIT :limit) t ON t.work_ref = w.id"
+                        + " WHERE w.deleted_at IS NULL AND w.is_adult = 0"
+                        + (siteScopeEnabled ? " AND w.site_listed = 1" : ""),
+                new MapSqlParameterSource().addValue("tag", tag).addValue("limit", limit),
+                MAPPER);
+    }
+
+    /**
+     * 冷启动兜底：全站高分作品（#402）。
+     *
+     * <p>排序走 `rating_sort` 生成列（V30），与列表页 `sort=rating` 同一口径——
+     * 低票作品按 0 沉底，不会出现「3 个人打了 10 分」的条目占据新用户第一屏。
+     */
+    public List<WorkRecord> findPopular(int limit) {
+        return jdbc.query(
+                "SELECT " + COLUMNS + " FROM work"
+                        + " WHERE rating_count >= " + WorkService.MIN_RATING_COUNT
+                        + " AND rating_value IS NOT NULL"
+                        + " AND deleted_at IS NULL AND is_adult = 0"
+                        + (siteScopeEnabled ? " AND site_listed = 1" : "")
+                        + " ORDER BY rating_sort DESC, id DESC LIMIT :limit",
+                new MapSqlParameterSource("limit", limit),
+                MAPPER);
+    }
+
     public long insert(WorkRecord record) {
         String sql = """
                 INSERT INTO work (work_id, work_type, title, summary, release_year,

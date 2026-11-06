@@ -1425,6 +1425,47 @@ paths:
         "429": { $ref: "#/components/responses/RateLimitedWithRetry" }
         "500": { $ref: "#/components/responses/InternalError" }
 
+  /api/me/recommend:
+    get:
+      tags: [账号]
+      summary: 我的个性化推荐（需登录，新增）
+      operationId: listMyRecommendations
+      description: |
+        基于我的画像算出的推荐列表，供客户端首页推荐位（#376）消费。
+
+        **路径为什么是 `/api/me/recommend` 而不是设计稿的 `/api/recommend`**：推荐是
+        基于个人行为算的（画像 + 已看/已收藏排除），不是公共榜单。`AuthFilter` 只拦
+        `/api/me/**`，挂 `/api/recommend` 会变成匿名可读，而且没有用户就不知道给谁算。
+
+        打分（纯规则、可解释）：`标签命中权重之和 + 类型权重 + 评分质量 × 0.3`。
+
+        - 候选来自画像里权重最高的 8 个**正标签**，每个标签取评分最高的 200 部（走 `work_tag` 索引）；
+        - **已浏览 / 已收藏的作品全量排除**（不是只排除最近 30 天）；
+        - 负权重标签会扣分——用户明确不喜欢的标签不该因为「其他标签还不错」被推上来；
+        - 评分质量只对 `rating_count >= 50`（或票数未知）的作品生效，与列表页 `sort=rating` 同一阈值；
+        - `score` 是**本次结果内归一化到 0–1 的相对分**（除以最高分），不是跨请求可比的绝对分；
+        - 同分按作品评分降序。
+
+        **冷启动**：画像为空（新用户 / 生产行为数据还没积累）时返回全站高分榜，
+        `cold_start: true` 且每项 `reasons` 为空、`score` 为 0——诚实表示「没有个性化成分」。
+        不返回空列表：空的第一屏对新用户最差。
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          description: 返回条数，默认 20、上限 50（超出按 50 截断，不报错）；小于 1 按 20
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+      responses:
+        "200":
+          description: 成功；候选全被排除或库里没有可推荐作品时 `items` 为空数组
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RecommendationPage" }
+        "401": { $ref: "#/components/responses/UnauthorizedSession" }
+        "429": { $ref: "#/components/responses/RateLimitedWithRetry" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
   /api/me/comments:
     get:
       tags: [社区]
@@ -2655,14 +2696,6 @@ components:
         请求方法不被支持（`METHOD_NOT_ALLOWED`，#345）。
         例如对只接受 DELETE 的 `/api/me` 发 GET。这是「客户端用错」，不是服务端故障——
         调用方不应重试、也不会成功。
-
-        同族的另一种「客户端用错」是 **Content-Type 不被支持**（`UNSUPPORTED_MEDIA_TYPE`，415）：
-        写接口声明了 `consumes: application/json`，发 `text/plain` 现在也是 415 而非 500。
-        两者都不进 ERROR 日志。
-      headers:
-        Allow:
-          description: 该路径支持的方法（RFC 9110 §15.5.6 要求 405 必须带）
-          schema: { type: string, example: "GET, HEAD" }
       content:
         application/json:
           schema: { $ref: "#/components/schemas/ErrorResponse" }
@@ -4035,7 +4068,6 @@ components:
                 - BATCH_TOO_LARGE
                 - RATE_LIMITED
                 - METHOD_NOT_ALLOWED
-                - UNSUPPORTED_MEDIA_TYPE
                 - INTERNAL
             message:
               type: string
@@ -4258,6 +4290,51 @@ components:
           type: array
           items: { type: string }
           description: 制作职责（导演 / 脚本 / 原画…，来源原值）；只配音时为 `[]`
+
+    RecommendationPage:
+      type: object
+      description: 个性化推荐结果（#402）。顺序即推荐顺序。
+      required: [items, cold_start, generated_at]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Recommendation" }
+        cold_start:
+          type: boolean
+          description: |
+            true = 画像为空，本次返回的是全站高分榜（`score` 恒 0、`reasons` 为空）。
+            客户端此时应显示「热门推荐」而不是「为你推荐」。
+        generated_at: { type: string, format: date-time }
+
+    Recommendation:
+      type: object
+      required: [work, score, reasons]
+      properties:
+        work: { $ref: "#/components/schemas/WorkSummary" }
+        score:
+          type: number
+          description: |
+            本次结果内归一化到 0–1 的相对分（除以最高分）。**不是跨请求可比的绝对分**——
+            别拿它做「今天比昨天更推荐」这类比较，只用来画列表内的强度条。
+        reasons:
+          type: array
+          description: 命中原因，按权重降序，最多 3 条；冷启动时为空数组
+          items: { $ref: "#/components/schemas/RecommendationReason" }
+
+    RecommendationReason:
+      type: object
+      required: [type, value, weight]
+      properties:
+        type:
+          type: string
+          enum: [tag, type]
+          description: tag = 命中的标签；type = 命中的作品类型
+        value:
+          type: string
+          description: type=tag 时是标签名，type=type 时是作品类型（anime / comic / game / novel）
+        weight:
+          type: number
+          description: 画像里的归一化权重（-1–1），不是最终得分
 
     PersonaProfile:
       type: object
