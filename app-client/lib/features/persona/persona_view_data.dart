@@ -42,6 +42,7 @@ class PersonaInsight {
     this.topTags = const <String>[],
     this.tone,
     this.boundAccount,
+    this.hints = const <String>[],
   });
 
   /// 称号，例如「深夜考据派」。
@@ -62,6 +63,13 @@ class PersonaInsight {
   /// 已绑定的第三方账号（Bangumi / B 站）；`null` = 未绑定或接口未给。
   /// 客户端**不能**把「取不到」当成「没绑定」，所以 UI 只显示占位说明。
   final String? boundAccount;
+
+  /// 解释「为什么这里少一块」，渲染在雷达图下方。
+  ///
+  /// 目前只有一种：还没打过分 → 少了「评分态度」那根轴。**静默少一根是最差的
+  /// 处理**——用户只会觉得雷达图怪怪的，不知道打分之后会多出来。明说一句，
+  /// 「缺」就变成了「可预期的下一步」。
+  final List<String> hints;
 }
 
 /// 一张推荐卡要展示的内容。
