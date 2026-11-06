@@ -22,6 +22,14 @@ abstract final class RoutePaths {
   static String articleDetail(String articleId) =>
       '$articles/${Uri.encodeComponent(articleId)}';
 
+  /// 人物详情（#455）。`person_id` 是**不透明字符串**——现在库里是裸数字，
+  /// 切 v3 数据集后带 `bgm:` / `pname:` / `cname:` 前缀，整值编码后放进路径。
+  static const String persons = '/persons';
+  static const String personSegment = ':personId';
+
+  static String person(String personId) =>
+      '$persons/${Uri.encodeComponent(personId)}';
+
   /// 登录页。从收藏页跳来时用 push，登录成功后 pop 回去。
   static const String login = '/login';
 

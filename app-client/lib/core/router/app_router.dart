@@ -11,6 +11,7 @@ import '../../features/contents/contents_page.dart';
 import '../../features/detail/work_detail_page.dart';
 import '../../features/home/home_page.dart';
 import '../../features/devices/device_page.dart';
+import '../../features/person/person_page.dart';
 import '../../features/persona/persona_page.dart';
 import '../../features/profile/profile_edit_page.dart';
 import '../../features/profile/profile_page.dart';
@@ -158,6 +159,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: RoutePaths.recentHistory,
         builder: (context, state) => const RecentHistoryPage(),
+      ),
+      // #455 人物详情：从作品详情的 staff / 声优行点进来。挂在根级而不是某个
+      // tab 分支下——它可能从作品页、人物页自身或未来的搜索进来，不属于某个 tab。
+      GoRoute(
+        path: '${RoutePaths.persons}/${RoutePaths.personSegment}',
+        builder: (context, state) =>
+            PersonPage(personId: state.pathParameters['personId'] ?? ''),
       ),
       GoRoute(
         path: RoutePaths.profile,

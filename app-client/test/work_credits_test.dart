@@ -92,7 +92,7 @@ void main() {
       expect(richText('宫崎骏'), findsOneWidget);
     });
 
-    testWidgets('人名不可点击：人物页属 B2，本期不做跳转', (tester) async {
+    testWidgets('person_id 为空的 staff 行不可点：是数据没有实体，不是忘了接', (tester) async {
       final work = loadWork('real_work_detail_rich');
       await tester.pumpWidget(wrap(StaffSection(staff: work.staff)));
 
@@ -101,7 +101,7 @@ void main() {
       expect(
         find.ancestor(of: richText(name), matching: find.byType(InkWell)),
         findsNothing,
-        reason: 'Staff 侧 person_id 实测 0% 有值，做了跳转是跳到不存在的页面',
+        reason: '这份 fixture 的 person_id 全为 null——空值不该做成可点（#455 人物页已落地）',
       );
       expect(
         find.ancestor(
@@ -153,7 +153,7 @@ void main() {
       expect(find.textContaining('未知'), findsNothing);
     });
 
-    testWidgets('person_id 有值也不做跳转：人物页落地前一律不可点', (tester) async {
+    testWidgets('person_id 有值就可点（#455 落地后），跳转由区块测试覆盖', (tester) async {
       await tester.pumpWidget(
         wrap(
           CharacterSection(
@@ -163,11 +163,24 @@ void main() {
           ),
         ),
       );
-      // 这一侧 person_id 实测 100% 有值，是最容易顺手做成可点击的地方——钉住。
+      // 这一侧 person_id 实测 100% 有值：人物页落地后这里必须是可点的。
       expect(
         find.ancestor(of: richText('猫猫'), matching: find.byType(InkWell)),
-        findsNothing,
+        findsOneWidget,
       );
+      expect(find.byIcon(Icons.chevron_right_rounded), findsOneWidget);
+    });
+
+    testWidgets('person_id 为空：同一行仍然显示，但不可点、无箭头', (tester) async {
+      await tester.pumpWidget(
+        wrap(
+          const CharacterSection(
+            characters: [WorkCharacter(name: '路人甲', actor: '某某')],
+          ),
+        ),
+      );
+      expect(richText('路人甲'), findsOneWidget);
+      expect(find.byIcon(Icons.chevron_right_rounded), findsNothing);
     });
   });
 
