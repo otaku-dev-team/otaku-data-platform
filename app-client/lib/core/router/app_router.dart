@@ -11,6 +11,7 @@ import '../../features/contents/contents_page.dart';
 import '../../features/detail/work_detail_page.dart';
 import '../../features/home/home_page.dart';
 import '../../features/devices/device_page.dart';
+import '../../features/my_comment/my_comment_page.dart';
 import '../../features/person/person_page.dart';
 import '../../features/persona/persona_page.dart';
 import '../../features/profile/profile_edit_page.dart';
@@ -185,6 +186,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: RoutePaths.profileEditSegment,
             builder: (context, state) => const ProfileEditPage(),
+          ),
+          // #449 我的评论：注册但不从任何入口 push——本轮「功能存在但不启用」。
+          GoRoute(
+            path: RoutePaths.myCommentSegment,
+            builder: (context, state) => const MyCommentPage(),
           ),
         ],
       ),

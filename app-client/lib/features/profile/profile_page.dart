@@ -30,8 +30,10 @@ import 'profile_stats.dart';
 ///    等口径重算一遍，且两边迟早会不一致。
 /// 2. **数字拿不到就显示「—」**，不写 0。未登录时「0 条收藏」是谎话，
 ///    会让人以为收藏没了（铁律 3：抓不到 ≠ 已删除）。
-/// 3. **资讯收藏 / 作品申请放进来但标「未开放」**。站点有这四个分区，
+/// 3. **资讯收藏 / 作品申请 / 我的评论放进来但标「未开放」**。站点有这几个分区，
 ///    版式对齐才看得懂缺的是哪一块；但按钮不可点——点了没反应比明说更糟。
+///    我的评论尤其如此：代码（页面、数据源、四态）已备好，不开放是产品口径，
+///    不是接口没就绪，所以这一项只差一个 `onTap` 就能启用。
 class ProfilePage extends ConsumerWidget {
   const ProfilePage({super.key});
 
@@ -369,6 +371,15 @@ class _SectionCard extends StatelessWidget {
             icon: Icons.assignment_outlined,
             title: '作品申请',
             subtitle: '提交想看的作品条目',
+          ),
+          const Divider(height: 1),
+          // #449：模块已写好（features/my_comment/），但本轮按「有这个功能但
+          // 不用」的口径不开放。不传 onTap → _SectionTile 自动显示「未开放」
+          // 且不可点，避免「点了没反应」。启用只需补一行 onTap。
+          const _SectionTile(
+            icon: Icons.chat_bubble_outline_rounded,
+            title: '我的评论',
+            subtitle: '发过的评论与回复',
           ),
         ],
       ),

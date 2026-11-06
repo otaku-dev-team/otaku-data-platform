@@ -112,7 +112,15 @@ void main() {
     expect(find.text('未登录'), findsNWidgets(2));
     // 收藏 / 看过 / 想看拿不到 -> 「—」；浏览记录是本地的，照常是 0。
     expect(find.text('—'), findsNWidgets(3));
+
+    // 分区多了「我的评论」一行后，页脚的登录按钮落到首屏外；ListView 是懒构建的，
+    // 得先滚过去才拿得到（与下面「退出登录」那条同样的处理）。
+    await tester.scrollUntilVisible(find.text('登录'), 200);
     expect(find.widgetWithText(FilledButton, '登录'), findsOneWidget);
+
+    // 滚回顶部，「设置」才会重新进入构建范围。
+    await tester.scrollUntilVisible(find.text('设置'), -200);
+    await tester.pumpAndSettle();
 
     // 未登录也能进设置：与改版前一致。
     await tester.tap(find.text('设置'));
@@ -234,17 +242,26 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('资讯收藏与作品申请标未开放且点不动', (tester) async {
+  testWidgets('资讯收藏 / 作品申请 / 我的评论都标未开放且点不动', (tester) async {
     await pumpProfile(tester, token: signedInToken);
     await tester.tap(find.byTooltip('我的'));
     await tester.pumpAndSettle();
 
-    expect(find.text('未开放'), findsNWidgets(2));
+    // 三个分区都标「未开放」（都在 ListView 的预构建范围内）。
+    expect(find.text('未开放'), findsNWidgets(3));
+
     await tester.tap(find.text('资讯收藏'));
     await tester.pumpAndSettle();
     // 仍停在本页：没有跳转就不会有目的页标题。
     expect(find.text('收藏目的页'), findsNothing);
     expect(find.text('个人空间'), findsOneWidget);
+
+    // 「我的评论」在首屏下方：先滚到可见再点，确认同样点不动。
+    await tester.ensureVisible(find.text('我的评论'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('我的评论'));
+    await tester.pumpAndSettle();
+    expect(find.text('个人空间'), findsOneWidget, reason: '点了不该跳走');
     await tester.pumpWidget(const SizedBox());
   });
 
