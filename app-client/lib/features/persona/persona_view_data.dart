@@ -1,16 +1,12 @@
 /// #375 / #376 的 **UI 展示模型**，不是接口 DTO。
 ///
-/// 这里刻意没有 `fromJson`、没有 `score`、没有 `tagWeights` / `typeWeights`
-/// 这类契约字段：`docs/algorithm-design.md` §7 把「画像 JSON schema」「推荐
-/// 返回结构」都列为**待三人确认**，#401 / #402 的接口还没定稿。现在照草案
-/// 写一版 DTO，等于提前把未定口径钉进客户端，接口一改就要连页面一起改。
+/// 这一层只描述「屏幕上要画什么」（维度名、归一化后的比例、一句锐评、
+/// 已经翻译成人话的推荐理由）。2026-11-06 上线的 `/api/me/recommend`（#402）
+/// 返回的是 `cold_start` / `score` / `reasons[{type, value, weight}]`，
+/// 由 `persona_data_source.dart` 的远程实现映射到这里，页面不认识契约字段。
 ///
-/// 所以边界是：
-/// - 这一层只描述「屏幕上要画什么」（维度名、归一化后的比例、一句锐评、
-///   已经翻译成人话的推荐理由）；
-/// - 数据源层负责把「将来真正的接口响应」映射成这些对象。
-/// 接口定稿后只改 `persona_data_source.dart` 里的 remote 实现与映射，
-/// 页面、雷达图、卡片都不动。
+/// 客户端不自算打分（§6）：`score` 只是本次结果内的相对分，UI 不展示、
+/// 也不拿它跨请求比较。
 library;
 
 import 'package:flutter/foundation.dart';
@@ -83,7 +79,11 @@ class RecommendedWork {
 /// #376 首页个性化区块的数据。
 @immutable
 class PersonaFeed {
-  const PersonaFeed({required this.isGuest, this.items = const <RecommendedWork>[]});
+  const PersonaFeed({
+    required this.isGuest,
+    this.items = const <RecommendedWork>[],
+    this.coldStart = false,
+  });
 
   /// 游客态：不请求个性化接口，也不展示个性化榜单。
   ///
@@ -92,6 +92,11 @@ class PersonaFeed {
   final bool isGuest;
 
   final List<RecommendedWork> items;
+
+  /// 契约 `RecommendationPage.cold_start`：画像为空，本次返回的是**全站高分榜**
+  /// （`score` 恒 0、`reasons` 为空）。UI 必须把「为你推荐」换成「热门推荐」，
+  /// 不能把公共榜单说成是给用户算出来的。
+  final bool coldStart;
 
   bool get isEmpty => items.isEmpty;
 }

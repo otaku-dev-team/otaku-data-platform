@@ -14,11 +14,13 @@ import 'persona_view_data.dart';
 /// #375 阿宅画像（UI 壳）。
 ///
 /// 对标网站 `/me/persona`：六维雷达 + 锐评 + 偏好标签 + 生成设置入口。
-/// 目前只接 [PersonaMockDataSource]，**不接任何真接口**——#401 的画像 API
-/// 与 `docs/algorithm-design.md` §7 的画像 schema 都还没定稿，真数据联调等接口。
+///
+/// #401 的 `GET /api/me/profile` 已上线，但它给的是类型 / 标签权重与评分倾向，
+/// 没有这里的「称号 + 锐评 + 六维」。展示口径属于 #375，本轮（#376 推荐接真数据）
+/// 不改这一页，继续用 [PersonaMockDataSource] + 「界面预览」横幅标清数据来源。
 ///
 /// 生成 / 绑定 / 语气这一排刻意「未开放」：点了没反应比明说更糟，
-/// 沿用个人空间 `_SectionTile` 的口径。接口落地后把这些 tile 接成真动作。
+/// 沿用个人空间 `_SectionTile` 的口径。
 class PersonaPage extends ConsumerWidget {
   const PersonaPage({super.key});
 
@@ -89,7 +91,7 @@ class _ShellNotice extends StatelessWidget {
           const SizedBox(width: Space.s2),
           Expanded(
             child: Text(
-              '界面预览：以下为演示数据。画像接口（#401）与字段口径定稿后再接真实数据。',
+              '界面预览：以下为演示数据。画像页展示口径（#375）未定，暂不消费 /api/me/profile。',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: scheme.onSecondaryContainer,
               ),
@@ -216,7 +218,7 @@ class _PendingActions extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.fromLTRB(Space.s4, 0, Space.s4, Space.s3),
             child: Text(
-              '以上能力依赖画像生成接口，待 #401 落地后开放。',
+              '以上能力依赖画像生成服务，尚未开放（与已上线的画像聚合接口 #401 不是一回事）。',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
