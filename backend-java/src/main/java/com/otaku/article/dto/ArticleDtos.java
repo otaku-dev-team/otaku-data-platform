@@ -58,6 +58,18 @@ public final class ArticleDtos {
     }
 
     /**
+     * 相关资讯（#414）。
+     *
+     * <p>为什么不是 {@code ArticlePage}：这是固定条数的「延伸阅读」，不是分页列表——
+     * 给 `total` / `total_pages` 会让客户端以为还能翻页。`items` 为空表示没有相关资讯
+     * （照样 200，与「这个分类没数据」同口径）。
+     */
+    public record ArticleRelated(
+            List<ArticleSummary> items
+    ) {
+    }
+
+    /**
      * 详情。比列表多 {@code body}（正文纯文本，一行一段）、
      * {@code relatedWorkIds}（来源站关联作品 id）与 {@code relatedWorks}（解析到本地作品后的列表）。
      *

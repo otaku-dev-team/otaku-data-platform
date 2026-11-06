@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.otaku.article.dto.ArticleDtos.ArticleDetail;
 import com.otaku.article.dto.ArticleDtos.ArticlePage;
+import com.otaku.article.dto.ArticleDtos.ArticleRelated;
 import com.otaku.article.dto.ArticleDtos.ArticleSummary;
 import com.otaku.article.dto.ArticleDtos.Category;
 import com.otaku.common.AdultPolicy;
@@ -11,6 +12,7 @@ import com.otaku.common.PageResponse;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 /**
@@ -113,6 +115,78 @@ public class ArticleService {
             return null;
         }
         return repository.findByArticleId(articleId.trim()).map(this::toDetail).orElse(null);
+    }
+
+    /** 相关资讯的条数：默认 10、上限 20。再多就不叫「延伸阅读」了。 */
+    static final int RELATED_DEFAULT = 10;
+    static final int RELATED_MAX = 20;
+    /** 候选取 limit 的 5 倍：SQL 只能按时间粗排，多取一些让打分有得挑。 */
+    private static final int RELATED_CANDIDATE_FACTOR = 5;
+
+    /**
+     * 资讯↔资讯（#414）：同标签 / 同分类的「延伸阅读」。
+     *
+     * <p>打分：`共享标签数 × 2 + 同分类 × 1`，同分按发布时间倒序。
+     * **同来源不计分**——同一来源的资讯本来就高度同质，把它当相似证据等于
+     * 「只要是这家媒体的就相关」，噪声大于信息。
+     *
+     * <p>返回 {@code null} 表示源资讯不存在（控制器转 404）；返回空 items 表示
+     * 源资讯既没标签也没分类，或候选全被过滤——两种都是 200。
+     */
+    public ArticleRelated related(String articleId, int limitParam) {
+        if (articleId == null || articleId.isBlank()) {
+            return null;
+        }
+        ArticleRecord source = repository.findByArticleId(articleId.trim()).orElse(null);
+        if (source == null) {
+            return null;
+        }
+
+        int limit = Math.min(Math.max(limitParam <= 0 ? RELATED_DEFAULT : limitParam, 1), RELATED_MAX);
+        List<String> sourceTags = readTags(source.tagsJson());
+        if (sourceTags == null) {
+            sourceTags = List.of();
+        }
+        String tagsJson = sourceTags.isEmpty() ? null : source.tagsJson();
+        String category = source.category() == null || source.category().isBlank()
+                ? null
+                : source.category();
+        if (tagsJson == null && category == null) {
+            return new ArticleRelated(List.of());
+        }
+
+        List<ArticleRecord> candidates = repository.findRelatedCandidates(
+                source.articleId(), tagsJson, category, limit * RELATED_CANDIDATE_FACTOR);
+
+        List<ScoredArticle> scored = new ArrayList<>();
+        for (ArticleRecord candidate : candidates) {
+            List<String> candidateTags = readTags(candidate.tagsJson());
+            int shared = 0;
+            if (candidateTags != null) {
+                for (String tag : candidateTags) {
+                    if (sourceTags.contains(tag)) {
+                        shared++;
+                    }
+                }
+            }
+            double score = shared * 2.0
+                    + (category != null && category.equals(candidate.category()) ? 1.0 : 0.0);
+            if (score > 0) {
+                scored.add(new ScoredArticle(candidate, score));
+            }
+        }
+        scored.sort(Comparator.comparingDouble(ScoredArticle::score).reversed()
+                .thenComparing(s -> s.record().publishedAt(),
+                        Comparator.nullsLast(Comparator.reverseOrder())));
+
+        List<ArticleSummary> items = scored.stream()
+                .limit(limit)
+                .map(s -> toSummary(s.record()))
+                .toList();
+        return new ArticleRelated(items);
+    }
+
+    private record ScoredArticle(ArticleRecord record, double score) {
     }
 
     /** 全部分类（条数多的在前）。空库返回空列表。 */

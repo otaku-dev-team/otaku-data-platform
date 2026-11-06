@@ -2,6 +2,7 @@ package com.otaku.article;
 
 import com.otaku.article.dto.ArticleDtos.ArticleDetail;
 import com.otaku.article.dto.ArticleDtos.ArticlePage;
+import com.otaku.article.dto.ArticleDtos.ArticleRelated;
 import com.otaku.article.dto.ArticleDtos.Category;
 import com.otaku.common.ApiException;
 import com.otaku.common.ErrorCode;
@@ -63,5 +64,22 @@ public class ArticleController {
             throw new ApiException(ErrorCode.ARTICLE_NOT_FOUND, "资讯不存在");
         }
         return detail;
+    }
+
+    /**
+     * 相关资讯（#414）：同标签 / 同分类的「延伸阅读」。
+     *
+     * <p>源资讯不存在返回 404（与详情同口径）；有资讯但没有相关资讯返回
+     * 200 + 空 items——「这条比较孤立」不是错误。
+     */
+    @GetMapping("/{articleId}/related")
+    public ArticleRelated related(
+            @PathVariable String articleId,
+            @RequestParam(value = "limit", defaultValue = "10") int limit) {
+        ArticleRelated related = service.related(articleId, limit);
+        if (related == null) {
+            throw new ApiException(ErrorCode.ARTICLE_NOT_FOUND, "资讯不存在");
+        }
+        return related;
     }
 }
