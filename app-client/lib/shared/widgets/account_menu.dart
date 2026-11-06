@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/router/route_paths.dart';
 import '../../core/platform_info.dart';
 import '../../features/auth/auth_controller.dart';
+import '../../features/profile/profile_data_source.dart';
 
 /// 账号入口。
 ///
@@ -50,7 +51,11 @@ class AccountMenuButton extends ConsumerWidget {
         icon: const Icon(Icons.person_outline_rounded, size: 18),
         label: const Text('登录'),
       ),
-      AuthStatus.signedIn => _SignedInMenu(label: auth.user!.label),
+      // 与个人空间身份卡共用一条规则：昵称优先、没有才回落登录名。
+      // 只读 `auth.user.label` 的话，改完昵称这里还是旧名字。
+      AuthStatus.signedIn => _SignedInMenu(
+        label: ref.watch(profileDisplayNameProvider),
+      ),
     };
   }
 
