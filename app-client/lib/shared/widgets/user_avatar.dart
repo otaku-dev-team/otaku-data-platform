@@ -18,14 +18,22 @@ class UserAvatar extends StatelessWidget {
     super.key,
     required this.label,
     this.avatarUrl,
+    this.previewImage,
     this.radius = 26,
   });
 
   /// 显示名（昵称优先，没有则用户名）。
   final String label;
 
-  /// 头像 URL。`null` / 空串 = 首字色块。
+  /// **已上传**的头像 URL。`null` / 空串 = 首字色块。
   final String? avatarUrl;
+
+  /// 本地预览图（刚选完、还没上传）。
+  ///
+  /// 优先于 [avatarUrl]：用户刚挑了新图，此刻想看到的是新图，不是旧头像。
+  /// 收 [ImageProvider] 而不是 `File`，组件就不必依赖 `dart:io`，
+  /// 调用方传 `FileImage` / `MemoryImage` 都行。
+  final ImageProvider? previewImage;
 
   final double radius;
 
@@ -33,7 +41,10 @@ class UserAvatar extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final hasImage = avatarUrl != null && avatarUrl!.isNotEmpty;
+    final remote = (avatarUrl != null && avatarUrl!.isNotEmpty)
+        ? NetworkImage(avatarUrl!)
+        : null;
+    final image = previewImage ?? remote;
     final trimmed = label.trim();
     final initial = trimmed.isEmpty
         ? null
@@ -43,10 +54,9 @@ class UserAvatar extends StatelessWidget {
       radius: radius,
       backgroundColor: scheme.primaryContainer,
       foregroundColor: scheme.onPrimaryContainer,
-      backgroundImage: hasImage ? NetworkImage(avatarUrl!) : null,
-      child: hasImage
-          ? null
-          : (initial != null
+      backgroundImage: image,
+      child: image == null
+          ? (initial != null
               ? Text(
                   initial,
                   style: theme.textTheme.titleLarge?.copyWith(
@@ -54,7 +64,8 @@ class UserAvatar extends StatelessWidget {
                     fontWeight: FontWeight.w700,
                   ),
                 )
-              : const Icon(Icons.person_outline_rounded)),
+              : const Icon(Icons.person_outline_rounded))
+          : null,
     );
   }
 }
