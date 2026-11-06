@@ -15,11 +15,14 @@ import java.util.Optional;
  * 「谁参与了哪部作品」本来就在那里，缺的只是一个能从人反查过去的入口。
  *
  * <p>⚠️ **没有 person_id 索引**（`work_staff` / `work_characters` 只有 `work_ref` 前缀索引）。
- * 人物页是「按人反查」，走的是全表扫：当前两张表合计约 22 万行，单次约几十毫秒，
- * 在现规模可以接受。加索引要占一个迁移号，而 `V31` 已永久跳过、`V33` 留给 #362 的
- * 人物前缀迁移、`V34` 已许给 #377/#378——**不在这一条里抢号**，等 #362 落地时
- * 在同一个迁移里顺带加 `KEY idx_work_staff_person (person_id)` 与
- * `KEY idx_work_characters_person (person_id)`。
+ * 人物页是「按人反查」，走的是全表扫。**2026-11-06 上线后实测**：`GET /api/persons/1`
+ * 在生产机上 **0.46–0.57 s**（同机作品列表 7–13 ms）——原先这里估的「几十毫秒」是错的。
+ *
+ * <p>已把三次扫描压成一次（见 {@code PersonService.detail}），预计降到 ~170 ms；
+ * **根治要加索引**。但迁移号顺序不允许插队：`V31` 已永久跳过、`V33` 留给 #362 的
+ * 人物前缀迁移，先建 V34 会让后到的 V33 被 Flyway 拒绝（默认 `outOfOrder=false`）。
+ * 所以**等 #362 落地时在同一个迁移里顺带加** `KEY idx_work_staff_person (person_id)` 与
+ * `KEY idx_work_characters_person (person_id)`——那之后这个接口才能回到 10 ms 量级。
  */
 @Repository
 public class PersonRepository {

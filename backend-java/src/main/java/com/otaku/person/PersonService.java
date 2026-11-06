@@ -21,6 +21,16 @@ import java.util.Map;
  * <p>键是**不透明字符串**：现在库里是裸数字（v2 数据集），#362 切 v3 后会变成
  * `bgm:` / `pname:` / `cname:` 前缀。这里既不解析也不校验格式——写死格式的代码
  * 会在切流那天整片 404，而它们本来就不需要知道键长什么样。
+ *
+ * <p><b>为什么要一次查询算完（2026-11-06 实测）</b>：上线后 `GET /api/persons/1`
+ * 在本机 curl 上是 **0.46–0.57 s**，而作品列表只要 7–13 ms。原因是这个接口发了
+ * **三条**「按 person_id 全表扫」的 SQL：`findWorks` 一次 UNION、`countCastWorks` 与
+ * `countCreditWorks` 各一次 COUNT——两张关系表没有 person_id 索引（见 PersonRepository
+ * 类注释），每条都是 20 万行量级的扫描。
+ *
+ * <p>而计数本来就能从 `credits` 推出来（`characters` 非空 = 有配音，`roles` 非空 = 有制作），
+ * 口径与原来那两条 COUNT 一致（都过滤了成人 / 下架 / 收录范围）。所以合并成一次扫描。
+ * 真正的根治是加 person_id 索引，要等 #362 的 `V33`（迁移号顺序不允许插队）。
  */
 @Service
 public class PersonService {
@@ -69,8 +79,12 @@ public class PersonService {
             works.add(new PersonCredit(work, credit.characters(), credit.roles()));
         }
 
+        // 计数从 credits 推导，不再各发一条 COUNT——那两条同样是「按 person_id 全表扫」，
+        // 而 credits 已经把可见作品取回来了。三次全扫压成一次。
+        long castCount = credits.stream().filter(c -> !c.characters().isEmpty()).count();
+        long creditCount = credits.stream().filter(c -> !c.roles().isEmpty()).count();
         return new PersonDetail(person.personId(), person.name(), person.entityType(),
-                works, repository.countCastWorks(personId), repository.countCreditWorks(personId));
+                works, castCount, creditCount);
     }
 
     private static String requirePersonId(String raw) {
