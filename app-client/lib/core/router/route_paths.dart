@@ -64,6 +64,13 @@ abstract final class RoutePaths {
   static const String profileEditSegment = 'edit';
   static const String profileEdit = '$profile/edit';
 
+  /// 我的评论（#449 客户端，与画像 / 登录设备同形态）。
+  ///
+  /// **路由注册但没有任何入口 push 它**：本轮按「有这个功能但不用」的口径，
+  /// 个人空间里的 tile 标「未开放」且不可点。启用时只需给那个 tile 补 `onTap`。
+  static const String myCommentSegment = 'comments';
+  static const String myComment = '$profile/$myCommentSegment';
+
   /// 每日新番档期。与列表/收藏平级：从任何地方都能直接进。
   static const String schedule = '/schedule';
 

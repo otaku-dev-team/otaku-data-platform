@@ -11,15 +11,17 @@ import '../../shared/widgets/section_state_view.dart';
 import 'persona_data_source.dart';
 import 'persona_view_data.dart';
 
-/// #376 首页个性化推荐区块（UI 壳）。
+/// #376 首页个性化推荐区块。
 ///
 /// - 登录用户：横排展示推荐作品 + 一句「为什么推荐给你」；
 /// - 游客：**不展示个性化榜单**，只给一张登录引导卡。#376 要求的「回落默认榜」
-///   由首页既有的「高分作品 / 本日新番」固定榜承担，这里不重复造第二份榜。
+///   由首页既有的「高分作品 / 本日新番」固定榜承担，这里不重复造第二份榜；
+/// - 冷启动（`cold_start = true`）：画像为空，服务端返回的是全站高分榜，
+///   标题必须改成「热门推荐」——不能把公共榜单说成是给用户算出来的。
 ///
-/// 数据来自 [personaDataSourceProvider]（当前只有 mock）。#402 推荐 API
-/// 与 `docs/algorithm-design.md` §7 的返回结构定稿前，不写 URL、不写 DTO、
-/// 不解析 `score`——客户端不自算打分（§6）。
+/// 数据来自 [personaDataSourceProvider]：`USE_MOCK=false` 时走
+/// `GET /api/me/recommend`（#402，2026-11-06 已上线），规则 key → 理由文案
+/// 的映射在数据源层。客户端不自算打分（§6），`score` 不展示。
 class PersonalizedRecommendSection extends ConsumerWidget {
   const PersonalizedRecommendSection({super.key});
 
@@ -30,12 +32,14 @@ class PersonalizedRecommendSection extends ConsumerWidget {
     final feed = ref.watch(personaFeedProvider);
     final textScale = MediaQuery.textScalerOf(context).scale(1);
     final stripHeight = CompactWorkCard.heightFor(_cardWidth, textScale) + 26;
+    // 错误 / 加载态还没有数据，标题沿用「为你推荐」；拿到 cold_start 再改口。
+    final coldStart = feed.hasValue && feed.requireValue.coldStart;
 
     return _Frame(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const _Header(),
+          _Header(coldStart: coldStart),
           SectionStateView<PersonaFeed>(
             value: feed,
             onRetry: () => ref.invalidate(personaFeedProvider),
@@ -77,7 +81,9 @@ class _Frame extends StatelessWidget {
 }
 
 class _Header extends StatelessWidget {
-  const _Header();
+  const _Header({required this.coldStart});
+
+  final bool coldStart;
 
   @override
   Widget build(BuildContext context) {
@@ -97,14 +103,14 @@ class _Header extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              '为你推荐',
+              coldStart ? '热门推荐' : '为你推荐',
               style: theme.textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.w700,
               ),
             ),
           ),
           Text(
-            '按画像',
+            coldStart ? '全站高分' : '按画像',
             style: theme.textTheme.labelSmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
