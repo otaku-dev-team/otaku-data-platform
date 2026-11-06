@@ -33,7 +33,14 @@ from __future__ import annotations
 #: 的取数从「整表照搬」改成「按 role 白名单过滤」。加表本身是增量变更，但同一份
 #: 映射文件里 credits 的口径也变了（从 40.8 万条变 18.3 万条），读方不能默认
 #: 「v1 的 credits 与 v2 的 credits 是同一批数据」，所以升版本而不是悄悄扩表。
-DATASET_VERSION = "2"
+#:
+#: v2 → v3（2026-11-01）：`people.source_id` 与 `work_credits.person_ref` /
+#: `work_cast.person_ref` 的取值规则全换，从「网站自增 id 与 Bangumi 人物 id 混用」
+#: 改成统一的前缀键（`bgm:` 强关联 / `pname:` `cname:` 弱关联，见 §7 of
+#: docs/person-id-unification.md）。**列不变、语义全变**——v2 的 `source_id` 是
+#: 网站自增 id，v3 的同名列是 `bgm:123` 这样的键，读方按 v2 理解会静默拿错人，
+#: 所以必须升版本，且不能靠「列还在」判断兼容。
+DATASET_VERSION = "3"
 
 #: 导出器自身版本，写进 meta 便于排查「哪个版本导出的坏数据」。
 EXPORTER_VERSION = "1.0.0"
@@ -126,7 +133,14 @@ CREATE TABLE work_facts (
 );
 
 -- 人物 / 公司实体。`work_credits.person_ref` 与 `work_cast.person_ref` 指向这里的 source_id。
--- 没有实体的人名（Staff 侧大量如此，来自 infobox 文本解析）不进这张表，person_ref 留空。
+--
+-- source_id 是**前缀键**，一张表装两类身份（v3 起）：
+--   bgm:<Bangumi 人物 id>  强关联：声优、长尾 staff、以及补到 id 的主创
+--   pname:<归一化人名>      弱关联：只有名字的主创（infobox 文本来源）
+--   cname:<归一化公司名>    弱关联：全部制作公司（公司永远没有 Bangumi 人物 id）
+-- 前缀不只是命名习惯——读方据此判断「能不能断言这是同一个人」：
+-- bgm: 可以跨源合并，pname:/cname: 只能站内聚合作品列表。
+-- 人名与公司前缀不同，同名的人和公司不会撞主键。
 CREATE TABLE people (
     source_id         TEXT PRIMARY KEY,
     name              TEXT NOT NULL,
@@ -139,7 +153,7 @@ CREATE TABLE work_credits (
     source_id  TEXT NOT NULL,
     role       TEXT NOT NULL,
     name       TEXT NOT NULL,
-    person_ref TEXT,
+    person_ref TEXT,          -- v3：bgm:/pname: 键，不再留空
     tier       TEXT,
     sort_order INTEGER
 );
@@ -150,7 +164,7 @@ CREATE TABLE work_cast (
     source_id  TEXT NOT NULL,
     character  TEXT NOT NULL,
     actor      TEXT NOT NULL,
-    person_ref TEXT,
+    person_ref TEXT,          -- v3：bgm:/pname: 键，不再留空
     relation   TEXT,
     sort_order INTEGER
 );

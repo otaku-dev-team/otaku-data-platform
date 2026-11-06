@@ -3186,10 +3186,21 @@ components:
           type: string
           nullable: true
           description: |
-            人物实体标识。`null` = 该条来自纯文本解析、没有实体（实测 Staff 侧 **0%** 有值）。
+            人物实体标识。**v3 数据集起是带前缀的键**，不再是裸数字：
 
-            **人物页落地前一律 null**，客户端不得依赖它做跳转，也不得因它为 null 就隐藏该条记录。
-            字段先占位是为了让客户端提前布局，不是「马上就会填满」的承诺。
+            | 形态 | 什么时候出现 | 能做什么 |
+            |---|---|---|
+            | `bgm:<人物 id>` | 来源给了 Bangumi 人物 id（声优基本全覆盖，长尾 staff 与补到 id 的主创也有） | 强关联，可跨源合并 |
+            | `pname:<人名>` | 只有名字的主创（来源是 infobox 文本，没有 id） | 弱关联，只能站内聚合作品列表 |
+            | `cname:<公司名>` | 制作公司（公司永远没有 Bangumi 人物 id） | 弱关联 |
+
+            客户端要知道的三件事：
+
+            1. **不要按数值解析**。v3 之前这里是裸数字（`123`），之后是 `bgm:123`，两者不相等；把它当不透明字符串存、比对、去重。
+            2. **`null` 仍会出现**——该条没有任何可用实体。不要因为 `null` 就隐藏这一条 staff/角色记录。
+            3. 键最长 128 字符（v3 起 `work_staff`/`work_characters`.person_id 已扩到 `VARCHAR(128)`），超过的弱关联键平台会丢弃为 `null`（极少数超长人名）。客户端不要自己截断或补全，按原值透传即可。
+
+            人物页端点已落地（B2 / #455）：可以拿这个键做缓存、去重与跳转，但当不透明字符串处理。
 
     WorkCharacter:
       type: object
@@ -3219,8 +3230,9 @@ components:
           type: string
           nullable: true
           description: |
-            声优的人物实体标识。与 `WorkStaff.person_id` 不同，这一侧实测 **100% 有值**，
-            但人物页端点落地前客户端仍不得跳转。
+            声优的人物实体标识。与 `WorkStaff.person_id` **同一套前缀键**（v3 起为 `bgm:<人物 id>`，没有 id 时退化成 `pname:<人名>`）；解析规则见 `WorkStaff.person_id`。
+
+            与 Staff 侧不同，这一侧来源几乎都带 Bangumi 人物 id，实测绝大多数是 `bgm:` 形态。人物页端点已落地（B2 / #455），客户端可做跳转与去重。
 
     DeletionRequest:
       type: object
