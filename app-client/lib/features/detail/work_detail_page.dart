@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -30,6 +32,7 @@ import '../recent/recent_views_controller.dart';
 import 'related_works_section.dart';
 import 'work_related_articles_section.dart';
 import 'work_collection_controller.dart';
+import 'view_report.dart';
 import 'work_credits_section.dart';
 import 'work_detail_controller.dart';
 
@@ -62,6 +65,23 @@ class _WorkDetailPageState extends ConsumerState<WorkDetailPage> {
   /// 详情 provider 的订阅。`listenManual` 不会被框架自动回收，必须自己关。
   late final ProviderSubscription<AsyncValue<Fetched<Work>>> _detailSub;
 
+  /// 会话状态的订阅。
+  ///
+  /// 冷启动从深链接直接进详情页时，`AuthController` 还在恢复会话
+  /// （`checking`），此时读 `isSignedIn` 会拿到 false——一次真实访问的浏览
+  /// 就打点丢了，而且**没有任何迹象**。所以要等会话落地。
+  late final ProviderSubscription<AuthState> _authSub;
+
+  /// 已加载的详情。打点要「详情到手 + 会话就绪」两个条件，缺一不可。
+  Work? _loadedWork;
+
+  /// 这个页面实例是否已经向服务端报过浏览。
+  ///
+  /// [_remember] 会被调两次（缓存值先到、网络值后到），但**一次访问只该算一次
+  /// 浏览**——不去重的话 `view_count` 会虚高一倍。契约说的「重复提交正常」指的是
+  /// 跨次访问，不是同一次访问里的重复调用。
+  bool _reported = false;
+
   @override
   void initState() {
     super.initState();
@@ -79,6 +99,15 @@ class _WorkDetailPageState extends ConsumerState<WorkDetailPage> {
       },
     );
 
+    // 会话可能在详情加载之后才恢复完（深链接冷启动），那时 `_maybeReport`
+    // 会因为「未登录」直接返回；这条订阅负责在会话落地后补上。
+    _authSub = ref.listenManual<AuthState>(authControllerProvider, (
+      previous,
+      next,
+    ) {
+      if (next.isSignedIn) _maybeReport();
+    });
+
     // provider 不自动销毁，所以「从列表第二次点进同一部作品」不会产生值变化，
     // 上面那个订阅不会再触发。这里补记一次，否则「最近浏览」的顺序会停在
     // 第一次打开的时间上（A → B → 再回 A，A 还排在 B 后面）。
@@ -93,12 +122,34 @@ class _WorkDetailPageState extends ConsumerState<WorkDetailPage> {
   @override
   void dispose() {
     _detailSub.close();
+    _authSub.close();
     super.dispose();
   }
 
-  /// 记一次浏览。重复记录是幂等的（去重 + 置顶），所以补记不会产生两条。
-  void _remember(Work work) =>
-      ref.read(recentViewsProvider.notifier).record(work);
+  /// 记一次浏览：本地历史 + 服务端打点。
+  ///
+  /// 本地那份是「我的浏览记录」（Hive，只在本机）；服务端那份是画像信号
+  /// （`user_work_view`，V32 / #401）。**两件事都失败无感**——本地写不进只少
+  /// 一条历史，打点失败只少一条信号，都不该让详情页出现错误态。
+  void _remember(Work work) {
+    ref.read(recentViewsProvider.notifier).record(work);
+    _loadedWork = work;
+    _maybeReport();
+  }
+
+  /// 详情到手 **且** 会话就绪，才报一次。
+  ///
+  /// 分开判断是因为两件事到达顺序不定：详情可能先到（缓存），也可能会话还没
+  /// 恢复完（深链接冷启动）。任一条件不满足就先等着，由另一个订阅补上。
+  void _maybeReport() {
+    final work = _loadedWork;
+    if (work == null || _reported) return;
+    // 游客不报：401 会被 dio 拦截器广播成「会话过期」，看个详情页就掉登录态。
+    if (!ref.read(authControllerProvider).isSignedIn) return;
+    _reported = true;
+    // 不 await：详情页不该等一次打点。`report` 内部已经吞掉所有异常。
+    unawaited(ref.read(viewReporterProvider).report(work.workId));
+  }
 
   /// 点详情页的标签：跳到作品库并按该标签筛。
   ///
