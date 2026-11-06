@@ -18,11 +18,13 @@ spring:
     locations: classpath:db/migration
   task:
     scheduling:
-      # 三个清理任务（会话 04:30 / 设备 04:45 / UGC 04:50 UTC）默认挤在 1 个调度线程上：
-      # 前一个慢，后面全排队——「UGC 清理没跑」和「跑了但晚了 40 分钟」在日志里长得一样。
-      # 调到 3 之后三个任务各占一条线程，互不阻塞。任务本身仍是串行语义（各自独立、无共享状态）。
+      # 清理任务从「一条线程排队」改成每条一条（#365 之一，PR #382 把 1 调到 3）。
+      # 现在有四个（UTC）：会话 04:30 / 设备 04:45 / UGC 04:50 / 浏览记录 04:55。
+      # 04:55 的浏览清理是随 #421 后加的，池仍是 3 —— UGC 留存清理一旦超过 5 分钟，
+      # 它就排不上线程。**加定时任务时同步看这里**，否则又回到「跑了但晚了 40 分钟」。
+      # 任务本身仍是串行语义（各自独立、无共享状态），多出来的线程空闲即不占资源。
       pool:
-        size: ${OTAKU_SCHEDULER_POOL_SIZE:3}
+        size: ${OTAKU_SCHEDULER_POOL_SIZE:4}
       thread-name-prefix: otaku-sched-
   jackson:
     # 契约通篇 snake_case：work_id / page_size / main_rating / batch_id …
