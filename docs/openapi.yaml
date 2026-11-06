@@ -1388,6 +1388,43 @@ paths:
           description: 已取消（或本来就没收藏）
         "401": { $ref: "#/components/responses/UnauthorizedSession" }
 
+  /api/me/profile:
+    get:
+      tags: [账号]
+      summary: 我的阿宅画像（需登录，新增）
+      operationId: getMyPersonaProfile
+      description: |
+        当前登录用户的口味画像，供客户端画像页（#375）与个性化推荐（#376）消费。
+
+        **路径为什么是 `/api/me/profile` 而不是设计稿的 `/api/profile`**：`AuthFilter` 只拦
+        `/api/auth/me`、`/api/me`、`/api/me/**`，`/api/profile` 不在其中——挂上去等于匿名可读，
+        而画像是个人的行为数据。改鉴权器的白名单不如沿用它已有的路径约定。
+
+        口径：
+        - 三路信号：浏览（`user_work_view`，强调查看次数）、收藏（`collection`，按
+          `want`/`watching`/`watched` 递增）、点评（`ugc_review.rating`，7 分以上为正面、
+          4 分及以下为**负反馈**）；
+        - 权重**按维度归一化到 0–1**（各自除以绝对值最大者），客户端直接画条；
+          **负值保留**——低分作品的标签是「不喜欢」的证据，抹平成 0 等于丢掉负反馈；
+        - 标签按作品标签数均摊，避免「标签多的作品」主导画像；
+        - `sample_size` 是参与聚合的行为行数：只有 3 条行为时图画出来和 300 条一样
+          （都归一化到 1.0），客户端据此决定是否显示「口味还在形成中」；
+        - 没有任何行为时返回**空画像**（`type_weights` / `tag_weights` 空对象、
+          `rating_tendency.mean` 为 `null`、`sample_size` 为 0），不返回一堆 0.0；
+        - 软删（下架）的作品的行为**仍计入**：偏好是历史事实，不因作品下架而消失；
+        - 实时聚合，不落画像表；首版行为行数远小于上限，没有缓存问题。
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: 成功；没有行为数据时返回空画像（不是 404）
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PersonaProfile" }
+        "401": { $ref: "#/components/responses/UnauthorizedSession" }
+        "429": { $ref: "#/components/responses/RateLimitedWithRetry" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
   /api/me/comments:
     get:
       tags: [社区]
@@ -4212,6 +4249,52 @@ components:
           type: array
           items: { type: string }
           description: 制作职责（导演 / 脚本 / 原画…，来源原值）；只配音时为 `[]`
+
+    PersonaProfile:
+      type: object
+      description: |
+        阿宅画像（#401）。权重按维度各自归一化到 -1–1：最强的类型 / 标签恒为 ±1，
+        没有行为的维度返回空对象而不是一堆 0。
+      required: [type_weights, tag_weights, rating_tendency, recent_active, sample_size, generated_at]
+      properties:
+        type_weights:
+          type: object
+          description: 作品类型 → 权重。负值表示「这个类型我看得少 / 打低分」
+          additionalProperties: { type: number }
+          example: { anime: 1.0, game: 0.4, novel: -0.25 }
+        tag_weights:
+          type: object
+          description: 标签 → 权重。负值来自低分作品，是「不喜欢」的证据
+          additionalProperties: { type: number }
+          example: { 机战: 1.0, 科幻: 0.35, 后宫: -0.6 }
+        rating_tendency:
+          $ref: "#/components/schemas/PersonaRatingTendency"
+        recent_active:
+          type: array
+          description: 最近 30 天有行为的作品 id，按时间倒序去重，最多 20 个
+          items: { type: string }
+        sample_size:
+          type: integer
+          description: 参与聚合的行为行数（浏览 + 收藏 + 点评）。为 0 时其余字段都是空态
+        generated_at: { type: string, format: date-time }
+
+    PersonaRatingTendency:
+      type: object
+      required: [count, dist]
+      properties:
+        mean:
+          type: number
+          nullable: true
+          description: 打分均值（1–10，一位小数）；`count = 0` 时为 null，不给 0.0
+        count:
+          type: integer
+          description: 打过分的点评条数（只写正文不打分的不计）
+        dist:
+          type: array
+          description: 固定 10 个桶，下标 0 对应 1 分、下标 9 对应 10 分；长度不随数据变
+          minItems: 10
+          maxItems: 10
+          items: { type: integer }
 
     MyCommentPage:
       allOf:

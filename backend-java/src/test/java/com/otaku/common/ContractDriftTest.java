@@ -250,6 +250,9 @@ class ContractDriftTest {
         // 「我的评论」（#449）：自己的评论 + 内嵌作品卡片；回复与被隐藏/待审的都在列表里
         targets.put("MyComment", com.otaku.ugc.dto.MyCommentDto.class);
         targets.put("MyCommentPage", PageResponse.class);
+        // 阿宅画像（#401）：权重 0–1 归一化 + 评分倾向 10 桶，形状与 algorithm-design §3 对齐
+        targets.put("PersonaProfile", com.otaku.persona.dto.PersonaDtos.PersonaProfile.class);
+        targets.put("PersonaRatingTendency", com.otaku.persona.dto.PersonaDtos.RatingTendency.class);
         // 人物页（B2 #455）：按作品合并的参与列表，形状照来源站 cast_detail()
         targets.put("PersonDetail", com.otaku.person.dto.PersonDtos.PersonDetail.class);
         targets.put("PersonCredit", com.otaku.person.dto.PersonDtos.PersonCredit.class);
