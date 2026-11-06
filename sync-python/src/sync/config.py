@@ -74,6 +74,10 @@ class SyncConfig:
     request_interval_seconds: float = DEFAULT_REQUEST_INTERVAL_SECONDS
     max_pages: int = DEFAULT_MAX_PAGES
     timeout_seconds: float = 30.0
+    # 提交导入批次单独的超时：一批最多 500 条、每条一个事务，实测本机满批 9.5 秒，
+    # 生产（2C2G + 同机 MySQL）慢 2–3 倍就压到 30 秒线上（#365 实测）。
+    # 抓取单页仍用 timeout_seconds——把抓取也放到 120 秒只会让卡死等更久。
+    import_timeout_seconds: float = 120.0
     max_attempts: int = 3
     backoff_seconds: float = 2.0
     output_dir: str = "runs"
@@ -110,6 +114,9 @@ class SyncConfig:
             ),
             "max_pages": int(os.getenv("OTAKU_MAX_PAGES", str(DEFAULT_MAX_PAGES))),
             "timeout_seconds": float(os.getenv("OTAKU_TIMEOUT_SECONDS", "30")),
+            "import_timeout_seconds": float(
+                os.getenv("OTAKU_IMPORT_TIMEOUT_SECONDS", "120")
+            ),
             "max_attempts": int(os.getenv("OTAKU_MAX_ATTEMPTS", "3")),
             "backoff_seconds": float(os.getenv("OTAKU_BACKOFF_SECONDS", "2")),
             "output_dir": os.getenv("OTAKU_OUTPUT_DIR", "runs"),

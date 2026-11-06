@@ -181,7 +181,8 @@ PYTHONPATH=src python -m sync --source bangumi --archive <dump.zip> \
 | `OTAKU_SOURCE_PAGE_SIZE` | `200` | 来源分页大小，**来源方要求不超过 200** |
 | `OTAKU_REQUEST_INTERVAL_SECONDS` | `0.6` | 来源请求间隔，对应来源方要求的 1–2 req/s |
 | `OTAKU_MAX_PAGES` | `1000` | 翻页上限，安全阀 |
-| `OTAKU_TIMEOUT_SECONDS` | `30` | 请求超时 |
+| `OTAKU_TIMEOUT_SECONDS` | `30` | 单次请求超时（抓页面 / subject） |
+| `OTAKU_IMPORT_TIMEOUT_SECONDS` | `120` | **提交导入批次**的超时。一批最多 500 条、每条一个事务，实测本机满批 9.5 s，生产慢 2–3 倍会压到 30 s 线上；不要和上面那个共用（#365） |
 | `OTAKU_MAX_ATTEMPTS` | `3` | 最大尝试次数 |
 | `OTAKU_BACKOFF_SECONDS` | `2` | 重试间隔 |
 | `OTAKU_OUTPUT_DIR` | `runs` | 产物目录 |
