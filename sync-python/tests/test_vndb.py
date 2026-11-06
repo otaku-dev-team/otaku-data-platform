@@ -4,7 +4,7 @@
 因此不受 conftest 的网络守卫影响（也不需要 OTAKU_TEST_ALLOW_NETWORK）。
 
 覆盖：字段映射、类型映射、封面透传、BBCode 清洗、标签三态、
-分页终止、失败页记账、评分红线（不映射 rating）、CLI 注册。
+分页终止、失败页记账、评分 0–100 → 0–10 归一、CLI 注册。
 """
 
 from __future__ import annotations
@@ -20,6 +20,9 @@ from sync.sources.vndb import (
 )
 
 
+_MISSING = object()
+
+
 def _vn(  # noqa: D103 - 测试夹具
     vndb_id: str = "v17",
     title: str = "Ever17",
@@ -27,6 +30,7 @@ def _vn(  # noqa: D103 - 测试夹具
     released: str | None = "2002-08-29",
     image: dict | None = None,
     tags: list | None = None,
+    rating: object = _MISSING,
 ) -> dict:
     """构造一条 kana /vn 记录（字段名对齐 VNDB kana 响应）。"""
     record: dict = {"id": vndb_id, "title": title}
@@ -38,6 +42,8 @@ def _vn(  # noqa: D103 - 测试夹具
         record["image"] = image
     if tags is not None:
         record["tags"] = tags
+    if rating is not _MISSING:
+        record["rating"] = rating
     return record
 
 
@@ -203,20 +209,52 @@ def test_tags_missing_is_none():
 
 
 # ----------------------------------------------------------------------
-# 评分红线（Issue #155，待三人确认）
+# 评分：0–100 → 0–10（Issue #456 拍板，C6）
 # ----------------------------------------------------------------------
 
 
-def test_rating_is_not_mapped():
-    """VNDB 评分是 0–100，契约固定 0–10。
-
-    在三人确认拍板前**不映射评分**（保持 None）——否则 90.6 会和首站的
-    9.0 一起参与 sort=rating 比较，排行榜语义错位。见 docs/w4-second-site-report.md §5。
-    """
+def test_rating_is_normalized_to_ten_point_scale():
+    """VNDB 的 0–100 分按 ÷10 线性归一后提交，尺度与来源都随条目带上。"""
     def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(
-            200, json={"results": [_vn()], "more": False}
-        )
+        return httpx.Response(200, json={"results": [_vn(rating=90.6)], "more": False})
+
+    with _source(handler) as source:
+        item = next(source.iter_work_items("2026-10-27T00:00:00+00:00"))
+
+    assert item.main_rating is not None
+    assert item.main_rating.value == pytest.approx(9.06)
+    assert item.main_rating.scale == "0-10"
+    assert item.main_rating.source == SOURCE_VNDB
+    # 线性换算必须可逆，否则原始分就被永久改写了（不另存原始列的前提）。
+    assert item.main_rating.value * 10 == pytest.approx(90.6)
+
+
+def test_rating_full_marks_maps_to_ten():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"results": [_vn(rating=100)], "more": False})
+
+    with _source(handler) as source:
+        item = next(source.iter_work_items("2026-10-27T00:00:00+00:00"))
+
+    assert item.main_rating is not None
+    assert item.main_rating.value == pytest.approx(10.0)
+
+
+@pytest.mark.parametrize("raw", [None, 0, -1, 101, "not-a-number", True])
+def test_unusable_rating_is_none(raw):
+    """缺失 / 0 / 越界 / 非数值都按缺失处理，绝不写成 0 分或裁剪成边界值。"""
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"results": [_vn(rating=raw)], "more": False})
+
+    with _source(handler) as source:
+        item = next(source.iter_work_items("2026-10-27T00:00:00+00:00"))
+
+    assert item.main_rating is None
+
+
+def test_missing_rating_key_is_none():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"results": [_vn()], "more": False})
 
     with _source(handler) as source:
         item = next(source.iter_work_items("2026-10-27T00:00:00+00:00"))

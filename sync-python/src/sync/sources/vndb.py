@@ -31,15 +31,26 @@ VNDB 封面在 `t.vndb.org`（如 `https://t.vndb.org/cv/...`），W4 已把
 | `released`           | `release_year`       | 日期取前 4 位年份，`YYYY` / `YYYY-MM` 兼容     |
 | `image.url`          | `cover_url`          | 绝对地址原样透传；缺失为 None                  |
 | `tags[].name`        | `tags`               | 取前 `VNDB_TAG_LIMIT` 个，去重保序              |
+| `rating`             | `main_rating`        | **0–100 线性归一到 0–10**（÷10），见下节        |
 | （无对应）            | `source_url`         | 人读原页 `https://vndb.org/{id}`               |
 
-## 评分（暂不映射 —— 红线，见下方 TODO）
+## 评分（0–100 → 0–10，线性归一）
 
-VNDB 的 `rating` 是 **0–100** 尺度，而契约的 `Rating.scale` 固定 `0-10`。
-W4 报告已证明：两个来源的尺度不同却一起参与 `sort=rating` / `min_rating`
-会让排行榜与过滤**语义错位**。这是改动存储/契约语义的**三人确认红线项**
-（Issue #155，方案 A/B/C 待拍板），**不在本次范围内**，故适配器现在
-**不映射 `main_rating`**（保持 None），等三人确认后再补归一或强制校验。
+VNDB 的 `rating` 是 **0–100** 尺度，契约的 `Rating.scale` 固定 `0-10`，后端
+（`ImportItemValidator`）对非 `0-10` 的评分**整条拒收**（`RATING_OUT_OF_SCALE`，
+见 `docs/open-decisions.md` C6）。所以适配器必须换算后提交——这不是可选优化，
+是入口守卫的唯一正确走法。
+
+换算取**线性 ÷10**，理由与边界：
+
+- 分位映射要先有全站评分分布，而我们手里只有「按 rating 降序抓」的有偏子集，
+  用它定分位会把偏差固化进数据；
+- ÷10 无损可逆（原值 = 提交值 × 10），因此不另存原始分列，也不动 `rating_scale`；
+- 跨源分布差异（VNDB 用户与首站用户的打分习惯不同）**不靠公式消掉**：
+  保留 `rating_source`，让读侧知道分数来自哪个站；这是数据事实，不是换算能修的。
+
+`rating` 缺失、非数值、≤0（VNDB 无人投票时为 null）、或超出 0–100 时一律按
+**缺失**处理（`None`），绝不折算成 0 分——与 `bangumi.pick_rating` 同一口径。
 """
 
 from __future__ import annotations
@@ -59,9 +70,11 @@ from ..config import (
     DEFAULT_MAX_PAGES,
     DEFAULT_PAGE_SIZE,
     DEFAULT_REQUEST_INTERVAL_SECONDS,
+    RATING_SCALE,
+    SOURCE_VNDB,
 )
 from ..fetching import FailedPage, FetchClient
-from ..models import SourceRecord, WorkItem
+from ..models import Rating, SourceRecord, WorkItem
 
 # kana API 基础地址。封面走单独的 `t.vndb.org`（见模块 docstring）。
 DEFAULT_VNDB_API_BASE_URL = "https://api.vndb.org/kana"
@@ -86,6 +99,11 @@ VNDB_MAX_RESULTS_PER_PAGE = 100
 # 只摘掉方括号标签、保留标签之间的可见文本，比整段丢弃更贴近原意。
 _BBCODE_RE = re.compile(r"\[[^\]]*\]")
 
+# 评分尺度换算：VNDB 0–100 → 契约 0–10（线性 ÷10，见模块 docstring「评分」）。
+# `rating_value` 是 DECIMAL(4,2)，所以保留两位小数；原值 = 提交值 × 10，无损可逆。
+VNDB_RATING_MAX = 100
+_VNDB_RATING_DIVISOR = 10.0
+
 
 def _strip_bbcode(text: str | None) -> str | None:
     """去掉 VNDB 简介里的 BBCode 标签，保留标签之间的可见文本。
@@ -95,6 +113,29 @@ def _strip_bbcode(text: str | None) -> str | None:
     if text is None:
         return None
     return clean_summary(_BBCODE_RE.sub("", text))
+
+
+def _normalize_rating(raw: dict[str, Any]) -> Rating | None:
+    """把 VNDB 的 0–100 分线性归一到契约的 0–10。
+
+    缺失、非数值、≤0、>100 一律返回 None（缺失不等于 0 分）。
+    越界不裁剪而是当缺失：上游若换了尺度（比如误传 0–1000），裁剪会把
+    「100 分」写成「10 分」，静默污染排序；当缺失至少能在覆盖率上看出来。
+    """
+    value = raw.get("rating")
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return None
+    if numeric <= 0 or numeric > VNDB_RATING_MAX:
+        return None
+    return Rating(
+        value=round(numeric / _VNDB_RATING_DIVISOR, 2),
+        scale=RATING_SCALE,
+        source=SOURCE_VNDB,
+    )
 
 
 class VndbSource:
@@ -227,20 +268,10 @@ class VndbSource:
             work_type=VNDB_WORK_TYPE,
             title=raw.get("title") or "",
             summary=_strip_bbcode(raw.get("description")),
-            # ------------------------------------------------------------------
-            # TODO(W4 #155 / 三人确认): VNDB 评分尺度是 0–100，契约固定 0–10。
-            # 现在**不映射** `main_rating`（保持 None），等三人确认以下方案之一：
-            #   A 适配器归一：VNDB 的 rating÷10 再提交（本次 W4 探针的做法，
-            #      但换算规则是隐式约定，写错没人拦，会静默污染排序）；
-            #   B 契约只收 0–10：`scale != "0-10"` 一律 RATING_OUT_OF_SCALE
-            #      （倾向方案，一条校验把"静默错"变成"显式错"）；
-            #   C 比较时带尺度：索引失效，57 万条上不可行。
-            # 在三人确认拍板前，**不得**改动 `Rating` 存储或把 0–100 原值
-            # 当成 0–10 提交——那会让 `sort=rating` / `min_rating` 语义错位。
-            # 届时在此处补一个 `_normalize_rating(raw)`，并同步更新本模块
-            # docstring 的字段映射表。
-            # ------------------------------------------------------------------
-            main_rating=None,
+            # 评分：VNDB 0–100 → 契约 0–10（线性 ÷10）。后端对非 0-10 的评分
+            # 整条拒收（RATING_OUT_OF_SCALE），所以换算必须在这里完成。
+            # 口径与理由见模块 docstring「评分」与 docs/open-decisions.md C6。
+            main_rating=_normalize_rating(raw),
             cover_url=normalize_url(image_url),
             release_year=clean_year(str(raw.get("released") or "")[:4]),
             tags=self._pick_tags(raw.get("tags")),
