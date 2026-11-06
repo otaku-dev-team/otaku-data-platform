@@ -117,21 +117,16 @@ class _IdentityCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final user = auth.user;
     final signedIn = auth.isSignedIn;
     final checking = auth.status == AuthStatus.checking;
 
-    // 平台自设的昵称与头像存在 [UserProfile] 里——编辑页写的就是这一份——
-    // 而账号身份在 [AuthState.user]。**只读后者就会出现「提示保存成功、
-    // 回到这里名字没变」**，这正是编辑资料上线后一直没被发现的 bug。
-    //
-    // 未登录时 profile 是空对象（数据源不抛 401），走不到这里的分支。
+    // 头像 URL 走这份资料；显示名的回落规则在 [profileDisplayNameProvider] 里，
+    // 桌面账号菜单读的是同一个 provider，两处不会各说各话。
     final profile = ref.watch(profileProvider).value;
-    final nickname = profile?.displayName?.trim();
 
-    final label = !signedIn
-        ? (checking ? '正在读取账号…' : '未登录')
-        : ((nickname != null && nickname.isNotEmpty) ? nickname : user!.label);
+    final label = signedIn
+        ? ref.watch(profileDisplayNameProvider)
+        : (checking ? '正在读取账号…' : '未登录');
     final badge = signedIn ? '已登录' : (checking ? '读取中' : '未登录');
     final meta = signedIn
         ? '已连接 ${AppConfig.appName} 账号 · 收藏在设备间同步'

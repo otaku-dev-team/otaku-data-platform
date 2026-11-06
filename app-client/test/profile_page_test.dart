@@ -195,6 +195,28 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  testWidgets('桌面账号菜单显示的也是资料里的昵称', (tester) async {
+    await pumpProfile(
+      tester,
+      token: signedInToken,
+      size: const Size(2560, 1440),
+      desktop: true,
+      profileSource: _StubProfileDataSource(
+        const UserProfile(displayName: '深夜考据派'),
+      ),
+    );
+
+    // 不用进个人空间：菜单挂在内容页 AppBar 上，它自己就会读这份资料。
+    await tester.tap(find.byTooltip('账号'));
+    await tester.pumpAndSettle();
+
+    // 两处（身份卡 / 菜单）读的是同一个 provider；只改一处，
+    // 就会剩下「菜单里还是旧名字」这种更难发现的 bug。
+    expect(find.text('深夜考据派'), findsOneWidget);
+    expect(find.text('alice'), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('分区入口能进收藏与历史', (tester) async {
     await pumpProfile(tester, token: signedInToken);
     await tester.tap(find.byTooltip('我的'));
