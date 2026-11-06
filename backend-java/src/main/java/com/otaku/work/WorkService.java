@@ -72,6 +72,14 @@ public class WorkService {
      * <p>来源站关联作品区最多十来个，给上限只是防一条脏数据塞进几千个 id 把 IN 撑爆。
      */
     private static final int MAX_RELATED_WORKS = 30;
+    /**
+     * 批量取摘要时的安全阀。
+     *
+     * <p>人物页可能一两百部作品，**不能**复用 `MAX_RELATED_WORKS * 4`——那个截断是为
+     * 「相关作品」区块定的（最多几十个）。用错的表现不是报错，而是「页面写配音 193 部、
+     * 列表只有 120 张卡」（2026-11-06 生产实测，#455）。2000 只是防止有人把整库 id 传进来。
+     */
+    private static final int MAX_SUMMARY_BATCH = 2000;
 
     /**
      * bangumi 来源标识：只有它家的 {@code source_id} 与资讯 {@code related_work_ids}
@@ -305,7 +313,7 @@ public class WorkService {
                 .map(String::trim)
                 .filter(id -> !id.isEmpty())
                 .distinct()
-                .limit(MAX_RELATED_WORKS * 4)
+                .limit(MAX_SUMMARY_BATCH)
                 .toList();
         if (wanted.isEmpty()) {
             return Map.of();

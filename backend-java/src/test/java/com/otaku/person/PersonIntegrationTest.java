@@ -159,6 +159,27 @@ class PersonIntegrationTest {
     }
 
     @Test
+    @DisplayName("作品超过 120 部不被截断（曾经按「相关作品」的 30×4 截断）")
+    void manyWorksAreNotTruncated() {
+        java.util.List<ImportItem> items = new java.util.ArrayList<>();
+        for (int i = 0; i < 130; i++) {
+            items.add(new ImportItem("person-work-many-" + i, "anime", "批量作品 " + i,
+                    null, null, 2020, List.of("人物测试"),
+                    new SourceRating(new BigDecimal("7.0"), "0-10", "it"),
+                    null, null, List.of(), null, null, List.of(),
+                    List.of(new WorkCharacterDto("角色" + i, "批量声优", "main", PERSON)),
+                    List.of()));
+        }
+        importService.importBatch(new ImportBatchRequest(BATCH + "many", SOURCE, null, items));
+
+        PersonDetail detail = service.detail(PERSON);
+
+        // setUp 里 A、B 也是这个人的配音作品 → 130 + 2 = 132
+        assertThat(detail.works()).as("超过 120 部时不能被截断").hasSize(132);
+        assertThat(detail.castCount()).as("计数与列表一致").isEqualTo(132);
+    }
+
+    @Test
     @DisplayName("没有参与作品的人也返回 200 + 空列表（people 有行、关系没有）")
     void personWithoutWorks() {
         jdbc.update("INSERT IGNORE INTO people (source, source_id, name, entity_type) VALUES (?, ?, ?, ?)",
