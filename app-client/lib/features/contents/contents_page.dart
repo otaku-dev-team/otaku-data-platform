@@ -8,6 +8,7 @@ import '../../core/config/app_config.dart';
 import '../../core/network/api_exception.dart';
 import '../../core/router/route_paths.dart';
 import '../../core/platform_info.dart';
+import '../../core/storage/local_prefs_provider.dart';
 import '../../core/theme/app_layout.dart';
 import '../../shared/widgets/cover_prefetch.dart';
 import '../settings/display_settings.dart';
@@ -39,18 +40,35 @@ import 'work_list_tile.dart';
 /// 做出来会和网格视图长得一模一样，不如不做。
 enum CatalogView { grid, list }
 
+/// 网格 / 列表的切换，**持久化到本机**。
+///
+/// 之前只在会话内记住，注释给的理由是「项目里还没有通用的本地偏好存储」——
+/// 那个前提早就失效了（`LocalPrefs` 现在存着主题、网格密度、搜索历史）。
+/// 结果就是每次冷启动都回到网格，用户得重新点一次。
+///
+/// 与 `LibraryDisplayController` 同一口径：**设备级设置，不按账号分桶**——
+/// 网格还是列表是「这块屏幕的主人看得惯什么」，换个账号不该把列表重排回去。
 class CatalogViewController extends Notifier<CatalogView> {
+  static const String storageKey = 'catalog_view';
+
   @override
-  CatalogView build() => CatalogView.grid;
+  CatalogView build() {
+    final stored = ref.watch(localPrefsProvider).read(storageKey);
+    // 坏值（枚举改名、脏数据）一律回落网格：一个偏好坏了不该让页面打不开。
+    for (final view in CatalogView.values) {
+      if (view.name == stored) return view;
+    }
+    return CatalogView.grid;
+  }
 
   void select(CatalogView view) {
     if (state == view) return;
     state = view;
+    // 写失败无感：本次会话照常生效，只是下次启动回到上一个成功的值。
+    unawaited(ref.read(localPrefsProvider).write(storageKey, view.name));
   }
 }
 
-/// 会话内记住偏好即可：项目里还没有通用的本地偏好存储，
-/// 为了一个视图开关单独引一个插件不值当。
 final catalogViewProvider =
     NotifierProvider<CatalogViewController, CatalogView>(
       CatalogViewController.new,
