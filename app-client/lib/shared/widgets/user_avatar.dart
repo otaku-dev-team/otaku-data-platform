@@ -55,6 +55,12 @@ class UserAvatar extends StatelessWidget {
       backgroundColor: scheme.primaryContainer,
       foregroundColor: scheme.onPrimaryContainer,
       backgroundImage: image,
+      // 图挂了（404、域名过期、离线）不该把异常抛到 widget 树上。
+      // 静默停在一个纯色圆上，比整页报错、或者让上层去猜「为什么红屏」好。
+      //
+      // 必须条件传：`CircleAvatar` 断言 `backgroundImage != null ||
+      // onBackgroundImageError == null`，没图时传回调会直接断言失败。
+      onBackgroundImageError: image == null ? null : (_, _) {},
       child: image == null
           ? (initial != null
               ? Text(
