@@ -10,6 +10,7 @@ import '../../shared/widgets/desktop_nav_shell.dart';
 import '../../shared/widgets/user_avatar.dart';
 import '../auth/auth_controller.dart';
 import '../recent/recent_views_controller.dart';
+import 'profile_data_source.dart';
 import 'profile_stats.dart';
 
 /// 个人空间。
@@ -101,7 +102,7 @@ class _Intro extends StatelessWidget {
 }
 
 /// 身份卡：头像 + 昵称 + 徽章 + 元信息，底部一条统计带。
-class _IdentityCard extends StatelessWidget {
+class _IdentityCard extends ConsumerWidget {
   const _IdentityCard({
     required this.auth,
     required this.stats,
@@ -113,20 +114,31 @@ class _IdentityCard extends StatelessWidget {
   final int viewed;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final user = auth.user;
     final signedIn = auth.isSignedIn;
     final checking = auth.status == AuthStatus.checking;
 
-    final label = signedIn ? user!.label : (checking ? '正在读取账号…' : '未登录');
+    // 平台自设的昵称与头像存在 [UserProfile] 里——编辑页写的就是这一份——
+    // 而账号身份在 [AuthState.user]。**只读后者就会出现「提示保存成功、
+    // 回到这里名字没变」**，这正是编辑资料上线后一直没被发现的 bug。
+    //
+    // 未登录时 profile 是空对象（数据源不抛 401），走不到这里的分支。
+    final profile = ref.watch(profileProvider).value;
+    final nickname = profile?.displayName?.trim();
+
+    final label = !signedIn
+        ? (checking ? '正在读取账号…' : '未登录')
+        : ((nickname != null && nickname.isNotEmpty) ? nickname : user!.label);
     final badge = signedIn ? '已登录' : (checking ? '读取中' : '未登录');
     final meta = signedIn
         ? '已连接 ${AppConfig.appName} 账号 · 收藏在设备间同步'
         : (checking ? '稍等一下' : '登录后收藏可在手机与桌面同步');
-    // 头像用昵称首字，比一个通用小人更像「我」；抽成 UserAvatar 后，
-    // #378 第二层的 avatar_url 落地时只要把 URL 传进去，这里不用改。
+    // 头像用昵称首字，比一个通用小人更像「我」；有 `avatarUrl` 就显示图片。
+    // 上传接口还没落地（契约里 `avatar` 零命中），所以现在恒为 null——
+    // 但接缝必须留在这里，否则将来「能上传了卡片却不显示」要再查一遍。
     return Card(
       clipBehavior: Clip.antiAlias,
       child: Padding(
@@ -137,7 +149,7 @@ class _IdentityCard extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                UserAvatar(label: label),
+                UserAvatar(label: label, avatarUrl: profile?.avatarUrl),
                 const SizedBox(width: Space.s3),
                 Expanded(
                   child: Column(

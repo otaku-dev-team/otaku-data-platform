@@ -10,8 +10,11 @@ import 'package:otaku_app/core/theme/app_theme.dart';
 import 'package:otaku_app/data/datasources/collection_mock_data_source.dart';
 import 'package:otaku_app/data/repositories/collection_repository.dart';
 import 'package:otaku_app/features/auth/auth_controller.dart';
+import 'package:otaku_app/features/profile/profile_data_source.dart';
 import 'package:otaku_app/features/profile/profile_page.dart';
+import 'package:otaku_app/features/profile/user_profile.dart';
 import 'package:otaku_app/shared/widgets/account_menu.dart';
+import 'package:otaku_app/shared/widgets/user_avatar.dart';
 
 import 'support/test_overrides.dart';
 
@@ -26,6 +29,7 @@ void main() {
     double scale = 1,
     Size size = const Size(390, 844),
     bool desktop = false,
+    ProfileDataSource? profileSource,
   }) async {
     PlatformInfo.desktopOverride = desktop;
     addTearDown(PlatformInfo.resetOverride);
@@ -42,6 +46,9 @@ void main() {
         collectionDataSourceProvider.overrideWithValue(
           CollectionMockDataSource(delay: Duration.zero),
         ),
+        // 不传就用默认 mock（空资料）；要验「资料里的昵称/头像」时注入桩。
+        if (profileSource != null)
+          profileDataSourceProvider.overrideWithValue(profileSource),
       ],
     );
     addTearDown(container.dispose);
@@ -133,6 +140,58 @@ void main() {
     expect(find.text('2'), findsOneWidget); // 想看
     expect(find.text('1'), findsOneWidget); // 看过
     expect(find.text('—'), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('身份卡显示资料里保存的昵称，而不是登录名', (tester) async {
+    await pumpProfile(
+      tester,
+      token: signedInToken,
+      profileSource: _StubProfileDataSource(
+        const UserProfile(displayName: '深夜考据派'),
+      ),
+    );
+    await tester.tap(find.byTooltip('我的'));
+    await tester.pumpAndSettle();
+
+    // 编辑页把昵称写进 UserProfile，身份卡必须读**同一份**；
+    // 只读 AuthState.user 就会出现「提示保存成功、回来名字没变」。
+    expect(find.text('深夜考据派'), findsOneWidget);
+    expect(find.text('alice'), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('昵称是空串/全空格时回落登录名', (tester) async {
+    await pumpProfile(
+      tester,
+      token: signedInToken,
+      profileSource: _StubProfileDataSource(
+        const UserProfile(displayName: '   '),
+      ),
+    );
+    await tester.tap(find.byTooltip('我的'));
+    await tester.pumpAndSettle();
+
+    // 全空格等于没设：不能显示一片空白。
+    expect(find.text('alice'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('头像接上资料的 avatarUrl', (tester) async {
+    await pumpProfile(
+      tester,
+      token: signedInToken,
+      profileSource: _StubProfileDataSource(
+        const UserProfile(avatarUrl: 'https://example.com/a.png'),
+      ),
+    );
+    await tester.tap(find.byTooltip('我的'));
+    await tester.pumpAndSettle();
+
+    // 上传接口还没落地，这个字段现在恒为 null；但接缝必须通着，
+    // 否则将来「能上传了、卡片却不显示」还得再查一遍。
+    final avatar = tester.widget<UserAvatar>(find.byType(UserAvatar));
+    expect(avatar.avatarUrl, 'https://example.com/a.png');
     await tester.pumpWidget(const SizedBox());
   });
 
@@ -228,4 +287,20 @@ void main() {
     expect(find.text('作品收藏'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   });
+}
+
+/// 资料桩：`fetch` 恒返回给定资料。本文件不测保存，`update` 原样返回。
+class _StubProfileDataSource implements ProfileDataSource {
+  _StubProfileDataSource(this.profile);
+
+  final UserProfile profile;
+
+  @override
+  Future<UserProfile> fetch() async => profile;
+
+  @override
+  Future<UserProfile> update({
+    required String? displayName,
+    required String? bio,
+  }) async => profile;
 }
