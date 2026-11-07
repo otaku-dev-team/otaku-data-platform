@@ -187,6 +187,14 @@ class RecommendServiceTest {
                 tagWeights.isEmpty() && typeWeights.isEmpty() ? 0 : 10,
                 // 推荐不看九维（#494 是画像页的事），给空 map 即可
                 Map.of(),
+                // 称号 / 标签解读 / 稀有度同理：推荐只吃 type_weights + tag_weights
+                List.of(),
+                Map.of(),
+                null,
+                null,
+                null,
+                null,
+                null,
                 OffsetDateTime.parse("2026-11-06T00:00:00Z"));
     }
 

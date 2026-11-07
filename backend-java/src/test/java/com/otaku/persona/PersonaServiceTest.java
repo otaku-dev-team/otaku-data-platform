@@ -258,6 +258,53 @@ class PersonaServiceTest {
         assertThat(dims.get("exploration")).isEqualTo(PersonaDimensions.NEUTRAL);
     }
 
+    @Test
+    @DisplayName("画像带称号、标签解读、稀有度与收尾冷评，不用客户端自己拼")
+    void profileCarriesTitleAndTraitBlurbs() {
+        when(repository.findSignals(anyLong(), anyInt())).thenReturn(List.of(
+                collection("W-1", "anime", List.of("机战", "科幻"), "watched", "2026-11-05T10:00:00"),
+                collection("W-2", "anime", List.of("机战"), "watched", "2026-11-04T10:00:00"),
+                collection("W-3", "anime", List.of("奇幻"), "want", "2026-11-03T10:00:00")));
+
+        var profile = service.build(USER);
+
+        // 前两位是簇与身份，客户端按位置取图标；特征从第三位开始
+        assertThat(profile.personaTags()).isNotEmpty();
+        assertThat(profile.personaTags().get(0)).endsWith("系");
+        assertThat(profile.personaTags().get(1)).isEqualTo("番剧党");
+        // 每个标签都要有说明，缺了右边就是空白
+        assertThat(profile.traitBlurbs().keySet())
+                .containsExactlyElementsOf(profile.personaTags());
+        assertThat(profile.heroTitle()).isNotBlank();
+        assertThat(profile.heroCode()).isNotBlank();
+        assertThat(profile.heroNote()).isNotBlank();
+        assertThat(profile.finalQuip()).isNotBlank();
+        assertThat(profile.rarity()).isNotNull();
+        assertThat(profile.rarity().tier()).isNotBlank();
+        assertThat(profile.rarity().label()).isNotBlank();
+    }
+
+    @Test
+    @DisplayName("主身份要单一媒介过半；混着看就是杂食党")
+    void identityNeedsMajority() {
+        // 三种媒介各三分之一：谁都没过半。注意 50/50 不算杂食——判据是「不足一半」，
+        // 正好一半仍算主身份（网站同样口径）。
+        when(repository.findSignals(anyLong(), anyInt())).thenReturn(List.of(
+                collection("W-1", "anime", List.of(), "watched", "2026-11-05T10:00:00"),
+                collection("W-2", "game", List.of(), "watched", "2026-11-04T10:00:00"),
+                collection("W-3", "novel", List.of(), "watched", "2026-11-03T10:00:00")));
+
+        assertThat(service.build(USER).personaTags()).contains("杂食党");
+    }
+
+    @Test
+    @DisplayName("老番占比按 2010 年及以前算，不看最早那一部")
+    void earlyShareUsesCutoffYear() {
+        // 2010 及以前 2 部 / 有年份 3 部；若按「最早一部」判，一部 2005 的老番就会被判成老资历
+        assertThat(PersonaService.earlyShare(List.of(2005, 2010, 2020))).isEqualTo(66.667);
+        assertThat(PersonaService.earlyShare(List.of())).isZero();
+    }
+
     // ------------------------------------------------------------------
     // 夹具
     // ------------------------------------------------------------------
