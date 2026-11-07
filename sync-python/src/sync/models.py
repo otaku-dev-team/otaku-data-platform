@@ -72,6 +72,9 @@ class WorkItem:
     staff: list[dict[str, Any]] | None = None
     characters: list[dict[str, Any]] | None = None
     studios: list[str] | None = None
+    # ---- 系列（#411，只有数据集通道有）----
+    series_key: str | None = None
+    series_name: str | None = None
 
     @property
     def source_id(self) -> str:
@@ -80,7 +83,7 @@ class WorkItem:
     def to_payload(self) -> dict[str, Any]:
         """转成导入接口（接口②）的 JSON 体。
 
-        输出契约约定的 16 个字段，字段名与契约、openapi.yaml 完全一致。
+        输出契约约定的 18 个字段，字段名与契约、openapi.yaml 完全一致。
         空值一律传 null，不传空字符串。
 
         `release_year` 自 2026-10-22 起纳入（此前「第一阶段不纳入」）。
@@ -120,6 +123,8 @@ class WorkItem:
             "staff",
             "characters",
             "studios",
+            "series_key",
+            "series_name",
         ):
             value = getattr(self, key)
             if value is not None:

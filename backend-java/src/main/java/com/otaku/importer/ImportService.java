@@ -98,6 +98,9 @@ public class ImportService {
     private static final int MAX_MEDIA_LENGTH = 64;
     private static final int MAX_ALIAS_LENGTH = 200;
     private static final int MAX_ALIASES = 50;
+    /** 系列列宽（#411）：与 V37 迁移、数据集 series_key/name 的实测长度一致。 */
+    private static final int MAX_SERIES_KEY_LENGTH = 64;
+    private static final int MAX_SERIES_NAME_LENGTH = 255;
 
     private final WorkRepository workRepository;
     private final ImportBatchRepository batchRepository;
@@ -107,6 +110,7 @@ public class ImportService {
     private final CountCache countCache;
     private final TagCache tagCache;
     private final com.otaku.work.WorkRelationRepository relationRepository;
+    private final com.otaku.series.SeriesRepository seriesRepository;
     /** 是否强制「来源必须登记到站点」。默认开；集成测试与紧急导入可用配置关掉。 */
     private final boolean requireRegisteredSource;
 
@@ -118,6 +122,7 @@ public class ImportService {
                          CountCache countCache,
                          TagCache tagCache,
                          com.otaku.work.WorkRelationRepository relationRepository,
+                         com.otaku.series.SeriesRepository seriesRepository,
                          @org.springframework.beans.factory.annotation.Value(
                                  "${app.import.require-registered-source:true}") boolean requireRegisteredSource) {
         this.workRepository = workRepository;
@@ -128,6 +133,7 @@ public class ImportService {
         this.countCache = countCache;
         this.tagCache = tagCache;
         this.relationRepository = relationRepository;
+        this.seriesRepository = seriesRepository;
         this.requireRegisteredSource = requireRegisteredSource;
     }
 
@@ -308,6 +314,7 @@ public class ImportService {
             WorkRecord created = WorkMerger.newRecord(item, idGenerator.nextWorkId(), source, nowUtc());
             long workRef = workRepository.insert(created);
             applyRelations(source, workRef, item);
+            applySeries(workRef, item);
             return new ItemOutcome(ImportItemResult.INSERTED, created.workId());
         });
     }
@@ -317,7 +324,9 @@ public class ImportService {
         // 关系三块在独立的表里，WorkMerger 看不到它们——必须单独比对，
         // 否则「只改了 staff」会被判成 unchanged，静默丢掉这次更新。
         boolean relationsChanged = relationsChanged(current.id(), item);
-        if (!merged.changed() && !relationsChanged) {
+        // 系列同理：它在 work 表上，但只有数据集通道会给；不单独比对就会「只改了系列 → unchanged」。
+        boolean seriesChanged = seriesChanged(current.id(), item);
+        if (!merged.changed() && !relationsChanged && !seriesChanged) {
             return new ItemOutcome(ImportItemResult.UNCHANGED, current.workId());
         }
         if (merged.changed()) {
@@ -326,11 +335,40 @@ public class ImportService {
         if (relationsChanged) {
             applyRelations(source, current.id(), item);
         }
-        if (relationsChanged && !merged.changed()) {
-            // 只有关系数据变了：updated_at 也要推进，否则详情页看不出内容更新过。
+        if (seriesChanged) {
+            applySeries(current.id(), item);
+        }
+        if ((relationsChanged || seriesChanged) && !merged.changed()) {
+            // 只有关系/系列数据变了：updated_at 也要推进，否则详情页看不出内容更新过。
             workRepository.touch(current.id(), nowUtc());
         }
         return new ItemOutcome(ImportItemResult.UPDATED, current.workId());
+    }
+
+    /**
+     * 系列归属是否与库里不同；{@code null}（站点通道，未提供）一律视为「不变」。
+     *
+     * <p>比的是 `work.series_key` 本身：导入是幂等的，重跑同一份数据集不该产生更新计数。
+     */
+    private boolean seriesChanged(long workRef, NormalizedItem item) {
+        if (item.seriesKey() == null) {
+            return false;
+        }
+        return !item.seriesKey().equals(workRepository.findSeriesKey(workRef));
+    }
+
+    /**
+     * 写系列：先 upsert 系列行（拿名字），再把归属写到作品上。
+     *
+     * <p>顺序不能反：作品先指过去、系列行后到，中间态下反查会拿到一个查不到名字的 key。
+     * 两者在同一个事务里（{@code applyOnce} 已经开了），外部看不到这个中间态。
+     */
+    private void applySeries(long workRef, NormalizedItem item) {
+        if (item.seriesKey() == null) {
+            return;
+        }
+        seriesRepository.upsert(item.seriesKey(), item.seriesName(), nowUtc());
+        workRepository.updateSeriesKey(workRef, item.seriesKey());
     }
 
     /** 三块关系是否与库里不同；null（未提供）一律视为「不变」。 */
@@ -516,7 +554,9 @@ public class ImportService {
                 cleanStudios(item.studios()),
                 coverUrl, tagsJson,
                 ratingValue, ratingScale, ratingSource,
-                normalizeSourceUrl(item.sourceUrl()));
+                normalizeSourceUrl(item.sourceUrl()),
+                normalizeBoundedText(item.seriesKey(), MAX_SERIES_KEY_LENGTH),
+                normalizeBoundedText(item.seriesName(), MAX_SERIES_NAME_LENGTH));
     }
 
     /**

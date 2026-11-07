@@ -83,6 +83,8 @@
 | `staff` | object[] \| null | **可空** | Python 提交 | 制作人员，元素 `{role, name, person_id?}`。**三态**：`null`/省略 = 未提供（**不动已有记录**）、`[]` = 明确没有、非空 = **整体替换**该作品全部 Staff（不是追加——追加语义在来源删人时永远删不掉）。实测覆盖 **8,945 部（47.5%）**、共 183,356 条、平均 20.5 条/部。只收白名单职位，原画等工序流水不入库（[`rich-fields-tier-b-plan.md`](rich-fields-tier-b-plan.md) §3） |
 | `characters` | object[] \| null | **可空** | Python 提交 | 角色与声优，元素 `{name, actor, character_type?, person_id?}`。三态与整体替换语义同 `staff`。覆盖 **8,015 部（42.6%）**、共 75,742 条、平均 9.5 条/部。`character_type` 实测 **84% 为空**（来源未区分主配角），`null` 是常态 |
 | `studios` | string[] \| null | **可空** | Python 提交 | 制作公司名称，来源原值、不做别名合并。三态与整体替换语义同 `staff`。覆盖 **3,644 部（19.4%）**、共 4,270 条 |
+| `series_key` | string \| null | **可空** | 仅数据集通道 | 系列键（来源站系列 id，**不透明字符串**）。`null`/省略 = 本次没有系列信息，**不覆盖**库里已有归属——站点 REST 通道没有系列概念，若把「没提供」当清空，一次普通同步就会把系列抹掉（与富字段同一条铁律）。超过 64 字符按「没拿到」丢弃，**不截断**（截断会造出一个不存在的系列键） |
+| `series_name` | string \| null | **可空** | 仅数据集通道 | 系列名，随 `series_key` upsert 到 `series` 表。为空时**保留已有名字**（数据集偶尔只给 key 不给名）。反查见 `GET /api/works/{work_id}/series` |
 
 **`source_url` 补充规则**
 
@@ -448,8 +450,8 @@ Java 侧 DTO 类名可自定，但 JSON 键名以本文为准。
 
 **列表返回字段（固定）**：`work_id`、`work_type`、`title`、`release_year`、`cover_url`、`tags`、`main_rating`、`source`（共 8 个），另加分页字段 `total`、`page`、`page_size`、`total_pages`。**不返回** `summary`、`source_id`、`updated_at`、`source_url`——需要简介或回流入口请按 `work_id` 拉详情。
 
-**详情返回字段（固定）**：第 2.1 节全部字段（含 `summary`、`source`、`source_id`、`updated_at`、`source_url`、`release_year`，2026-10-28 扩入的 `title_original` / `aliases` / `media` / `episodes`，`staff` / `characters` / `studios` 三个关联数组，以及 2026-10-29 扩入的 `deleted`）。
-
+**详情返回字段（固定）**：第 2.1 节全部字段（含 `summary`、`source`、`source_id`、`updated_at`、`source_url`、`release_year`，2026-10-28 扩入的 `title_original` / `aliases` / `media` / `episodes`，`staff` / `characters` / `studios` 三个关联数组，以及 2026-10-29 扩入的 `deleted`）。
+
 > **已下架（`deleted: true`）怎么处理（2026-10-29 定案）**：源站删掉的作品后端**软删**（`work.deleted_at`），**不物理删、不返 404**。列表 / 搜索 / 标签 / 年份四个面完全不返回它；详情仍返回 `200`，`deleted` 为 `true`。客户端在收藏、历史等**引用型列表**里要显示「已下架」占位，而不是移除条目——移除会让用户以为自己的收藏丢了；详情页要有终点态（横幅 + 不可再操作），不能白屏。
 
 ### 6.1 作品列表

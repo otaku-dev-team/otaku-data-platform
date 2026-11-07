@@ -284,6 +284,24 @@ def _studios_for(conn: sqlite3.Connection, ids: Sequence[str]) -> dict[str, list
     return out
 
 
+def _series_names_for(conn: sqlite3.Connection, keys: Sequence[str]) -> dict[str, str]:
+    """一次取整批的系列名（#411）。
+
+    `series` 在数据集里是独立实体（只有 series_key / name），`works.series_key` 是它的外键。
+    名字可能缺失（来源站没填），缺失时返回的字典里就没有这个键——上层用 `.get()`
+    得到 None，后端据此保留已有名字而不是清空。
+    """
+    if not keys:
+        return {}
+    placeholders = ",".join("?" * len(keys))
+    rows = conn.execute(
+        f"SELECT series_key, name FROM series"
+        f" WHERE series_key IN ({placeholders})",
+        list(keys),
+    )
+    return {row["series_key"]: row["name"] for row in rows if row["name"]}
+
+
 def _resolve_cover(
     raw: Any, site_base_url: str, report: PublishReport
 ) -> str | None:
@@ -337,11 +355,12 @@ def _to_work_item(
     staff: dict[str, list[dict]],
     characters: dict[str, list[dict]],
     studios: dict[str, list[str]],
+    series_names: dict[str, str],
     backend_source: str,
     site_base_url: str,
     report: PublishReport,
 ) -> WorkItem:
-    """数据集一行 → 接口②的一条（16 字段）。
+    """数据集一行 → 接口②的一条（18 字段）。
 
     **富字段与关联数组一律用 `or None`**：空数组发 `[]` 意味着「明确没有，清空」，
     而数据集里没有行分不清「确实没有」与「源站没录」，所以退回不覆盖。
@@ -375,6 +394,10 @@ def _to_work_item(
         staff=staff.get(source_id) or None,
         characters=characters.get(source_id) or None,
         studios=studios.get(source_id) or None,
+        # 系列与富字段同一条铁律：没有就发 None（不覆盖）。
+        # 名字查不到但 key 有值时仍然发 key——归属本身就是信息，名字后端会保住旧值。
+        series_key=row["series_key"] or None,
+        series_name=series_names.get(row["series_key"]) if row["series_key"] else None,
     )
 
 
@@ -397,7 +420,7 @@ def _iter_chunks(
     cur = conn.execute(
         "SELECT source_id, work_type, title, summary, cover_url, release_year,"
         " rating_value, rating_scale, source_url,"
-        " title_original, aliases_json, media, episodes"
+        " title_original, aliases_json, media, episodes, series_key"
         " FROM works ORDER BY source_id"
     )
     batch: list[WorkItem] = []
@@ -432,6 +455,9 @@ def _iter_chunks(
             staff = _staff_for(conn, ids)
             characters = _characters_for(conn, ids)
             studios = _studios_for(conn, ids)
+            series_names = _series_names_for(
+                conn, [r["series_key"] for r in kept if r["series_key"]]
+            )
             batch.extend(
                 _to_work_item(
                     r,
@@ -439,6 +465,7 @@ def _iter_chunks(
                     staff=staff,
                     characters=characters,
                     studios=studios,
+                    series_names=series_names,
                     backend_source=backend_source,
                     site_base_url=site_base_url,
                     report=report,

@@ -17,9 +17,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class WorkController {
 
     private final WorkService service;
+    private final com.otaku.series.SeriesService seriesService;
 
-    public WorkController(WorkService service) {
+    public WorkController(WorkService service, com.otaku.series.SeriesService seriesService) {
         this.service = service;
+        this.seriesService = seriesService;
     }
 
     @GetMapping
@@ -51,6 +53,21 @@ public class WorkController {
             @PathVariable("workId") String workId,
             @RequestParam(name = "limit", required = false) Integer limit) {
         return service.related(workId, limit);
+    }
+
+    /**
+     * 同系列作品（#411）。详情页「系列作品」区。
+     *
+     * <p>作品不属于任何系列时返回 {@code series_key=null} + 空 items，**不是 404**——
+     * 作品存在、只是没有系列，这是绝大多数作品的正常状态。作品本身不存在才 404。
+     *
+     * <p>为什么单独一个子资源而不是塞进详情响应：系列是一份清单（可能十几部），
+     * 塞进详情会让「只看详情不展开系列」的请求也背上这份数据；而详情页确实要拉两次，
+     * 与 `/related`、`/articles` 的处理一致。
+     */
+    @GetMapping("/{workId}/series")
+    public com.otaku.work.dto.WorkSeriesDto series(@PathVariable("workId") String workId) {
+        return seriesService.of(workId);
     }
 
     /**

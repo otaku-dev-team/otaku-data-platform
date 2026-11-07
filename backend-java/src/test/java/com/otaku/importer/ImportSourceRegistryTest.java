@@ -54,7 +54,8 @@ class ImportSourceRegistryTest {
     @BeforeEach
     void setUp() {
         service = new ImportService(workRepository, batchRepository, idGenerator, transactionTemplate,
-                new ObjectMapper(), countCache, tagCache, relationRepository, true);
+                new ObjectMapper(), countCache, tagCache, relationRepository,
+                org.mockito.Mockito.mock(com.otaku.series.SeriesRepository.class), true);
     }
 
     @Test

@@ -176,6 +176,49 @@ public class WorkRepository {
     }
 
     /**
+     * 同系列的作品（#411），按年代升序。
+     *
+     * <p>为什么升序而不是评分降序：系列作品在详情页是「观看顺序」的语义，第一季排在
+     * 第二季前面才对；评分排序会把特别篇/总集篇顶到最前，那不是用户想要的顺序。
+     * {@code release_year IS NULL} 先排一次，让年份未知的沉底——MySQL 的 ASC 会把 NULL 排最前，
+     * 不显式处理的话「年份未知」会冒充「最早的一部」。
+     *
+     * <p>过滤与列表一致：成人、已下架、未收录都不出现。当前作品本身**包含**在结果里
+     * （系列列表是完整清单，客户端自己高亮当前项；把它去掉会让「全 4 季」只显示 3 部）。
+     */
+    public List<WorkRecord> findBySeriesKey(String seriesKey) {
+        return jdbc.query(
+                "SELECT " + COLUMNS + " FROM work WHERE series_key = :seriesKey"
+                        + " AND is_adult = 0 AND deleted_at IS NULL"
+                        + (siteScopeEnabled ? " AND site_listed = 1" : "")
+                        + " ORDER BY release_year IS NULL, release_year, id",
+                new MapSqlParameterSource("seriesKey", seriesKey),
+                MAPPER);
+    }
+
+    /** 作品当前的 series_key；null = 不属于任何系列（列可空，不是「查不到」）。 */
+    public String findSeriesKey(long id) {
+        List<String> keys = jdbc.query(
+                "SELECT series_key FROM work WHERE id = :id",
+                new MapSqlParameterSource("id", id),
+                (rs, rowNum) -> rs.getString("series_key"));
+        return keys.isEmpty() ? null : keys.get(0);
+    }
+
+    /**
+     * 只写 series_key（导入专用，见 {@code ImportService}）。
+     *
+     * <p>为什么不并进 {@link #updateContent}：`series_key` 不是「作品内容」而是数据集的关系列，
+     * 只有数据集通道会给；站点 REST 通道每次同步都不带它，并进 updateContent 就要在
+     * {@code WorkMerger} 里再造一套「null 不覆盖」的判断，而那里已经有 13 个字段了。
+     * 单独一条 UPDATE 语义更直白：调用方只在拿到非空 series_key 时才调。
+     */
+    public void updateSeriesKey(long id, String seriesKey) {
+        jdbc.update("UPDATE work SET series_key = :seriesKey WHERE id = :id",
+                new MapSqlParameterSource().addValue("id", id).addValue("seriesKey", seriesKey));
+    }
+
+    /**
      * 推荐候选：某个标签下「评分最高的一批可见作品」（#402）。
      *
      * <p>为什么按单标签循环而不是一条 `tag IN (...)` + DISTINCT：后者要临时表去重，
