@@ -33,7 +33,7 @@ RUN apt-get update \
 # 非 root 运行。封面缓存目录必须存在且可写，否则回源缓存会失败。
 RUN groupadd -r otaku \
  && useradd -r -g otaku otaku \
- && mkdir -p /app/data/covers \
+ && mkdir -p /app/data/covers /app/data/avatars \
  && chown -R otaku:otaku /app
 
 COPY --from=build --chown=otaku:otaku /build/target/*.jar /app/app.jar

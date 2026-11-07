@@ -84,6 +84,8 @@ services:
       #    留空会按请求 host 推导，前面有 Nginx 时推导出来的封面地址可能是 localhost
       OTAKU_PUBLIC_BASE_URL: ${OTAKU_PUBLIC_BASE_URL:-}
       OTAKU_COVER_CACHE_DIR: /app/data/covers
+      # 头像目录（#378）：与封面一样必须持久化，否则容器重建后所有人的头像都没了
+      OTAKU_AVATAR_DIR: /app/data/avatars
       # ── 对外开放策略（Issue #188）────────────────────────────
       # 允许跨域读 /api/** 的页面来源（逗号分隔）。留空 = 只放行 localhost 调试。
       OTAKU_CORS_ALLOWED_ORIGINS: ${OTAKU_CORS_ALLOWED_ORIGINS:-}
@@ -149,6 +151,8 @@ services:
       # 封面缓存必须持久化：不挂卷的话每次重启都要回源重抓，
       # 而来源站 42% 的页会断连，用户侧会看到大量糊图。
       - cover-cache:/app/data/covers
+      # 头像文件（#378）：与库分离的持久卷；备份脚本单独 tar 这一份
+      - avatar-data:/app/data/avatars
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/actuator/health"]
       interval: 30s
@@ -215,5 +219,6 @@ services:
 volumes:
   mysql-data:
   cover-cache:
+  avatar-data:
   letsencrypt:
   certbot-www:

@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.stream.Collectors;
@@ -80,6 +81,14 @@ public class GlobalExceptionHandler {
         // 契约里每个端点的 consumes 已经写清了。
         return ResponseEntity.status(ErrorCode.UNSUPPORTED_MEDIA_TYPE.status())
                 .body(ErrorResponse.of(ErrorCode.UNSUPPORTED_MEDIA_TYPE, "请求体格式不被支持"));
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ErrorResponse> handleUploadTooLarge(MaxUploadSizeExceededException ex) {
+        // #378：multipart 上限（3MB）挡在业务层 2MB 检查之前。不回 500——
+        // 这不是服务端故障，是客户端传了个大文件。
+        return ResponseEntity.status(ErrorCode.BAD_REQUEST.status())
+                .body(ErrorResponse.of(ErrorCode.BAD_REQUEST, "上传文件超过大小上限"));
     }
 
     @ExceptionHandler(Exception.class)

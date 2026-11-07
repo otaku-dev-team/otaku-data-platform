@@ -132,9 +132,30 @@ trap - EXIT
 
 log "完成：$(basename "$OUT") ${SIZE_KB} KB，耗时 $(( $(date +%s) - START ))s"
 
+# ── 头像文件（#378）：用户上传的内容不在 mysqldump 里，必须单独备份 ─────
+# 放在数据库备份成功之后：库都备不出来时，先修库；头像备份失败只告警不阻断，
+# 因为「有库没头像」比「两个都没有」好恢复，而且头像可以由用户重传。
+AVATAR_OUT="$BACKUP_DIR/${SITE_KEY}-${STAMP}-avatars.tar.gz"
+if docker compose -f "$COMPOSE_FILE" exec -T backend \
+        tar -C /app/data -czf - avatars > "$AVATAR_OUT" 2>/dev/null; then
+    if gzip -t "$AVATAR_OUT" 2>/dev/null; then
+        log "头像备份完成：$(basename "$AVATAR_OUT") $(du -k "$AVATAR_OUT" | cut -f1) KB"
+    else
+        rm -f "$AVATAR_OUT"
+        log "警告：头像备份完整性校验失败，已删除半成品"
+    fi
+else
+    rm -f "$AVATAR_OUT"
+    log "警告：头像备份失败（backend 容器未运行？），本次只备份了数据库"
+fi
+
 # ── 保留期：只删本前缀的 .sql.gz，别碰同目录里别的文件 ──────────────
 DELETED=$(find "$BACKUP_DIR" -maxdepth 1 -type f -name "${SITE_KEY}-*.sql.gz" \
             -mtime +"$RETAIN_DAYS" -print -delete | wc -l | tr -d ' ')
 [ "$DELETED" != "0" ] && log "清理过期备份 ${DELETED} 个（> ${RETAIN_DAYS} 天）"
+
+DELETED_AVATARS=$(find "$BACKUP_DIR" -maxdepth 1 -type f -name "${SITE_KEY}-*-avatars.tar.gz" \
+            -mtime +"$RETAIN_DAYS" -print -delete | wc -l | tr -d ' ')
+[ "$DELETED_AVATARS" != "0" ] && log "清理过期头像备份 ${DELETED_AVATARS} 个（> ${RETAIN_DAYS} 天）"
 
 log "当前备份：$(find "$BACKUP_DIR" -maxdepth 1 -type f -name "${SITE_KEY}-*.sql.gz" | wc -l | tr -d ' ') 个"
