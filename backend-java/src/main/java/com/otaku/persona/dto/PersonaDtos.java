@@ -9,7 +9,8 @@ import java.util.Map;
  * 阿宅画像的对外形状（#401 / #375）。
  *
  * <p>字段全部走 Jackson 的 SNAKE_CASE 策略，wire 上是
- * `type_weights` / `tag_weights` / `rating_tendency` / `recent_active` / `sample_size` / `generated_at`。
+ * `type_weights` / `tag_weights` / `rating_tendency` / `recent_active` / `sample_size` /
+ * `dimensions` / `generated_at`。
  *
  * <p><b>为什么权重是 0–1 而不是原始分</b>：客户端要画条形 / 雷达，直接要「相对强度」；
  * 原始分（浏览 1.0、看过 4.0、五星 3.0 相加）没有上限，不同用户之间也没法比。归一化按维度
@@ -30,6 +31,11 @@ public final class PersonaDtos {
             RatingTendency ratingTendency,
             List<String> recentActive,
             int sampleSize,
+            /**
+             * 九维画像（#494）：0–100，50 中性，**缺失维度给 50 不给 0**。
+             * 键序固定为 {@code PersonaDimensions.KEYS}，客户端雷达图按它画轴。
+             */
+            Map<String, Double> dimensions,
             OffsetDateTime generatedAt
     ) {
     }

@@ -52,6 +52,11 @@ app:
     seed: ${OTAKU_MOCK_SEED_RANDOM:42}
     days: ${OTAKU_MOCK_SEED_DAYS:60}
     clear: ${OTAKU_MOCK_SEED_CLEAR:false}
+  persona:
+    # 题材白名单（逗号分隔，如 `机战,奇幻,恋爱`），九维里的 tag_focus / exploration 靠它。
+    # **留空 = 这两维恒为中性 50**，其余七维照常——仓库里没有权威的题材分类，
+    # 不硬编码一份名单（理由见 PersonaService 构造器注释）。
+    genre-tags: ${OTAKU_PERSONA_GENRE_TAGS:}
   # 内部导入令牌。为空时 /internal/** 一律 401（安全默认），联调前必须设置。
   internal-token: ${OTAKU_INTERNAL_TOKEN:}
   work:

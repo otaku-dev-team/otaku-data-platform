@@ -4844,7 +4844,7 @@ components:
       description: |
         阿宅画像（#401）。权重按维度各自归一化到 -1–1：最强的类型 / 标签恒为 ±1，
         没有行为的维度返回空对象而不是一堆 0。
-      required: [type_weights, tag_weights, rating_tendency, recent_active, sample_size, generated_at]
+      required: [type_weights, tag_weights, rating_tendency, recent_active, sample_size, dimensions, generated_at]
       properties:
         type_weights:
           type: object
@@ -4865,6 +4865,67 @@ components:
         sample_size:
           type: integer
           description: 参与聚合的行为行数（浏览 + 收藏 + 点评）。为 0 时其余字段都是空态
+        dimensions:
+          type: object
+          description: |
+            九维画像（#494），口径对齐网站 `persona.py`（`DIMENSION_VERSION=4`）。
+            **0–100，50 中性；数据不足的维度给 50，绝不给 0**——0 在雷达图上是一个凹角，
+            看起来像「你这方面很弱」，实际是「还没数据」。
+
+            键序固定为 `tag_focus` → `completion`（与本表顺序一致），客户端按它画轴。
+            九个键**恒存在**，不会缺项；空画像时九个都是 50。
+
+            ⚠️ 两个维度可能长期停在 50：`tag_focus` / `exploration` 依赖「哪些标签算题材」的
+            白名单，而仓库里没有权威分类（`work.tags` 把题材、公司、角色混在一个数组里，
+            数据集 `tags` 表的 `kind` 列没有导入）。白名单未配置时这两维返回 50，
+            其余七维正常——这是「没有分类就不假装有」。
+          required: [tag_focus, exploration, mainstream, pop_spread, quality, era_span, fresh, emotion, completion]
+          properties:
+            tag_focus:
+              type: number
+              minimum: 0
+              maximum: 100
+              description: 题材垂直——最爱的前 3 个题材覆盖了多少部有标签的作品
+            exploration:
+              type: number
+              minimum: 0
+              maximum: 100
+              description: 探索广度——每百部作品覆盖多少种题材（带平滑，防小样本顶满）
+            mainstream:
+              type: number
+              minimum: 0
+              maximum: 100
+              description: 大众度——收藏作品热度的**站内百分位均值**（按 rating_count 查分位锚点）
+            pop_spread:
+              type: number
+              minimum: 0
+              maximum: 100
+              description: 冷热跨度——热度百分位的标准差（大 = 冷门与热门通吃）
+            quality:
+              type: number
+              minimum: 0
+              maximum: 100
+              description: 高分率——评分 ≥7 的占比，带贝叶斯平滑（12 部先验 / 6 部高分）
+            era_span:
+              type: number
+              minimum: 0
+              maximum: 100
+              description: 年代跨度——发行年份的标准差（12 年记满分）
+            fresh:
+              type: number
+              minimum: 0
+              maximum: 100
+              description: 追新度——近五年作品占比
+            emotion:
+              type: number
+              minimum: 0
+              maximum: 100
+              description: 情绪取向——治愈系 ↔ 致郁系，0 = 全暗、100 = 全治愈、50 = 均衡或无信号
+            completion:
+              type: number
+              minimum: 0
+              maximum: 100
+              description: 完成度——收藏里 `watched` 的占比
         generated_at: { type: string, format: date-time }
 
     PersonaRatingTendency:

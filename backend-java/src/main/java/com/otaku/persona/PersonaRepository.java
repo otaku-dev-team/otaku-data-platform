@@ -56,6 +56,8 @@ public class PersonaRepository {
                            NULL               AS rating,
                            w.rating_value     AS work_rating,
                            w.rating_scale     AS work_rating_scale,
+                           w.release_year     AS release_year,
+                           w.rating_count     AS rating_count,
                            v.last_viewed_at   AS happened_at
                     FROM user_work_view v
                     JOIN work w ON w.work_id = v.work_id
@@ -70,6 +72,8 @@ public class PersonaRepository {
                            NULL,
                            w.rating_value,
                            w.rating_scale,
+                           w.release_year,
+                           w.rating_count,
                            c.updated_at
                     FROM collection c
                     JOIN work w ON w.work_id = c.work_id
@@ -84,6 +88,8 @@ public class PersonaRepository {
                            r.rating,
                            w.rating_value,
                            w.rating_scale,
+                           w.release_year,
+                           w.rating_count,
                            r.updated_at
                     FROM ugc_review r
                     JOIN work w ON w.work_id = r.work_id
@@ -104,6 +110,8 @@ public class PersonaRepository {
                         (Integer) rs.getObject("rating"),
                         rs.getBigDecimal("work_rating"),
                         rs.getString("work_rating_scale"),
+                        (Integer) rs.getObject("release_year"),
+                        (Integer) rs.getObject("rating_count"),
                         rs.getObject("happened_at", LocalDateTime.class)));
     }
 
@@ -123,6 +131,9 @@ public class PersonaRepository {
      * 一行行为。`kind` 决定权重怎么算：
      * `view` 看 `viewCount`，`collection` 看 `collectionStatus`，`review` 看 `rating`。
      *
+     * <p>`releaseYear` / `ratingCount` 是九维画像（#494）的输入：年代跨度看年份分布，
+     * 「大众度」看评分人数在全站的分位。它们跟着 work 行走，三路重复同一份值。
+     *
      * <p>`workRating` / `workRatingScale` 是**作品在来源站的均分与量纲**（#495），三路都带。
      * 它们不是「这个人给的评价」，而是「这个作品的口碑」——只有在用户没自己打分时才拿来
      * 当信号（口径见 {@code PersonaService}）。`rating` 才是这个人自己的评分。
@@ -137,6 +148,8 @@ public class PersonaRepository {
             Integer rating,
             java.math.BigDecimal workRating,
             String workRatingScale,
+            Integer releaseYear,
+            Integer ratingCount,
             LocalDateTime happenedAt
     ) {
     }
