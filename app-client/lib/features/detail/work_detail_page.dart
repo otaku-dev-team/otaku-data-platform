@@ -29,6 +29,7 @@ import '../../shared/widgets/work_type_tag.dart';
 import '../auth/auth_controller.dart';
 import '../contents/contents_controller.dart';
 import '../recent/recent_views_controller.dart';
+import '../ugc_review/work_review_section.dart';
 import 'related_works_section.dart';
 import 'work_related_articles_section.dart';
 import 'work_collection_controller.dart';
@@ -324,6 +325,8 @@ class _DetailBody extends StatelessWidget {
                   // 收录信息（作品 ID / 来源 ID / 收录更新）不再展示：
                   // 那是溯源和排障用的，普通用户看完这部作品并不需要知道
                   // 它在库里叫什么编号。需要时从接口和日志里查。
+                  WorkReviewSection(workId: work.workId),
+                  const SizedBox(height: 20),
                   RelatedWorksSection(workId: work.workId),
                   WorkRelatedArticlesSection(workId: work.workId),
                 ],
@@ -374,6 +377,8 @@ class _DetailBody extends StatelessWidget {
           const SizedBox(height: 24),
           // 相关推荐：正文之后唯一的延伸阅读。收录信息已不再展示（见手机端
           // 那段注释）。拿不到或没标签时组件自己渲染成 SizedBox.shrink()。
+          WorkReviewSection(workId: work.workId),
+          const SizedBox(height: 24),
           RelatedWorksSection(workId: work.workId),
           WorkRelatedArticlesSection(workId: work.workId),
         ],
