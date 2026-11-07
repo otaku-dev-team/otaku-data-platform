@@ -40,14 +40,14 @@
 
 键集分页要改契约（客户端带游标），不是后端单方面能定的。
 
-### 2.2 人物页缺索引——等 #362
+### 2.2 人物页索引（V36 已补，2026-11-07）
 
-`/api/persons/{id}` 的 140–170 ms 全部花在「按 `person_id` 扫两张关系表」上
-（`work_staff` + `work_characters` 只有 `work_ref` 前缀索引）。今天已经从 **0.46–0.57 s**
-压到 140–170 ms（#476：三条扫描合成一条），但**根治要加索引**。
+`/api/persons/{id}` 的 140–170 ms 原先全花在「按 `person_id` 扫两张关系表」上
+（`work_staff` + `work_characters` 只有 `work_ref` 前缀索引）。#476 把三条扫描合成一条，
+从 **0.46–0.57 s** 压到 140–170 ms；**b35 的 V36** 补了
+`idx_work_staff_person` / `idx_work_characters_person`，热身后实测 **46–66 ms**。
 
-迁移号顺序不允许插队（`V31` 跳过、`V33` 留给 #362），所以等 #362 落地时同批加
-`idx_work_staff_person` / `idx_work_characters_person`，之后应回到 10 ms 量级。
+V33（#362 人物前缀）落地后迁移号不再被挡，所以索引与 people 键补齐放在同一个 V36。
 详见 `PersonRepository` 类注释。
 
 ## 3. 怎么复现
@@ -57,7 +57,7 @@ B=http://127.0.0.1:8080
 t() { curl -s -o /dev/null -w "%{time_total}" "$1"; }
 t "$B/api/works?page=1&page_size=20"   # 先打一次暖缓存，不计
 for u in "/api/works?page=1&page_size=20" "/api/works?page=900&page_size=20" \
-         "/api/persons/1"; do
+         "/api/persons/bgm%3A3818"; do
   printf "%-46s %s\n" "$u" "$(t "$B$u")"
 done
 ```
@@ -72,4 +72,5 @@ done
 
 | 日期 | 版本 | 变化 |
 | --- | --- | --- |
+| 2026-11-07 | `b35` | V36 补 `person_id` 索引；人物页热身后 **46–66 ms**（140–170 → 46–66） |
 | 2026-11-06 | `b33` | 建立基线；人物页从 0.46–0.57 s 降到 140–170 ms（#476） |

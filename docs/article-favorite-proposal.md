@@ -1,6 +1,6 @@
 # 资讯收藏方案 · 后端已实现（2026-11-07）
 
-> 状态：**方案已生效，后端已落地**（`V34__article_favorite.sql` + `/api/me/article-favorites`），
+> 状态：**方案已生效，后端已上线**（`V34__article_favorite.sql` + `/api/me/article-favorites`，2026-11-07 b34），
 > 客户端待接真接口（#452 的只读骨架可直连）。
 > 归属 #377（客户端 @riceyu02）；后端实现 @pyxz0。
 >
