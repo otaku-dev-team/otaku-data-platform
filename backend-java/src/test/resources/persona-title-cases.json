@@ -1,0 +1,4949 @@
+[
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 98.7,
+    "exploration": 45.1,
+    "mainstream": 22.3,
+    "pop_spread": 29.8,
+    "era_span": 54.9,
+    "emotion": 42.5,
+    "completion": 85.4
+   },
+   "total": 320,
+   "want": 300,
+   "seen": 0,
+   "drop": 0,
+   "cluster": "奇幻",
+   "identity": "游戏宅",
+   "genreCounts": {
+    "田园": 26,
+    "剑与魔法": 58,
+    "欢乐": 17,
+    "燃": 53,
+    "Live": 58
+   },
+   "earlyShare": 38,
+   "rarityTier": null
+  },
+  "seed": "",
+  "expectedTraits": [
+   "冷门挖掘机",
+   "偏食"
+  ],
+  "expectedTitle": "只吃这一口",
+  "expectedCode": "ICHIGEN",
+  "expectedNote": "十年下来，四个平台，一个题材。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 33.6,
+    "exploration": 43.2,
+    "mainstream": 48.9,
+    "pop_spread": 95.2,
+    "quality": 98.5,
+    "era_span": 1.3,
+    "fresh": 84.3,
+    "emotion": 99.5,
+    "completion": 77.5
+   },
+   "total": 160,
+   "want": 300,
+   "seen": 0,
+   "drop": 0,
+   "cluster": "音乐",
+   "identity": "轻小说党",
+   "genreCounts": {},
+   "earlyShare": 45,
+   "rarityTier": "?"
+  },
+  "seed": "user1",
+  "expectedTraits": [
+   "神作党"
+  ],
+  "expectedTitle": "老贼",
+  "expectedCode": "O-GAI",
+  "expectedNote": "你追的连载，有的完结了，有的作者还没画完。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 8.6,
+    "exploration": 8.6,
+    "mainstream": 69.1,
+    "pop_spread": 63.7,
+    "quality": 5.1,
+    "era_span": 49.6,
+    "fresh": 81.7,
+    "emotion": 92.2,
+    "completion": 25.4
+   },
+   "total": 160,
+   "want": 120,
+   "seen": 18,
+   "drop": 0,
+   "cluster": "恋爱",
+   "identity": "轻小说党",
+   "genreCounts": {
+    "修罗场": 14,
+    "竞技": 1,
+    "萌": 48,
+    "动作": 24,
+    "复仇": 60
+   },
+   "earlyShare": 25,
+   "rarityTier": "R"
+  },
+  "seed": "user2",
+  "expectedTraits": [
+   "仓鼠"
+  ],
+  "expectedTitle": "赛博貔貅",
+  "expectedCode": "PIXIU",
+  "expectedNote": "加收藏永远比看完快一步，你管这叫先存着。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 97.2,
+    "exploration": 52.8,
+    "mainstream": 36.9,
+    "pop_spread": 46.0,
+    "quality": 89.5,
+    "era_span": 58.3,
+    "fresh": 54.6,
+    "emotion": 98.8,
+    "completion": 67.7
+   },
+   "total": 90,
+   "want": 12,
+   "seen": 18,
+   "drop": 0,
+   "cluster": "热血",
+   "identity": "杂食党",
+   "genreCounts": {
+    "推理": 6
+   },
+   "earlyShare": 38,
+   "rarityTier": null
+  },
+  "seed": "user3",
+  "expectedTraits": [
+   "神作党",
+   "偏食"
+  ],
+  "expectedTitle": "只吃这一口",
+  "expectedCode": "ICHIGEN",
+  "expectedNote": "十年下来，四个平台，一个题材。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 71.8,
+    "exploration": 58.0,
+    "mainstream": 2.9,
+    "pop_spread": 54.3,
+    "quality": 65.7,
+    "era_span": 22.3,
+    "fresh": 7.9,
+    "emotion": 66.0,
+    "completion": 23.1
+   },
+   "total": 90,
+   "want": 0,
+   "seen": 150,
+   "drop": 9,
+   "cluster": "搞笑",
+   "identity": "番剧党",
+   "genreCounts": {
+    "魔法": 2,
+    "悬疑": 2,
+    "机器人": 23
+   },
+   "earlyShare": 10,
+   "rarityTier": "N"
+  },
+  "seed": "",
+  "expectedTraits": [
+   "冷门挖掘机",
+   "偏食",
+   "口碑党"
+  ],
+  "expectedTitle": "伪婆罗门",
+  "expectedCode": "NISE-BRAHMIN",
+  "expectedNote": "嘴上说热榜没营养，收藏夹里一半是热榜。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 20.4,
+    "exploration": 80.7,
+    "mainstream": 92.8,
+    "pop_spread": 41.6,
+    "quality": 4.7,
+    "era_span": 62.6,
+    "fresh": 61.9,
+    "emotion": 86.7,
+    "completion": 3.7
+   },
+   "total": 0,
+   "want": 120,
+   "seen": 150,
+   "drop": 0,
+   "cluster": "奇幻",
+   "identity": "游戏宅",
+   "genreCounts": {
+    "后宫": 58,
+    "冒险": 43,
+    "歌唱": 34,
+    "科幻": 23,
+    "芳文社": 2
+   },
+   "earlyShare": 25,
+   "rarityTier": "?"
+  },
+  "seed": "user5",
+  "expectedTraits": [
+   "博爱"
+  ],
+  "expectedTitle": "流行厨",
+  "expectedCode": "HAYARI",
+  "expectedNote": "跟着热度走，热度不认人。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 25.8,
+    "exploration": 47.2,
+    "mainstream": 9.6,
+    "pop_spread": 52.3,
+    "quality": 35.0,
+    "era_span": 60.5,
+    "fresh": 44.3,
+    "emotion": 71.8,
+    "completion": 86.8
+   },
+   "total": 320,
+   "want": 120,
+   "seen": 150,
+   "drop": 0,
+   "cluster": "治愈",
+   "identity": "轻小说党",
+   "genreCounts": {
+    "格斗": 4
+   },
+   "earlyShare": 25,
+   "rarityTier": null
+  },
+  "seed": "user6",
+  "expectedTraits": [
+   "冷门挖掘机"
+  ],
+  "expectedTitle": "难民",
+  "expectedCode": "NANMIN",
+  "expectedNote": "季度末才开番，开到第八部才碰到一部能看完的。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 61.0,
+    "exploration": 70.3,
+    "mainstream": 27.7,
+    "pop_spread": 4.7,
+    "quality": 70.7,
+    "era_span": 58.5,
+    "fresh": 68.0,
+    "emotion": 65.0,
+    "completion": 35.3
+   },
+   "total": 20,
+   "want": 0,
+   "seen": 18,
+   "drop": 9,
+   "cluster": "治愈",
+   "identity": "游戏宅",
+   "genreCounts": {
+    "心理": 23,
+    "生存": 52,
+    "田园": 33,
+    "武侠": 42,
+    "欢乐": 38
+   },
+   "earlyShare": 10,
+   "rarityTier": "N"
+  },
+  "seed": "user7",
+  "expectedTraits": [
+   "冷门挖掘机",
+   "博爱",
+   "口碑党"
+  ],
+  "expectedTitle": "三集弃之神",
+  "expectedCode": "DROP-GOD",
+  "expectedNote": "慢热是番的问题，不是你的。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 4.9,
+    "exploration": 58.5,
+    "mainstream": 9.5,
+    "pop_spread": 10.6,
+    "quality": 24.4,
+    "era_span": 99.2,
+    "fresh": 67.7,
+    "emotion": 47.4,
+    "completion": 12.4
+   },
+   "total": 320,
+   "want": 0,
+   "seen": 2,
+   "drop": 9,
+   "cluster": "杂食",
+   "identity": "轻小说党",
+   "genreCounts": {
+    "歌唱": 5,
+    "吸血鬼": 1,
+    "后宫": 27,
+    "惊悚": 37
+   },
+   "earlyShare": 38,
+   "rarityTier": "SSR"
+  },
+  "seed": "",
+  "expectedTraits": [
+   "冷门挖掘机"
+  ],
+  "expectedTitle": "难民",
+  "expectedCode": "NANMIN",
+  "expectedNote": "季度末才开番，开到第八部才碰到一部能看完的。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 75.5,
+    "exploration": 22.6,
+    "mainstream": 71.4,
+    "pop_spread": 45.0,
+    "quality": 31.9,
+    "era_span": 8.6,
+    "fresh": 16.5,
+    "emotion": 60.9,
+    "completion": 58.4
+   },
+   "total": 320,
+   "want": 12,
+   "seen": 2,
+   "drop": 0,
+   "cluster": "治愈",
+   "identity": "番剧党",
+   "genreCounts": {
+    "欢乐": 46,
+    "同居": 20,
+    "校园": 47
+   },
+   "earlyShare": 38,
+   "rarityTier": null
+  },
+  "seed": "user9",
+  "expectedTraits": [
+   "偏食",
+   "仓鼠"
+  ],
+  "expectedTitle": "现充",
+  "expectedCode": "RIAJUU",
+  "expectedNote": "没谈过，但很懂。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 63.7,
+    "exploration": 76.4,
+    "mainstream": 29.9,
+    "pop_spread": 30.2,
+    "quality": 16.7,
+    "era_span": 24.6,
+    "fresh": 76.7,
+    "emotion": 15.7,
+    "completion": 2.8
+   },
+   "total": 320,
+   "want": 3,
+   "seen": 2,
+   "drop": 9,
+   "cluster": "奇幻",
+   "identity": "番剧党",
+   "genreCounts": {
+    "SF": 8,
+    "纯爱": 46
+   },
+   "earlyShare": 45,
+   "rarityTier": "N"
+  },
+  "seed": "user10",
+  "expectedTraits": [
+   "冷门挖掘机",
+   "偏食",
+   "博爱"
+  ],
+  "expectedTitle": "三集弃之神",
+  "expectedCode": "DROP-GOD",
+  "expectedNote": "劝你熬过前三集的人，最后都被你劝回去了。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 73.5,
+    "exploration": 96.9,
+    "mainstream": 63.1,
+    "pop_spread": 26.2,
+    "era_span": 62.7,
+    "fresh": 30.1,
+    "emotion": 74.9,
+    "completion": 0.0
+   },
+   "total": 90,
+   "want": 12,
+   "seen": 60,
+   "drop": 0,
+   "cluster": "音乐",
+   "identity": "漫画党",
+   "genreCounts": {},
+   "earlyShare": 45,
+   "rarityTier": "R"
+  },
+  "seed": "user11",
+  "expectedTraits": [
+   "偏食",
+   "博爱"
+  ],
+  "expectedTitle": "全曲风 DD",
+  "expectedCode": "SONG-DD",
+  "expectedNote": "昨天还在听摇滚，今天在循环偶像曲。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 93.6,
+    "exploration": 52.1,
+    "mainstream": 42.1,
+    "pop_spread": 46.5,
+    "quality": 54.0,
+    "era_span": 5.8,
+    "fresh": 5.6,
+    "emotion": 47.9,
+    "completion": 22.2
+   },
+   "total": 20,
+   "want": 12,
+   "seen": 5,
+   "drop": 1,
+   "cluster": "恋爱",
+   "identity": "漫画党",
+   "genreCounts": {
+    "格斗": 46,
+    "萌": 28,
+    "武侠": 10,
+    "修罗场": 54
+   },
+   "earlyShare": 0,
+   "rarityTier": null
+  },
+  "seed": "",
+  "expectedTraits": [
+   "偏食",
+   "仓鼠"
+  ],
+  "expectedTitle": "只吃这一口",
+  "expectedCode": "ICHIGEN",
+  "expectedNote": "只拜一尊佛。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 64.1,
+    "exploration": 92.8,
+    "mainstream": 28.7,
+    "pop_spread": 81.7,
+    "quality": 33.5,
+    "era_span": 50.0,
+    "fresh": 22.8,
+    "emotion": 52.0,
+    "completion": 47.2
+   },
+   "total": 20,
+   "want": 120,
+   "seen": 60,
+   "drop": 0,
+   "cluster": "音乐",
+   "identity": "游戏宅",
+   "genreCounts": {
+    "妖怪": 7
+   },
+   "earlyShare": 0,
+   "rarityTier": "R"
+  },
+  "seed": "user13",
+  "expectedTraits": [
+   "冷门挖掘机",
+   "偏食",
+   "博爱"
+  ],
+  "expectedTitle": "全曲风 DD",
+  "expectedCode": "SONG-DD",
+  "expectedNote": "昨天还在听摇滚，今天在循环偶像曲。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 15.1,
+    "exploration": 66.7,
+    "mainstream": 72.1,
+    "pop_spread": 78.6,
+    "quality": 66.9,
+    "era_span": 23.5,
+    "fresh": 10.7,
+    "emotion": 63.3,
+    "completion": 99.6
+   },
+   "total": 20,
+   "want": 0,
+   "seen": 18,
+   "drop": 9,
+   "cluster": "热血",
+   "identity": "番剧党",
+   "genreCounts": {
+    "龙": 15,
+    "友情": 36
+   },
+   "earlyShare": 10,
+   "rarityTier": "N"
+  },
+  "seed": "user14",
+  "expectedTraits": [
+   "口碑党"
+  ],
+  "expectedTitle": "三集弃之神",
+  "expectedCode": "DROP-GOD",
+  "expectedNote": "三集定生死，第四集你通常已经在别的番里了。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 67.9,
+    "exploration": 79.0,
+    "mainstream": 72.4,
+    "pop_spread": 9.1,
+    "quality": 41.1,
+    "era_span": 6.7,
+    "fresh": 26.8,
+    "emotion": 94.2,
+    "completion": 9.4
+   },
+   "total": 320,
+   "want": 40,
+   "seen": 150,
+   "drop": 4,
+   "cluster": "悬疑",
+   "identity": "番剧党",
+   "genreCounts": {
+    "热血": 2,
+    "Live": 47,
+    "权谋": 56,
+    "恋爱": 20
+   },
+   "earlyShare": 38,
+   "rarityTier": null
+  },
+  "seed": "user15",
+  "expectedTraits": [
+   "偏食",
+   "博爱"
+  ],
+  "expectedTitle": "箱推",
+  "expectedCode": "HAKO-OSHI",
+  "expectedNote": "成员的生日你背得出，自己的要翻手机。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 54.5,
+    "exploration": 4.4,
+    "mainstream": 6.4,
+    "pop_spread": 80.3,
+    "quality": 17.5,
+    "era_span": 7.1,
+    "fresh": 74.0,
+    "emotion": 2.5,
+    "completion": 36.3
+   },
+   "total": 90,
+   "want": 120,
+   "seen": 150,
+   "drop": 0,
+   "cluster": "热血",
+   "identity": "番剧党",
+   "genreCounts": {
+    "耽美": 4,
+    "竞技": 44
+   },
+   "earlyShare": 0,
+   "rarityTier": "SSR"
+  },
+  "seed": "",
+  "expectedTraits": [
+   "冷门挖掘机"
+  ],
+  "expectedTitle": "难民",
+  "expectedCode": "NANMIN",
+  "expectedNote": "烂归烂你也给它看完了，不然这个季度就白过了。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 36.6,
+    "exploration": 98.3,
+    "mainstream": 71.7,
+    "pop_spread": 29.0,
+    "quality": 53.2,
+    "era_span": 29.9,
+    "emotion": 17.2,
+    "completion": 91.1
+   },
+   "total": 20,
+   "want": 3,
+   "seen": 18,
+   "drop": 0,
+   "cluster": "治愈",
+   "identity": "杂食党",
+   "genreCounts": {
+    "神话": 30,
+    "赛博朋克": 39
+   },
+   "earlyShare": 45,
+   "rarityTier": "SSR"
+  },
+  "seed": "user17",
+  "expectedTraits": [
+   "博爱"
+  ],
+  "expectedTitle": "刀后应激",
+  "expectedCode": "IYASHI",
+  "expectedNote": "刀吃多了，自己会找糖。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 95.0,
+    "exploration": 82.7,
+    "mainstream": 32.0,
+    "pop_spread": 95.6,
+    "quality": 72.1,
+    "era_span": 47.2,
+    "fresh": 83.4,
+    "emotion": 4.0,
+    "completion": 51.3
+   },
+   "total": 0,
+   "want": 12,
+   "seen": 5,
+   "drop": 0,
+   "cluster": "科幻",
+   "identity": "漫画党",
+   "genreCounts": {
+    "转生": 18
+   },
+   "earlyShare": 10,
+   "rarityTier": null
+  },
+  "seed": "user18",
+  "expectedTraits": [
+   "冷门挖掘机",
+   "偏食",
+   "博爱"
+  ],
+  "expectedTitle": "只吃这一口",
+  "expectedCode": "ICHIGEN",
+  "expectedNote": "只拜一尊佛。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 56.3,
+    "exploration": 50.6,
+    "mainstream": 16.7,
+    "pop_spread": 51.7,
+    "quality": 64.2,
+    "era_span": 64.5,
+    "fresh": 45.2,
+    "emotion": 31.8,
+    "completion": 91.1
+   },
+   "total": 160,
+   "want": 3,
+   "seen": 0,
+   "drop": 0,
+   "cluster": "音乐",
+   "identity": "番剧党",
+   "genreCounts": {
+    "权谋": 3,
+    "党争": 24
+   },
+   "earlyShare": 38,
+   "rarityTier": "SSR"
+  },
+  "seed": "user19",
+  "expectedTraits": [
+   "冷门挖掘机",
+   "口碑党"
+  ],
+  "expectedTitle": "战吧吧友",
+  "expectedCode": "SENBA",
+  "expectedNote": "败犬哭着退场那段，你会倒回去看两遍。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 58.0,
+    "exploration": 18.9,
+    "mainstream": 1.7,
+    "pop_spread": 90.6,
+    "quality": 65.6,
+    "era_span": 5.7,
+    "fresh": 44.7,
+    "emotion": 33.6,
+    "completion": 3.1
+   },
+   "total": 0,
+   "want": 0,
+   "seen": 0,
+   "drop": 0,
+   "cluster": "悬疑",
+   "identity": "漫画党",
+   "genreCounts": {},
+   "earlyShare": 45,
+   "rarityTier": "?"
+  },
+  "seed": "",
+  "expectedTraits": [
+   "冷门挖掘机",
+   "口碑党"
+  ],
+  "expectedTitle": "婆罗门本尊",
+  "expectedCode": "BRAHMIN",
+  "expectedNote": "安利十次没人接，第十一次你还是说了。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 35.4,
+    "exploration": 27.4,
+    "mainstream": 86.2,
+    "pop_spread": 43.4,
+    "quality": 10.4,
+    "era_span": 84.1,
+    "fresh": 34.2,
+    "emotion": 37.3,
+    "completion": 10.0
+   },
+   "total": 160,
+   "want": 0,
+   "seen": 18,
+   "drop": 0,
+   "cluster": "治愈",
+   "identity": "漫画党",
+   "genreCounts": {
+    "转生": 12,
+    "欢乐": 57,
+    "校园": 27,
+    "旅行": 60
+   },
+   "earlyShare": 0,
+   "rarityTier": null
+  },
+  "seed": "user21",
+  "expectedTraits": [],
+  "expectedTitle": "从昭和追到令和",
+  "expectedCode": "NENPYOU",
+  "expectedNote": "年代对你只是坐标。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 5.3,
+    "exploration": 28.0,
+    "mainstream": 37.8,
+    "pop_spread": 68.9,
+    "era_span": 56.4,
+    "fresh": 30.5,
+    "emotion": 79.8,
+    "completion": 77.4
+   },
+   "total": 20,
+   "want": 3,
+   "seen": 150,
+   "drop": 0,
+   "cluster": "治愈",
+   "identity": "游戏宅",
+   "genreCounts": {
+    "欢乐": 17,
+    "萌系": 19,
+    "空气系": 20,
+    "科幻": 26,
+    "惊悚": 55,
+    "战斗": 49
+   },
+   "earlyShare": 10,
+   "rarityTier": "?"
+  },
+  "seed": "user22",
+  "expectedTraits": [],
+  "expectedTitle": "不白金不封盘",
+  "expectedCode": "PLATINUM",
+  "expectedNote": "存档时长比剧情需要多三倍，多出来的全在刷收集。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 66.2,
+    "exploration": 60.9,
+    "mainstream": 11.8,
+    "pop_spread": 80.6,
+    "quality": 12.3,
+    "era_span": 32.4,
+    "fresh": 97.4,
+    "emotion": 58.9,
+    "completion": 45.6
+   },
+   "total": 20,
+   "want": 120,
+   "seen": 150,
+   "drop": 9,
+   "cluster": "热血",
+   "identity": "番剧党",
+   "genreCounts": {
+    "芳文社": 36,
+    "动作": 14
+   },
+   "earlyShare": 38,
+   "rarityTier": "?"
+  },
+  "seed": "user23",
+  "expectedTraits": [
+   "冷门挖掘机",
+   "偏食"
+  ],
+  "expectedTitle": "难民",
+  "expectedCode": "NANMIN",
+  "expectedNote": "别人挑番，你捡番。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 32.4,
+    "exploration": 95.6,
+    "mainstream": 29.9,
+    "pop_spread": 97.0,
+    "quality": 9.1,
+    "era_span": 21.5,
+    "fresh": 66.4,
+    "emotion": 99.9,
+    "completion": 63.5
+   },
+   "total": 160,
+   "want": 40,
+   "seen": 2,
+   "drop": 4,
+   "cluster": "搞笑",
+   "identity": "杂食党",
+   "genreCounts": {
+    "蒸汽朋克": 55,
+    "友情": 16,
+    "惊悚": 1,
+    "喜剧": 54,
+    "权谋": 29
+   },
+   "earlyShare": 45,
+   "rarityTier": null
+  },
+  "seed": "",
+  "expectedTraits": [
+   "冷门挖掘机",
+   "博爱",
+   "仓鼠"
+  ],
+  "expectedTitle": "老贼",
+  "expectedCode": "O-GAI",
+  "expectedNote": "入坑早到能当别人前辈，现在只剩一句「现在的番不行了」。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 5.4,
+    "exploration": 16.7,
+    "mainstream": 79.3,
+    "pop_spread": 50.1,
+    "quality": 43.4,
+    "era_span": 41.2,
+    "fresh": 43.4,
+    "emotion": 30.2,
+    "completion": 91.6
+   },
+   "total": 20,
+   "want": 300,
+   "seen": 60,
+   "drop": 0,
+   "cluster": "杂食",
+   "identity": "轻小说党",
+   "genreCounts": {
+    "推理": 37,
+    "妖怪": 53
+   },
+   "earlyShare": 60,
+   "rarityTier": "R"
+  },
+  "seed": "user25",
+  "expectedTraits": [
+   "仓鼠"
+  ],
+  "expectedTitle": "赛博貔貅",
+  "expectedCode": "PIXIU",
+  "expectedNote": "加收藏永远比看完快一步，你管这叫先存着。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 91.3,
+    "exploration": 54.0,
+    "mainstream": 19.3,
+    "pop_spread": 35.2,
+    "quality": 34.5,
+    "era_span": 95.6,
+    "fresh": 17.1,
+    "emotion": 77.1,
+    "completion": 10.5
+   },
+   "total": 90,
+   "want": 300,
+   "seen": 2,
+   "drop": 0,
+   "cluster": "恋爱",
+   "identity": "轻小说党",
+   "genreCounts": {
+    "友情": 17,
+    "妖怪": 46
+   },
+   "earlyShare": 25,
+   "rarityTier": "SSR"
+  },
+  "seed": "user26",
+  "expectedTraits": [
+   "冷门挖掘机",
+   "偏食",
+   "仓鼠"
+  ],
+  "expectedTitle": "难民",
+  "expectedCode": "NANMIN",
+  "expectedNote": "烂归烂你也给它看完了，不然这个季度就白过了。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 69.4,
+    "exploration": 84.4,
+    "mainstream": 70.0,
+    "pop_spread": 49.2,
+    "quality": 13.4,
+    "era_span": 36.1,
+    "fresh": 67.5,
+    "emotion": 50.1,
+    "completion": 96.2
+   },
+   "total": 20,
+   "want": 12,
+   "seen": 150,
+   "drop": 0,
+   "cluster": "奇幻",
+   "identity": "轻小说党",
+   "genreCounts": {
+    "爱情": 60,
+    "惊悚": 21,
+    "心理": 36,
+    "热血": 51
+   },
+   "earlyShare": 25,
+   "rarityTier": null
+  },
+  "seed": "user27",
+  "expectedTraits": [
+   "偏食",
+   "博爱"
+  ],
+  "expectedTitle": "有始有终的异类",
+  "expectedCode": "FINISH-ALL",
+  "expectedNote": "烂尾也是尾。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 6.9,
+    "exploration": 41.6,
+    "mainstream": 32.8,
+    "pop_spread": 80.4,
+    "quality": 88.4,
+    "era_span": 59.4,
+    "fresh": 33.4,
+    "emotion": 23.9,
+    "completion": 12.1
+   },
+   "total": 160,
+   "want": 40,
+   "seen": 0,
+   "drop": 0,
+   "cluster": "奇幻",
+   "identity": "轻小说党",
+   "genreCounts": {
+    "喜剧": 30,
+    "心理": 12,
+    "犯罪": 12
+   },
+   "earlyShare": 60,
+   "rarityTier": "SR"
+  },
+  "seed": "",
+  "expectedTraits": [
+   "冷门挖掘机",
+   "神作党"
+  ],
+  "expectedTitle": "老贼",
+  "expectedCode": "O-GAI",
+  "expectedNote": "你追的连载，有的完结了，有的作者还没画完。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 75.1,
+    "exploration": 27.0,
+    "mainstream": 38.1,
+    "pop_spread": 32.4,
+    "quality": 66.9,
+    "era_span": 29.0,
+    "fresh": 67.1,
+    "emotion": 88.3,
+    "completion": 29.5
+   },
+   "total": 320,
+   "want": 3,
+   "seen": 60,
+   "drop": 9,
+   "cluster": "奇幻",
+   "identity": "番剧党",
+   "genreCounts": {
+    "乙女": 42,
+    "神怪": 34,
+    "SF": 5,
+    "赛博朋克": 3
+   },
+   "earlyShare": 60,
+   "rarityTier": "N"
+  },
+  "seed": "user29",
+  "expectedTraits": [
+   "偏食",
+   "口碑党"
+  ],
+  "expectedTitle": "同人女",
+  "expectedCode": "FUJOSHI",
+  "expectedNote": "原作只是原料，你脑子里那版才是正片。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 52.7,
+    "exploration": 49.8,
+    "mainstream": 73.3,
+    "pop_spread": 88.2,
+    "quality": 55.7,
+    "era_span": 72.6,
+    "fresh": 14.0,
+    "emotion": 12.1,
+    "completion": 53.3
+   },
+   "total": 160,
+   "want": 12,
+   "seen": 0,
+   "drop": 0,
+   "cluster": "搞笑",
+   "identity": "游戏宅",
+   "genreCounts": {
+    "纯爱": 47,
+    "吐槽": 2,
+    "生存": 58
+   },
+   "earlyShare": 25,
+   "rarityTier": null
+  },
+  "seed": "user30",
+  "expectedTraits": [],
+  "expectedTitle": "不分冷热",
+  "expectedCode": "ONSITSU",
+  "expectedNote": "上季度霸权你在追，同期三百人评分的冷门你也在追。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 87.3,
+    "exploration": 86.6,
+    "mainstream": 73.5,
+    "pop_spread": 95.3,
+    "quality": 37.2,
+    "era_span": 29.5,
+    "fresh": 92.8,
+    "emotion": 91.5,
+    "completion": 67.9
+   },
+   "total": 90,
+   "want": 120,
+   "seen": 60,
+   "drop": 0,
+   "cluster": "治愈",
+   "identity": "杂食党",
+   "genreCounts": {
+    "神怪": 45,
+    "机器人": 9
+   },
+   "earlyShare": 25,
+   "rarityTier": "N"
+  },
+  "seed": "user31",
+  "expectedTraits": [
+   "偏食",
+   "博爱",
+   "仓鼠"
+  ],
+  "expectedTitle": "胶佬",
+  "expectedCode": "GUNPLA",
+  "expectedNote": "一集看完先查三件事：出没出胶、HG 还是 MG、多少钱。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 100.0,
+    "exploration": 33.3,
+    "mainstream": 9.0,
+    "pop_spread": 37.1,
+    "quality": 70.2,
+    "era_span": 5.1,
+    "fresh": 6.1,
+    "emotion": 2.9,
+    "completion": 80.3
+   },
+   "total": 90,
+   "want": 40,
+   "seen": 60,
+   "drop": 1,
+   "cluster": "杂食",
+   "identity": "番剧党",
+   "genreCounts": {
+    "智斗": 7,
+    "克苏鲁": 39,
+    "心理": 39
+   },
+   "earlyShare": 60,
+   "rarityTier": "SSR"
+  },
+  "seed": "",
+  "expectedTraits": [
+   "冷门挖掘机",
+   "偏食",
+   "口碑党"
+  ],
+  "expectedTitle": "婆罗门本尊",
+  "expectedCode": "BRAHMIN",
+  "expectedNote": "你报的片名别人搜不到，评分人数常常是两位数。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 40.1,
+    "exploration": 86.4,
+    "mainstream": 13.4,
+    "pop_spread": 67.5,
+    "era_span": 18.5,
+    "fresh": 17.2,
+    "emotion": 10.7,
+    "completion": 39.5
+   },
+   "total": 20,
+   "want": 300,
+   "seen": 18,
+   "drop": 0,
+   "cluster": "热血",
+   "identity": "番剧党",
+   "genreCounts": {
+    "犯罪": 52,
+    "婚姻": 42,
+    "吐槽": 7,
+    "权谋": 58,
+    "战斗": 13,
+    "赛博朋克": 22
+   },
+   "earlyShare": 45,
+   "rarityTier": null
+  },
+  "seed": "user33",
+  "expectedTraits": [
+   "冷门挖掘机",
+   "博爱",
+   "仓鼠"
+  ],
+  "expectedTitle": "赛博貔貅",
+  "expectedCode": "PIXIU",
+  "expectedNote": "想看列表 327 部，本周看完的还是上周那一部。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 59.4,
+    "exploration": 76.9,
+    "mainstream": 39.0,
+    "pop_spread": 47.1,
+    "quality": 76.9,
+    "era_span": 28.3,
+    "emotion": 11.5,
+    "completion": 57.9
+   },
+   "total": 90,
+   "want": 300,
+   "seen": 2,
+   "drop": 0,
+   "cluster": "搞笑",
+   "identity": "杂食党",
+   "genreCounts": {
+    "动作": 57
+   },
+   "earlyShare": 0,
+   "rarityTier": "SR"
+  },
+  "seed": "user34",
+  "expectedTraits": [
+   "神作党",
+   "博爱",
+   "仓鼠"
+  ],
+  "expectedTitle": "先截图再说",
+  "expectedCode": "SHITPOST",
+  "expectedNote": "沙雕番存一堆，表情包随时能甩出来。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 47.5,
+    "exploration": 8.8,
+    "mainstream": 94.2,
+    "pop_spread": 6.6,
+    "quality": 21.4,
+    "era_span": 80.8,
+    "fresh": 39.1,
+    "emotion": 39.7,
+    "completion": 78.6
+   },
+   "total": 320,
+   "want": 3,
+   "seen": 0,
+   "drop": 0,
+   "cluster": "杂食",
+   "identity": "漫画党",
+   "genreCounts": {
+    "悬疑": 24,
+    "异世界": 34
+   },
+   "earlyShare": 10,
+   "rarityTier": "SR"
+  },
+  "seed": "user35",
+  "expectedTraits": [
+   "主流厨"
+  ],
+  "expectedTitle": "作豚",
+  "expectedCode": "FRAME-NERD",
+  "expectedNote": "你不是在看番，你在验货。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 27.7,
+    "exploration": 17.8,
+    "mainstream": 69.4,
+    "pop_spread": 71.4,
+    "quality": 72.3,
+    "era_span": 38.3,
+    "fresh": 41.5,
+    "emotion": 69.1,
+    "completion": 28.6
+   },
+   "total": 0,
+   "want": 3,
+   "seen": 5,
+   "drop": 0,
+   "cluster": "音乐",
+   "identity": "轻小说党",
+   "genreCounts": {
+    "王道": 60,
+    "恋爱": 6,
+    "神话": 39,
+    "燃": 34,
+    "乙女": 24
+   },
+   "earlyShare": 60,
+   "rarityTier": null
+  },
+  "seed": "",
+  "expectedTraits": [
+   "口碑党"
+  ],
+  "expectedTitle": "同人女",
+  "expectedCode": "FUJOSHI",
+  "expectedNote": "你写的那版，比官方好看。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 51.0,
+    "exploration": 79.1,
+    "mainstream": 27.2,
+    "pop_spread": 47.6,
+    "quality": 2.8,
+    "era_span": 11.7,
+    "fresh": 67.9,
+    "emotion": 94.4,
+    "completion": 22.2
+   },
+   "total": 320,
+   "want": 3,
+   "seen": 18,
+   "drop": 0,
+   "cluster": "悬疑",
+   "identity": "番剧党",
+   "genreCounts": {},
+   "earlyShare": 0,
+   "rarityTier": "N"
+  },
+  "seed": "user37",
+  "expectedTraits": [
+   "冷门挖掘机",
+   "博爱"
+  ],
+  "expectedTitle": "推理也杂食",
+  "expectedCode": "MYST-OMNI",
+  "expectedNote": "一部推理不够，你同季还开着两部别的类型。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 36.0,
+    "exploration": 32.0,
+    "mainstream": 44.0,
+    "pop_spread": 22.4,
+    "quality": 77.3,
+    "era_span": 67.4,
+    "fresh": 70.8,
+    "emotion": 91.6,
+    "completion": 24.4
+   },
+   "total": 20,
+   "want": 300,
+   "seen": 150,
+   "drop": 1,
+   "cluster": "科幻",
+   "identity": "轻小说党",
+   "genreCounts": {
+    "热血": 56
+   },
+   "earlyShare": 0,
+   "rarityTier": "N"
+  },
+  "seed": "user38",
+  "expectedTraits": [
+   "神作党",
+   "仓鼠"
+  ],
+  "expectedTitle": "设定比正片熟",
+  "expectedCode": "LORE-HOARDER",
+  "expectedNote": "正片是附件，设定才是本体。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 9.5,
+    "exploration": 91.0,
+    "mainstream": 0.5,
+    "pop_spread": 71.2,
+    "quality": 30.9,
+    "era_span": 61.4,
+    "fresh": 31.0,
+    "emotion": 82.4,
+    "completion": 78.6
+   },
+   "total": 320,
+   "want": 300,
+   "seen": 2,
+   "drop": 0,
+   "cluster": "热血",
+   "identity": "漫画党",
+   "genreCounts": {
+    "神怪": 19,
+    "婚姻": 21,
+    "妖怪": 39,
+    "动作": 39,
+    "冒险": 47
+   },
+   "earlyShare": 45,
+   "rarityTier": null
+  },
+  "seed": "user39",
+  "expectedTraits": [
+   "冷门挖掘机",
+   "博爱",
+   "仓鼠"
+  ],
+  "expectedTitle": "难民",
+  "expectedCode": "NANMIN",
+  "expectedNote": "烂归烂你也给它看完了，不然这个季度就白过了。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 86.4,
+    "exploration": 55.7,
+    "mainstream": 92.4,
+    "pop_spread": 30.5,
+    "quality": 5.2,
+    "era_span": 23.3,
+    "fresh": 18.2,
+    "emotion": 90.0,
+    "completion": 33.5
+   },
+   "total": 320,
+   "want": 120,
+   "seen": 18,
+   "drop": 4,
+   "cluster": "恋爱",
+   "identity": "杂食党",
+   "genreCounts": {
+    "搞笑": 29
+   },
+   "earlyShare": 10,
+   "rarityTier": "?"
+  },
+  "seed": "",
+  "expectedTraits": [
+   "偏食",
+   "仓鼠"
+  ],
+  "expectedTitle": "赛博貔貅",
+  "expectedCode": "PIXIU",
+  "expectedNote": "想看列表 327 部，本周看完的还是上周那一部。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 15.2,
+    "exploration": 51.0,
+    "mainstream": 34.0,
+    "pop_spread": 15.2,
+    "quality": 38.3,
+    "era_span": 51.0,
+    "fresh": 39.6,
+    "emotion": 58.6,
+    "completion": 38.4
+   },
+   "total": 20,
+   "want": 300,
+   "seen": 2,
+   "drop": 0,
+   "cluster": "科幻",
+   "identity": "番剧党",
+   "genreCounts": {
+    "芳文社": 59
+   },
+   "earlyShare": 38,
+   "rarityTier": "R"
+  },
+  "seed": "user41",
+  "expectedTraits": [
+   "冷门挖掘机",
+   "仓鼠"
+  ],
+  "expectedTitle": "设定比正片熟",
+  "expectedCode": "LORE-HOARDER",
+  "expectedNote": "一集正片看十分钟，设定集翻了一下午。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 6.4,
+    "exploration": 71.3,
+    "mainstream": 43.2,
+    "pop_spread": 34.3,
+    "quality": 2.8,
+    "era_span": 88.2,
+    "fresh": 91.5,
+    "emotion": 33.9,
+    "completion": 82.4
+   },
+   "total": 20,
+   "want": 0,
+   "seen": 0,
+   "drop": 0,
+   "cluster": "悬疑",
+   "identity": "游戏宅",
+   "genreCounts": {
+    "悬疑推理": 41
+   },
+   "earlyShare": 60,
+   "rarityTier": null
+  },
+  "seed": "user42",
+  "expectedTraits": [
+   "博爱"
+  ],
+  "expectedTitle": "推理也杂食",
+  "expectedCode": "MYST-OMNI",
+  "expectedNote": "什么案子都收。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 13.1,
+    "exploration": 72.2,
+    "mainstream": 93.3,
+    "pop_spread": 85.9,
+    "quality": 22.7,
+    "era_span": 53.6,
+    "fresh": 78.6,
+    "emotion": 0.6,
+    "completion": 73.9
+   },
+   "total": 90,
+   "want": 12,
+   "seen": 0,
+   "drop": 0,
+   "cluster": "杂食",
+   "identity": "漫画党",
+   "genreCounts": {
+    "乙女": 40,
+    "机甲": 23
+   },
+   "earlyShare": 38,
+   "rarityTier": "?"
+  },
+  "seed": "user43",
+  "expectedTraits": [
+   "主流厨",
+   "博爱"
+  ],
+  "expectedTitle": "流行厨",
+  "expectedCode": "HAYARI",
+  "expectedNote": "热度榜换一季你换一批，去年追的片名你现在叫不出来。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 88.1,
+    "exploration": 46.2,
+    "mainstream": 25.9,
+    "pop_spread": 33.1,
+    "era_span": 72.4,
+    "fresh": 3.4,
+    "emotion": 90.3,
+    "completion": 61.8
+   },
+   "total": 320,
+   "want": 12,
+   "seen": 2,
+   "drop": 0,
+   "cluster": "治愈",
+   "identity": "番剧党",
+   "genreCounts": {
+    "犯罪": 43,
+    "赛博朋克": 34,
+    "爱情": 22,
+    "丧尸": 37
+   },
+   "earlyShare": 45,
+   "rarityTier": "R"
+  },
+  "seed": "",
+  "expectedTraits": [
+   "冷门挖掘机",
+   "偏食",
+   "仓鼠"
+  ],
+  "expectedTitle": "老贼",
+  "expectedCode": "O-GAI",
+  "expectedNote": "你追的连载，有的完结了，有的作者还没画完。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 44.3,
+    "exploration": 2.6,
+    "mainstream": 83.6,
+    "pop_spread": 48.7,
+    "quality": 78.9,
+    "era_span": 19.8,
+    "fresh": 91.4,
+    "emotion": 3.9,
+    "completion": 87.3
+   },
+   "total": 320,
+   "want": 0,
+   "seen": 18,
+   "drop": 0,
+   "cluster": "科幻",
+   "identity": "番剧党",
+   "genreCounts": {
+    "剑与魔法": 48,
+    "末日": 47
+   },
+   "earlyShare": 10,
+   "rarityTier": null
+  },
+  "seed": "user45",
+  "expectedTraits": [
+   "神作党"
+  ],
+  "expectedTitle": "凤凰院凶真",
+  "expectedCode": "HOUOUIN",
+  "expectedNote": "世界线收束、时间悖论，你能跟人聊一小时。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 61.3,
+    "exploration": 51.9,
+    "mainstream": 8.3,
+    "pop_spread": 23.4,
+    "quality": 77.1,
+    "era_span": 62.0,
+    "fresh": 64.5,
+    "emotion": 14.3,
+    "completion": 91.2
+   },
+   "total": 0,
+   "want": 12,
+   "seen": 150,
+   "drop": 4,
+   "cluster": "奇幻",
+   "identity": "游戏宅",
+   "genreCounts": {
+    "惊悚": 4,
+    "机战": 36
+   },
+   "earlyShare": 60,
+   "rarityTier": "?"
+  },
+  "seed": "user46",
+  "expectedTraits": [
+   "冷门挖掘机",
+   "神作党"
+  ],
+  "expectedTitle": "婆罗门本尊",
+  "expectedCode": "BRAHMIN",
+  "expectedNote": "安利十次没人接，第十一次你还是说了。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 80.7,
+    "exploration": 49.3,
+    "mainstream": 73.9,
+    "pop_spread": 63.3,
+    "quality": 9.8,
+    "era_span": 43.4,
+    "fresh": 67.8,
+    "emotion": 73.6,
+    "completion": 85.6
+   },
+   "total": 90,
+   "want": 40,
+   "seen": 60,
+   "drop": 0,
+   "cluster": "奇幻",
+   "identity": "番剧党",
+   "genreCounts": {
+    "丧尸": 24,
+    "萌": 40,
+    "Live": 6,
+    "权谋": 11,
+    "同居": 8
+   },
+   "earlyShare": 45,
+   "rarityTier": "?"
+  },
+  "seed": "user47",
+  "expectedTraits": [
+   "偏食"
+  ],
+  "expectedTitle": "有始有终的异类",
+  "expectedCode": "FINISH-ALL",
+  "expectedNote": "烂尾也是尾。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 61.4,
+    "exploration": 23.5,
+    "mainstream": 14.4,
+    "pop_spread": 74.8,
+    "quality": 50.0,
+    "era_span": 96.2,
+    "fresh": 90.3,
+    "emotion": 0.4,
+    "completion": 3.3
+   },
+   "total": 20,
+   "want": 12,
+   "seen": 0,
+   "drop": 0,
+   "cluster": "奇幻",
+   "identity": "游戏宅",
+   "genreCounts": {
+    "爱情": 40,
+    "犯罪": 17,
+    "冒险": 2
+   },
+   "earlyShare": 0,
+   "rarityTier": null
+  },
+  "seed": "",
+  "expectedTraits": [
+   "冷门挖掘机"
+  ],
+  "expectedTitle": "现充",
+  "expectedCode": "RIAJUU",
+  "expectedNote": "别人的青春你一部不落，自己的青春一集没开始。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 1.9,
+    "exploration": 34.6,
+    "mainstream": 27.2,
+    "pop_spread": 67.9,
+    "quality": 95.4,
+    "era_span": 63.6,
+    "fresh": 72.4,
+    "emotion": 35.1,
+    "completion": 70.6
+   },
+   "total": 0,
+   "want": 40,
+   "seen": 150,
+   "drop": 0,
+   "cluster": "治愈",
+   "identity": "轻小说党",
+   "genreCounts": {
+    "爱情": 58
+   },
+   "earlyShare": 25,
+   "rarityTier": "N"
+  },
+  "seed": "user49",
+  "expectedTraits": [
+   "冷门挖掘机",
+   "神作党"
+  ],
+  "expectedTitle": "现充",
+  "expectedCode": "RIAJUU",
+  "expectedNote": "别人的青春你一部不落，自己的青春一集没开始。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 34.6,
+    "exploration": 22.1,
+    "mainstream": 21.1,
+    "pop_spread": 45.0,
+    "quality": 47.1,
+    "era_span": 69.2,
+    "fresh": 65.8,
+    "emotion": 75.0,
+    "completion": 30.5
+   },
+   "total": 160,
+   "want": 3,
+   "seen": 2,
+   "drop": 9,
+   "cluster": "热血",
+   "identity": "漫画党",
+   "genreCounts": {
+    "转生": 1,
+    "神怪": 26,
+    "婚姻": 38,
+    "欢乐": 13,
+    "温馨": 40,
+    "芳文社": 22
+   },
+   "earlyShare": 10,
+   "rarityTier": "SSR"
+  },
+  "seed": "user50",
+  "expectedTraits": [
+   "冷门挖掘机",
+   "仓鼠"
+  ],
+  "expectedTitle": "三集弃之神",
+  "expectedCode": "DROP-GOD",
+  "expectedNote": "三集定生死，第四集你通常已经在别的番里了。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 13.7,
+    "exploration": 29.2,
+    "mainstream": 76.0,
+    "pop_spread": 43.1,
+    "quality": 43.9,
+    "era_span": 30.6,
+    "emotion": 58.3,
+    "completion": 36.5
+   },
+   "total": 160,
+   "want": 300,
+   "seen": 2,
+   "drop": 4,
+   "cluster": "杂食",
+   "identity": "游戏宅",
+   "genreCounts": {},
+   "earlyShare": 45,
+   "rarityTier": null
+  },
+  "seed": "user51",
+  "expectedTraits": [
+   "仓鼠"
+  ],
+  "expectedTitle": "老贼",
+  "expectedCode": "O-GAI",
+  "expectedNote": "入坑早到能当别人前辈，现在只剩一句「现在的番不行了」。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 28.5,
+    "exploration": 15.7,
+    "mainstream": 38.6,
+    "pop_spread": 66.4,
+    "quality": 96.6,
+    "era_span": 84.9,
+    "fresh": 25.2,
+    "emotion": 15.9,
+    "completion": 35.0
+   },
+   "total": 0,
+   "want": 0,
+   "seen": 0,
+   "drop": 0,
+   "cluster": "悬疑",
+   "identity": "游戏宅",
+   "genreCounts": {
+    "悬疑": 3
+   },
+   "earlyShare": 25,
+   "rarityTier": "?"
+  },
+  "seed": "",
+  "expectedTraits": [
+   "神作党"
+  ],
+  "expectedTitle": "作豚",
+  "expectedCode": "FRAME-NERD",
+  "expectedNote": "一集 24 分钟，你要看 50 分钟。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 24.4,
+    "exploration": 17.1,
+    "mainstream": 31.4,
+    "pop_spread": 3.9,
+    "quality": 59.8,
+    "era_span": 7.3,
+    "fresh": 23.1,
+    "emotion": 93.6,
+    "completion": 79.3
+   },
+   "total": 320,
+   "want": 3,
+   "seen": 60,
+   "drop": 0,
+   "cluster": "恋爱",
+   "identity": "番剧党",
+   "genreCounts": {
+    "转生": 54,
+    "治愈": 22,
+    "旅行": 36,
+    "青梅竹马": 59,
+    "纯爱": 39
+   },
+   "earlyShare": 45,
+   "rarityTier": "?"
+  },
+  "seed": "user53",
+  "expectedTraits": [
+   "冷门挖掘机",
+   "口碑党"
+  ],
+  "expectedTitle": "老贼",
+  "expectedCode": "O-GAI",
+  "expectedNote": "入坑早到能当别人前辈，现在只剩一句「现在的番不行了」。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 6.5,
+    "exploration": 80.7,
+    "mainstream": 54.5,
+    "pop_spread": 64.1,
+    "quality": 49.0,
+    "era_span": 8.0,
+    "fresh": 97.3,
+    "emotion": 6.6,
+    "completion": 45.2
+   },
+   "total": 0,
+   "want": 0,
+   "seen": 2,
+   "drop": 0,
+   "cluster": "恋爱",
+   "identity": "漫画党",
+   "genreCounts": {
+    "武侠": 43,
+    "婚姻": 26,
+    "乐队": 11,
+    "奇幻": 42
+   },
+   "earlyShare": 38,
+   "rarityTier": null
+  },
+  "seed": "user54",
+  "expectedTraits": [
+   "博爱"
+  ],
+  "expectedTitle": "乐队男",
+  "expectedCode": "BAND-MAN",
+  "expectedNote": "番里的和弦你听得出，自己一个音都不会弹。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 36.3,
+    "exploration": 11.1,
+    "mainstream": 77.9,
+    "pop_spread": 79.7,
+    "era_span": 47.7,
+    "fresh": 4.2,
+    "emotion": 26.5,
+    "completion": 67.8
+   },
+   "total": 0,
+   "want": 300,
+   "seen": 5,
+   "drop": 0,
+   "cluster": "奇幻",
+   "identity": "轻小说党",
+   "genreCounts": {
+    "剧情": 53,
+    "推理": 16
+   },
+   "earlyShare": 60,
+   "rarityTier": "N"
+  },
+  "seed": "user55",
+  "expectedTraits": [
+   "仓鼠"
+  ],
+  "expectedTitle": "赛博貔貅",
+  "expectedCode": "PIXIU",
+  "expectedNote": "想看列表 327 部，本周看完的还是上周那一部。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 24.7,
+    "exploration": 51.0,
+    "mainstream": 81.4,
+    "pop_spread": 45.4,
+    "quality": 75.2,
+    "era_span": 74.9,
+    "fresh": 37.9,
+    "emotion": 81.1,
+    "completion": 89.0
+   },
+   "total": 160,
+   "want": 300,
+   "seen": 150,
+   "drop": 1,
+   "cluster": "搞笑",
+   "identity": "杂食党",
+   "genreCounts": {
+    "转生": 47,
+    "耽美": 37,
+    "美食": 58
+   },
+   "earlyShare": 38,
+   "rarityTier": "R"
+  },
+  "seed": "",
+  "expectedTraits": [
+   "神作党",
+   "仓鼠"
+  ],
+  "expectedTitle": "同人女",
+  "expectedCode": "FUJOSHI",
+  "expectedNote": "你写的那版，比官方好看。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 30.5,
+    "exploration": 20.3,
+    "mainstream": 41.4,
+    "pop_spread": 33.7,
+    "quality": 56.7,
+    "era_span": 33.1,
+    "fresh": 49.0,
+    "emotion": 89.2,
+    "completion": 37.6
+   },
+   "total": 90,
+   "want": 0,
+   "seen": 150,
+   "drop": 0,
+   "cluster": "科幻",
+   "identity": "漫画党",
+   "genreCounts": {
+    "沙雕": 33,
+    "同居": 38,
+    "机甲": 56
+   },
+   "earlyShare": 10,
+   "rarityTier": null
+  },
+  "seed": "user57",
+  "expectedTraits": [],
+  "expectedTitle": "胶佬",
+  "expectedCode": "GUNPLA",
+  "expectedNote": "一集看完先查三件事：出没出胶、HG 还是 MG、多少钱。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 50.1,
+    "exploration": 57.6,
+    "mainstream": 29.5,
+    "pop_spread": 19.3,
+    "quality": 65.4,
+    "era_span": 70.1,
+    "fresh": 49.7,
+    "emotion": 78.8,
+    "completion": 81.4
+   },
+   "total": 0,
+   "want": 40,
+   "seen": 60,
+   "drop": 0,
+   "cluster": "科幻",
+   "identity": "杂食党",
+   "genreCounts": {
+    "耽美": 48,
+    "Live": 3,
+    "燃": 9,
+    "机器人": 5,
+    "推理": 7
+   },
+   "earlyShare": 10,
+   "rarityTier": "N"
+  },
+  "seed": "user58",
+  "expectedTraits": [
+   "冷门挖掘机",
+   "口碑党"
+  ],
+  "expectedTitle": "同人女",
+  "expectedCode": "FUJOSHI",
+  "expectedNote": "你写的那版，比官方好看。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 93.7,
+    "exploration": 3.4,
+    "mainstream": 49.7,
+    "pop_spread": 25.2,
+    "quality": 50.2,
+    "era_span": 32.1,
+    "fresh": 74.8,
+    "emotion": 6.1,
+    "completion": 83.3
+   },
+   "total": 0,
+   "want": 120,
+   "seen": 2,
+   "drop": 0,
+   "cluster": "恋爱",
+   "identity": "漫画党",
+   "genreCounts": {
+    "王道": 14
+   },
+   "earlyShare": 25,
+   "rarityTier": "SSR"
+  },
+  "seed": "user59",
+  "expectedTraits": [
+   "偏食",
+   "仓鼠"
+  ],
+  "expectedTitle": "只吃这一口",
+  "expectedCode": "ICHIGEN",
+  "expectedNote": "十年下来，四个平台，一个题材。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 24.1,
+    "exploration": 0.6,
+    "mainstream": 59.0,
+    "pop_spread": 79.9,
+    "quality": 97.2,
+    "era_span": 80.9,
+    "fresh": 33.4,
+    "emotion": 39.5,
+    "completion": 93.6
+   },
+   "total": 320,
+   "want": 3,
+   "seen": 60,
+   "drop": 0,
+   "cluster": "音乐",
+   "identity": "漫画党",
+   "genreCounts": {
+    "恋爱": 41,
+    "乙女": 33
+   },
+   "earlyShare": 10,
+   "rarityTier": null
+  },
+  "seed": "",
+  "expectedTraits": [
+   "神作党"
+  ],
+  "expectedTitle": "同人女",
+  "expectedCode": "FUJOSHI",
+  "expectedNote": "原作只是原料，你脑子里那版才是正片。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 98.1,
+    "exploration": 20.0,
+    "mainstream": 0.2,
+    "pop_spread": 13.2,
+    "quality": 8.3,
+    "era_span": 55.9,
+    "fresh": 78.5,
+    "emotion": 3.8,
+    "completion": 55.3
+   },
+   "total": 320,
+   "want": 300,
+   "seen": 150,
+   "drop": 0,
+   "cluster": "科幻",
+   "identity": "轻小说党",
+   "genreCounts": {
+    "太空": 11
+   },
+   "earlyShare": 38,
+   "rarityTier": "N"
+  },
+  "seed": "user61",
+  "expectedTraits": [
+   "冷门挖掘机",
+   "偏食",
+   "仓鼠"
+  ],
+  "expectedTitle": "伪婆罗门",
+  "expectedCode": "NISE-BRAHMIN",
+  "expectedNote": "姿势在链顶，品味在链底。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 95.8,
+    "exploration": 90.8,
+    "mainstream": 62.1,
+    "pop_spread": 29.1,
+    "quality": 45.3,
+    "era_span": 51.9,
+    "fresh": 62.4,
+    "emotion": 7.5,
+    "completion": 90.8
+   },
+   "total": 90,
+   "want": 300,
+   "seen": 60,
+   "drop": 4,
+   "cluster": "搞笑",
+   "identity": "杂食党",
+   "genreCounts": {
+    "同居": 54,
+    "王道": 8,
+    "少年": 28,
+    "剑与魔法": 33,
+    "悬疑推理": 5,
+    "武侠": 59
+   },
+   "earlyShare": 60,
+   "rarityTier": "?"
+  },
+  "seed": "user62",
+  "expectedTraits": [
+   "偏食",
+   "博爱",
+   "仓鼠"
+  ],
+  "expectedTitle": "赛博貔貅",
+  "expectedCode": "PIXIU",
+  "expectedNote": "加收藏永远比看完快一步，你管这叫先存着。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 90.6,
+    "exploration": 29.3,
+    "mainstream": 25.3,
+    "pop_spread": 58.8,
+    "quality": 12.2,
+    "era_span": 30.5,
+    "fresh": 63.5,
+    "emotion": 51.8,
+    "completion": 18.5
+   },
+   "total": 90,
+   "want": 40,
+   "seen": 60,
+   "drop": 4,
+   "cluster": "搞笑",
+   "identity": "漫画党",
+   "genreCounts": {
+    "萌系": 44,
+    "偶像": 22,
+    "生存": 50,
+    "机器人": 56
+   },
+   "earlyShare": 60,
+   "rarityTier": null
+  },
+  "seed": "user63",
+  "expectedTraits": [
+   "冷门挖掘机",
+   "偏食"
+  ],
+  "expectedTitle": "只吃这一口",
+  "expectedCode": "ICHIGEN",
+  "expectedNote": "十年下来，四个平台，一个题材。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 98.8,
+    "exploration": 80.8,
+    "mainstream": 66.4,
+    "pop_spread": 93.9,
+    "quality": 69.1,
+    "era_span": 75.2,
+    "fresh": 90.3,
+    "emotion": 25.0,
+    "completion": 46.8
+   },
+   "total": 0,
+   "want": 300,
+   "seen": 60,
+   "drop": 0,
+   "cluster": "科幻",
+   "identity": "漫画党",
+   "genreCounts": {
+    "恋爱": 10,
+    "奇幻": 25,
+    "妖怪": 28,
+    "转生": 41,
+    "萌系": 27,
+    "少年": 41
+   },
+   "earlyShare": 38,
+   "rarityTier": "SR"
+  },
+  "seed": "",
+  "expectedTraits": [
+   "偏食",
+   "博爱",
+   "口碑党"
+  ],
+  "expectedTitle": "赛博貔貅",
+  "expectedCode": "PIXIU",
+  "expectedNote": "收藏夹不是列表，是许愿池。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 84.6,
+    "exploration": 24.1,
+    "mainstream": 34.4,
+    "pop_spread": 23.8,
+    "quality": 1.9,
+    "era_span": 56.0,
+    "fresh": 51.6,
+    "emotion": 3.2,
+    "completion": 31.3
+   },
+   "total": 320,
+   "want": 300,
+   "seen": 18,
+   "drop": 0,
+   "cluster": "搞笑",
+   "identity": "杂食党",
+   "genreCounts": {
+    "后宫": 20,
+    "青梅竹马": 43,
+    "偶像": 7
+   },
+   "earlyShare": 10,
+   "rarityTier": "?"
+  },
+  "seed": "user65",
+  "expectedTraits": [
+   "冷门挖掘机",
+   "偏食",
+   "仓鼠"
+  ],
+  "expectedTitle": "赛博貔貅",
+  "expectedCode": "PIXIU",
+  "expectedNote": "想看列表 327 部，本周看完的还是上周那一部。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 77.1,
+    "exploration": 82.4,
+    "mainstream": 22.6,
+    "pop_spread": 55.5,
+    "era_span": 60.3,
+    "fresh": 92.4,
+    "emotion": 18.5,
+    "completion": 60.2
+   },
+   "total": 160,
+   "want": 0,
+   "seen": 0,
+   "drop": 0,
+   "cluster": "科幻",
+   "identity": "游戏宅",
+   "genreCounts": {
+    "悬疑推理": 23
+   },
+   "earlyShare": 60,
+   "rarityTier": null
+  },
+  "seed": "user66",
+  "expectedTraits": [
+   "冷门挖掘机",
+   "偏食",
+   "博爱"
+  ],
+  "expectedTitle": "老贼",
+  "expectedCode": "O-GAI",
+  "expectedNote": "入坑早到能当别人前辈，现在只剩一句「现在的番不行了」。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 75.0,
+    "exploration": 77.2,
+    "mainstream": 65.5,
+    "pop_spread": 54.2,
+    "quality": 57.0,
+    "era_span": 31.1,
+    "fresh": 6.6,
+    "emotion": 26.1,
+    "completion": 36.7
+   },
+   "total": 20,
+   "want": 12,
+   "seen": 18,
+   "drop": 0,
+   "cluster": "杂食",
+   "identity": "杂食党",
+   "genreCounts": {
+    "犯罪": 49
+   },
+   "earlyShare": 0,
+   "rarityTier": "SR"
+  },
+  "seed": "user67",
+  "expectedTraits": [
+   "偏食",
+   "博爱"
+  ],
+  "expectedTitle": "真·杂食",
+  "expectedCode": "TRUE-OMNI",
+  "expectedNote": "什么类型都点开，什么类型都留不住。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 7.1,
+    "exploration": 66.0,
+    "mainstream": 71.2,
+    "pop_spread": 79.4,
+    "quality": 60.7,
+    "era_span": 32.5,
+    "emotion": 32.2,
+    "completion": 99.4
+   },
+   "total": 320,
+   "want": 40,
+   "seen": 0,
+   "drop": 0,
+   "cluster": "杂食",
+   "identity": "轻小说党",
+   "genreCounts": {
+    "剑与魔法": 38,
+    "格斗": 34,
+    "生存": 43,
+    "时间旅行": 45,
+    "冒险": 56
+   },
+   "earlyShare": 10,
+   "rarityTier": "SSR"
+  },
+  "seed": "",
+  "expectedTraits": [
+   "口碑党"
+  ],
+  "expectedTitle": "先看分再说",
+  "expectedCode": "OMNI-SCORE",
+  "expectedNote": "前提是它得有星——6 分以下的连点开都不点。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 46.1,
+    "exploration": 48.5,
+    "mainstream": 69.2,
+    "pop_spread": 10.7,
+    "quality": 47.3,
+    "era_span": 40.3,
+    "fresh": 23.0,
+    "emotion": 53.3,
+    "completion": 58.4
+   },
+   "total": 0,
+   "want": 0,
+   "seen": 150,
+   "drop": 0,
+   "cluster": "科幻",
+   "identity": "游戏宅",
+   "genreCounts": {
+    "战斗": 9,
+    "克苏鲁": 12
+   },
+   "earlyShare": 10,
+   "rarityTier": null
+  },
+  "seed": "user69",
+  "expectedTraits": [],
+  "expectedTitle": "不上不下",
+  "expectedCode": "KOUON",
+  "expectedNote": "只认这一个温度。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 85.4,
+    "exploration": 54.9,
+    "mainstream": 92.7,
+    "pop_spread": 29.5,
+    "quality": 79.5,
+    "era_span": 30.5,
+    "fresh": 67.8,
+    "emotion": 14.4,
+    "completion": 94.3
+   },
+   "total": 320,
+   "want": 0,
+   "seen": 60,
+   "drop": 0,
+   "cluster": "治愈",
+   "identity": "番剧党",
+   "genreCounts": {
+    "青春": 52,
+    "搞笑": 17,
+    "剑与魔法": 42,
+    "音乐": 36
+   },
+   "earlyShare": 10,
+   "rarityTier": "SSR"
+  },
+  "seed": "user70",
+  "expectedTraits": [
+   "神作党",
+   "偏食"
+  ],
+  "expectedTitle": "等着被安利",
+  "expectedCode": "HYOUKA",
+  "expectedNote": "等别人挖好了再点开，是你的标准流程。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 24.7,
+    "exploration": 87.1,
+    "mainstream": 77.9,
+    "pop_spread": 14.4,
+    "quality": 56.4,
+    "era_span": 62.5,
+    "fresh": 71.3,
+    "emotion": 42.3,
+    "completion": 55.7
+   },
+   "total": 320,
+   "want": 3,
+   "seen": 2,
+   "drop": 0,
+   "cluster": "搞笑",
+   "identity": "杂食党",
+   "genreCounts": {},
+   "earlyShare": 0,
+   "rarityTier": "?"
+  },
+  "seed": "user71",
+  "expectedTraits": [
+   "博爱",
+   "仓鼠"
+  ],
+  "expectedTitle": "弹幕比正片好看",
+  "expectedCode": "DANMAKU",
+  "expectedNote": "一个人看没意思，得看别人一起笑。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 27.5,
+    "exploration": 24.4,
+    "mainstream": 92.8,
+    "pop_spread": 17.6,
+    "quality": 91.8,
+    "era_span": 4.3,
+    "fresh": 44.7,
+    "emotion": 81.6,
+    "completion": 12.5
+   },
+   "total": 0,
+   "want": 300,
+   "seen": 0,
+   "drop": 0,
+   "cluster": "热血",
+   "identity": "杂食党",
+   "genreCounts": {},
+   "earlyShare": 38,
+   "rarityTier": null
+  },
+  "seed": "",
+  "expectedTraits": [
+   "神作党"
+  ],
+  "expectedTitle": "等着被安利",
+  "expectedCode": "HYOUKA",
+  "expectedNote": "神作是公认的，口味是借来的。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 39.2,
+    "exploration": 93.8,
+    "mainstream": 76.0,
+    "pop_spread": 27.5,
+    "quality": 75.4,
+    "era_span": 51.9,
+    "fresh": 32.2,
+    "emotion": 2.7,
+    "completion": 88.6
+   },
+   "total": 90,
+   "want": 40,
+   "seen": 18,
+   "drop": 4,
+   "cluster": "科幻",
+   "identity": "轻小说党",
+   "genreCounts": {
+    "乐队": 10,
+    "推理": 27,
+    "同居": 58
+   },
+   "earlyShare": 60,
+   "rarityTier": "R"
+  },
+  "seed": "user73",
+  "expectedTraits": [
+   "神作党",
+   "博爱",
+   "仓鼠"
+  ],
+  "expectedTitle": "乐队男",
+  "expectedCode": "BAND-MAN",
+  "expectedNote": "番里的和弦你听得出，自己一个音都不会弹。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 34.7,
+    "exploration": 15.0,
+    "mainstream": 41.5,
+    "pop_spread": 72.6,
+    "quality": 6.1,
+    "era_span": 41.9,
+    "fresh": 29.1,
+    "emotion": 19.0,
+    "completion": 82.2
+   },
+   "total": 90,
+   "want": 40,
+   "seen": 150,
+   "drop": 0,
+   "cluster": "科幻",
+   "identity": "游戏宅",
+   "genreCounts": {},
+   "earlyShare": 60,
+   "rarityTier": "R"
+  },
+  "seed": "user74",
+  "expectedTraits": [],
+  "expectedTitle": "有始有终的异类",
+  "expectedCode": "FINISH-ALL",
+  "expectedNote": "评分 4 分的番，你也看到了第 12 集的片尾曲。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 23.0,
+    "exploration": 97.9,
+    "mainstream": 49.7,
+    "pop_spread": 3.5,
+    "quality": 88.3,
+    "era_span": 32.8,
+    "fresh": 33.0,
+    "emotion": 99.4,
+    "completion": 34.3
+   },
+   "total": 20,
+   "want": 0,
+   "seen": 60,
+   "drop": 0,
+   "cluster": "治愈",
+   "identity": "游戏宅",
+   "genreCounts": {
+    "萌": 58,
+    "治愈": 14,
+    "犯罪": 41
+   },
+   "earlyShare": 25,
+   "rarityTier": null
+  },
+  "seed": "user75",
+  "expectedTraits": [
+   "神作党",
+   "博爱"
+  ],
+  "expectedTitle": "刀后应激",
+  "expectedCode": "IYASHI",
+  "expectedNote": "不是爱看治愈，是需要它——像需要止痛药。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 34.4,
+    "exploration": 99.4,
+    "mainstream": 88.3,
+    "pop_spread": 87.9,
+    "quality": 97.2,
+    "era_span": 61.3,
+    "fresh": 62.8,
+    "emotion": 18.3,
+    "completion": 55.1
+   },
+   "total": 320,
+   "want": 300,
+   "seen": 5,
+   "drop": 0,
+   "cluster": "热血",
+   "identity": "轻小说党",
+   "genreCounts": {
+    "燃": 21,
+    "沙雕": 10
+   },
+   "earlyShare": 45,
+   "rarityTier": "SR"
+  },
+  "seed": "",
+  "expectedTraits": [
+   "神作党",
+   "博爱",
+   "仓鼠"
+  ],
+  "expectedTitle": "赛博貔貅",
+  "expectedCode": "PIXIU",
+  "expectedNote": "加收藏永远比看完快一步，你管这叫先存着。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 63.4,
+    "exploration": 38.7,
+    "mainstream": 4.5,
+    "pop_spread": 35.1,
+    "era_span": 0.2,
+    "fresh": 86.6,
+    "emotion": 42.5,
+    "completion": 61.6
+   },
+   "total": 320,
+   "want": 0,
+   "seen": 0,
+   "drop": 0,
+   "cluster": "音乐",
+   "identity": "游戏宅",
+   "genreCounts": {
+    "恶魔": 25
+   },
+   "earlyShare": 38,
+   "rarityTier": "R"
+  },
+  "seed": "user77",
+  "expectedTraits": [
+   "冷门挖掘机",
+   "偏食"
+  ],
+  "expectedTitle": "婆罗门本尊",
+  "expectedCode": "BRAHMIN",
+  "expectedNote": "安利十次没人接，第十一次你还是说了。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 24.3,
+    "exploration": 27.3,
+    "mainstream": 1.5,
+    "pop_spread": 6.5,
+    "quality": 18.9,
+    "era_span": 6.9,
+    "fresh": 19.0,
+    "emotion": 14.8,
+    "completion": 27.8
+   },
+   "total": 90,
+   "want": 120,
+   "seen": 5,
+   "drop": 0,
+   "cluster": "恋爱",
+   "identity": "游戏宅",
+   "genreCounts": {
+    "美食": 31
+   },
+   "earlyShare": 25,
+   "rarityTier": null
+  },
+  "seed": "user78",
+  "expectedTraits": [
+   "冷门挖掘机",
+   "仓鼠"
+  ],
+  "expectedTitle": "难民",
+  "expectedCode": "NANMIN",
+  "expectedNote": "烂归烂你也给它看完了，不然这个季度就白过了。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 87.9,
+    "exploration": 65.1,
+    "mainstream": 62.9,
+    "pop_spread": 47.5,
+    "quality": 3.3,
+    "era_span": 96.3,
+    "fresh": 97.2,
+    "emotion": 53.9,
+    "completion": 11.2
+   },
+   "total": 20,
+   "want": 12,
+   "seen": 2,
+   "drop": 0,
+   "cluster": "杂食",
+   "identity": "杂食党",
+   "genreCounts": {},
+   "earlyShare": 25,
+   "rarityTier": "?"
+  },
+  "seed": "user79",
+  "expectedTraits": [
+   "偏食",
+   "仓鼠"
+  ],
+  "expectedTitle": "什么都想要的人",
+  "expectedCode": "ALL-WANT",
+  "expectedNote": "标注「想看」的速度，比看完快 5 倍。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 34.1,
+    "exploration": 29.2,
+    "mainstream": 80.3,
+    "pop_spread": 98.2,
+    "quality": 43.1,
+    "era_span": 94.8,
+    "fresh": 45.4,
+    "emotion": 70.8,
+    "completion": 98.8
+   },
+   "total": 320,
+   "want": 300,
+   "seen": 60,
+   "drop": 9,
+   "cluster": "恋爱",
+   "identity": "番剧党",
+   "genreCounts": {
+    "悬疑推理": 24,
+    "偶像": 50,
+    "沙雕": 33,
+    "吸血鬼": 10,
+    "惊悚": 50
+   },
+   "earlyShare": 38,
+   "rarityTier": "SSR"
+  },
+  "seed": "",
+  "expectedTraits": [
+   "仓鼠"
+  ],
+  "expectedTitle": "赛博貔貅",
+  "expectedCode": "PIXIU",
+  "expectedNote": "想看列表 327 部，本周看完的还是上周那一部。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 4.0,
+    "exploration": 14.1,
+    "mainstream": 8.9,
+    "pop_spread": 94.7,
+    "quality": 12.9,
+    "era_span": 45.6,
+    "fresh": 73.6,
+    "emotion": 45.0,
+    "completion": 53.3
+   },
+   "total": 160,
+   "want": 12,
+   "seen": 18,
+   "drop": 0,
+   "cluster": "热血",
+   "identity": "轻小说党",
+   "genreCounts": {
+    "耽美": 5,
+    "校园": 38,
+    "友情": 39,
+    "智斗": 26
+   },
+   "earlyShare": 45,
+   "rarityTier": null
+  },
+  "seed": "user81",
+  "expectedTraits": [
+   "冷门挖掘机"
+  ],
+  "expectedTitle": "难民",
+  "expectedCode": "NANMIN",
+  "expectedNote": "别人挑番，你捡番。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 24.8,
+    "exploration": 96.9,
+    "mainstream": 33.9,
+    "pop_spread": 36.7,
+    "quality": 62.8,
+    "era_span": 42.2,
+    "fresh": 10.6,
+    "emotion": 12.9,
+    "completion": 85.9
+   },
+   "total": 0,
+   "want": 0,
+   "seen": 0,
+   "drop": 0,
+   "cluster": "音乐",
+   "identity": "轻小说党",
+   "genreCounts": {
+    "日常": 49,
+    "机甲": 26
+   },
+   "earlyShare": 10,
+   "rarityTier": "?"
+  },
+  "seed": "user82",
+  "expectedTraits": [
+   "冷门挖掘机",
+   "博爱",
+   "口碑党"
+  ],
+  "expectedTitle": "胶佬",
+  "expectedCode": "GUNPLA",
+  "expectedNote": "萝卜才是本体。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 44.4,
+    "exploration": 56.6,
+    "mainstream": 23.0,
+    "pop_spread": 66.0,
+    "quality": 21.8,
+    "era_span": 62.5,
+    "fresh": 2.6,
+    "emotion": 7.4,
+    "completion": 60.1
+   },
+   "total": 20,
+   "want": 300,
+   "seen": 60,
+   "drop": 1,
+   "cluster": "治愈",
+   "identity": "杂食党",
+   "genreCounts": {
+    "机战": 12,
+    "田园": 4,
+    "剑与魔法": 9,
+    "党争": 8,
+    "喜剧": 33
+   },
+   "earlyShare": 0,
+   "rarityTier": "R"
+  },
+  "seed": "user83",
+  "expectedTraits": [
+   "冷门挖掘机",
+   "仓鼠"
+  ],
+  "expectedTitle": "赛博貔貅",
+  "expectedCode": "PIXIU",
+  "expectedNote": "收藏夹不是列表，是许愿池。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 87.2,
+    "exploration": 10.3,
+    "mainstream": 81.7,
+    "pop_spread": 2.1,
+    "quality": 5.7,
+    "era_span": 65.7,
+    "fresh": 38.5,
+    "emotion": 35.6,
+    "completion": 16.9
+   },
+   "total": 90,
+   "want": 40,
+   "seen": 150,
+   "drop": 9,
+   "cluster": "热血",
+   "identity": "游戏宅",
+   "genreCounts": {
+    "机战": 54,
+    "转生": 36,
+    "萌": 43
+   },
+   "earlyShare": 0,
+   "rarityTier": null
+  },
+  "seed": "",
+  "expectedTraits": [
+   "偏食"
+  ],
+  "expectedTitle": "胶佬",
+  "expectedCode": "GUNPLA",
+  "expectedNote": "萝卜才是本体。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 64.5,
+    "exploration": 59.8,
+    "mainstream": 98.5,
+    "pop_spread": 60.5,
+    "quality": 84.1,
+    "era_span": 58.3,
+    "emotion": 0.4,
+    "completion": 94.4
+   },
+   "total": 0,
+   "want": 120,
+   "seen": 0,
+   "drop": 0,
+   "cluster": "杂食",
+   "identity": "番剧党",
+   "genreCounts": {
+    "吐槽": 40,
+    "田园": 3,
+    "萌": 3,
+    "偶像": 17,
+    "少年": 40
+   },
+   "earlyShare": 10,
+   "rarityTier": "R"
+  },
+  "seed": "user85",
+  "expectedTraits": [
+   "主流厨",
+   "神作党",
+   "偏食"
+  ],
+  "expectedTitle": "箱推",
+  "expectedCode": "HAKO-OSHI",
+  "expectedNote": "成员的生日你背得出，自己的要翻手机。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 43.9,
+    "exploration": 57.0,
+    "mainstream": 61.8,
+    "pop_spread": 36.7,
+    "quality": 7.8,
+    "era_span": 34.3,
+    "fresh": 41.1,
+    "emotion": 21.4,
+    "completion": 59.8
+   },
+   "total": 160,
+   "want": 3,
+   "seen": 5,
+   "drop": 4,
+   "cluster": "科幻",
+   "identity": "漫画党",
+   "genreCounts": {
+    "日常": 40,
+    "恶魔": 3
+   },
+   "earlyShare": 45,
+   "rarityTier": "N"
+  },
+  "seed": "user86",
+  "expectedTraits": [],
+  "expectedTitle": "萌豚",
+  "expectedCode": "MOE-BUTA",
+  "expectedNote": "萌才是正片，剧情是赠品。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 90.0,
+    "exploration": 59.1,
+    "mainstream": 49.6,
+    "pop_spread": 33.6,
+    "quality": 11.0,
+    "era_span": 7.8,
+    "fresh": 25.6,
+    "emotion": 2.6,
+    "completion": 79.6
+   },
+   "total": 20,
+   "want": 0,
+   "seen": 60,
+   "drop": 9,
+   "cluster": "治愈",
+   "identity": "轻小说党",
+   "genreCounts": {
+    "青春": 28,
+    "旅行": 2
+   },
+   "earlyShare": 45,
+   "rarityTier": null
+  },
+  "seed": "user87",
+  "expectedTraits": [
+   "偏食"
+  ],
+  "expectedTitle": "只吃这一口",
+  "expectedCode": "ICHIGEN",
+  "expectedNote": "劝你换口味的人不少，你换了一部同题材的。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 9.6,
+    "exploration": 14.5,
+    "mainstream": 21.9,
+    "pop_spread": 92.2,
+    "era_span": 79.8,
+    "fresh": 3.4,
+    "emotion": 70.4,
+    "completion": 49.6
+   },
+   "total": 320,
+   "want": 12,
+   "seen": 60,
+   "drop": 1,
+   "cluster": "奇幻",
+   "identity": "番剧党",
+   "genreCounts": {
+    "燃": 48
+   },
+   "earlyShare": 10,
+   "rarityTier": "N"
+  },
+  "seed": "",
+  "expectedTraits": [
+   "冷门挖掘机"
+  ],
+  "expectedTitle": "冷门异界",
+  "expectedCode": "DARK-FANT",
+  "expectedNote": "这季的异世界你一部没追，追的是没人讨论的那部。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 41.7,
+    "exploration": 90.5,
+    "mainstream": 91.5,
+    "pop_spread": 93.5,
+    "quality": 74.9,
+    "era_span": 46.9,
+    "fresh": 73.5,
+    "emotion": 9.4,
+    "completion": 85.9
+   },
+   "total": 320,
+   "want": 0,
+   "seen": 150,
+   "drop": 0,
+   "cluster": "音乐",
+   "identity": "轻小说党",
+   "genreCounts": {
+    "喜剧": 11,
+    "同居": 4,
+    "末日": 18,
+    "音乐": 13
+   },
+   "earlyShare": 25,
+   "rarityTier": "R"
+  },
+  "seed": "user89",
+  "expectedTraits": [
+   "博爱",
+   "口碑党"
+  ],
+  "expectedTitle": "等着被安利",
+  "expectedCode": "HYOUKA",
+  "expectedNote": "神作是公认的，口味是借来的。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 63.8,
+    "exploration": 61.7,
+    "mainstream": 95.5,
+    "pop_spread": 49.0,
+    "quality": 31.5,
+    "era_span": 24.9,
+    "fresh": 86.4,
+    "emotion": 50.9,
+    "completion": 2.5
+   },
+   "total": 0,
+   "want": 12,
+   "seen": 0,
+   "drop": 0,
+   "cluster": "悬疑",
+   "identity": "漫画党",
+   "genreCounts": {
+    "冒险": 35,
+    "复仇": 29,
+    "武侠": 31,
+    "格斗": 52,
+    "生存": 58,
+    "科幻": 23
+   },
+   "earlyShare": 0,
+   "rarityTier": null
+  },
+  "seed": "user90",
+  "expectedTraits": [
+   "主流厨",
+   "偏食"
+  ],
+  "expectedTitle": "流行厨",
+  "expectedCode": "HAYARI",
+  "expectedNote": "当季霸权一部没落，季度末你最喜欢的还是上季那部。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 35.2,
+    "exploration": 66.2,
+    "mainstream": 50.3,
+    "pop_spread": 37.7,
+    "quality": 85.6,
+    "era_span": 31.2,
+    "fresh": 55.1,
+    "emotion": 16.3,
+    "completion": 29.9
+   },
+   "total": 320,
+   "want": 300,
+   "seen": 60,
+   "drop": 4,
+   "cluster": "悬疑",
+   "identity": "游戏宅",
+   "genreCounts": {
+    "后宫": 23,
+    "治愈": 10,
+    "末日": 11
+   },
+   "earlyShare": 0,
+   "rarityTier": "?"
+  },
+  "seed": "user91",
+  "expectedTraits": [
+   "神作党",
+   "仓鼠"
+  ],
+  "expectedTitle": "赛博貔貅",
+  "expectedCode": "PIXIU",
+  "expectedNote": "想看列表 327 部，本周看完的还是上周那一部。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 89.6,
+    "exploration": 1.6,
+    "mainstream": 23.4,
+    "pop_spread": 77.3,
+    "quality": 20.0,
+    "era_span": 33.0,
+    "fresh": 38.9,
+    "emotion": 86.2,
+    "completion": 69.9
+   },
+   "total": 160,
+   "want": 12,
+   "seen": 0,
+   "drop": 0,
+   "cluster": "热血",
+   "identity": "杂食党",
+   "genreCounts": {
+    "赛博朋克": 27,
+    "动作": 59,
+    "机战": 2,
+    "音乐": 31,
+    "机器人": 10
+   },
+   "earlyShare": 25,
+   "rarityTier": "N"
+  },
+  "seed": "",
+  "expectedTraits": [
+   "冷门挖掘机",
+   "偏食"
+  ],
+  "expectedTitle": "非王道不看",
+  "expectedCode": "OU-DO",
+  "expectedNote": "不喊招式名，就不算热血。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 50.4,
+    "exploration": 69.3,
+    "mainstream": 37.6,
+    "pop_spread": 23.6,
+    "quality": 71.7,
+    "era_span": 61.7,
+    "fresh": 5.7,
+    "emotion": 98.9,
+    "completion": 71.0
+   },
+   "total": 0,
+   "want": 3,
+   "seen": 2,
+   "drop": 4,
+   "cluster": "悬疑",
+   "identity": "杂食党",
+   "genreCounts": {},
+   "earlyShare": 0,
+   "rarityTier": null
+  },
+  "seed": "user93",
+  "expectedTraits": [
+   "博爱",
+   "口碑党",
+   "仓鼠"
+  ],
+  "expectedTitle": "凶手还在收藏夹",
+  "expectedCode": "CASE-HOARDER",
+  "expectedNote": "收藏夹里的凶手最安全。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 55.6,
+    "exploration": 57.5,
+    "mainstream": 7.3,
+    "pop_spread": 63.5,
+    "quality": 4.6,
+    "era_span": 53.8,
+    "fresh": 97.3,
+    "emotion": 90.6,
+    "completion": 13.6
+   },
+   "total": 160,
+   "want": 12,
+   "seen": 5,
+   "drop": 0,
+   "cluster": "搞笑",
+   "identity": "游戏宅",
+   "genreCounts": {
+    "生存": 54,
+    "党争": 5,
+    "乙女": 57,
+    "恶魔": 17,
+    "恋爱": 8,
+    "悬疑推理": 14
+   },
+   "earlyShare": 0,
+   "rarityTier": "?"
+  },
+  "seed": "user94",
+  "expectedTraits": [
+   "冷门挖掘机",
+   "仓鼠"
+  ],
+  "expectedTitle": "难民",
+  "expectedCode": "NANMIN",
+  "expectedNote": "烂归烂你也给它看完了，不然这个季度就白过了。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 95.5,
+    "exploration": 16.1,
+    "mainstream": 10.3,
+    "pop_spread": 45.8,
+    "quality": 81.8,
+    "era_span": 13.5,
+    "fresh": 70.6,
+    "emotion": 16.8,
+    "completion": 0.7
+   },
+   "total": 90,
+   "want": 300,
+   "seen": 60,
+   "drop": 9,
+   "cluster": "搞笑",
+   "identity": "漫画党",
+   "genreCounts": {
+    "青春": 31
+   },
+   "earlyShare": 45,
+   "rarityTier": "SR"
+  },
+  "seed": "user95",
+  "expectedTraits": [
+   "冷门挖掘机",
+   "神作党",
+   "偏食"
+  ],
+  "expectedTitle": "赛博貔貅",
+  "expectedCode": "PIXIU",
+  "expectedNote": "加收藏永远比看完快一步，你管这叫先存着。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 26.5,
+    "exploration": 16.3,
+    "mainstream": 45.0,
+    "pop_spread": 17.5,
+    "quality": 31.7,
+    "era_span": 87.4,
+    "fresh": 88.0,
+    "emotion": 49.4,
+    "completion": 30.5
+   },
+   "total": 160,
+   "want": 300,
+   "seen": 150,
+   "drop": 0,
+   "cluster": "恋爱",
+   "identity": "番剧党",
+   "genreCounts": {
+    "机器人": 17,
+    "太空": 2,
+    "妖怪": 23,
+    "智斗": 27,
+    "犯罪": 42
+   },
+   "earlyShare": 38,
+   "rarityTier": null
+  },
+  "seed": "",
+  "expectedTraits": [
+   "仓鼠"
+  ],
+  "expectedTitle": "胶佬",
+  "expectedCode": "GUNPLA",
+  "expectedNote": "萝卜才是本体。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 39.9,
+    "exploration": 2.6,
+    "mainstream": 17.8,
+    "pop_spread": 63.8,
+    "quality": 44.6,
+    "era_span": 60.5,
+    "fresh": 78.4,
+    "emotion": 53.1,
+    "completion": 93.9
+   },
+   "total": 320,
+   "want": 40,
+   "seen": 5,
+   "drop": 9,
+   "cluster": "音乐",
+   "identity": "游戏宅",
+   "genreCounts": {
+    "芳文社": 30,
+    "魔法": 28,
+    "机战": 48,
+    "智斗": 51,
+    "蒸汽朋克": 50
+   },
+   "earlyShare": 38,
+   "rarityTier": "N"
+  },
+  "seed": "user97",
+  "expectedTraits": [
+   "冷门挖掘机",
+   "仓鼠"
+  ],
+  "expectedTitle": "伪婆罗门",
+  "expectedCode": "NISE-BRAHMIN",
+  "expectedNote": "你安利的是冷门，自己补的是播放量前二十。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 89.9,
+    "exploration": 5.3,
+    "mainstream": 16.1,
+    "pop_spread": 41.8,
+    "quality": 58.3,
+    "era_span": 75.0,
+    "fresh": 58.2,
+    "emotion": 23.8,
+    "completion": 14.8
+   },
+   "total": 0,
+   "want": 300,
+   "seen": 0,
+   "drop": 0,
+   "cluster": "杂食",
+   "identity": "番剧党",
+   "genreCounts": {
+    "少年": 7,
+    "党争": 17,
+    "同居": 17,
+    "友情": 27,
+    "心理": 50,
+    "Live": 40
+   },
+   "earlyShare": 45,
+   "rarityTier": "SSR"
+  },
+  "seed": "user98",
+  "expectedTraits": [
+   "冷门挖掘机",
+   "偏食",
+   "口碑党"
+  ],
+  "expectedTitle": "战吧吧友",
+  "expectedCode": "SENBA",
+  "expectedNote": "败犬哭着退场那段，你会倒回去看两遍。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 51.8,
+    "exploration": 88.6,
+    "mainstream": 50.0,
+    "pop_spread": 42.4,
+    "era_span": 60.6,
+    "fresh": 64.0,
+    "emotion": 66.7,
+    "completion": 6.0
+   },
+   "total": 90,
+   "want": 12,
+   "seen": 5,
+   "drop": 1,
+   "cluster": "治愈",
+   "identity": "漫画党",
+   "genreCounts": {
+    "党争": 31,
+    "魔法": 17
+   },
+   "earlyShare": 10,
+   "rarityTier": null
+  },
+  "seed": "user99",
+  "expectedTraits": [
+   "博爱",
+   "仓鼠"
+  ],
+  "expectedTitle": "战吧吧友",
+  "expectedCode": "SENBA",
+  "expectedNote": "败犬哭着退场那段，你会倒回去看两遍。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 88.5,
+    "exploration": 26.3,
+    "mainstream": 76.8,
+    "pop_spread": 19.5,
+    "quality": 84.6,
+    "era_span": 68.4,
+    "fresh": 11.4,
+    "emotion": 69.2,
+    "completion": 91.6
+   },
+   "total": 90,
+   "want": 3,
+   "seen": 0,
+   "drop": 0,
+   "cluster": "恋爱",
+   "identity": "漫画党",
+   "genreCounts": {
+    "魔法": 4
+   },
+   "earlyShare": 10,
+   "rarityTier": "N"
+  },
+  "seed": "",
+  "expectedTraits": [
+   "神作党",
+   "偏食"
+  ],
+  "expectedTitle": "单推到底",
+  "expectedCode": "SHIP-MONO",
+  "expectedNote": "CP 只有一个，没有备选。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 41.8,
+    "exploration": 89.4,
+    "mainstream": 5.1,
+    "pop_spread": 80.0,
+    "quality": 27.5,
+    "era_span": 2.7,
+    "fresh": 45.3,
+    "emotion": 17.6,
+    "completion": 98.1
+   },
+   "total": 20,
+   "want": 0,
+   "seen": 150,
+   "drop": 0,
+   "cluster": "悬疑",
+   "identity": "杂食党",
+   "genreCounts": {
+    "克苏鲁": 7,
+    "神怪": 13
+   },
+   "earlyShare": 38,
+   "rarityTier": "SR"
+  },
+  "seed": "user101",
+  "expectedTraits": [
+   "冷门挖掘机",
+   "博爱"
+  ],
+  "expectedTitle": "难民",
+  "expectedCode": "NANMIN",
+  "expectedNote": "烂归烂你也给它看完了，不然这个季度就白过了。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 62.0,
+    "exploration": 29.0,
+    "mainstream": 93.3,
+    "pop_spread": 13.2,
+    "quality": 25.7,
+    "era_span": 13.2,
+    "emotion": 93.5,
+    "completion": 39.4
+   },
+   "total": 320,
+   "want": 120,
+   "seen": 150,
+   "drop": 0,
+   "cluster": "奇幻",
+   "identity": "漫画党",
+   "genreCounts": {
+    "歌唱": 23,
+    "冒险": 3,
+    "乙女": 36,
+    "龙": 15,
+    "吐槽": 30
+   },
+   "earlyShare": 10,
+   "rarityTier": null
+  },
+  "seed": "user102",
+  "expectedTraits": [
+   "主流厨"
+  ],
+  "expectedTitle": "有始有终的异类",
+  "expectedCode": "FINISH-ALL",
+  "expectedNote": "烂尾也是尾。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 78.5,
+    "exploration": 59.9,
+    "mainstream": 68.6,
+    "pop_spread": 69.6,
+    "quality": 85.3,
+    "era_span": 2.5,
+    "fresh": 22.4,
+    "emotion": 80.7,
+    "completion": 78.3
+   },
+   "total": 160,
+   "want": 3,
+   "seen": 150,
+   "drop": 0,
+   "cluster": "悬疑",
+   "identity": "杂食党",
+   "genreCounts": {
+    "机器人": 7,
+    "机战": 12,
+    "异世界": 57
+   },
+   "earlyShare": 25,
+   "rarityTier": "R"
+  },
+  "seed": "user103",
+  "expectedTraits": [
+   "神作党",
+   "偏食"
+  ],
+  "expectedTitle": "胶佬",
+  "expectedCode": "GUNPLA",
+  "expectedNote": "萝卜才是本体。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 70.2,
+    "exploration": 16.6,
+    "mainstream": 36.5,
+    "pop_spread": 7.2,
+    "quality": 64.1,
+    "era_span": 6.4,
+    "fresh": 81.8,
+    "emotion": 67.1,
+    "completion": 83.2
+   },
+   "total": 160,
+   "want": 120,
+   "seen": 2,
+   "drop": 1,
+   "cluster": "热血",
+   "identity": "番剧党",
+   "genreCounts": {
+    "生存": 56
+   },
+   "earlyShare": 10,
+   "rarityTier": "N"
+  },
+  "seed": "",
+  "expectedTraits": [
+   "偏食",
+   "口碑党",
+   "仓鼠"
+  ],
+  "expectedTitle": "囤着吃灰",
+  "expectedCode": "BURN-CAMP",
+  "expectedNote": "存了 43 部热血番，等「有空一口气看完」。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 17.6,
+    "exploration": 83.9,
+    "mainstream": 76.6,
+    "pop_spread": 27.4,
+    "quality": 75.5,
+    "era_span": 45.0,
+    "fresh": 15.0,
+    "emotion": 58.2,
+    "completion": 85.8
+   },
+   "total": 20,
+   "want": 40,
+   "seen": 60,
+   "drop": 4,
+   "cluster": "杂食",
+   "identity": "漫画党",
+   "genreCounts": {
+    "修罗场": 47
+   },
+   "earlyShare": 25,
+   "rarityTier": null
+  },
+  "seed": "user105",
+  "expectedTraits": [
+   "神作党",
+   "博爱"
+  ],
+  "expectedTitle": "战吧吧友",
+  "expectedCode": "SENBA",
+  "expectedNote": "败犬哭着退场那段，你会倒回去看两遍。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 16.1,
+    "exploration": 17.4,
+    "mainstream": 49.2,
+    "pop_spread": 68.6,
+    "quality": 48.9,
+    "era_span": 77.9,
+    "fresh": 81.9,
+    "emotion": 39.6,
+    "completion": 19.0
+   },
+   "total": 320,
+   "want": 3,
+   "seen": 150,
+   "drop": 0,
+   "cluster": "科幻",
+   "identity": "游戏宅",
+   "genreCounts": {
+    "龙": 30
+   },
+   "earlyShare": 25,
+   "rarityTier": "SSR"
+  },
+  "seed": "user106",
+  "expectedTraits": [],
+  "expectedTitle": "过季就不认",
+  "expectedCode": "TOUKI",
+  "expectedNote": "补番排在下个季度，而下个季度又有新番了。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 90.0,
+    "exploration": 30.0,
+    "mainstream": 90.2,
+    "pop_spread": 1.7,
+    "quality": 5.8,
+    "era_span": 50.5,
+    "fresh": 50.3,
+    "emotion": 71.4,
+    "completion": 51.3
+   },
+   "total": 320,
+   "want": 40,
+   "seen": 150,
+   "drop": 9,
+   "cluster": "热血",
+   "identity": "游戏宅",
+   "genreCounts": {},
+   "earlyShare": 10,
+   "rarityTier": "SR"
+  },
+  "seed": "user107",
+  "expectedTraits": [
+   "偏食"
+  ],
+  "expectedTitle": "流行厨",
+  "expectedCode": "HAYARI",
+  "expectedNote": "热度榜换一季你换一批，去年追的片名你现在叫不出来。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 65.6,
+    "exploration": 59.5,
+    "mainstream": 44.1,
+    "pop_spread": 17.0,
+    "quality": 50.1,
+    "era_span": 56.0,
+    "fresh": 79.7,
+    "emotion": 76.4,
+    "completion": 2.5
+   },
+   "total": 320,
+   "want": 3,
+   "seen": 60,
+   "drop": 1,
+   "cluster": "杂食",
+   "identity": "番剧党",
+   "genreCounts": {
+    "丧尸": 25,
+    "乐队": 25
+   },
+   "earlyShare": 38,
+   "rarityTier": null
+  },
+  "seed": "",
+  "expectedTraits": [
+   "偏食"
+  ],
+  "expectedTitle": "乐队男",
+  "expectedCode": "BAND-MAN",
+  "expectedNote": "琴买了三年没拆封，乐队番的 Live 你一段没落下。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 82.6,
+    "exploration": 10.5,
+    "mainstream": 15.1,
+    "pop_spread": 39.0,
+    "quality": 63.9,
+    "era_span": 35.8,
+    "fresh": 0.2,
+    "emotion": 94.1,
+    "completion": 33.2
+   },
+   "total": 320,
+   "want": 0,
+   "seen": 18,
+   "drop": 4,
+   "cluster": "热血",
+   "identity": "杂食党",
+   "genreCounts": {
+    "动作": 26
+   },
+   "earlyShare": 60,
+   "rarityTier": "N"
+  },
+  "seed": "user109",
+  "expectedTraits": [
+   "冷门挖掘机",
+   "偏食",
+   "口碑党"
+  ],
+  "expectedTitle": "伪婆罗门",
+  "expectedCode": "NISE-BRAHMIN",
+  "expectedNote": "嘴上说热榜没营养，收藏夹里一半是热榜。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 88.7,
+    "exploration": 10.0,
+    "mainstream": 1.4,
+    "pop_spread": 16.4,
+    "era_span": 22.9,
+    "fresh": 1.7,
+    "emotion": 91.5,
+    "completion": 19.6
+   },
+   "total": 160,
+   "want": 3,
+   "seen": 150,
+   "drop": 0,
+   "cluster": "悬疑",
+   "identity": "漫画党",
+   "genreCounts": {},
+   "earlyShare": 45,
+   "rarityTier": "SR"
+  },
+  "seed": "user110",
+  "expectedTraits": [
+   "冷门挖掘机",
+   "偏食"
+  ],
+  "expectedTitle": "婆罗门本尊",
+  "expectedCode": "BRAHMIN",
+  "expectedNote": "没人看过，也得有人看。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 84.0,
+    "exploration": 33.4,
+    "mainstream": 10.4,
+    "pop_spread": 89.2,
+    "quality": 81.8,
+    "era_span": 13.9,
+    "fresh": 12.4,
+    "emotion": 43.8,
+    "completion": 16.1
+   },
+   "total": 20,
+   "want": 300,
+   "seen": 18,
+   "drop": 4,
+   "cluster": "热血",
+   "identity": "杂食党",
+   "genreCounts": {
+    "权谋": 43,
+    "沙雕": 22,
+    "剑与魔法": 6,
+    "青梅竹马": 46,
+    "蒸汽朋克": 33
+   },
+   "earlyShare": 25,
+   "rarityTier": null
+  },
+  "seed": "user111",
+  "expectedTraits": [
+   "冷门挖掘机",
+   "神作党",
+   "偏食"
+  ],
+  "expectedTitle": "赛博貔貅",
+  "expectedCode": "PIXIU",
+  "expectedNote": "加收藏永远比看完快一步，你管这叫先存着。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 95.4,
+    "exploration": 91.0,
+    "mainstream": 90.7,
+    "pop_spread": 12.0,
+    "quality": 13.0,
+    "era_span": 3.8,
+    "fresh": 71.2,
+    "emotion": 13.6,
+    "completion": 32.3
+   },
+   "total": 320,
+   "want": 3,
+   "seen": 2,
+   "drop": 1,
+   "cluster": "杂食",
+   "identity": "漫画党",
+   "genreCounts": {
+    "吸血鬼": 20
+   },
+   "earlyShare": 0,
+   "rarityTier": "SR"
+  },
+  "seed": "",
+  "expectedTraits": [
+   "偏食",
+   "博爱",
+   "仓鼠"
+  ],
+  "expectedTitle": "流行厨",
+  "expectedCode": "HAYARI",
+  "expectedNote": "热度榜换一季你换一批，去年追的片名你现在叫不出来。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 84.9,
+    "exploration": 59.0,
+    "mainstream": 93.0,
+    "pop_spread": 20.5,
+    "quality": 85.6,
+    "era_span": 13.6,
+    "fresh": 34.0,
+    "emotion": 14.4,
+    "completion": 53.2
+   },
+   "total": 160,
+   "want": 0,
+   "seen": 5,
+   "drop": 0,
+   "cluster": "奇幻",
+   "identity": "轻小说党",
+   "genreCounts": {
+    "赛博朋克": 4,
+    "心理": 31,
+    "魔法": 51,
+    "权谋": 59,
+    "芳文社": 1
+   },
+   "earlyShare": 10,
+   "rarityTier": "SR"
+  },
+  "seed": "user113",
+  "expectedTraits": [
+   "主流厨",
+   "神作党",
+   "偏食"
+  ],
+  "expectedTitle": "每季异世界",
+  "expectedCode": "FAN-POP",
+  "expectedNote": "设定边看边查 Wiki，看完你也记不住这个世界叫什么。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 31.2,
+    "exploration": 54.2,
+    "mainstream": 8.9,
+    "pop_spread": 47.3,
+    "quality": 46.3,
+    "era_span": 25.2,
+    "fresh": 1.8,
+    "emotion": 9.0,
+    "completion": 20.6
+   },
+   "total": 20,
+   "want": 40,
+   "seen": 60,
+   "drop": 0,
+   "cluster": "科幻",
+   "identity": "漫画党",
+   "genreCounts": {
+    "蒸汽朋克": 12,
+    "后宫": 29,
+    "萌": 24
+   },
+   "earlyShare": 45,
+   "rarityTier": null
+  },
+  "seed": "user114",
+  "expectedTraits": [
+   "冷门挖掘机"
+  ],
+  "expectedTitle": "难民",
+  "expectedCode": "NANMIN",
+  "expectedNote": "别人挑番，你捡番。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 73.5,
+    "exploration": 86.7,
+    "mainstream": 21.1,
+    "pop_spread": 41.0,
+    "quality": 98.2,
+    "era_span": 30.6,
+    "fresh": 48.5,
+    "emotion": 83.5,
+    "completion": 50.4
+   },
+   "total": 320,
+   "want": 3,
+   "seen": 150,
+   "drop": 0,
+   "cluster": "音乐",
+   "identity": "游戏宅",
+   "genreCounts": {
+    "权谋": 52,
+    "吐槽": 10,
+    "吸血鬼": 3,
+    "乐队": 14,
+    "智斗": 14
+   },
+   "earlyShare": 0,
+   "rarityTier": "R"
+  },
+  "seed": "user115",
+  "expectedTraits": [
+   "冷门挖掘机",
+   "神作党",
+   "偏食"
+  ],
+  "expectedTitle": "乐队男",
+  "expectedCode": "BAND-MAN",
+  "expectedNote": "番里的和弦你听得出，自己一个音都不会弹。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 41.8,
+    "exploration": 60.1,
+    "mainstream": 11.2,
+    "pop_spread": 58.1,
+    "quality": 57.8,
+    "era_span": 25.2,
+    "fresh": 75.8,
+    "emotion": 13.6,
+    "completion": 91.1
+   },
+   "total": 320,
+   "want": 0,
+   "seen": 5,
+   "drop": 0,
+   "cluster": "恋爱",
+   "identity": "轻小说党",
+   "genreCounts": {
+    "修罗场": 40,
+    "SF": 8,
+    "科幻": 39,
+    "魔法": 14,
+    "搞笑": 7,
+    "喜剧": 11
+   },
+   "earlyShare": 60,
+   "rarityTier": "?"
+  },
+  "seed": "",
+  "expectedTraits": [
+   "冷门挖掘机"
+  ],
+  "expectedTitle": "战吧吧友",
+  "expectedCode": "SENBA",
+  "expectedNote": "成了的那对你没兴趣，你盯着没成的那个。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 35.2,
+    "exploration": 8.6,
+    "mainstream": 19.5,
+    "pop_spread": 92.5,
+    "quality": 7.0,
+    "era_span": 25.2,
+    "fresh": 38.4,
+    "emotion": 54.0,
+    "completion": 26.6
+   },
+   "total": 0,
+   "want": 40,
+   "seen": 0,
+   "drop": 0,
+   "cluster": "杂食",
+   "identity": "漫画党",
+   "genreCounts": {
+    "神话": 54,
+    "剧情": 26,
+    "机器人": 7,
+    "末日": 12,
+    "王道": 21
+   },
+   "earlyShare": 10,
+   "rarityTier": null
+  },
+  "seed": "user117",
+  "expectedTraits": [
+   "冷门挖掘机"
+  ],
+  "expectedTitle": "难民",
+  "expectedCode": "NANMIN",
+  "expectedNote": "别人挑番，你捡番。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 19.9,
+    "exploration": 89.1,
+    "mainstream": 86.4,
+    "pop_spread": 45.5,
+    "quality": 8.2,
+    "era_span": 7.1,
+    "fresh": 45.7,
+    "emotion": 35.9,
+    "completion": 0.5
+   },
+   "total": 90,
+   "want": 120,
+   "seen": 5,
+   "drop": 0,
+   "cluster": "奇幻",
+   "identity": "轻小说党",
+   "genreCounts": {
+    "丧尸": 17,
+    "神怪": 37,
+    "恋爱": 8,
+    "SF": 17
+   },
+   "earlyShare": 45,
+   "rarityTier": "R"
+  },
+  "seed": "user118",
+  "expectedTraits": [
+   "博爱",
+   "仓鼠"
+  ],
+  "expectedTitle": "赛博貔貅",
+  "expectedCode": "PIXIU",
+  "expectedNote": "收藏夹不是列表，是许愿池。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 15.3,
+    "exploration": 65.3,
+    "mainstream": 99.6,
+    "pop_spread": 51.0,
+    "quality": 30.0,
+    "era_span": 82.5,
+    "emotion": 73.4,
+    "completion": 85.3
+   },
+   "total": 320,
+   "want": 120,
+   "seen": 5,
+   "drop": 0,
+   "cluster": "科幻",
+   "identity": "杂食党",
+   "genreCounts": {
+    "搞笑": 50
+   },
+   "earlyShare": 0,
+   "rarityTier": "R"
+  },
+  "seed": "user119",
+  "expectedTraits": [
+   "主流厨",
+   "仓鼠"
+  ],
+  "expectedTitle": "赛博貔貅",
+  "expectedCode": "PIXIU",
+  "expectedNote": "加收藏永远比看完快一步，你管这叫先存着。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 27.1,
+    "exploration": 55.9,
+    "mainstream": 52.4,
+    "pop_spread": 91.5,
+    "quality": 1.8,
+    "era_span": 15.0,
+    "fresh": 82.7,
+    "emotion": 72.8,
+    "completion": 26.5
+   },
+   "total": 160,
+   "want": 300,
+   "seen": 5,
+   "drop": 0,
+   "cluster": "搞笑",
+   "identity": "轻小说党",
+   "genreCounts": {
+    "乐队": 51,
+    "萌系": 21,
+    "末日": 30,
+    "田园": 45
+   },
+   "earlyShare": 45,
+   "rarityTier": null
+  },
+  "seed": "",
+  "expectedTraits": [
+   "仓鼠"
+  ],
+  "expectedTitle": "赛博貔貅",
+  "expectedCode": "PIXIU",
+  "expectedNote": "想看列表 327 部，本周看完的还是上周那一部。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 56.4,
+    "exploration": 19.7,
+    "mainstream": 18.5,
+    "pop_spread": 13.0,
+    "era_span": 46.6,
+    "fresh": 25.1,
+    "emotion": 22.7,
+    "completion": 12.8
+   },
+   "total": 320,
+   "want": 120,
+   "seen": 150,
+   "drop": 4,
+   "cluster": "悬疑",
+   "identity": "游戏宅",
+   "genreCounts": {
+    "悬疑推理": 2,
+    "神话": 18
+   },
+   "earlyShare": 0,
+   "rarityTier": "SSR"
+  },
+  "seed": "user121",
+  "expectedTraits": [
+   "冷门挖掘机"
+  ],
+  "expectedTitle": "冷门本格",
+  "expectedCode": "BRAHMIN-D",
+  "expectedNote": "诡计站不站得住，你比评分区先知道。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 7.1,
+    "exploration": 86.8,
+    "mainstream": 94.3,
+    "pop_spread": 36.5,
+    "quality": 62.5,
+    "era_span": 20.0,
+    "fresh": 58.2,
+    "emotion": 47.2,
+    "completion": 6.0
+   },
+   "total": 0,
+   "want": 120,
+   "seen": 2,
+   "drop": 9,
+   "cluster": "治愈",
+   "identity": "轻小说党",
+   "genreCounts": {
+    "悬疑推理": 43,
+    "格斗": 31,
+    "青梅竹马": 56,
+    "恶魔": 39,
+    "百合": 6,
+    "乐队": 6
+   },
+   "earlyShare": 10,
+   "rarityTier": "R"
+  },
+  "seed": "user122",
+  "expectedTraits": [
+   "主流厨",
+   "博爱",
+   "口碑党"
+  ],
+  "expectedTitle": "三集弃之神",
+  "expectedCode": "DROP-GOD",
+  "expectedNote": "慢热是番的问题，不是你的。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 50.5,
+    "exploration": 74.6,
+    "mainstream": 96.7,
+    "pop_spread": 84.8,
+    "quality": 27.4,
+    "era_span": 98.7,
+    "fresh": 82.2,
+    "emotion": 83.9,
+    "completion": 2.1
+   },
+   "total": 0,
+   "want": 120,
+   "seen": 18,
+   "drop": 0,
+   "cluster": "治愈",
+   "identity": "游戏宅",
+   "genreCounts": {
+    "乙女": 19,
+    "吸血鬼": 50
+   },
+   "earlyShare": 0,
+   "rarityTier": null
+  },
+  "seed": "user123",
+  "expectedTraits": [
+   "主流厨",
+   "博爱",
+   "仓鼠"
+  ],
+  "expectedTitle": "流行厨",
+  "expectedCode": "HAYARI",
+  "expectedNote": "热度榜换一季你换一批，去年追的片名你现在叫不出来。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 45.3,
+    "exploration": 25.6,
+    "mainstream": 78.6,
+    "pop_spread": 91.2,
+    "quality": 51.2,
+    "era_span": 20.5,
+    "fresh": 39.9,
+    "emotion": 68.2,
+    "completion": 75.0
+   },
+   "total": 160,
+   "want": 40,
+   "seen": 18,
+   "drop": 0,
+   "cluster": "科幻",
+   "identity": "轻小说党",
+   "genreCounts": {
+    "蒸汽朋克": 22,
+    "权谋": 43,
+    "妖怪": 12,
+    "百合": 51,
+    "时间旅行": 11,
+    "悬疑": 24
+   },
+   "earlyShare": 45,
+   "rarityTier": "N"
+  },
+  "seed": "",
+  "expectedTraits": [
+   "仓鼠"
+  ],
+  "expectedTitle": "白河豚",
+  "expectedCode": "KAWABUTA",
+  "expectedNote": "她们只是牵了个手。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 55.1,
+    "exploration": 76.0,
+    "mainstream": 21.3,
+    "pop_spread": 45.6,
+    "quality": 47.6,
+    "era_span": 87.5,
+    "fresh": 7.1,
+    "emotion": 94.8,
+    "completion": 65.5
+   },
+   "total": 90,
+   "want": 3,
+   "seen": 60,
+   "drop": 0,
+   "cluster": "治愈",
+   "identity": "番剧党",
+   "genreCounts": {
+    "太空": 41,
+    "旅行": 54,
+    "竞技": 37,
+    "SF": 12,
+    "悬疑推理": 50
+   },
+   "earlyShare": 45,
+   "rarityTier": "?"
+  },
+  "seed": "user125",
+  "expectedTraits": [
+   "冷门挖掘机",
+   "博爱"
+  ],
+  "expectedTitle": "专挖空气系",
+  "expectedCode": "KUUKI",
+  "expectedNote": "评分 6 分以下的空气系，你一部一部挖，挖完还写短评。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 86.3,
+    "exploration": 77.2,
+    "mainstream": 0.4,
+    "pop_spread": 66.0,
+    "quality": 34.6,
+    "era_span": 77.4,
+    "fresh": 69.1,
+    "emotion": 33.7,
+    "completion": 40.3
+   },
+   "total": 0,
+   "want": 12,
+   "seen": 18,
+   "drop": 9,
+   "cluster": "音乐",
+   "identity": "轻小说党",
+   "genreCounts": {
+    "战斗": 44,
+    "时间旅行": 36
+   },
+   "earlyShare": 25,
+   "rarityTier": null
+  },
+  "seed": "user126",
+  "expectedTraits": [
+   "冷门挖掘机",
+   "偏食",
+   "博爱"
+  ],
+  "expectedTitle": "难民",
+  "expectedCode": "NANMIN",
+  "expectedNote": "别人挑番，你捡番。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 82.9,
+    "exploration": 47.4,
+    "mainstream": 7.1,
+    "pop_spread": 53.6,
+    "quality": 30.8,
+    "era_span": 43.3,
+    "fresh": 68.0,
+    "emotion": 42.4,
+    "completion": 97.3
+   },
+   "total": 20,
+   "want": 300,
+   "seen": 150,
+   "drop": 0,
+   "cluster": "搞笑",
+   "identity": "杂食党",
+   "genreCounts": {
+    "田园": 24,
+    "丧尸": 11,
+    "异世界": 43,
+    "龙": 38,
+    "末日": 8,
+    "动作": 28
+   },
+   "earlyShare": 38,
+   "rarityTier": "R"
+  },
+  "seed": "user127",
+  "expectedTraits": [
+   "冷门挖掘机",
+   "偏食",
+   "仓鼠"
+  ],
+  "expectedTitle": "难民",
+  "expectedCode": "NANMIN",
+  "expectedNote": "烂归烂你也给它看完了，不然这个季度就白过了。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 19.3,
+    "exploration": 4.4,
+    "mainstream": 39.8,
+    "pop_spread": 18.9,
+    "quality": 20.8,
+    "era_span": 18.8,
+    "fresh": 51.7,
+    "emotion": 81.0,
+    "completion": 20.8
+   },
+   "total": 20,
+   "want": 0,
+   "seen": 2,
+   "drop": 1,
+   "cluster": "搞笑",
+   "identity": "番剧党",
+   "genreCounts": {
+    "纯爱": 38,
+    "沙雕": 43,
+    "克苏鲁": 49
+   },
+   "earlyShare": 10,
+   "rarityTier": "R"
+  },
+  "seed": "",
+  "expectedTraits": [],
+  "expectedTitle": "跳过 ED",
+  "expectedCode": "HANTO",
+  "expectedNote": "点开的比看完的多，看完的比记住的多。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 30.6,
+    "exploration": 27.7,
+    "mainstream": 89.2,
+    "pop_spread": 84.4,
+    "quality": 45.7,
+    "era_span": 30.3,
+    "fresh": 74.2,
+    "emotion": 93.2,
+    "completion": 40.9
+   },
+   "total": 160,
+   "want": 0,
+   "seen": 60,
+   "drop": 0,
+   "cluster": "音乐",
+   "identity": "杂食党",
+   "genreCounts": {
+    "太空": 19,
+    "燃": 60,
+    "丧尸": 34,
+    "日常": 57,
+    "少年": 42
+   },
+   "earlyShare": 25,
+   "rarityTier": null
+  },
+  "seed": "user129",
+  "expectedTraits": [],
+  "expectedTitle": "萌豚",
+  "expectedCode": "MOE-BUTA",
+  "expectedNote": "一集 24 分钟什么都没发生，你在第 3 分钟截了图。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 60.9,
+    "exploration": 92.8,
+    "mainstream": 88.7,
+    "pop_spread": 14.2,
+    "quality": 17.4,
+    "era_span": 39.2,
+    "fresh": 55.0,
+    "emotion": 1.0,
+    "completion": 99.1
+   },
+   "total": 160,
+   "want": 12,
+   "seen": 150,
+   "drop": 0,
+   "cluster": "恋爱",
+   "identity": "杂食党",
+   "genreCounts": {
+    "修罗场": 13,
+    "青春": 23
+   },
+   "earlyShare": 38,
+   "rarityTier": "SSR"
+  },
+  "seed": "user130",
+  "expectedTraits": [
+   "博爱"
+  ],
+  "expectedTitle": "有始有终的异类",
+  "expectedCode": "FINISH-ALL",
+  "expectedNote": "烂尾也是尾。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 31.1,
+    "exploration": 40.0,
+    "mainstream": 81.4,
+    "pop_spread": 27.4,
+    "quality": 37.6,
+    "era_span": 3.7,
+    "fresh": 41.7,
+    "emotion": 95.9,
+    "completion": 8.9
+   },
+   "total": 320,
+   "want": 300,
+   "seen": 0,
+   "drop": 0,
+   "cluster": "音乐",
+   "identity": "番剧党",
+   "genreCounts": {
+    "党争": 29,
+    "Live": 31,
+    "空气系": 26,
+    "王道": 50,
+    "动作": 34,
+    "修罗场": 9
+   },
+   "earlyShare": 25,
+   "rarityTier": "?"
+  },
+  "seed": "user131",
+  "expectedTraits": [],
+  "expectedTitle": "战吧吧友",
+  "expectedCode": "SENBA",
+  "expectedNote": "败犬哭着退场那段，你会倒回去看两遍。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 16.3,
+    "exploration": 46.9,
+    "mainstream": 69.4,
+    "pop_spread": 9.7,
+    "era_span": 45.1,
+    "fresh": 17.0,
+    "emotion": 4.7,
+    "completion": 24.9
+   },
+   "total": 160,
+   "want": 40,
+   "seen": 2,
+   "drop": 0,
+   "cluster": "恋爱",
+   "identity": "漫画党",
+   "genreCounts": {},
+   "earlyShare": 25,
+   "rarityTier": null
+  },
+  "seed": "",
+  "expectedTraits": [
+   "仓鼠"
+  ],
+  "expectedTitle": "囤狗粮",
+  "expectedCode": "KOI",
+  "expectedNote": "粮是别人的，饿是自己的。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 69.3,
+    "exploration": 91.9,
+    "mainstream": 89.3,
+    "pop_spread": 55.2,
+    "quality": 86.6,
+    "era_span": 74.0,
+    "fresh": 1.8,
+    "emotion": 80.5,
+    "completion": 14.3
+   },
+   "total": 320,
+   "want": 0,
+   "seen": 5,
+   "drop": 1,
+   "cluster": "治愈",
+   "identity": "轻小说党",
+   "genreCounts": {
+    "妖怪": 20,
+    "纯爱": 18,
+    "丧尸": 49
+   },
+   "earlyShare": 25,
+   "rarityTier": "?"
+  },
+  "seed": "user133",
+  "expectedTraits": [
+   "神作党",
+   "偏食",
+   "博爱"
+  ],
+  "expectedTitle": "刀后应激",
+  "expectedCode": "IYASHI",
+  "expectedNote": "刀吃多了，自己会找糖。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 21.8,
+    "exploration": 95.2,
+    "mainstream": 31.4,
+    "pop_spread": 52.2,
+    "quality": 70.0,
+    "era_span": 43.7,
+    "fresh": 67.4,
+    "emotion": 90.8,
+    "completion": 60.4
+   },
+   "total": 160,
+   "want": 120,
+   "seen": 5,
+   "drop": 0,
+   "cluster": "音乐",
+   "identity": "轻小说党",
+   "genreCounts": {
+    "旅行": 25,
+    "歌唱": 21,
+    "妖怪": 28,
+    "战斗": 30
+   },
+   "earlyShare": 45,
+   "rarityTier": "?"
+  },
+  "seed": "user134",
+  "expectedTraits": [
+   "冷门挖掘机",
+   "博爱",
+   "口碑党"
+  ],
+  "expectedTitle": "赛博貔貅",
+  "expectedCode": "PIXIU",
+  "expectedNote": "收藏夹不是列表，是许愿池。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 62.3,
+    "exploration": 7.5,
+    "mainstream": 63.6,
+    "pop_spread": 84.7,
+    "quality": 88.9,
+    "era_span": 26.5,
+    "fresh": 58.4,
+    "emotion": 86.7,
+    "completion": 47.6
+   },
+   "total": 160,
+   "want": 0,
+   "seen": 5,
+   "drop": 1,
+   "cluster": "热血",
+   "identity": "游戏宅",
+   "genreCounts": {
+    "惊悚": 24
+   },
+   "earlyShare": 0,
+   "rarityTier": null
+  },
+  "seed": "user135",
+  "expectedTraits": [
+   "神作党"
+  ],
+  "expectedTitle": "专收死亡flag",
+  "expectedCode": "SHIBOU-FLAG",
+  "expectedNote": "话一出口，你就知道要哭了。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 44.8,
+    "exploration": 23.8,
+    "mainstream": 14.7,
+    "pop_spread": 97.0,
+    "quality": 38.3,
+    "era_span": 51.1,
+    "emotion": 89.1,
+    "completion": 25.0
+   },
+   "total": 90,
+   "want": 40,
+   "seen": 150,
+   "drop": 0,
+   "cluster": "科幻",
+   "identity": "番剧党",
+   "genreCounts": {
+    "少年": 6
+   },
+   "earlyShare": 0,
+   "rarityTier": "SR"
+  },
+  "seed": "",
+  "expectedTraits": [
+   "冷门挖掘机"
+  ],
+  "expectedTitle": "难民",
+  "expectedCode": "NANMIN",
+  "expectedNote": "别人挑番，你捡番。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 80.1,
+    "exploration": 32.5,
+    "mainstream": 69.8,
+    "pop_spread": 43.7,
+    "quality": 60.5,
+    "era_span": 49.5,
+    "fresh": 48.2,
+    "emotion": 94.2,
+    "completion": 11.7
+   },
+   "total": 320,
+   "want": 3,
+   "seen": 18,
+   "drop": 9,
+   "cluster": "奇幻",
+   "identity": "轻小说党",
+   "genreCounts": {
+    "妖怪": 44,
+    "歌唱": 31,
+    "Live": 47,
+    "恶魔": 35,
+    "党争": 5
+   },
+   "earlyShare": 38,
+   "rarityTier": "SSR"
+  },
+  "seed": "user137",
+  "expectedTraits": [
+   "偏食",
+   "口碑党"
+  ],
+  "expectedTitle": "三集弃之神",
+  "expectedCode": "DROP-GOD",
+  "expectedNote": "劝你熬过前三集的人，最后都被你劝回去了。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 52.9,
+    "exploration": 32.7,
+    "mainstream": 57.5,
+    "pop_spread": 0.6,
+    "quality": 88.5,
+    "era_span": 62.8,
+    "fresh": 68.9,
+    "emotion": 47.2,
+    "completion": 8.8
+   },
+   "total": 90,
+   "want": 0,
+   "seen": 150,
+   "drop": 0,
+   "cluster": "治愈",
+   "identity": "游戏宅",
+   "genreCounts": {
+    "悬疑": 42,
+    "妖怪": 35,
+    "神话": 22
+   },
+   "earlyShare": 38,
+   "rarityTier": null
+  },
+  "seed": "user138",
+  "expectedTraits": [
+   "神作党"
+  ],
+  "expectedTitle": "作豚",
+  "expectedCode": "FRAME-NERD",
+  "expectedNote": "这一卡原画是谁，你比 STAFF 表记得清。"
+ },
+ {
+  "input": {
+   "dimensions": {
+    "tag_focus": 9.4,
+    "exploration": 30.8,
+    "mainstream": 70.8,
+    "pop_spread": 66.1,
+    "quality": 45.6,
+    "era_span": 71.8,
+    "fresh": 67.0,
+    "emotion": 5.1,
+    "completion": 22.9
+   },
+   "total": 320,
+   "want": 0,
+   "seen": 150,
+   "drop": 4,
+   "cluster": "杂食",
+   "identity": "漫画党",
+   "genreCounts": {
+    "校园": 35,
+    "恶魔": 36,
+    "萌系": 37,
+    "纯爱": 29
+   },
+   "earlyShare": 0,
+   "rarityTier": "?"
+  },
+  "seed": "user139",
+  "expectedTraits": [],
+  "expectedTitle": "现充",
+  "expectedCode": "RIAJUU",
+  "expectedNote": "别人的青春你一部不落，自己的青春一集没开始。"
+ }
+]
