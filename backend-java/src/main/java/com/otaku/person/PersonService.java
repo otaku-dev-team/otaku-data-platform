@@ -18,9 +18,9 @@ import java.util.Map;
  * <p>形状照来源站的 `cast_detail()`（见 `docs/person-id-unification.md` §5 阶段 3）：
  * **按作品合并**，同一个人的同一部作品只出现一次，`roles` / `characters` 各自成列。
  *
- * <p>键是**不透明字符串**：现在库里是裸数字（v2 数据集），#362 切 v3 后会变成
- * `bgm:` / `pname:` / `cname:` 前缀。这里既不解析也不校验格式——写死格式的代码
- * 会在切流那天整片 404，而它们本来就不需要知道键长什么样。
+ * <p>键是**不透明字符串**：v3 起库里是 `bgm:` / `pname:` / `cname:` 前缀。这里既不解析
+ * 也不校验格式（写死格式的代码会在切流那天整片 404）；只做一件事——把纯数字旧链
+ * 归一化为 `bgm:<id>`，让旧书签/旧客户端也能打开。
  *
  * <p><b>为什么要一次查询算完（2026-11-06 实测）</b>：上线后 `GET /api/persons/1`
  * 在本机 curl 上是 **0.46–0.57 s**，而作品列表只要 7–13 ms。原因是这个接口发了
@@ -30,7 +30,8 @@ import java.util.Map;
  *
  * <p>而计数本来就能从 `credits` 推出来（`characters` 非空 = 有配音，`roles` 非空 = 有制作），
  * 口径与原来那两条 COUNT 一致（都过滤了成人 / 下架 / 收录范围）。所以合并成一次扫描。
- * 真正的根治是加 person_id 索引，要等 #362 的 `V33`（迁移号顺序不允许插队）。
+ * 2026-11-07 的 V36 又补了 `person_id` 两条索引（V33 落地后迁移号不再被挡），
+ * 反查从全表扫回到索引量级。
  */
 @Service
 public class PersonService {
@@ -53,14 +54,17 @@ public class PersonService {
      *                      不用 400 区分「存在与否」，那等于给了一个探测接口）
      */
     public PersonDetail detail(String personIdParam) {
-        String personId = requirePersonId(personIdParam);
+        String personId = canonicalPersonId(requirePersonId(personIdParam));
 
+        // 先按请求键查；V36 之前的存量 people 还是裸数字，bgm: 键要再退一步查裸键。
+        // V36 之后两者都能命中，这个回退只是灰度/回滚期的安全网。
         PersonRepository.PersonRow person = repository.findPerson(personId)
+                .or(() -> findLegacyBare(personId))
                 .orElseThrow(() -> new ApiException(ErrorCode.PERSON_NOT_FOUND, "人物不存在"));
 
         List<PersonRepository.CreditRow> credits = repository.findWorks(personId);
         if (credits.isEmpty()) {
-            return new PersonDetail(person.personId(), person.name(), person.entityType(),
+            return new PersonDetail(personId, person.name(), person.entityType(),
                     List.of(), 0, 0);
         }
 
@@ -86,8 +90,25 @@ public class PersonService {
         // 用 credits 算会出现「页面写配音 193 部、列表只有 120 张卡」——线上实测过。
         long castCount = works.stream().filter(w -> !w.characters().isEmpty()).count();
         long creditCount = works.stream().filter(w -> !w.roles().isEmpty()).count();
-        return new PersonDetail(person.personId(), person.name(), person.entityType(),
+        return new PersonDetail(personId, person.name(), person.entityType(),
                 works, castCount, creditCount);
+    }
+
+    /**
+     * 归一化到 v3 的键：纯数字旧链（`/api/persons/3818`）按 `bgm:3818` 处理。
+     *
+     * <p>返回体里也用归一化后的键——客户端拿到 `bgm:` 形式后，下一次点击与关系表一致；
+     * 如果回裸键，下一次请求又要再归一化一次，且两个键指向同一人却看起来像两个人。
+     */
+    private static String canonicalPersonId(String raw) {
+        return raw.matches("\\d+") ? "bgm:" + raw : raw;
+    }
+
+    /** V36 之前的存量 people 键是裸数字；`bgm:` 查不到时退一步查裸键。 */
+    private java.util.Optional<PersonRepository.PersonRow> findLegacyBare(String personId) {
+        return personId.startsWith("bgm:")
+                ? repository.findPerson(personId.substring("bgm:".length()))
+                : java.util.Optional.empty();
     }
 
     private static String requirePersonId(String raw) {

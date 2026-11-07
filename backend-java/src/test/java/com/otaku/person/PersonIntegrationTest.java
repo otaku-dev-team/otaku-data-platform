@@ -180,6 +180,26 @@ class PersonIntegrationTest {
     }
 
     @Test
+    @DisplayName("v2 裸数字 people + v3 bgm: 关系：新旧两种入口都能查到，返回统一 bgm: 键")
+    void legacyBarePersonKeyStillWorks() {
+        importWork("legacy", "旧键人物作品", 2020, "7.0", List.of(),
+                List.of(new WorkCharacterDto("旧角色", "旧声优", "main", "bgm:880004")));
+        // ImportService 会插一条 bgm:880004 的 people；删掉，模拟 V36 之前的存量裸行。
+        jdbc.update("DELETE FROM people WHERE source = ? AND source_id = ?", SOURCE, "bgm:880004");
+        jdbc.update("INSERT INTO people (source, source_id, name, entity_type) VALUES (?, ?, ?, ?)",
+                SOURCE, "880004", "旧键声优", "person");
+
+        PersonDetail byPrefixed = service.detail("bgm:880004");
+        assertThat(byPrefixed.personId()).isEqualTo("bgm:880004");
+        assertThat(byPrefixed.works()).extracting(c -> c.work().title())
+                .containsExactly("旧键人物作品");
+
+        PersonDetail byBare = service.detail("880004");
+        assertThat(byBare.personId()).as("旧链归一化为 v3 键").isEqualTo("bgm:880004");
+        assertThat(byBare.works()).hasSize(1);
+    }
+
+    @Test
     @DisplayName("没有参与作品的人也返回 200 + 空列表（people 有行、关系没有）")
     void personWithoutWorks() {
         jdbc.update("INSERT IGNORE INTO people (source, source_id, name, entity_type) VALUES (?, ?, ?, ?)",
