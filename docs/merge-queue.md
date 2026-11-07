@@ -1,8 +1,8 @@
 # 合并队列与合并后动作清单
 
 > **现用清单。** 每次合并后更新这一份，不再另写。
-> **最新批次看 §2 表格**（已到第 35 批，2026-11-07）；头部不再重复写会随时过期的 PR 数 / 分支数。
-> 最后更新：2026-11-07 21:45，`main = d732550`（第 32–34 批**已发版**：b34 / b35；**第 35 批未发版**；`b31` 及之前也已发版）。
+> **最新批次看 §2 表格**（已到第 36 批，2026-11-07）；头部不再重复写会随时过期的 PR 数 / 分支数。
+> 最后更新：2026-11-07 22:30，`main = 4d94020`（第 32–34 批**已发版**：b34 / b35；**第 35 / 36 批未发版**；`b31` 及之前也已发版）。
 > 历史基线（**已过期，只作留档**）：2026-11-01 01:10、`main = 4789cbf`、第 18 批、开放 PR 4 个。
 > **客户端已发 1.1.3 / 1.1.4（内部测试），E9–E14 只剩 E13 域名与 HTTPS；下载托管实测可用，见 §0.5。**
 > 合并权条例仍按 [`project-charter.md`](project-charter.md) §3.5：**CI 全绿 + 不碰红线 + 说清楚，谁都能合（含自合）**。
@@ -167,6 +167,7 @@ filter-links (#130)        ⊃ client-home (#121)
 | 第 19 批 · 首站收录范围（11-02，1 提交） | #379（#370 后端，squash 后 `83e038b`） | pyxz0 | V28：`site_scope` 转正式表 + `work`/`work_tag` 的 `site_listed`；清掉 11-01 应急用的 `2099-01-01` 哨兵；回填 18,828。迁移在真实副本上先验（13.2 s），生产停机 **19 s**；可见 **25,729 → 18,676**，未收录的详情/评论 404，词表与推荐同步收口。386 通过 / 0 skipped |
 | 第 20 批 · 档期修复与手机端（11-02，3 提交） | #387（档期默认季度）/ #388（手机端两轮体验 + 个人空间页）/ #389（SDK 迁移记录） | riceyu02 | `#387`：默认季度不再取到伪季度（`unreleased` → `202610`，首页「本日新番」由**整块空**恢复为 69 条 / 7 个 weekday 组），例行重导不再把 `work_id` 冲成 null；`#388`/`#389` 纯客户端与开发文档。**#387 由 pyxz0 发版**：无迁移、启动 6.9 s、冒烟 7/7、`/api/works` 仍 18,676 |
 | 第 21 批 · 低票评分口径（11-03，2 提交） | #393（#383 后端，squash 后 `ee678d5`） | pyxz0 | `V30`：`rating_sort` VIRTUAL 生成列 + `(rating_sort, id)` 索引，排序仍在索引上有序扫描（不能直接 `ORDER BY CASE`——实测会退化成全表扫 163,229 行 + filesort）；展示层按 `rating_count < 50` 把 `main_rating` 置空，票数未知不隐藏。副本先验（V30 911 ms）→ 生产 V29+V30 **2.06 s**、停机约 12 s、冒烟 7/7；上线后已收录作品 **2,676 展示 / 558 隐藏 / 14,622 票数未知** |
+| 第 36 批 · 源站评分进画像（11-07，1 提交） | #516（#495，父任务 #490） | pyxz0 | `findSignals` 三路（view / collection / review）都带 `w.rating_value` / `w.rating_scale`，评分倾向改为「**自己的点评分优先，没有才回落来源站均分**」并**按 `work_id` 去重**——三路 `UNION ALL` 会让同一作品出现多次，不去重等于把分数算三遍；去重还必须与顺序无关，否则时间更新的浏览行会带着站内均分抢在用户自己的点评分前面（用 `ownRatedWorks` 挡住回落值，有用例）。`rating_scale` 只认 `0-10` / `1-10` / 空（空按 0-10，生产 94,443 行全是 0-10），`0-5` / `percentage` 等**不猜**（返回缺失）——猜错会把 5 分制的 4 分当 10 分制的 4 分。`rating_tendency.count` 语义从「打过分的点评条数」改为「有评分的作品数」，契约描述已同步。**无迁移**；后端 **524 通过 / 0 skipped**（4 条单测 + 2 条真库 IT）；契约 **78 / 135 / 115**。**未发版**；九维 `dimensions` 仍在 #494（缺 persona.py 基准源码，已在 issue 说明）。 |
 | 第 35 批 · 站点解绑与身份来源（11-07，1 提交） | #514（#147 / W1 后端三项输入） | pyxz0 | `POST /api/auth/site-unlink`：清 `identity_source` / `site_token_hash` / `site_token_expires_at`、**保留账号与全部数据**、撤销该账号**全部会话**；平台账号 `409 NOT_SITE_LINKED`；**保留 `external_user_id` 作为重连锚点**——同一站点身份再次授权按它接回原账号（`user_id` 不变，数据不丢），已注销（`status=disabled`）的账号不会被复活。`User.identity_source`（`null` / `otaku_site`）在 `/me`、`/login`、`/site-login` 三处同口径，`site-login` 的 DTO 不再手写站名字面量。路径挂 `/api/auth/**`（身份动作），`AuthFilter` 白名单加**精确路径**并补正反两条断言——2026-10-30 `/api/me` 漏了这类路径的表现是 400 不是 401。**没做 self-revoke**：平台只存令牌 SHA-256（契约 §7），站点 `POST /api/auth/revoke` 要原始 Bearer，调不动；要即时吊销需站点按映射吊销或平台可逆存储，两者都要三人确认，客户端文案不得写「已立即吊销」。寿命关系已定：平台会话 30 天与站点令牌解耦，客户端只做 401 被动重走。**无迁移**；后端 **518 通过 / 0 skipped**（新增 6 条真库 IT + 2 条路径断言）；契约 **78 / 135 / 115**。**未发版**。 |
 | 第 34 批 · b35 人物页热修（11-07，2 提交） | #511（compose 调度池默认 3→4）/ #512（V36 people 前缀 + 反查索引 + 新旧键兼容） | pyxz0 | **#511**：生产 `.env` 没有 `OTAKU_SCHEDULER_POOL_SIZE`，而 compose 显式默认 3 会覆盖应用默认 4（#469 的回归），发版前改成 4 并注明两边必须同步。**#512**：b34 上线后实测 `/api/persons/bgm:3818` **404**——V33 只把 `work_staff` / `work_characters.person_id` 改成 `bgm:`，`people.source_id` 仍是 v2 裸数字，75,745 条配音关系 100% 匹配不上；V36 把 19,399 行 people 纯数字键补成 `bgm:`，并补 `idx_work_staff_person` / `idx_work_characters_person`（V33 落地后迁移号不再被挡）。`PersonService` 把纯数字入口归一化为 `bgm:<id>`、`bgm:` 查不到 people 时回退裸键（灰度/回滚安全网），返回统一 `bgm:` 形式。新增「v2 裸 people + v3 关系」用例；**511 通过 / 0 skipped**；热身后 `persons/bgm:3818` **46–66 ms**（原 140–170 ms，再早 460–570 ms）。**已发版**（2026-11-07 20:30，`b34` → `b35`）。 |
 | 第 33 批 · 账号资料与头像（11-07，1 提交） | #509（#378 后端） | pyxz0 | `V35__account_profile.sql`：`app_user` 加 `display_name` / `bio` / `avatar_key`。`GET/PUT /api/me/account`（昵称 ≤32、简介 ≤200，空串归一 null，超限 400）；`POST/DELETE /api/me/account/avatar`（multipart ≤2MB，只认魔数，重编码 512×512，1 分钟 1 次）；`GET /avatars/{public_user_id}-{内容指纹}.{webp\|jpg}` 公开读 + 7 天强缓存。**两处对方案的修正**：① 资料是独立 `AccountProfile`，没往 `User` 塞字段（`User.display_name` 是站点昵称、仅当次展示，与平台自设昵称语义不同）；② 路径用 `/api/me/account` 而不是 `/api/me/profile`——后者已被阿宅画像（#471）占用，同路径 GET 画像、PUT 资料不可解释。头像优先 WebP（`webp-imageio`），不可用退回 JPEG；文件名带内容指纹，换头像即换 URL。踩坑：WebP writer 只设 `MODE_EXPLICIT + quality` 会抛 `No compression type set!` 并静默退回 JPEG，必须补 `setCompressionType`，已加「有 WebP 编码器时必须真产出 WebP」用例钉住。注销 `AccountDeletionProfileListener` 先清 key 再删文件。compose 加 `avatar-data` 卷，`backup.sh` 每日把 avatars 打成独立 tar.gz（失败只告警）。契约 +3 schema，`check-contract` **77 / 135 / 115**；后端 **510 通过 / 0 skipped**（4 条图片单测 + 6 条真库 IT），真 jar 端到端验证 `.webp` / `image/webp` / 缓存头。**已发版**（2026-11-07 20:30，`b34`）。 |
@@ -352,10 +353,11 @@ squash 合入的那一类。两种直觉都会骗人。
 
 | 区块 | 结果 | 时间 / 提交 |
 |---|---|---|
-| `backend-java` | `mvnw test` **518 通过 / 0 失败**（真库 IT，`IT_DB_PORT=3307`；新增 6 条站点解绑 IT + 2 条鉴权路径断言） | 2026-11-07 @ `d732550`（第 35 批记录） |
+| `backend-java` | `mvnw test` **524 通过 / 0 失败**（真库 IT，`IT_DB_PORT=3307`；新增 4 条源站评分单测 + 2 条真库 IT） | 2026-11-07 @ `4d94020`（第 36 批记录） |
+| `backend-java`（上一基线） | `mvnw test` **518 通过 / 0 失败**（真库 IT） | 2026-11-07 @ `d732550`（第 35 批记录） |
 | `sync-python` | `pytest` **303 passed**（#470 新增 4 条） | 2026-11-06 @ `0c95472`（#470 记录） |
-| `backend-java`（上一基线） | `mvnw test` **511 通过 / 0 失败**（真库 IT） | 2026-11-07 @ `e561c87`（第 34 批记录） |
-| `backend-java`（更早） | `mvnw test` **461 通过 / 0 失败**（真库 IT） | 2026-11-06 @ `ad2cfb4`（第 30 批记录） |
+| `backend-java`（更早） | `mvnw test` **511 通过 / 0 失败**（真库 IT） | 2026-11-07 @ `e561c87`（第 34 批记录） |
+| `backend-java`（最早） | `mvnw test` **461 通过 / 0 失败**（真库 IT） | 2026-11-06 @ `ad2cfb4`（第 30 批记录） |
 | `backend-java`（更早） | `mvnw test` **367 通过 / 0 失败**（本地跳过 153 条集成；CI 起真库全跑） | 2026-10-31 @ `4df856f`（#329 记录） |
 | `backend-java`（上一基线） | `mvnw test` **301 通过 / 0 失败**（含连库集成，`IT_DB_PORT=3307`） | 2026-10-29 @ `1674698`（#294 记录） |
 | `app-client` | `flutter test` **385 通过 / 0 失败**；analyze 干净 | 2026-10-29 @ `30d1dfe`（#296 记录，含新增 13 项；**补上了 10-25 之后的欠账**） |
