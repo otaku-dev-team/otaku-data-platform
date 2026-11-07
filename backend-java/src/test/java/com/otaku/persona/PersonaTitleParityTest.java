@@ -146,6 +146,19 @@ class PersonaTitleParityTest {
     }
 
     @Test
+    void identityIsMajorityOrOmnivore() {
+        assertThat(PersonaTitle.identity(Map.of(
+                "anime", 62.0, "comic", 20.0, "game", 10.0, "novel", 8.0))).isEqualTo("番剧党");
+        // 谁都没过半 -> 杂食党
+        assertThat(PersonaTitle.identity(Map.of(
+                "anime", 40.0, "comic", 35.0, "game", 25.0))).isEqualTo("杂食党");
+        // 正好一半也算主身份（网站判据是「不足一半」才判杂食）
+        assertThat(PersonaTitle.identity(Map.of("novel", 50.0))).isEqualTo("轻小说党");
+        assertThat(PersonaTitle.identity(Map.of("game", 88.0))).isEqualTo("游戏宅");
+        assertThat(PersonaTitle.identity(Map.of())).isEqualTo("杂食党");
+    }
+
+    @Test
     void blurbLookupCoversEveryPersonaTag() {
         PersonaTitle.Input input = new PersonaTitle.Input(
                 Map.of("mainstream", 40.0, "tag_focus", 70.0, "exploration", 70.0,

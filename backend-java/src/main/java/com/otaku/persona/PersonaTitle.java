@@ -174,6 +174,42 @@ public final class PersonaTitle {
         return out;
     }
 
+    // ==================== 主身份 ====================
+
+    /** 主身份：按媒介占比给出的标签。 */
+    static final Map<String, String> IDENTITY_LABELS = Map.of(
+            "anime", "番剧党",
+            "comic", "漫画党",
+            "game", "游戏宅",
+            "novel", "轻小说党");
+
+    /** 单一媒介占比过半才算主身份，谁都没过半就是杂食党。 */
+    public static final double IDENTITY_MAJORITY = 50.0;
+
+    /**
+     * 主身份：占比最高的那种媒介，不到一半则是杂食党。
+     *
+     * @param typeShares 媒介 → 占比（0–100），键为 anime/comic/game/novel
+     */
+    public static String identity(Map<String, Double> typeShares) {
+        if (typeShares == null || typeShares.isEmpty()) {
+            return "杂食党";
+        }
+        String bestType = null;
+        double bestShare = Double.NEGATIVE_INFINITY;
+        for (Map.Entry<String, Double> entry : typeShares.entrySet()) {
+            double v = entry.getValue() == null ? 0.0 : entry.getValue();
+            if (v > bestShare) {
+                bestType = entry.getKey();
+                bestShare = v;
+            }
+        }
+        if (bestShare < IDENTITY_MAJORITY || bestType == null) {
+            return "杂食党";
+        }
+        return IDENTITY_LABELS.getOrDefault(bestType, "杂食党");
+    }
+
     // ==================== 题材簇 ====================
 
     /**
