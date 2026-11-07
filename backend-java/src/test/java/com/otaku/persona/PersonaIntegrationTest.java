@@ -138,6 +138,36 @@ class PersonaIntegrationTest {
         assertThat(body.get("type_weights").get("comic").asDouble()).isEqualTo(1.0);
     }
 
+    @Test
+    @DisplayName("导入收藏带来的源站评分进评分倾向：不用写点评也有评分轴（#495）")
+    void importedWorkRatingFeedsTendency() throws Exception {
+        createRatedWork("W-r1", "[\"机战\"]", "8.60", "0-10");
+        createRatedWork("W-r2", "[\"科幻\"]", "6.40", "0-10");
+        collect("W-r1", "watched");
+        collect("W-r2", "watched");
+
+        JsonNode body = getProfile();
+
+        assertThat(body.get("rating_tendency").get("count").asInt()).isEqualTo(2);
+        // 8.60 → 9、6.40 → 6，均值 7.5
+        assertThat(body.get("rating_tendency").get("mean").asDouble()).isEqualTo(7.5);
+        assertThat(body.get("rating_tendency").get("dist").get(8).asInt()).isEqualTo(1);
+        assertThat(body.get("rating_tendency").get("dist").get(5).asInt()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("自己点评的分覆盖源站均分，同一作品只算一次")
+    void ownReviewOverridesWorkRating() throws Exception {
+        createRatedWork("W-o1", "[\"机战\"]", "9.20", "0-10");
+        collect("W-o1", "watched");
+        review("W-o1", 4);
+
+        JsonNode body = getProfile();
+
+        assertThat(body.get("rating_tendency").get("count").asInt()).isEqualTo(1);
+        assertThat(body.get("rating_tendency").get("mean").asDouble()).isEqualTo(4.0);
+    }
+
     // ------------------------------------------------------------------
 
     private JsonNode getProfile() throws Exception {
@@ -145,6 +175,15 @@ class PersonaIntegrationTest {
                         .header("Authorization", "Bearer " + token))
                 .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
         return objectMapper.readTree(json);
+    }
+
+    private void createRatedWork(String workId, String tagsJson, String rating, String scale) {
+        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
+        jdbc.update("INSERT INTO work (work_id, work_type, title, tags, source, source_id,"
+                        + " rating_value, rating_scale, rating_source, created_at, updated_at)"
+                        + " VALUES (?, 'anime', ?, ?, 'bangumi', ?, ?, ?, 'bangumi', ?, ?)",
+                prefix + workId, "样本 " + workId, tagsJson, prefix + workId,
+                new java.math.BigDecimal(rating), scale, now, now);
     }
 
     private void createWork(String workId, String type, String tagsJson) {

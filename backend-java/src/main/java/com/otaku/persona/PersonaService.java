@@ -32,6 +32,16 @@ import java.util.Map;
  * | 点评 5–6 分 | `+1.5`（有正文再 `+0.5`） | 中性偏正面 |
  * | 点评 1–4 分 | `-1.5` | **负反馈**：低分作品的标签说明「不喜欢」，不能当 0 分处理 |
  *
+ * <h2>评分信号的两个来源（#495）</h2>
+ *
+ * 评分倾向不只看自己写的点评：用户在 Bangumi / B 站导入的收藏自带评分，那同样是「我觉得它几分」。
+ * 口径是**自己的分优先，没有才回落到作品在来源站的均分**（`work.rating_value`，按 `rating_scale`
+ * 归一成 1–10）。认不出量纲（0–5、百分比、五星……）就不猜——宁缺勿错，猜错会把 5 分制的 4 分
+ * 当 10 分制的 4 分，整条评分轴都歪掉。
+ *
+ * <p>评分按 `work_id` 去重：同一部作品可能同时出现在浏览 / 收藏 / 点评三路里，不去重会把它
+ * 算三遍，均值变成「我自己点了几次」的函数。
+ *
  * <p>标签按「作品标签数」均摊（`weight / tagCount`）：一部作品挂 20 个标签时，
  * 每个标签只分到 1/20 的证据，避免「标签多的作品」主导画像。
  *
@@ -86,7 +96,11 @@ public class PersonaService {
 
         Map<String, Double> rawTypes = new LinkedHashMap<>();
         Map<String, Double> rawTags = new LinkedHashMap<>();
-        List<Integer> ratings = new ArrayList<>();
+        // 评分按 work_id 去重：同一作品可能同时出现在浏览 / 收藏 / 点评三路里，
+        // 不去重会把它算三遍，均值变成「我自己点了几次」的函数。
+        Map<String, Integer> ratingsByWork = new LinkedHashMap<>();
+        // 已经用「我自己的点评分」占过的作品：源站均分不再覆盖它。
+        java.util.Set<String> ownRatedWorks = new java.util.HashSet<>();
         LinkedHashSet<String> recentActive = new LinkedHashSet<>();
         LocalDateTime recentCutoff = LocalDateTime.now(clock).minusDays(RECENT_DAYS);
 
@@ -107,8 +121,18 @@ public class PersonaService {
                 }
             }
 
-            if (row.rating() != null) {
-                ratings.add(row.rating());
+            // 自己打的分优先于源站均分：先到的那条可能是浏览行（带的是站内均分），
+            // 不能让它在时间序上抢在用户自己的点评前面。ownRatedWorks 记住「这部作品
+            // 已经有我自己的分」，后续的回落值一律不覆盖。
+            Integer own = row.rating();
+            if (own != null) {
+                ownRatedWorks.add(row.workId());
+                ratingsByWork.put(row.workId(), own);
+            } else if (!ownRatedWorks.contains(row.workId())) {
+                Integer fallback = normalizeRating(row.workRating(), row.workRatingScale());
+                if (fallback != null) {
+                    ratingsByWork.putIfAbsent(row.workId(), fallback);
+                }
             }
 
             if (recentActive.size() < RECENT_LIMIT
@@ -121,10 +145,38 @@ public class PersonaService {
         return new PersonaDtos.PersonaProfile(
                 normalize(rawTypes),
                 normalize(rawTags),
-                tendency(ratings),
+                tendency(new ArrayList<>(ratingsByWork.values())),
                 List.copyOf(recentActive),
                 signals.size(),
                 OffsetDateTime.now(clock));
+    }
+
+    /**
+     * 把「作品均分 + 量纲」归一成 1–10 的整数分；**认不出量纲就不猜**。
+     *
+     * <p>量纲为空按 {@code 0-10} 处理：那是 `work.rating_scale` 列的既有含义，
+     * 也是当前全部数据（94,443 行）的实际值，不是假设。
+     * 明确写着别的量纲（`0-5` / `percentage` / 五星）一律返回 null——猜错会把 5 分制的
+     * 4 分当成 10 分制的 4 分，整条评分轴都歪，而且不会报错。
+     *
+     * <p>四舍五入到整数：`rating_tendency.dist` 是 10 个整数桶，9.06 归到 9 分桶；
+     * 越界裁剪到 1–10（0 分按 1 分记——作品的 `rating_value` 非空就代表「有评分」，
+     * 「0 分」在评分语义里几乎都等于「没打分」）。
+     */
+    static Integer normalizeRating(BigDecimal value, String scale) {
+        if (value == null) {
+            return null;
+        }
+        String normalized = scale == null ? "" : scale.trim();
+        if (!normalized.isEmpty() && !"0-10".equals(normalized) && !"1-10".equals(normalized)) {
+            return null;
+        }
+        double raw = value.doubleValue();
+        if (Double.isNaN(raw) || Double.isInfinite(raw)) {
+            return null;
+        }
+        long rounded = Math.round(raw);
+        return (int) Math.max(1, Math.min(10, rounded));
     }
 
     /** 单条行为的权重；未知 kind 记 0（不认识的信号不参与画像，也不报错）。 */
