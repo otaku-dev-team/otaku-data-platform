@@ -11,6 +11,8 @@ import '../../core/theme/design_tokens.dart';
 import '../../data/models/article.dart';
 import '../../shared/widgets/error_state.dart';
 import '../../shared/widgets/tag_chips.dart';
+import '../article_favorite/article_favorite_controller.dart';
+import '../article_favorite/article_favorite_data_source.dart';
 import 'article_card.dart';
 import 'article_controller.dart';
 import 'article_meta_line.dart';
@@ -40,6 +42,7 @@ class ArticleDetailPage extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('资讯详情'),
         actions: [
+          _FavoriteButton(articleId: articleId),
           if (sourceUrl != null)
             IconButton(
               tooltip: '在来源站查看',
@@ -286,6 +289,86 @@ class _ArticleDetailSkeleton extends StatelessWidget {
           const SizedBox(height: 12),
         ],
       ],
+    );
+  }
+}
+
+/// 详情页的收藏按钮。
+///
+/// 未登录时**置灰而不是隐藏**：藏起来会让用户以为这个 App 没有收藏功能；
+/// 置灰 + tooltip「登录后可收藏」至少说明了原因。
+class _FavoriteButton extends ConsumerStatefulWidget {
+  const _FavoriteButton({required this.articleId});
+
+  final String articleId;
+
+  @override
+  ConsumerState<_FavoriteButton> createState() => _FavoriteButtonState();
+}
+
+class _FavoriteButtonState extends ConsumerState<_FavoriteButton> {
+  /// 请求进行中。收藏本身是幂等 upsert，连点不会写坏数据，但按钮会闪、
+  /// 也白打两次请求。
+  bool _busy = false;
+
+  Future<void> _toggle(bool currentlyFavorited) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    final source = ref.read(articleFavoriteDataSourceProvider);
+    try {
+      if (currentlyFavorited) {
+        await source.unfavorite(widget.articleId);
+      } else {
+        await source.favorite(widget.articleId);
+      }
+      // 状态与列表一起失效：回到收藏页时看到的就是最新的。
+      ref.invalidate(articleFavoriteStatusProvider(widget.articleId));
+      ref.invalidate(articleFavoriteControllerProvider);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(currentlyFavorited ? '已取消收藏' : '已收藏')),
+      );
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      // `userMessage` 已本地化；429 会带「请 N 秒后再试」。
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.userMessage)));
+    } on Object {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('操作失败，请稍后重试')));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final signedIn = ref.watch(articleFavoriteAudienceProvider);
+    if (!signedIn) {
+      return const IconButton(
+        tooltip: '登录后可收藏',
+        onPressed: null,
+        icon: Icon(Icons.bookmark_border_rounded),
+      );
+    }
+
+    final status = ref.watch(articleFavoriteStatusProvider(widget.articleId));
+    final favorited = status.value ?? false;
+    return IconButton(
+      tooltip: favorited ? '取消收藏' : '收藏',
+      onPressed: _busy || status.isLoading ? null : () => _toggle(favorited),
+      icon: _busy
+          ? const SizedBox(
+              height: 18,
+              width: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : Icon(
+              favorited ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
+            ),
     );
   }
 }

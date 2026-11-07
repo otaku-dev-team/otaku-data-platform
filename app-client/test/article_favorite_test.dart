@@ -11,6 +11,7 @@ import 'package:otaku_app/data/datasources/collection_data_source.dart';
 import 'package:otaku_app/data/models/article.dart';
 import 'package:otaku_app/data/models/collection_entry.dart';
 import 'package:otaku_app/data/models/collection_state.dart';
+import 'package:otaku_app/data/models/paged_result.dart';
 import 'package:otaku_app/data/repositories/collection_repository.dart';
 import 'package:otaku_app/features/article/article_card.dart';
 import 'package:otaku_app/features/article_favorite/article_favorite_data_source.dart';
@@ -36,12 +37,31 @@ class _FakeArticleFavorites implements ArticleFavoriteDataSource {
   Completer<void>? gate;
 
   @override
-  Future<List<ArticleFavoriteEntry>> fetchAll({required String userId}) async {
+  Future<PagedResult<ArticleFavoriteEntry>> fetchPage({
+    int page = 1,
+    int pageSize = 20,
+  }) async {
     calls++;
     if (gate != null) await gate!.future;
     if (fail) throw StateError('boom');
-    return items;
+    return PagedResult<ArticleFavoriteEntry>(
+      items: items,
+      total: items.length,
+      page: page,
+      pageSize: pageSize,
+      totalPages: items.isEmpty ? 0 : 1,
+    );
   }
+
+  @override
+  Future<bool> isFavorited(String articleId) async =>
+      items.any((e) => e.article.articleId == articleId);
+
+  @override
+  Future<void> favorite(String articleId) async {}
+
+  @override
+  Future<void> unfavorite(String articleId) async {}
 }
 
 /// 作品收藏在这一组用例里只是「旁边那个分段」，给空实现即可。

@@ -242,21 +242,22 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('资讯收藏 / 作品申请 / 我的评论都标未开放且点不动', (tester) async {
+  testWidgets('资讯收藏可点开，作品申请 / 我的评论仍标未开放', (tester) async {
     await pumpProfile(tester, token: signedInToken);
     await tester.tap(find.byTooltip('我的'));
     await tester.pumpAndSettle();
 
-    // 三个分区都标「未开放」（都在 ListView 的预构建范围内）。
-    expect(find.text('未开放'), findsNWidgets(3));
+    // 「资讯收藏」在 #507 后已经可用，不再标「未开放」；剩两个。
+    expect(find.text('未开放'), findsNWidgets(2));
 
+    // 点资讯收藏会切到收藏页的「资讯」分段（不是停在原页）。
     await tester.tap(find.text('资讯收藏'));
     await tester.pumpAndSettle();
-    // 仍停在本页：没有跳转就不会有目的页标题。
-    expect(find.text('收藏目的页'), findsNothing);
-    expect(find.text('个人空间'), findsOneWidget);
+    expect(find.text('收藏目的页'), findsOneWidget);
 
-    // 「我的评论」在首屏下方：先滚到可见再点，确认同样点不动。
+    // 「我的评论」在首屏下方：滚回个人空间再点，确认点不动。
+    await tester.pageBack();
+    await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('我的评论'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('我的评论'));
