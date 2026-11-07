@@ -1423,6 +1423,105 @@ paths:
           description: 已取消（或本来就没收藏）
         "401": { $ref: "#/components/responses/UnauthorizedSession" }
 
+  /api/me/article-favorites:
+    get:
+      tags: [个人收藏]
+      summary: 我的资讯收藏（分页，新增）
+      operationId: listArticleFavorites
+      description: |
+        当前登录用户收藏的资讯，按收藏时间倒序。
+
+        口径：
+        - 排序 `updated_at DESC, article_id ASC`（第二个键保证同一毫秒写入时翻页不跳条）；
+        - `items[].article` 复用资讯列表的 `ArticleSummary`，**不含 `body`**；
+        - 空收藏返回 `200` + `items: []` + `total: 0`；
+        - 只返回仍在 `article` 表里的资讯，计数与列表同一 JOIN 口径。
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: page_size
+          in: query
+          required: false
+          description: 超过 50 时按 50 截断，不报错
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ArticleFavoritePage" }
+        "401": { $ref: "#/components/responses/UnauthorizedSession" }
+
+  /api/me/article-favorites/{article_id}:
+    get:
+      tags: [个人收藏]
+      summary: 单条资讯收藏状态（未收藏也是 200）
+      operationId: getArticleFavoriteState
+      description: |
+        「未收藏」是正常结果，不是错误：返回 `200` + `favorited: false`。
+        只有**资讯本身不存在**时才返回 `404 ARTICLE_NOT_FOUND`。
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: article_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: 成功（`favorited` 区分是否已收藏）
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ArticleFavoriteState" }
+        "401": { $ref: "#/components/responses/UnauthorizedSession" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+    put:
+      tags: [个人收藏]
+      summary: 收藏资讯（幂等 upsert）
+      operationId: putArticleFavorite
+      description: |
+        记录不存在则创建；已存在只推进 `updated_at`。重复提交结果一致，
+        一律返回 `200`，不用 `201`。资讯不存在返回 `404 ARTICLE_NOT_FOUND`。
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: article_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ArticleFavoriteState" }
+        "401": { $ref: "#/components/responses/UnauthorizedSession" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+    delete:
+      tags: [个人收藏]
+      summary: 取消资讯收藏（幂等）
+      operationId: deleteArticleFavorite
+      description: |
+        删除收藏记录；记录不存在也返回 `204`。不先查资讯是否存在——
+        资讯可能已被来源站下架，此时「取消收藏」不该被 404 卡住。
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: article_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204":
+          description: 已取消（或本来就没收藏）
+        "401": { $ref: "#/components/responses/UnauthorizedSession" }
+
   /api/me/profile:
     get:
       tags: [账号]
@@ -4302,6 +4401,44 @@ components:
             items:
               type: array
               items: { $ref: "#/components/schemas/CollectionItem" }
+
+    ArticleFavoriteState:
+      type: object
+      required: [article_id, favorited]
+      description: |
+        单条资讯收藏状态。`favorited: false` 表示未收藏（此时 `favorited_at` 为 `null`），
+        这是正常结果而不是错误——只有资讯本身不存在才返回 404。
+      properties:
+        article_id:
+          type: string
+        favorited:
+          type: boolean
+        favorited_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: 首次收藏时间；未收藏为 `null`
+
+    ArticleFavoriteItem:
+      type: object
+      required: [article, favorited_at]
+      description: 资讯收藏列表项。资讯字段复用 `ArticleSummary`，**不含正文**
+      properties:
+        article:
+          $ref: "#/components/schemas/ArticleSummary"
+        favorited_at:
+          type: string
+          format: date-time
+          description: 首次收藏时间
+
+    ArticleFavoritePage:
+      allOf:
+        - $ref: "#/components/schemas/Paging"
+        - type: object
+          properties:
+            items:
+              type: array
+              items: { $ref: "#/components/schemas/ArticleFavoriteItem" }
 
     PersonDetail:
       type: object

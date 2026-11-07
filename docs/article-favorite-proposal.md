@@ -1,7 +1,8 @@
-# 资讯收藏方案 · 待拍板（2026-11-05 按 #435 复核）
+# 资讯收藏方案 · 后端已实现（2026-11-07）
 
-> 状态：**方案留档，未生效**。归属 #377（客户端 @riceyu02）；后端实现归 @pyxz0。
-> 本文只定口径，**不改 `docs/openapi.yaml`、不代三人确认**（章程 §3.2）。
+> 状态：**方案已生效，后端已落地**（`V34__article_favorite.sql` + `/api/me/article-favorites`），
+> 客户端待接真接口（#452 的只读骨架可直连）。
+> 归属 #377（客户端 @riceyu02）；后端实现 @pyxz0。
 >
 > ⚠️ **2026-11-05 复核**：#435 的「otaku 自运营，多站/交付类约束对自家站可让步」口径，
 > 让本文 §1 里「平台不代理来源站接口」这条理由不再成立（见新增的 §7）。
@@ -84,11 +85,10 @@ DELETE /api/me/article-favorites/{article_id}      # 幂等，204
 1. **表**：独立 `article_favorite`（推荐）vs `collection` 加 `target_type`（动已验收表）。
 2. **端点命名**：`/api/me/article-favorites` 是否接受（与 `/api/me/collections` 并列，还是 `/api/me/favorites/articles`）。
 3. **迁移号**：**不写死**，以合入时 `ls ... | sort -V` 的实际最大号为准。
-   截至 2026-11-05：V32 已上线（#421 浏览表）、V31 永久跳过、V33 = #362 前缀键+列宽；
-   **#408 的映射表方案已撤销（#436），V34 空出**，#377 / #378 顺位使用，
-   zm 在 #378 拍板里提到 V35 / V36 只是当时的排期快照，别照抄。
-4. **资讯被删/下线时**：收藏列表过滤掉（推荐，`article` 目前没有 `deleted_at`，将来加软删要同步加条件）
-   还是保留占位。
+   实际落地（2026-11-07）：V33 已被 #362（人物键前缀 + 列宽）占用，本文用 **V34**。
+   #408 的映射表方案已撤销（#436），没有占号。
+4. **资讯被删/下线时**：收藏列表过滤掉（**已按此实现**：列表与计数都 `JOIN article`，
+   没有 article 行的收藏不占位；将来 `article` 加软删要同步加条件）。
 
 ## 5. 若独立表被否，退路是什么
 
@@ -134,5 +134,19 @@ D 满足这一条，所以只是「可行」，不是「自动胜出」。
 若有人主张走代理（省掉建表与迁移），请先把上面第 2 条（注销即清）的落地方案写出来，
 否则不建议改推荐值。
 
-其余结论不变：A 项「菜单丰富化」里与 #377 无关的部分已在 #434 落地；
-本方案仍待三人知悉后才动 openapi 与后端。
+其余结论不变：A 项「菜单丰富化」里与 #377 无关的部分已在 #434 落地。
+
+## 8. 落地记录（2026-11-07，后端）
+
+| 项 | 实现 |
+|---|---|
+| 表 | `V34__article_favorite.sql`：`article_favorite(user_id, article_id)` 唯一键 + `(user_id, updated_at)` 索引 |
+| 端点 | `GET /api/me/article-favorites`、`GET/PUT/DELETE /api/me/article-favorites/{article_id}` |
+| 列表 | `updated_at DESC, article_id ASC`；`items[].article` 复用 `ArticleSummary`（**不含正文**）；`page_size` 上限 50 |
+| 幂等 | `PUT` 用唯一键 + `ON DUPLICATE KEY UPDATE`，重复提交不产生第二行；`DELETE` 记录不存在也 204 |
+| 404 | 只有资讯不存在才 `404 ARTICLE_NOT_FOUND`；未收藏是 `200 + favorited:false` |
+| 隔离 | 全部走 `/api/me/**`（AuthFilter），`user_id` 只从会话取；集成测试含双用户隔离用例 |
+| 验证 | 后端 500 通过 / 0 skipped（新增 6 条真库 IT）；`check-contract.py` 74 path / 132 $ref / 112 schema |
+
+客户端接入（riceyu）：`article_favorite_data_source.dart` 的三步照文件头做即可；
+详情页的 `favorited` 单独查，**不改 `ArticleDetail`**——与作品详情页的 `collected` 同口径。

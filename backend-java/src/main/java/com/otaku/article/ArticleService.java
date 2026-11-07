@@ -198,6 +198,17 @@ public class ArticleService {
         return result;
     }
 
+    /**
+     * 资讯卡摘要（#377）：收藏列表复用同一份口径。
+     *
+     * <p>为什么公开：摘要的字段选择（不给正文、标签归一、时间格式）只该有一份；
+     * 收藏模块再写一份映射，第二次改字段时必然漂移，而漂移的表现是
+     * 「收藏页少了某个字段」而不是报错。
+     */
+    public ArticleSummary summary(ArticleRecord record) {
+        return toSummary(record);
+    }
+
     private ArticleSummary toSummary(ArticleRecord record) {
         return new ArticleSummary(
                 record.articleId(),
