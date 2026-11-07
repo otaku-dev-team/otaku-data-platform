@@ -4,12 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/network/api_exception.dart';
 import '../../core/router/route_paths.dart';
 import '../../core/theme/app_layout.dart';
 import '../../core/theme/design_tokens.dart';
 import '../../shared/widgets/desktop_nav_shell.dart';
 import '../../shared/widgets/user_avatar.dart';
 import '../auth/auth_controller.dart';
+import 'avatar_data_source.dart';
 import 'avatar_picker.dart';
 import 'profile_data_source.dart';
 import 'user_profile.dart';
@@ -19,16 +21,15 @@ import 'user_profile.dart';
 /// zm 01:16 拍板的第一层：昵称 + 简介 + 首字色块头像兜底；
 /// **不做性别 / 生日 / 所在地**（敏感个人信息）。
 ///
-/// ## 头像：能选、能看，但**存不了**
+/// ## 头像：选图 → 预览 → 上传
 ///
-/// 选图与预览已经可用（系统文件选择器 → 本地预览），唯独最后一步
-/// 「保存头像」只弹说明、不写任何数据。原因不是偷懒：`openapi.yaml` 里
-/// `avatar` 零命中，既没有 `PUT /api/me/profile` 也没有上传端点，
-/// 存储形态（本地还是对象存储、URL 谁签发）也没定。
+/// 2026-11-07：`POST /api/me/account/avatar` 已上线（#509），这一段不再是
+/// 「有功能但不启用」——选完图点「保存头像」会真上传；服务端居中裁方、
+/// 缩放到 512×512 并重编码后返回直出地址。
 ///
-/// 这是「有功能但不启用」而不是「没做」：接口落地时只需把
-/// `_saveAvatar` 里的对话框换成「上传 → 拿 URL → update → invalidate」，
-/// 选图、预览、组件三处一行都不用改。
+/// 三个约束收在 `avatar_data_source.dart` 里：2MB 上限、按魔数校验格式、
+/// 同一用户 1 分钟只能传 1 次。超限是 `429` 带 `Retry-After`，界面要说
+/// 「N 秒后再试」而不是「上传失败」——后者用户会立刻再点一次。
 ///
 /// ## 两个刻意的行为
 ///
@@ -168,6 +169,12 @@ class _ProfileFormState extends ConsumerState<_ProfileForm> {
   /// 用户点「取消」，或离开这一页（表单按 [UserProfile] 重建）。
   File? _pendingAvatar;
 
+  /// 头像上传 / 删除进行中。
+  ///
+  /// 上传不可重复触发：服务端限制同一用户 1 分钟 1 次，连点两下等于
+  /// 主动撞限流。
+  bool _savingAvatar = false;
+
   /// 与 zm 给的 DDL 一致：`display_name VARCHAR(32)` / `bio VARCHAR(200)`。
   static const int _maxName = 32;
   static const int _maxBio = 200;
@@ -205,8 +212,7 @@ class _ProfileFormState extends ConsumerState<_ProfileForm> {
                       UserAvatar(
                         label: widget.displayLabel,
                         avatarUrl: widget.initial.avatarUrl,
-                        // 选完就立刻看到新图，不必等上传——因为上传这一步
-                        // 现在**根本走不到**（见 _saveAvatar）。
+                        // 本地预览优先：选完立刻看到新图，不必等上传回来。
                         previewImage: _pendingAvatar == null
                             ? null
                             : FileImage(_pendingAvatar!),
@@ -220,9 +226,11 @@ class _ProfileFormState extends ConsumerState<_ProfileForm> {
                             Text('头像', style: theme.textTheme.titleSmall),
                             const SizedBox(height: Space.s1),
                             Text(
-                              _pendingAvatar == null
-                                  ? '没上传时用昵称首字生成色块。'
-                                  : '已选择图片，还没保存。',
+                              _pendingAvatar != null
+                                  ? '已选择图片，点「保存头像」上传。'
+                                  : (widget.initial.avatarUrl != null
+                                        ? '已设置头像。'
+                                        : '没上传时用昵称首字生成色块。'),
                               style: theme.textTheme.bodySmall?.copyWith(
                                 color: theme.colorScheme.onSurfaceVariant,
                               ),
@@ -231,25 +239,40 @@ class _ProfileFormState extends ConsumerState<_ProfileForm> {
                         ),
                       ),
                       if (_pendingAvatar == null)
-                        TextButton(
-                          onPressed: _pickAvatar,
-                          child: const Text('更换'),
+                        Wrap(
+                          alignment: WrapAlignment.end,
+                          children: [
+                            TextButton(
+                              onPressed: _savingAvatar ? null : _pickAvatar,
+                              child: const Text('更换'),
+                            ),
+                            if (widget.initial.avatarUrl != null)
+                              TextButton(
+                                onPressed: _savingAvatar ? null : _removeAvatar,
+                                child: const Text('移除'),
+                              ),
+                          ],
                         )
                       else
                         TextButton(
-                          onPressed: () =>
-                              setState(() => _pendingAvatar = null),
+                          onPressed: _savingAvatar
+                              ? null
+                              : () => setState(() => _pendingAvatar = null),
                           child: const Text('取消'),
                         ),
                     ],
                   ),
                   if (_pendingAvatar != null) ...[
                     const SizedBox(height: Space.s3),
-                    // 这一步**刻意不生效**：点下去只弹说明、不写任何数据。
-                    // 详见 _saveAvatar 的注释。
                     FilledButton.tonal(
-                      onPressed: _saveAvatar,
-                      child: const Text('保存头像'),
+                      onPressed: _savingAvatar ? null : _saveAvatar,
+                      child: _savingAvatar
+                          ? const SizedBox(
+                              height: 18,
+                              width: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Text('保存头像'),
                     ),
                   ],
                 ],
@@ -341,37 +364,72 @@ class _ProfileFormState extends ConsumerState<_ProfileForm> {
     setState(() => _pendingAvatar = picked);
   }
 
-  /// 「保存头像」——**这里就是刻意的「有功能但不生效」那一刀**。
+  /// 上传选好的头像。
   ///
-  /// 选图、预览都能跑，唯独此处不写任何数据：
-  ///
-  /// - 契约里 `avatar` 零命中（`docs/openapi.yaml` 搜不到这个字段），
-  ///   既没有 `PUT /api/me/profile`，也没有上传端点；
-  /// - 存储形态还没定：本地文件还是对象存储、URL 谁签发、换头像时旧图
-  ///   要不要删——这些不先定就上传，等于先欠一笔删不掉的债。
-  ///
-  /// 所以只把「还没开放」说清楚，并明确告诉用户这张图**没有保存**——
-  /// 比做一个假成功、回头发现头像没变要好。
-  ///
-  /// 接口落地时把这段换成：上传 → 拿 URL → `update(avatarUrl: url)`
-  /// → `invalidate(profileProvider)`。上面的选图与预览一行都不用改。
+  /// 成功后 `invalidate(profileProvider)`，整个表单会按新的 [UserProfile] 重建
+  /// （`_ProfileForm` 的 key 是 `ValueKey<UserProfile>`）。代价是**未保存的昵称 /
+  /// 简介改动会丢**——但反过来（不刷新）会让头像「传了没反应」，那个更难解释。
+  /// 提示语说「头像已更新」，用户也就知道刚刚发生了一次保存。
   Future<void> _saveAvatar() async {
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('暂时无法设置头像'),
-        content: const Text(
-          '选图和预览已经可以用，但上传还没开放。\n\n'
-          '这张图只在本机预览，没有保存；当前仍使用昵称首字生成的头像。',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('知道了'),
-          ),
-        ],
-      ),
-    );
+    final file = _pendingAvatar;
+    if (file == null || _savingAvatar) return;
+    setState(() => _savingAvatar = true);
+
+    try {
+      await ref.read(avatarDataSourceProvider).upload(file.path);
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() => _savingAvatar = false);
+      // `userMessage` 已经按 code 本地化；429 会带「请 N 秒后再试」。
+      // 换成「上传失败」，用户只会立刻再点一次，把限流撞得更久。
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.userMessage)));
+      return;
+    } on Object {
+      if (!mounted) return;
+      setState(() => _savingAvatar = false);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('头像上传失败，请稍后重试')));
+      return;
+    }
+
+    ref.invalidate(profileProvider);
+    if (!mounted) return;
+    setState(() {
+      _savingAvatar = false;
+      // 上传成功、真图已经写进资料，本地预览可以撤了。
+      _pendingAvatar = null;
+    });
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('头像已更新')));
+  }
+
+  /// 移除头像。服务端幂等（本来没有也 204），所以不用先查一次。
+  /// 移除后回落到昵称首字色块。
+  Future<void> _removeAvatar() async {
+    if (_savingAvatar) return;
+    setState(() => _savingAvatar = true);
+
+    try {
+      await ref.read(avatarDataSourceProvider).delete();
+    } on Object {
+      if (!mounted) return;
+      setState(() => _savingAvatar = false);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('没能移除头像，请稍后重试')));
+      return;
+    }
+
+    ref.invalidate(profileProvider);
+    if (!mounted) return;
+    setState(() => _savingAvatar = false);
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('头像已移除')));
   }
 
   Future<void> _save() async {

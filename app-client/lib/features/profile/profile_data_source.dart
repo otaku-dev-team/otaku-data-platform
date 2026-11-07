@@ -1,20 +1,25 @@
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/config/app_config.dart';
+import '../../core/network/api_exception.dart';
+import '../../core/network/dio_client.dart';
 import '../auth/auth_controller.dart';
 import 'user_profile.dart';
 
 /// 账号资料的**唯一数据入口**。
 ///
-/// 目前只有 mock 实现：`PUT /api/me/profile` 与 `User.avatar_url` 还在
-/// pyxz0 那边待确认（#378 拍板的第一层契约），schema 未定稿。
-/// 这里不写 URL、不写 DTO、不猜字段名——**真数据联调等接口**。
+/// 2026-11-07：`GET/PUT /api/me/account` 已上线（#509），本文件同时有 mock 与
+/// remote 两个实现，由 [profileDataSourceProvider] 按 `AppConfig.useMock` 切换。
 ///
-/// 接接口时的改动清单（其它文件不用动）：
-/// 1. 新增 `ProfileRemoteDataSource implements ProfileDataSource`，
-///    在里面按定稿契约做 `PUT /api/me/profile` 与 JSON → [UserProfile] 映射；
-///    读取可复用 `/api/auth/me` 的 `display_name`（bio 若契约没回传，就只回显昵称）；
-/// 2. 在 [profileDataSourceProvider] 里按 `AppConfig.useMock` 切换；
-/// 3. 删掉 mock 实现，把 [profileProvider] 的依赖换成 remote。
+/// **路径是 `/api/me/account`，不是 `/api/me/profile`**——后者被阿宅画像占着
+/// （`GET /api/me/profile` 返回口味权重）。「同一路径两种资源语义」的冲突，
+/// 后端最后用换路径解决。
+///
+/// 头像**不在这里**：它走独立的 `/api/me/account/avatar`，见
+/// `avatar_data_source.dart`——上传有自己的失败语义（2MB 上限、按魔数校验格式、
+/// 1 分钟 1 次限流），塞进资料保存里会让「改昵称失败」和「头像太大」共用一个
+/// 错误提示。
 abstract interface class ProfileDataSource {
   Future<UserProfile> fetch();
 
@@ -42,10 +47,67 @@ class ProfileMockDataSource implements ProfileDataSource {
   }
 }
 
+/// 真数据源：`GET/PUT /api/me/account`（契约 `AccountProfile`）。
+class ProfileRemoteDataSource implements ProfileDataSource {
+  const ProfileRemoteDataSource(this._dio);
+
+  final Dio _dio;
+
+  static const String path = '/api/me/account';
+
+  @override
+  Future<UserProfile> fetch() async {
+    final response = await _dio.get<Map<String, dynamic>>(path);
+    return _fromJson(response.data);
+  }
+
+  @override
+  Future<UserProfile> update({
+    required String? displayName,
+    required String? bio,
+  }) async {
+    final response = await _dio.put<Map<String, dynamic>>(
+      path,
+      data: <String, dynamic>{
+        // 两个字段都**显式传**：契约里「省略 = 不改」，而编辑页保存的是整份表单，
+        // 用户清空昵称就该真的清掉。`null` 是「清空」，不是「别动它」。
+        'display_name': displayName,
+        'bio': bio,
+      },
+    );
+    return _fromJson(response.data);
+  }
+
+  static UserProfile _fromJson(Map<String, dynamic>? data) {
+    if (data == null) {
+      // 200 但空体 = 契约被破坏。当成功处理会让编辑页回显一份空资料、
+      // 覆盖掉用户本地看到的值。
+      throw const ApiException(
+        code: ApiErrorCode.unknown,
+        message: '服务端返回了空响应',
+      );
+    }
+    return UserProfile(
+      displayName: _text(data['display_name']),
+      bio: _text(data['bio']),
+      avatarUrl: _text(data['avatar_url']),
+    );
+  }
+
+  /// 空串与全空格都当「没填」（契约的 `null` 语义）——
+  /// 否则界面会显示一片空白，用户还以为昵称设成了空格。
+  static String? _text(Object? raw) {
+    if (raw is! String) return null;
+    final trimmed = raw.trim();
+    return trimmed.isEmpty ? null : trimmed;
+  }
+}
+
 /// 换实现只改这一个 provider。测试用 `overrideWithValue` 注入假数据源。
-final profileDataSourceProvider = Provider<ProfileDataSource>(
-  (ref) => ProfileMockDataSource(),
-);
+final profileDataSourceProvider = Provider<ProfileDataSource>((ref) {
+  if (AppConfig.useMock) return ProfileMockDataSource();
+  return ProfileRemoteDataSource(ref.watch(dioProvider));
+});
 
 /// 当前资料。
 final profileProvider = FutureProvider<UserProfile>((ref) async {
