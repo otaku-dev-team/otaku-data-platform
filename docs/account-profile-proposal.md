@@ -1,6 +1,6 @@
 # 账户信息页方案 · 后端已实现（2026-11-07）
 
-> 状态：**后端第一层 + 第二层已落地**（`V35__account_profile.sql` + `/api/me/account`），
+> 状态：**后端第一层 + 第二层已上线**（`V35__account_profile.sql` + `/api/me/account`，2026-11-07 b34），
 > 客户端把 `ProfileRemoteDataSource` 接上即可。
 > 归属：客户端 @riceyu02、后端 @pyxz0、存储与运维 @zhengmin486。
 >
