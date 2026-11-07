@@ -104,8 +104,16 @@
   （数据侧从 SQLite 读出的整数）——`JSON_CONTAINS` 对类型敏感，只写一种会有一半数据静默查不到。
 - 没有为 JSON 列建索引：article 当前千级行，全表扫毫秒级；上万再考虑 `(article_id, subject_id)` 反查表。
 
-### 5.4 系列关联（P1，需数据结构变更）
-- 引入 series 概念（清单 / 关系表），详情页"系列作品"区。
+### 5.4 系列关联（P1，**已落地 2026-11-07**）
+- 引入 series 概念（清单 / 关系表），详情页「系列作品」区。
+- **实现**（#411 / PR 见 issue）：
+  - `V37`：`work.series_key` + `idx_work_series (series_key, release_year)`；`series(series_key, name)` 独立表。
+  - 导入：`ImportItem` 新增 `series_key` / `series_name`（**只有数据集通道给**，站点 REST 通道省略 = 不覆盖）；
+    导入时先 upsert 系列行、再写作品归属，同一事务。
+  - 反查：`GET /api/works/{work_id}/series` → `{series_key, series_name, items}`；
+    按年代升序（观看顺序语义，不按评分）、**包含当前作品**、排除已下架/未收录/成人。
+  - 数据集侧：`publisher` 从 `works.series_key` + `series.name` 取值随作品一起提交。
+- 没做：系列名缺失时的兜底命名、跨来源系列归并（各站系列 id 不同，归并属于 W2 的跨源身份问题）。
 
 ### 5.5 实体反查（人物 / 公司 → 作品，P1）
 - 利用现有 `work_staff` / `work_characters` / `work_studios` 建反向索引（实体 → 作品列表）。

@@ -22,6 +22,8 @@ record NormalizedItem(
         java.math.BigDecimal ratingValue,
         String ratingScale,
         String ratingSource,
-        String sourceUrl
+        String sourceUrl,
+        String seriesKey,
+        String seriesName
 ) {
 }

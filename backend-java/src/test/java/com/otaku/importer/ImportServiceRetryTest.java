@@ -74,7 +74,8 @@ class ImportServiceRetryTest {
     @BeforeEach
     void setUp() {
         service = new ImportService(workRepository, batchRepository, idGenerator,
-                transactionTemplate, new ObjectMapper(), countCache, tagCache, relationRepository, true);
+                transactionTemplate, new ObjectMapper(), countCache, tagCache, relationRepository,
+                org.mockito.Mockito.mock(com.otaku.series.SeriesRepository.class), true);
         // 事务模板在测试里直接执行回调，不起真事务。
         lenient().when(transactionTemplate.execute(any())).thenAnswer(invocation -> {
             TransactionCallback<?> callback = invocation.getArgument(0);

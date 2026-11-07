@@ -12,6 +12,8 @@ info:
     - **② 数据写入接口** `POST /internal/import/batches`（Python → Java）
     - **③ 作品列表接口** `GET /api/works`（Flutter → Java）
     - **④ 作品详情接口** `GET /api/works/{work_id}`（Flutter → Java）
+      —— 详情页的三个子资源同样是公开读：`/related`（同标签）、`/articles`（相关资讯）、
+      `/series`（同系列，2026-11-07 新增）
     - **⑤ 封面代理接口** `GET /api/covers/{work_id}`（Flutter → Java）——
       `cover_url` 指向这里，不是来源站地址
 
@@ -300,6 +302,40 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/RelatedWorks" }
+        "429": { $ref: "#/components/responses/RateLimitedWithRetry" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /api/works/{work_id}/series:
+    get:
+      tags: [作品查询]
+      summary: 同系列作品（详情页「系列作品」区，新增）
+      operationId: getWorkSeries
+      description: |
+        按 `work.series_key` 反查同系列的**全部**作品（#411）。
+
+        边界约定：
+        - 作品不存在 / `work_id` 格式非法 / 成人内容被隐藏 → **404**（与详情一致）；
+        - 作品**不属于任何系列** → `200` + `series_key: null` + `items: []`，**不是 404**。
+          绝大多数作品没有系列，这是正常状态；
+        - `series_name` 可能为 `null`：作品先导入、系列行后到。此时客户端应**隐藏标题**，
+          不要拿 `series_key` 顶替——那是来源站内部 id，对用户没有意义；
+        - `items` **包含当前作品**：系列是完整清单（「全 4 季」），客户端自己高亮当前项；
+          去掉它会让只有一部的系列看起来像空区块；
+        - 排序**按年代升序**（观看顺序语义），年份未知的排最后；不按评分排——
+          那会把特别篇/总集篇顶到第一季前面；
+        - 已下架 / 未收录 / 成人作品不出现在 `items` 里（与列表、`/related` 同口径）。
+
+        数据来源只有数据集通道（v3 的 `works.series_key` + `series.name`）；
+        站点 REST 通道没有系列概念，因此新导入的作品在一段时间内会没有系列。
+      parameters:
+        - $ref: "#/components/parameters/WorkId"
+      responses:
+        "200":
+          description: 成功；没有系列时 `series_key` / `series_name` 为 null、`items` 为空
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WorkSeries" }
         "429": { $ref: "#/components/responses/RateLimitedWithRetry" }
         "404": { $ref: "#/components/responses/NotFound" }
         "500": { $ref: "#/components/responses/InternalError" }
@@ -3296,6 +3332,30 @@ components:
           description: 相关作品，评分高 → 低，不含当前作品
           items: { $ref: "#/components/schemas/WorkSummary" }
 
+    WorkSeries:
+      type: object
+      description: |
+        详情页「系列作品」（#411）。
+        作品不属于任何系列时 `series_key` / `series_name` 均为 null、`items` 为空数组。
+      required: [items]
+      properties:
+        series_key:
+          type: string
+          nullable: true
+          description: 系列键（来源站系列 id）。**不透明字符串，客户端不得解析**
+          example: "4281"
+        series_name:
+          type: string
+          nullable: true
+          description: |
+            系列名。为 null 表示数据集还没给名字（作品先到、系列行后到），
+            客户端应隐藏区块标题，不要用 `series_key` 顶替。
+          example: 物语系列
+        items:
+          type: array
+          description: 同系列作品，年代升序，**包含当前作品**
+          items: { $ref: "#/components/schemas/WorkSummary" }
+
     Work:
       type: object
       description: |
@@ -4149,7 +4209,7 @@ components:
     ImportItem:
       type: object
       description: |
-        提交项 16 个字段。`work_id` 由 Java 生成、`updated_at` 由 Java 维护、`source` 在批次级，
+        提交项 18 个字段。`work_id` 由 Java 生成、`updated_at` 由 Java 维护、`source` 在批次级，
         因此都不出现在条目里。
 
         `source_url` 与 `release_year` 都是**可选**字段：适配器能可靠确定时提供，
@@ -4268,6 +4328,24 @@ components:
           nullable: true
           description: 制作公司名称列表。三态与整体替换语义同 `staff`。
           items: { type: string, maxLength: 200 }
+        series_key:
+          type: string
+          nullable: true
+          maxLength: 64
+          description: |
+            系列键（#411）。**只有数据集通道会给**，站点 REST 通道没有系列概念，
+            因此省略与 `null` 都表示「本次没有系列信息」，**不覆盖**库里已有的归属。
+            超过 64 字符按「没拿到」丢弃（不截断——截断会造出一个不存在的系列键）。
+          example: "4281"
+        series_name:
+          type: string
+          nullable: true
+          maxLength: 255
+          description: |
+            系列名，随 `series_key` 一起 upsert 到 `series` 表。为空时**保留库里已有的名字**——
+            数据集偶尔只给 key 不给名，把已有名字覆盖成 NULL 是纯损失。
+            与 `series_key` 一样，只在数据集通道出现。
+          example: 物语系列
 
     ImportBatchResult:
       type: object

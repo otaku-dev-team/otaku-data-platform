@@ -48,7 +48,7 @@ class WorkMergerTest {
                 coverUrl,
                 tagsJson, rating,
                 rating == null ? null : "0-10",
-                rating == null ? null : "otaku_site", null);
+                rating == null ? null : "otaku_site", null, null, null);
     }
 
     /** 只带 source_url 的旧记录，其余可空字段都为 null，便于隔离验证。 */
@@ -64,7 +64,7 @@ class WorkMergerTest {
         return new NormalizedItem("476", "anime", "原标题", null, null,
                 null, null, null, null,
                 null, null, null,
-                null, null, null, null, null, sourceUrl);
+                null, null, null, null, null, sourceUrl, null, null);
     }
 
     @Test
