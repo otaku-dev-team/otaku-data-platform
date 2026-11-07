@@ -106,11 +106,14 @@ class PersonaInsightMapper {
       ),
       dimensions: List<PersonaDimension>.unmodifiable(dimensions),
       topTags: List<String>.unmodifiable(_sortedPositive(positives).take(8)),
-      // 少一根轴必须解释。不解释的话，用户看到五边形只会觉得「怪」，
-      // 不知道「打个分就会长出来」——而打分恰恰是 App 目前唯一缺的输入（#488）。
+      // 少一根轴必须解释。不解释的话，用户看到五边形只会觉得「怪」。
+      //
+      // 文案不能说「去打个分」：`rating_tendency` 有两路来源（#495 / #516），
+      // 自己写的点评分优先、没有则用**来源站均分**；而 App 根本没有点评入口
+      // （#488），「打个分」是用户做不到的引导。正确路径是收藏 / 浏览有评分的作品。
       hints: ratingMean == null
           ? const <String>[
-              '还没有打分记录，所以少一根「评分态度」——给作品打个分它就会出现。',
+              '还没有评分数据，所以少一根「评分态度」——收藏或浏览有评分的作品后就会出现。',
             ]
           : const <String>[],
     );
