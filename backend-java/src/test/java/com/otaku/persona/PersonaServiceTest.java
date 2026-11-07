@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -136,7 +137,7 @@ class PersonaServiceTest {
     void unknownKindIsIgnored() {
         when(repository.findSignals(anyLong(), anyInt())).thenReturn(List.of(
                 new PersonaRepository.SignalRow("W-x", "anime", List.of("a"), "mystery", 0, null, null,
-                        null, null, LocalDateTime.parse("2026-11-05T10:00:00"))));
+                        null, null, null, null, LocalDateTime.parse("2026-11-05T10:00:00"))));
 
         var profile = service.build(USER);
 
@@ -215,42 +216,85 @@ class PersonaServiceTest {
     }
 
     // ------------------------------------------------------------------
+    // #494：九维
+    // ------------------------------------------------------------------
+
+    @Test
+    @DisplayName("九维恒有 9 个键；没有行为时九个都是 50，不是 0（0 会画成假缺角）")
+    void dimensionsAreAlwaysNineAndNeutralWhenEmpty() {
+        when(repository.findSignals(anyLong(), anyInt())).thenReturn(List.of());
+
+        Map<String, Double> dims = service.build(USER).dimensions();
+
+        assertThat(dims.keySet()).containsExactlyElementsOf(PersonaDimensions.KEYS);
+        assertThat(dims.values()).containsOnly(PersonaDimensions.NEUTRAL);
+    }
+
+    @Test
+    @DisplayName("九维按作品去重：同一作品三路信号只算一部（否则完成度被自己的浏览次数稀释）")
+    void dimensionsDedupeByWork() {
+        when(repository.findSignals(anyLong(), anyInt())).thenReturn(List.of(
+                collection("W-1", "anime", List.of(), "watched", "2026-11-05T10:00:00"),
+                view("W-1", "anime", List.of(), 3, "2026-11-05T09:00:00"),
+                collection("W-2", "anime", List.of(), "want", "2026-11-05T08:00:00"),
+                collection("W-3", "anime", List.of(), "watching", "2026-11-05T07:00:00")));
+
+        Map<String, Double> dims = service.build(USER).dimensions();
+
+        // 3 部作品里 1 部「看过」→ 33.3%；不去重会变成 1/4 = 25%
+        assertThat(dims.get("completion")).isCloseTo(33.3, org.assertj.core.data.Offset.offset(0.1));
+    }
+
+    @Test
+    @DisplayName("题材白名单为空时只看得到中性 50，绝不硬凑一个「偏食」出来")
+    void genreDimensionsStayNeutralWithoutWhitelist() {
+        when(repository.findSignals(anyLong(), anyInt())).thenReturn(List.of(
+                collection("W-1", "anime", List.of("机战", "科幻"), "watched", "2026-11-05T10:00:00"),
+                collection("W-2", "anime", List.of("机战"), "watched", "2026-11-04T10:00:00")));
+
+        Map<String, Double> dims = service.build(USER).dimensions();
+
+        assertThat(dims.get("tag_focus")).isEqualTo(PersonaDimensions.NEUTRAL);
+        assertThat(dims.get("exploration")).isEqualTo(PersonaDimensions.NEUTRAL);
+    }
+
+    // ------------------------------------------------------------------
     // 夹具
     // ------------------------------------------------------------------
 
     private static PersonaRepository.SignalRow view(
             String workId, String type, List<String> tags, int count, String at) {
         return new PersonaRepository.SignalRow(workId, type, tags, "view", count, null, null,
-                null, null, LocalDateTime.parse(at));
+                null, null, null, null, LocalDateTime.parse(at));
     }
 
     private static PersonaRepository.SignalRow collection(
             String workId, String type, List<String> tags, String status, String at) {
         return new PersonaRepository.SignalRow(workId, type, tags, "collection", 0, status, null,
-                null, null, LocalDateTime.parse(at));
+                null, null, null, null, LocalDateTime.parse(at));
     }
 
     private static PersonaRepository.SignalRow review(
             String workId, String type, List<String> tags, Integer rating, String at) {
         return new PersonaRepository.SignalRow(workId, type, tags, "review", 0, null, rating,
-                null, null, LocalDateTime.parse(at));
+                null, null, null, null, LocalDateTime.parse(at));
     }
 
     private static PersonaRepository.SignalRow collectionRated(
             String workId, String status, String workRating, String scale, String at) {
         return new PersonaRepository.SignalRow(workId, "anime", List.of(), "collection", 0, status,
-                null, new java.math.BigDecimal(workRating), scale, LocalDateTime.parse(at));
+                null, new java.math.BigDecimal(workRating), scale, null, null, LocalDateTime.parse(at));
     }
 
     private static PersonaRepository.SignalRow reviewRated(
             String workId, Integer rating, String workRating, String scale, String at) {
         return new PersonaRepository.SignalRow(workId, "anime", List.of(), "review", 0, null, rating,
-                new java.math.BigDecimal(workRating), scale, LocalDateTime.parse(at));
+                new java.math.BigDecimal(workRating), scale, null, null, LocalDateTime.parse(at));
     }
 
     private static PersonaRepository.SignalRow viewRated(
             String workId, String workRating, String at) {
         return new PersonaRepository.SignalRow(workId, "anime", List.of(), "view", 1, null, null,
-                new java.math.BigDecimal(workRating), "0-10", LocalDateTime.parse(at));
+                new java.math.BigDecimal(workRating), "0-10", null, null, LocalDateTime.parse(at));
     }
 }
