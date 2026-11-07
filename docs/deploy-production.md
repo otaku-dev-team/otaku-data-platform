@@ -548,6 +548,8 @@ df -h
 ```
 
 封面缓存会随访问增长（每张 webp 约几十 KB），挂的是 `cover-cache` 卷，不会撑爆容器。
+头像文件挂 `avatar-data` 卷（`/app/data/avatars`），每张 512×512 约 20–60 KB；
+`deploy/backup.sh` 每日把该目录打成 `${SITE_KEY}-*-avatars.tar.gz`，保留期与库备份一致。
 
 ---
 

@@ -36,6 +36,12 @@ app:
     # 放 target 下，避免在仓库里留运行产物
     cache-dir: target/it-covers
 
+  profile:
+    # 头像文件也放 target 下，测试结束由用例自己清理
+    avatar-dir: target/it-avatars
+    # 集成测试会连续上传多张，关掉 1 分钟 1 次的限制（限流本身由单测覆盖）
+    avatar-upload-interval-seconds: 0
+
   site-oauth:
     # 集成测试固定用首站标识；核心代码里不出现该常量（单站隔离校验）
     identity-source: otaku_site

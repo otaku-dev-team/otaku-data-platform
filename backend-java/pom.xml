@@ -52,6 +52,14 @@
             <artifactId>spring-security-crypto</artifactId>
         </dependency>
 
+        <!-- 头像重编码（#378）：JDK 的 ImageIO 不认 WebP，这个库带 Linux/Windows/macOS
+             原生库，读写都支持。只服务头像上传，不参与任何业务逻辑。 -->
+        <dependency>
+            <groupId>com.github.gotson</groupId>
+            <artifactId>webp-imageio</artifactId>
+            <version>0.2.2</version>
+        </dependency>
+
         <dependency>
             <groupId>org.flywaydb</groupId>
             <artifactId>flyway-core</artifactId>

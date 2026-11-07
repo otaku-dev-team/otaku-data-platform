@@ -256,6 +256,9 @@ class ContractDriftTest {
         targets.put("ArticleFavoriteState", com.otaku.articlefavorite.dto.ArticleFavoriteDtos.State.class);
         targets.put("ArticleFavoriteItem", com.otaku.articlefavorite.dto.ArticleFavoriteDtos.Item.class);
         targets.put("ArticleFavoritePage", PageResponse.class);
+        // 账号资料与头像（#378）：资料是独立资源，不复用登录 User
+        targets.put("AccountProfile", com.otaku.profile.dto.AccountProfileDtos.AccountProfile.class);
+        targets.put("AvatarUpload", com.otaku.profile.dto.AccountProfileDtos.AvatarUpload.class);
         // 阿宅画像（#401）：权重 0–1 归一化 + 评分倾向 10 桶，形状与 algorithm-design §3 对齐
         targets.put("PersonaProfile", com.otaku.persona.dto.PersonaDtos.PersonaProfile.class);
         targets.put("PersonaRatingTendency", com.otaku.persona.dto.PersonaDtos.RatingTendency.class);
@@ -295,6 +298,8 @@ class ContractDriftTest {
         targets.put("SiteLoginRequest", com.otaku.auth.dto.SiteLoginRequest.class);
         targets.put("CreateAccountRequest", com.otaku.account.dto.CreateAccountRequest.class);
         targets.put("CollectionUpdateRequest", com.otaku.collection.dto.CollectionUpdateRequest.class);
+        // 账号资料（#378）：只收昵称/简介；头像走独立 multipart 端点
+        targets.put("AccountProfileUpdate", com.otaku.profile.dto.AccountProfileDtos.UpdateProfileRequest.class);
         // 浏览打点（#401）：只有 work_id；时间以服务端收到为准，不接受客户端时间戳
         targets.put("ViewRequest", com.otaku.view.dto.ViewRequest.class);
         targets.put("ImportBatchRequest", com.otaku.importer.dto.ImportBatchRequest.class);

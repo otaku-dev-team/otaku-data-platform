@@ -18,6 +18,8 @@ public class AppProperties {
 
     private final Cover cover = new Cover();
 
+    private final Profile profile = new Profile();
+
     private final SiteOauth siteOauth = new SiteOauth();
 
     public String getInternalToken() {
@@ -40,8 +42,65 @@ public class AppProperties {
         return cover;
     }
 
+    public Profile getProfile() {
+        return profile;
+    }
+
     public SiteOauth getSiteOauth() {
         return siteOauth;
+    }
+
+    /** 账号资料与头像（#378）。 */
+    public static class Profile {
+
+        /**
+         * 头像目录，相对路径基于进程工作目录。
+         *
+         * <p>与封面缓存同一个思路：本地目录就够（单站私有化部署），不引对象存储；
+         * 换域名/换存储时只需改这个值，库里存的是文件名、不存 URL。
+         */
+        private String avatarDir = "./data/avatars";
+
+        /** 头像边长（像素）：上传后居中裁方并缩放到该尺寸。 */
+        private int avatarSize = 512;
+
+        /** 单张头像上限（字节）。与 multipart 上限分开：这里给业务提示，multipart 只负责兜底。 */
+        private long avatarMaxBytes = 2 * 1024 * 1024L;
+
+        /** 同一用户两次上传的最小间隔（秒）；0 = 关闭（集成测试用）。 */
+        private int avatarUploadIntervalSeconds = 60;
+
+        public String getAvatarDir() {
+            return avatarDir;
+        }
+
+        public void setAvatarDir(String avatarDir) {
+            this.avatarDir = avatarDir == null ? "./data/avatars" : avatarDir;
+        }
+
+        public int getAvatarSize() {
+            return avatarSize;
+        }
+
+        public void setAvatarSize(int avatarSize) {
+            this.avatarSize = avatarSize <= 0 ? 512 : avatarSize;
+        }
+
+        public long getAvatarMaxBytes() {
+            return avatarMaxBytes;
+        }
+
+        public void setAvatarMaxBytes(long avatarMaxBytes) {
+            this.avatarMaxBytes = avatarMaxBytes <= 0 ? 2 * 1024 * 1024L : avatarMaxBytes;
+        }
+
+        public int getAvatarUploadIntervalSeconds() {
+            return avatarUploadIntervalSeconds;
+        }
+
+        public void setAvatarUploadIntervalSeconds(int avatarUploadIntervalSeconds) {
+            this.avatarUploadIntervalSeconds = Math.max(avatarUploadIntervalSeconds, 0);
+        }
     }
 
     public static class Cover {
