@@ -26,6 +26,9 @@ enum ApiErrorCode {
   /// 改状态时该作品已不在收藏里（C11）。提示刷新，**不得静默重新收藏**。
   collectionRequired('COLLECTION_REQUIRED'),
 
+  /// 同一作品只能有一条点评（契约 `POST /api/me/reviews` 的 `409`）。
+  reviewExists('REVIEW_EXISTS'),
+
   badRequest('BAD_REQUEST'),
   workNotFound('WORK_NOT_FOUND'),
 
@@ -106,6 +109,7 @@ class ApiException implements Exception {
     ApiErrorCode.userDisabled => '账号已被禁用',
     ApiErrorCode.siteUnavailable => '站点登录暂不可用，请稍后再试',
     ApiErrorCode.collectionRequired => '该作品已不在收藏中，请刷新后重试',
+    ApiErrorCode.reviewExists => '你已经点评过这部作品了',
     ApiErrorCode.cancelled => '请求已取消',
     _ => message.isNotEmpty ? message : '出了点问题，请重试',
   };
