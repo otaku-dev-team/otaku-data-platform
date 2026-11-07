@@ -9,6 +9,7 @@ import '../../core/theme/design_tokens.dart';
 import '../../shared/widgets/desktop_nav_shell.dart';
 import '../../shared/widgets/user_avatar.dart';
 import '../auth/auth_controller.dart';
+import '../collection/collection_controller.dart';
 import '../recent/recent_views_controller.dart';
 import 'profile_data_source.dart';
 import 'profile_stats.dart';
@@ -310,7 +311,7 @@ class _Badge extends StatelessWidget {
 
 /// 分区入口。站点这里是一排下划线 tab，手机上一屏塞四个 tab 再叠内容太挤，
 /// 改成竖排的分区列表——顺序、名称、计数与站点一一对应。
-class _SectionCard extends StatelessWidget {
+class _SectionCard extends ConsumerWidget {
   const _SectionCard({
     required this.auth,
     required this.stats,
@@ -322,7 +323,7 @@ class _SectionCard extends StatelessWidget {
   final int viewed;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final signedIn = auth.isSignedIn;
     return Card(
       clipBehavior: Clip.antiAlias,
@@ -361,10 +362,17 @@ class _SectionCard extends StatelessWidget {
             onTap: () => context.push(RoutePaths.devices),
           ),
           const Divider(height: 1),
-          const _SectionTile(
+          _SectionTile(
             icon: Icons.article_outlined,
             title: '资讯收藏',
-            subtitle: '收藏的资讯文章',
+            subtitle: signedIn ? '收藏的资讯文章' : '登录后可以查看',
+            // 打开收藏页的「资讯」分段，而不是让用户进去再点一次分段。
+            onTap: () {
+              ref
+                  .read(collectionSegmentProvider.notifier)
+                  .select(CollectionSegment.articles);
+              context.push(RoutePaths.collections);
+            },
           ),
           const Divider(height: 1),
           const _SectionTile(
