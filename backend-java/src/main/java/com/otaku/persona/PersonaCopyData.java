@@ -31,6 +31,17 @@ final class PersonaCopyData {
     /** 标签说明：一个 badge 配一句，页面展示在标签右侧。 */
     static final Map<String, String> TRAIT_BLURBS = traitBlurbs();
 
+    /**
+     * 收尾冷评池：三句，按用户稳定轮转。
+     *
+     * <p>与长评收尾分工——长评带数字，这里只给一句不带「看了 N 部」的冷评，
+     * 否则两处都在说同一件事，连着读就是重复。
+     */
+    static final List<String> FINAL_QUIPS = List.of(
+            "别人的口味是爱好，你的口味是证据。",
+            "你不是在挑番，你是在反复确认自己喜欢什么。",
+            "这份成分表比你自己诚实——它记得你抛弃过的每一部。");
+
     private static Map<String, String> traitBlurbs() {
         Map<String, String> m = new LinkedHashMap<>();
         m.put("治愈系", "最多的是日常、空气系：一集下来什么都没发生，你也不亏。");
