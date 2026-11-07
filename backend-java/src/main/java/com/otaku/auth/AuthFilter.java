@@ -19,12 +19,12 @@ import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 
 /**
- * 客户端会话鉴权，只拦 /api/auth/me 与 /api/me/**。
+ * 客户端会话鉴权，只拦 /api/auth/me、/api/auth/site-unlink 与 /api/me/**。
  *
  * 有意**不拦** /api/auth/logout：契约 §4.3 要求「已失效的令牌再调一次也返回 204」，
  * 退出流程不该卡在 401 分支上。该接口自行读 Authorization 头并按幂等处理。
  *
- * 与 InternalTokenFilter 分离：客户端用 Bearer 会话令牌，Python 用 X-Internal-Token，
+ * <p>与 InternalTokenFilter 分离：客户端用 Bearer 会话令牌，Python 用 X-Internal-Token，
  * 两套凭据互不通用。
  */
 @Component
@@ -49,7 +49,11 @@ public class AuthFilter extends OncePerRequestFilter {
         // 注意 `/api/me` 是精确路径（注销账号 DELETE /api/me），不能只靠 startsWith("/api/me/")：
         // 少了这一条，请求会绕过鉴权、`AuthFilter.ATTRIBUTE_USER` 不被注入，
         // Controller 拿不到用户 → Spring 直接 400。2026-10-30 生产上就是这么翻的车。
-        return !(path.equals("/api/auth/me") || path.equals("/api/me")
+        // `/api/auth/site-unlink` 同理是精确路径：它挂在 /api/auth 下（身份动作的归类），
+        // 不在 /api/me/** 里，漏了同样会 400 而不是 401。
+        return !(path.equals("/api/auth/me")
+                || path.equals("/api/auth/site-unlink")
+                || path.equals("/api/me")
                 || path.startsWith("/api/me/"));
     }
 

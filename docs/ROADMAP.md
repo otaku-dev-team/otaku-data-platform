@@ -427,14 +427,18 @@ W1.5 用呈现层兜底解掉对 W3 的依赖、W1.3 拆成「本地提醒先做
    ~~Android 深链回跳~~ **2026-10-28 起作废**：#238 方案 A 把授权页放进 App 内 WebView，
    回跳由 `onNavigationRequest` / `onUrlChange` 在 WebView 内拦截，**不经系统 intent 分发**，
    因此 manifest 不需要注册 `com.otaku.app` scheme（见 `w1-login-dual-entry.md` §3）。
-   **未做**的只剩「断开与网站的连接」（等后端给平台代理端点）。
+   ~~**未做**的只剩「断开与网站的连接」（等后端给平台代理端点）~~ **后端已回（2026-11-07）**：
+   `POST /api/auth/site-unlink` 已上线，行为是清身份映射 + 撤销全部会话、**保留账号与数据**，
+   同一站点身份重新授权会接回原账号。客户端只剩接这个按钮（`account_menu.dart`）。
    #242（令牌交换代理）2026-10-29 已闭环——secret 已注入、真票据换 token 跑通，
    于是客户端侧最后一段（`POST /api/auth/site-login` 的失败分档）得以落地：契约 §1.1 给
    401 / 403 / 503 规定了**不同的用户动作**，此前被一句「授权失败，请重试」抹平，
    且因为 mock 抛的码（`UNAUTHORIZED`）与后端实测返的（`INVALID_CREDENTIALS`）不是同一个，
    那条分支在 mock 下命中、真机上不命中——**测试全绿而真机错文案**。
-   该文给后端的三个输入仍待回：断开连接的代理端点 / `user` 响应带 `identity_source` /
-   平台会话与站点令牌的寿命关系。
+   该文给后端的三个输入**已全部回齐**（2026-11-07，见 `w1-login-dual-entry.md` §5）：
+   断开端点 → `POST /api/auth/site-unlink`；身份来源 → `User.identity_source`；
+   寿命关系 → **平台会话 30 天与站点令牌解耦**，客户端只做 401 被动重走，不主动续期。
+   唯一没做到的是站点侧**即时**吊销：平台只存令牌哈希，调不动站点 `revoke`，详见该文 §5 第 1 条。
 3. **#125 人物页 / 详情页富字段**：#125 已关闭，方案留档在
    [`person-studio-proposal.md`](person-studio-proposal.md)。
    后端富字段（原名 / 别名 / 媒介 / 话数，#250）与关系四表（staff / characters /

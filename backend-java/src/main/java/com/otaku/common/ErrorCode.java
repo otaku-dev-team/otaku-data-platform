@@ -54,6 +54,14 @@ public enum ErrorCode {
     USERNAME_TAKEN(HttpStatus.CONFLICT),
     /** 阶段 2：改状态时收藏已不存在（对应验收 C11，客户端应提示刷新而不是自动重新收藏）。 */
     COLLECTION_REQUIRED(HttpStatus.CONFLICT),
+    /**
+     * 账号没有站点身份，却调了 `POST /api/auth/site-unlink`（W1「断开与网站的连接」）。
+     *
+     * <p>用 409 而不是 400：请求本身合法，是**当前账号的状态**不允许这个动作
+     * （与 {@link #COLLECTION_REQUIRED} 同口径）。客户端据此把入口藏掉，
+     * 而不是弹一个「请求有误」。
+     */
+    NOT_SITE_LINKED(HttpStatus.CONFLICT),
     /** W1.3b：登记的推送设备数超过每账号上限（方案 §4.3 第 5 点）。 */
     DEVICE_LIMIT_EXCEEDED(HttpStatus.CONFLICT),
     BATCH_TOO_LARGE(HttpStatus.PAYLOAD_TOO_LARGE),

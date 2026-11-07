@@ -47,4 +47,12 @@ class AuthFilterPathTest {
         assertThat(filtered("GET", "/api/works/W-1/comments")).isFalse();
         assertThat(filtered("POST", "/api/auth/login")).isFalse();
     }
+
+    @Test
+    @DisplayName("/api/auth/site-unlink 是精确路径，必须过鉴权——漏了的表现是 400 而不是 401")
+    void siteUnlinkIsProtected() {
+        assertThat(filtered("POST", "/api/auth/site-unlink")).isTrue();
+        // 只是前缀相似、并非本端点：不能被顺手放进来
+        assertThat(filtered("POST", "/api/auth/site-unlink-anything")).isFalse();
+    }
 }
