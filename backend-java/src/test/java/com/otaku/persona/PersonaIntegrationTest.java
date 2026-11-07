@@ -125,6 +125,32 @@ class PersonaIntegrationTest {
     }
 
     @Test
+    @DisplayName("九维恒有 9 个键；没有行为时九个都是 50（不是 0）")
+    void dimensionsAreAlwaysPresent() throws Exception {
+        JsonNode dims = getProfile().get("dimensions");
+
+        assertThat(dims.size()).isEqualTo(9);
+        for (String key : java.util.List.of("tag_focus", "exploration", "mainstream",
+                "pop_spread", "quality", "era_span", "fresh", "emotion", "completion")) {
+            assertThat(dims.get(key).asDouble()).as(key).isEqualTo(50.0);
+        }
+    }
+
+    @Test
+    @DisplayName("完成度按作品算：2 部收藏 1 部看过 = 50%，不是按行为行算")
+    void completionCountsWorks() throws Exception {
+        createWork("W-c1", "anime", "[]");
+        createWork("W-c2", "anime", "[]");
+        collect("W-c1", "watched");
+        collect("W-c2", "watching");
+        view("W-c1", 2);
+
+        JsonNode dims = getProfile().get("dimensions");
+
+        assertThat(dims.get("completion").asDouble()).isEqualTo(50.0);
+    }
+
+    @Test
     @DisplayName("软删的作品行为仍参与画像（历史偏好不因下架消失）")
     void softDeletedWorkStillCounts() throws Exception {
         createWork("W-gone", "comic", "[\"治愈\"]");

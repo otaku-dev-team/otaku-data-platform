@@ -78,16 +78,48 @@ public class PersonaService {
 
     private final PersonaRepository repository;
     private final Clock clock;
+    /** 题材白名单：决定哪些标签算「题材」（九维里的 tag_focus / exploration 靠它）。 */
+    private final java.util.Set<String> genreTags;
 
-    /** 生产用：时钟就是系统 UTC 时钟。标 {@code @Autowired} 是因为下面还有一个给测试的构造器。 */
+    /**
+     * 生产用：时钟就是系统 UTC 时钟。标 {@code @Autowired} 是因为下面还有给测试的构造器。
+     *
+     * <p>{@code app.persona.genre-tags} 是**逗号分隔的题材词表**，默认为空。
+     * 为什么做成配置而不是常量：仓库里没有任何「题材分类」的权威来源——
+     * `work.tags` 是 JSON 数组（题材、公司、角色混在一起），数据集的 `tags` 表虽然建了
+     * `kind` 列，映射只导了 `name`。硬编码一份名单等于替来源定义分类（#467 已否过一次）。
+     * 空表时 {@link PersonaDimensions} 的 tag_focus / exploration 返回中性 50，
+     * 其余七维照常——这是「没有分类就不假装有」。
+     */
     @org.springframework.beans.factory.annotation.Autowired
-    public PersonaService(PersonaRepository repository) {
-        this(repository, Clock.systemUTC());
+    public PersonaService(PersonaRepository repository,
+                          @org.springframework.beans.factory.annotation.Value(
+                                  "${app.persona.genre-tags:}") String genreTagsCsv) {
+        this(repository, Clock.systemUTC(), parseGenreTags(genreTagsCsv));
     }
 
     PersonaService(PersonaRepository repository, Clock clock) {
+        this(repository, clock, java.util.Set.of());
+    }
+
+    PersonaService(PersonaRepository repository, Clock clock, java.util.Set<String> genreTags) {
         this.repository = repository;
         this.clock = clock;
+        this.genreTags = genreTags;
+    }
+
+    private static java.util.Set<String> parseGenreTags(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return java.util.Set.of();
+        }
+        java.util.Set<String> tags = new LinkedHashSet<>();
+        for (String part : raw.split(",")) {
+            String tag = part.trim();
+            if (!tag.isEmpty()) {
+                tags.add(tag);
+            }
+        }
+        return tags;
     }
 
     public PersonaDtos.PersonaProfile build(UserRecord user) {
@@ -101,6 +133,8 @@ public class PersonaService {
         Map<String, Integer> ratingsByWork = new LinkedHashMap<>();
         // 已经用「我自己的点评分」占过的作品：源站均分不再覆盖它。
         java.util.Set<String> ownRatedWorks = new java.util.HashSet<>();
+        // 九维的输入按**作品**去重（同一作品可能同时出现在浏览/收藏/点评三路）。
+        Map<String, DimAgg> dimWorks = new LinkedHashMap<>();
         LinkedHashSet<String> recentActive = new LinkedHashSet<>();
         LocalDateTime recentCutoff = LocalDateTime.now(clock).minusDays(RECENT_DAYS);
 
@@ -119,6 +153,13 @@ public class PersonaService {
                         rawTags.merge(tag, perTag, Double::sum);
                     }
                 }
+            }
+
+            DimAgg agg = dimWorks.computeIfAbsent(row.workId(),
+                    id -> new DimAgg(row.tags(), row.releaseYear(), row.ratingCount()));
+            if (row.collectionStatus() != null) {
+                // 只有收藏行带状态；浏览/点评行为 null，不能被它们覆盖成 null。
+                agg.status = row.collectionStatus();
             }
 
             // 自己打的分优先于源站均分：先到的那条可能是浏览行（带的是站内均分），
@@ -142,12 +183,22 @@ public class PersonaService {
             }
         }
 
+        List<PersonaDimensions.DimWork> dimInputs = new ArrayList<>(dimWorks.size());
+        dimWorks.forEach((workId, agg) -> dimInputs.add(new PersonaDimensions.DimWork(
+                agg.tags, agg.year, ratingsByWork.get(workId),
+                // work.rating_count 是 INT；DimWork 要 Long（分位锚点按 log10 算，用不上精度）
+                agg.ratingCount == null ? null : agg.ratingCount.longValue(),
+                agg.status)));
+        Map<String, Double> dimensions = PersonaDimensions.compute(
+                dimInputs, genreTags, LocalDateTime.now(clock).getYear());
+
         return new PersonaDtos.PersonaProfile(
                 normalize(rawTypes),
                 normalize(rawTags),
                 tendency(new ArrayList<>(ratingsByWork.values())),
                 List.copyOf(recentActive),
                 signals.size(),
+                dimensions,
                 OffsetDateTime.now(clock));
     }
 
@@ -260,6 +311,23 @@ public class PersonaService {
         BigDecimal mean = BigDecimal.valueOf(sum)
                 .divide(BigDecimal.valueOf(ratings.size()), 1, RoundingMode.HALF_UP);
         return new PersonaDtos.RatingTendency(mean, ratings.size(), dist);
+    }
+
+    /**
+     * 九维输入的作品级聚合：同一作品的三路信号要合并成一条，否则「今年看了 5 遍」会被算成 5 部。
+     * 只有 {@code status} 会在多行之间被补全（收藏行有、浏览/点评行没有）。
+     */
+    private static final class DimAgg {
+        private final List<String> tags;
+        private final Integer year;
+        private final Integer ratingCount;
+        private String status;
+
+        private DimAgg(List<String> tags, Integer year, Integer ratingCount) {
+            this.tags = tags == null ? List.of() : tags;
+            this.year = year;
+            this.ratingCount = ratingCount;
+        }
     }
 
     /** 暴露给测试：把「现在」定住，避免 30 天窗口随真实时间漂移。 */

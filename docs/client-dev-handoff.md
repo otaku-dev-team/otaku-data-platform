@@ -286,3 +286,21 @@ W1 登录页给后端的三条输入已全部回齐（细节见 `w1-login-dual-e
 - 作品本身不存在 → 404 `WORK_NOT_FOUND`（与详情一致）。
 
 数据来源只有数据集通道，所以**新导入、还没跑过数据集同步的作品会没有系列**，这是预期行为。
+
+## 12. 画像九维：`GET /api/me/profile` 的 `dimensions`（2026-11-08 上线）
+
+```json
+"dimensions": {
+  "tag_focus": 50.0, "exploration": 50.0, "mainstream": 63.2, "pop_spread": 41.7,
+  "quality": 72.7, "era_span": 38.4, "fresh": 25.0, "emotion": 55.6, "completion": 66.7
+}
+```
+
+- **九个键恒存在**，0–100，**50 = 中性/数据不足**。缺失维度给 50，**不是 0**——
+  0 画在雷达上是个凹角，会被读成「这方面很弱」；
+- 键序固定为上面这个顺序（`tag_focus` → `completion`），雷达轴直接按它画；
+- 空画像（新用户）九个都是 50，配合 `sample_size = 0` 一起判断要不要显示「画像还在形成」；
+- ⚠️ **`tag_focus` / `exploration` 近期会一直是 50**：这两维要「哪些标签算题材」的白名单，
+  仓库里还没有权威分类。**不要**把它们画成「你的弱项」，建议这两轴先置灰或标注「待解锁」；
+- 旧字段（`type_weights` / `tag_weights` / `rating_tendency` / `recent_active` / `sample_size`）
+  全部保留，`#498` 切到 `dimensions` 时不必一次性删掉端上六轴派生。

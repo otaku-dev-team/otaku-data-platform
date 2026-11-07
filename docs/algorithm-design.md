@@ -64,9 +64,25 @@ Authorization: Bearer <token>
      "rating_tendency": { "mean": 8.0, "count": 2, "dist": [0,0,0,0,0,0,1,0,1,0] },
      "recent_active": [ "W-xxx", "W-yyy" ],
      "sample_size": 12,
+     "dimensions": {
+       "tag_focus": 50.0, "exploration": 50.0, "mainstream": 63.2, "pop_spread": 41.7,
+       "quality": 72.7, "era_span": 38.4, "fresh": 25.0, "emotion": 55.6, "completion": 66.7
+     },
      "generated_at": "2026-11-06T06:00:00Z"
    }
 ```
+
+**九维（#494，2026-11-08 接线）**：`dimensions` 由 `PersonaDimensions`（纯函数，口径对齐网站
+`persona.py` / `DIMENSION_VERSION=4`）计算，0–100、50 中性，**数据不足给 50 不给 0**——
+0 在雷达图上是一个凹角，看起来像「这方面很弱」，实际是「还没数据」。九个键**恒存在**。
+
+输入按**作品**去重（同一作品可能同时出现在浏览/收藏/点评三路），`status` 从收藏行补全，
+评分沿用 #495 的口径（自己的分优先、没有才回落来源站均分）。
+
+⚠️ **`tag_focus` / `exploration` 目前恒为 50**：这两维要一份「哪些标签算题材」的白名单，
+而仓库里没有权威分类——`work.tags` 把题材、公司、角色混在一个 JSON 数组里，数据集 `tags` 表
+虽然建了 `kind` 列但映射只导了 `name`。白名单通过 `app.persona.genre-tags` 配置（默认空）；
+在它落地前，这两维不参与区分度判断。硬编码一份名单等于替来源定义分类，#467 已否过一次。
 
 **两条对草案的修正**：
 

@@ -185,6 +185,8 @@ class RecommendServiceTest {
                 new PersonaDtos.RatingTendency(null, 0, zeros()),
                 List.of(),
                 tagWeights.isEmpty() && typeWeights.isEmpty() ? 0 : 10,
+                // 推荐不看九维（#494 是画像页的事），给空 map 即可
+                Map.of(),
                 OffsetDateTime.parse("2026-11-06T00:00:00Z"));
     }
 
