@@ -64,9 +64,13 @@ void main() {
       isNot(contains('评分态度')),
     );
     expect(insight.review, isNot(contains('均分')));
-    // 少一根必须解释：否则用户看到五边形只会觉得「怪」，不知道打分后会多出来。
+    // 少一根必须解释：否则用户看到五边形只会觉得「怪」。
     expect(insight.hints, hasLength(1));
     expect(insight.hints.single, contains('评分态度'));
+    // App 没有点评入口（#488），不能说「去打个分」——那是用户做不到的引导。
+    // 评分数据也能来自来源站均分（#516），所以正确说法是收藏/浏览。
+    expect(insight.hints.single, isNot(contains('打个分')));
+    expect(insight.hints.single, contains('收藏或浏览'));
   });
 
   test('打过分的用户：不需要任何解释', () {
