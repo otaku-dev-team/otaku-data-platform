@@ -38,6 +38,11 @@ public class PersonaRepository {
      *
      * <p>排序放在外层子查询外面：三路各自没有顺序，客户端要的「最近活跃」依赖整体顺序，
      * 在 SQL 里排一次比在 Java 里再排一次省事，也能让 LIMIT 真正截到「最近的 N 条」。
+     *
+     * <p><b>三路都带 `work.rating_value` / `rating_scale`（#495）</b>：用户在 Bangumi / B 站
+     * 导入的收藏自带评分，不该非得写一条点评才有「评分倾向」。JOIN 本来就为拿 `work_type`
+     * 与 `tags` 而存在，多选两列不多一次往返；同一作品在三路里会重复出现，
+     * 去重放在服务层按 `work_id` 做（那里才知道「点评的分数优先于源站均分」）。
      */
     public List<SignalRow> findSignals(long userId, int limit) {
         String sql = """
@@ -49,6 +54,8 @@ public class PersonaRepository {
                            v.view_count       AS view_count,
                            NULL               AS collection_status,
                            NULL               AS rating,
+                           w.rating_value     AS work_rating,
+                           w.rating_scale     AS work_rating_scale,
                            v.last_viewed_at   AS happened_at
                     FROM user_work_view v
                     JOIN work w ON w.work_id = v.work_id
@@ -61,6 +68,8 @@ public class PersonaRepository {
                            0,
                            c.status,
                            NULL,
+                           w.rating_value,
+                           w.rating_scale,
                            c.updated_at
                     FROM collection c
                     JOIN work w ON w.work_id = c.work_id
@@ -73,6 +82,8 @@ public class PersonaRepository {
                            0,
                            NULL,
                            r.rating,
+                           w.rating_value,
+                           w.rating_scale,
                            r.updated_at
                     FROM ugc_review r
                     JOIN work w ON w.work_id = r.work_id
@@ -91,6 +102,8 @@ public class PersonaRepository {
                         rs.getInt("view_count"),
                         rs.getString("collection_status"),
                         (Integer) rs.getObject("rating"),
+                        rs.getBigDecimal("work_rating"),
+                        rs.getString("work_rating_scale"),
                         rs.getObject("happened_at", LocalDateTime.class)));
     }
 
@@ -109,6 +122,10 @@ public class PersonaRepository {
     /**
      * 一行行为。`kind` 决定权重怎么算：
      * `view` 看 `viewCount`，`collection` 看 `collectionStatus`，`review` 看 `rating`。
+     *
+     * <p>`workRating` / `workRatingScale` 是**作品在来源站的均分与量纲**（#495），三路都带。
+     * 它们不是「这个人给的评价」，而是「这个作品的口碑」——只有在用户没自己打分时才拿来
+     * 当信号（口径见 {@code PersonaService}）。`rating` 才是这个人自己的评分。
      */
     public record SignalRow(
             String workId,
@@ -118,6 +135,8 @@ public class PersonaRepository {
             int viewCount,
             String collectionStatus,
             Integer rating,
+            java.math.BigDecimal workRating,
+            String workRatingScale,
             LocalDateTime happenedAt
     ) {
     }

@@ -136,12 +136,82 @@ class PersonaServiceTest {
     void unknownKindIsIgnored() {
         when(repository.findSignals(anyLong(), anyInt())).thenReturn(List.of(
                 new PersonaRepository.SignalRow("W-x", "anime", List.of("a"), "mystery", 0, null, null,
-                        LocalDateTime.parse("2026-11-05T10:00:00"))));
+                        null, null, LocalDateTime.parse("2026-11-05T10:00:00"))));
 
         var profile = service.build(USER);
 
         assertThat(profile.typeWeights()).isEmpty();
         assertThat(profile.sampleSize()).isEqualTo(1);  // 行为行仍计入样本量
+    }
+
+    // ------------------------------------------------------------------
+    // #495：源站评分进评分倾向
+    // ------------------------------------------------------------------
+
+    @Test
+    @DisplayName("源站评分进评分倾向：没写点评也能有评分轴，按量纲归一后四舍五入")
+    void workRatingFeedsTendency() {
+        when(repository.findSignals(anyLong(), anyInt())).thenReturn(List.of(
+                collectionRated("W-1", "watched", "8.44", "0-10", "2026-11-05T10:00:00"),
+                collectionRated("W-2", "watched", "9.50", "0-10", "2026-11-04T10:00:00")));
+
+        var tendency = service.build(USER).ratingTendency();
+
+        // 8.44 → 8、9.50 → 10；均值 (8+10)/2 = 9.0
+        assertThat(tendency.count()).isEqualTo(2);
+        assertThat(tendency.mean()).isEqualByComparingTo("9.0");
+        assertThat(tendency.dist().get(7)).isEqualTo(1);
+        assertThat(tendency.dist().get(9)).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("自己打的分优先于源站均分：用户的不满不被站内口碑稀释")
+    void ownRatingWinsOverWorkRating() {
+        when(repository.findSignals(anyLong(), anyInt())).thenReturn(List.of(
+                reviewRated("W-1", 3, "9.20", "0-10", "2026-11-05T10:00:00")));
+
+        var tendency = service.build(USER).ratingTendency();
+
+        assertThat(tendency.count()).isEqualTo(1);
+        assertThat(tendency.mean()).isEqualByComparingTo("3.0");
+        assertThat(tendency.dist().get(2)).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("同一作品出现在浏览/收藏/点评三路：评分只算一次，且仍是我自己的分")
+    void ratingCountedOncePerWork() {
+        when(repository.findSignals(anyLong(), anyInt())).thenReturn(List.of(
+                // 时间倒序：浏览、收藏都比点评「新」，回落值不能抢在点评分前面
+                viewRated("W-1", "9.00", "2026-11-05T12:00:00"),
+                collectionRated("W-1", "watched", "9.00", "0-10", "2026-11-05T11:00:00"),
+                reviewRated("W-1", 3, "9.00", "0-10", "2026-11-05T10:00:00")));
+
+        var tendency = service.build(USER).ratingTendency();
+
+        assertThat(tendency.count()).isEqualTo(1);
+        assertThat(tendency.mean()).isEqualByComparingTo("3.0");
+    }
+
+    @Test
+    @DisplayName("量纲边界：0-10 / 1-10 / 空按 1-10 处理；认不出的量纲不猜；越界裁剪")
+    void normalizeRatingBoundaries() {
+        assertThat(PersonaService.normalizeRating(new java.math.BigDecimal("8.44"), "0-10"))
+                .isEqualTo(8);
+        assertThat(PersonaService.normalizeRating(new java.math.BigDecimal("7.50"), "1-10"))
+                .isEqualTo(8);
+        // 空量纲按列的历史含义 0-10（当前 94,443 行数据全是 0-10）
+        assertThat(PersonaService.normalizeRating(new java.math.BigDecimal("6.20"), null))
+                .isEqualTo(6);
+        // 0 分按 1 分记：rating_value 非空就代表「有评分」
+        assertThat(PersonaService.normalizeRating(new java.math.BigDecimal("0.40"), "0-10"))
+                .isEqualTo(1);
+        assertThat(PersonaService.normalizeRating(new java.math.BigDecimal("10.60"), "0-10"))
+                .isEqualTo(10);
+        // 认不出的量纲不猜（猜错会把 5 分制的 4 分当成 10 分制的 4 分）
+        assertThat(PersonaService.normalizeRating(new java.math.BigDecimal("4.00"), "0-5")).isNull();
+        assertThat(PersonaService.normalizeRating(new java.math.BigDecimal("88"), "percentage"))
+                .isNull();
+        assertThat(PersonaService.normalizeRating(null, "0-10")).isNull();
     }
 
     // ------------------------------------------------------------------
@@ -151,18 +221,36 @@ class PersonaServiceTest {
     private static PersonaRepository.SignalRow view(
             String workId, String type, List<String> tags, int count, String at) {
         return new PersonaRepository.SignalRow(workId, type, tags, "view", count, null, null,
-                LocalDateTime.parse(at));
+                null, null, LocalDateTime.parse(at));
     }
 
     private static PersonaRepository.SignalRow collection(
             String workId, String type, List<String> tags, String status, String at) {
         return new PersonaRepository.SignalRow(workId, type, tags, "collection", 0, status, null,
-                LocalDateTime.parse(at));
+                null, null, LocalDateTime.parse(at));
     }
 
     private static PersonaRepository.SignalRow review(
             String workId, String type, List<String> tags, Integer rating, String at) {
         return new PersonaRepository.SignalRow(workId, type, tags, "review", 0, null, rating,
-                LocalDateTime.parse(at));
+                null, null, LocalDateTime.parse(at));
+    }
+
+    private static PersonaRepository.SignalRow collectionRated(
+            String workId, String status, String workRating, String scale, String at) {
+        return new PersonaRepository.SignalRow(workId, "anime", List.of(), "collection", 0, status,
+                null, new java.math.BigDecimal(workRating), scale, LocalDateTime.parse(at));
+    }
+
+    private static PersonaRepository.SignalRow reviewRated(
+            String workId, Integer rating, String workRating, String scale, String at) {
+        return new PersonaRepository.SignalRow(workId, "anime", List.of(), "review", 0, null, rating,
+                new java.math.BigDecimal(workRating), scale, LocalDateTime.parse(at));
+    }
+
+    private static PersonaRepository.SignalRow viewRated(
+            String workId, String workRating, String at) {
+        return new PersonaRepository.SignalRow(workId, "anime", List.of(), "view", 1, null, null,
+                new java.math.BigDecimal(workRating), "0-10", LocalDateTime.parse(at));
     }
 }
