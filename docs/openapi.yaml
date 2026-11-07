@@ -18,6 +18,7 @@ info:
     阶段 2（账号与个人数据，覆盖验收 C1–C11）：
 
     - `POST /api/auth/login`、`GET /api/auth/me`、`POST /api/auth/logout`
+    - `POST /api/auth/site-login`（站点授权换会话）、`POST /api/auth/site-unlink`（断开站点连接）
     - `GET|PUT|PATCH|DELETE /api/me/collections/{work_id}`、`GET /api/me/collections`
     - `POST /internal/accounts`（内部建号，**不是客户端契约**）
 
@@ -1269,6 +1270,46 @@ paths:
       responses:
         "204":
           description: 已撤销；或本来就没有有效会话（幂等）
+
+  /api/auth/site-unlink:
+    post:
+      tags: [账号]
+      summary: 断开与网站的连接（本地解绑 + 撤销全部会话）
+      operationId: siteUnlink
+      description: |
+        契约 `identity-linkup-contract.md` §5 三态② 的**本地解绑**，对应 W1 客户端账号菜单
+        里的「断开与网站的连接」。无请求体。
+
+        行为（同一事务）：
+
+        1. 清空 `identity_source` / `site_token_hash` / `site_token_expires_at`，
+           **账号与全部数据原样保留**（收藏、浏览、评论都不动）；
+        2. 撤销该账号**全部会话**（含当前这条）——断开后账号没有可用的登录凭据，
+           留着活会话等于留一个谁也续不上的入口。客户端收到 `204` 就该清本地令牌回登录页，
+           不要再打 `/api/auth/me`（会 `401`）。
+
+        **重连接回原账号**：同一站点身份再次授权时按 `external_user_id` 接回**同一个账号**，
+        数据不丢。这也正是「断开」与「注销」必须分开的原因——要连数据一起清，走 `DELETE /api/me`。
+
+        **本版本不代理站点吊销**：平台只存站点令牌的 SHA-256（契约 §7：库里不落原文），
+        而站点 `POST /api/auth/revoke` 要求持**原始 Bearer** 调用。所以断开只能丢弃哈希，
+        站点令牌在其寿命内（3600 秒、scope 仅 `identity` 只读）自然过期。
+        要做到「即时吊销」，需站点提供按映射吊销的能力，或平台改为可逆存储令牌——两者都要三人确认。
+        **客户端文案不要承诺「已立即吊销」。**
+
+        平台账号（`identity_source = null`）调用返回 `409 NOT_SITE_LINKED`：
+        请求合法，是账号状态不允许这个动作，客户端应把入口藏掉而不是报错。
+      security:
+        - bearerAuth: []
+      responses:
+        "204":
+          description: 已断开。**会话同时被撤销**，重复调用会因令牌失效返回 `401`
+        "401": { $ref: "#/components/responses/UnauthorizedSession" }
+        "409":
+          description: 当前账号不是站点账号（`NOT_SITE_LINKED`），无需断开
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
 
   /api/me:
     delete:
@@ -4430,6 +4471,18 @@ components:
           type: string
           format: date-time
           nullable: true
+        identity_source:
+          type: string
+          nullable: true
+          description: |
+            账号身份来源：`null` = 平台账号（用户名密码创建），
+            `otaku_site` = 由站点授权建立的账号（`POST /api/auth/site-login`）。
+
+            客户端用它决定账号菜单是否显示「身份来源」小字与「断开与网站的连接」——
+            平台账号没有站点连接可断（后端会回 `409 NOT_SITE_LINKED`）。
+            该字段**不随登录方式变化**：同一个账号从 `/api/auth/me` 与 `site-login`
+            拿到的值一致。
+          example: otaku_site
 
     SessionResponse:
       type: object

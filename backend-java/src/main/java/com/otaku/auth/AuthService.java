@@ -52,16 +52,19 @@ public class AuthService {
 
     private final UserRepository userRepository;
     private final SessionRepository sessionRepository;
+    private final SiteIdentityRepository siteIdentityRepository;
     private final PublicIdGenerator idGenerator;
     private final LoginThrottle loginThrottle;
     private final ApplicationEventPublisher events;
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder(BCRYPT_COST);
 
     public AuthService(UserRepository userRepository, SessionRepository sessionRepository,
+                       SiteIdentityRepository siteIdentityRepository,
                        PublicIdGenerator idGenerator, LoginThrottle loginThrottle,
                        ApplicationEventPublisher events) {
         this.userRepository = userRepository;
         this.sessionRepository = sessionRepository;
+        this.siteIdentityRepository = siteIdentityRepository;
         this.idGenerator = idGenerator;
         this.loginThrottle = loginThrottle;
         this.events = events;
@@ -178,8 +181,29 @@ public class AuthService {
     }
 
     public static UserDto toDto(UserRecord user) {
+        return toDto(user, null);
+    }
+
+    /**
+     * `/api/auth/me`：补上身份来源。
+     *
+     * <p>为什么这里多查一次 `app_user.identity_source`：`UserRecord` 刻意不带那 4 个
+     * 站点列（见 {@link SiteIdentityRepository} 类注释——为 4 个可空列改遍全部构造点
+     * 不划算），而客户端要这一位来决定菜单。代价是一次主键查询，只发生在冷启动的
+     * `/me` 上，可以接受。
+     */
+    public UserDto me(UserRecord user) {
+        return toDto(user, identitySource(user.id()));
+    }
+
+    private String identitySource(long userPk) {
+        return siteIdentityRepository.findIdentitySource(userPk).orElse(null);
+    }
+
+    public static UserDto toDto(UserRecord user, String identitySource) {
         return new UserDto(user.userId(), user.username(), null,
-                user.createdAt() == null ? null : user.createdAt().toInstant(ZoneOffset.UTC));
+                user.createdAt() == null ? null : user.createdAt().toInstant(ZoneOffset.UTC),
+                identitySource);
     }
 
     /**
@@ -202,7 +226,8 @@ public class AuthService {
             label = label.substring(0, 64);
         }
         sessionRepository.create(user.id(), SessionTokens.hash(token), label, now, expiresAt);
-        return new SessionResponse(token, expiresAt.toInstant(ZoneOffset.UTC), toDto(user));
+        return new SessionResponse(token, expiresAt.toInstant(ZoneOffset.UTC),
+                toDto(user, identitySource(user.id())));
     }
 
     private static String validateUsername(String raw) {

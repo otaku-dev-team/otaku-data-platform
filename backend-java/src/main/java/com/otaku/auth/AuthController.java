@@ -49,7 +49,7 @@ public class AuthController {
 
     @GetMapping("/me")
     public UserDto me(@RequestAttribute(AuthFilter.ATTRIBUTE_USER) UserRecord user) {
-        return AuthService.toDto(user);
+        return authService.me(user);
     }
 
     /**
@@ -60,5 +60,21 @@ public class AuthController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void logout(HttpServletRequest request) {
         authService.logout(AuthFilter.bearerToken(request));
+    }
+
+    /**
+     * 断开与网站的连接（契约 identity-linkup-contract.md §5 三态② 的本地解绑）。
+     *
+     * <p>挂 `/api/auth/**` 而不是 `/api/me/**`：这是**身份**动作，与 login / site-login /
+     * logout 同一组；客户端方案（`w1-login-dual-entry.md` §5 第 1 条）也一直是这么写的。
+     * 代价是 {@code AuthFilter} 的白名单要多一条精确路径——已经写在那里，并由
+     * {@code AuthFilterPathTest} 钉住。
+     *
+     * <p>成功后**当前会话也一并撤销**，所以客户端拿到 204 就要清本地令牌，不要再打 `/me`。
+     */
+    @PostMapping("/site-unlink")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void siteUnlink(@RequestAttribute(AuthFilter.ATTRIBUTE_USER) UserRecord user) {
+        siteLoginService.unlink(user);
     }
 }

@@ -12,6 +12,7 @@ import com.otaku.common.ErrorCode;
 import com.otaku.common.PublicIdGenerator;
 import com.otaku.common.SessionTokens;
 import com.otaku.config.AppProperties;
+import com.otaku.session.SessionRepository;
 import com.otaku.user.UserRecord;
 import com.otaku.user.UserRepository;
 import org.slf4j.Logger;
@@ -19,6 +20,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.security.SecureRandom;
@@ -52,6 +54,7 @@ public class SiteLoginService {
     private final SiteAuthClient siteAuthClient;
     private final SiteIdentityRepository identityRepository;
     private final UserRepository userRepository;
+    private final SessionRepository sessionRepository;
     private final AuthService authService;
     private final PublicIdGenerator idGenerator;
     private final AppProperties properties;
@@ -59,11 +62,13 @@ public class SiteLoginService {
     private final SecureRandom random = new SecureRandom();
 
     public SiteLoginService(SiteAuthClient siteAuthClient, SiteIdentityRepository identityRepository,
-                            UserRepository userRepository, AuthService authService,
+                            UserRepository userRepository, SessionRepository sessionRepository,
+                            AuthService authService,
                             PublicIdGenerator idGenerator, AppProperties properties) {
         this.siteAuthClient = siteAuthClient;
         this.identityRepository = identityRepository;
         this.userRepository = userRepository;
+        this.sessionRepository = sessionRepository;
         this.authService = authService;
         this.idGenerator = idGenerator;
         this.properties = properties;
@@ -93,9 +98,12 @@ public class SiteLoginService {
                 .orElseThrow(() -> new ApiException(ErrorCode.INTERNAL, "站点映射账号读取失败"));
 
         // nickname / avatar_url 只在这一步透出给客户端展示（契约 §7），不落库、不再分发。
-        UserDto dto = new UserDto(user.userId(), user.username(), site.nickname(),
-                user.createdAt() == null ? null : user.createdAt().toInstant(ZoneOffset.UTC));
+        // 身份来源取会话里那份（AuthService 已按库里的 identity_source 填好），
+        // 不再手写 "otaku_site"——两处字面量迟早分叉。
         SessionResponse session = authService.openSession(user, null);
+        UserDto base = session.user();
+        UserDto dto = new UserDto(base.userId(), base.username(), site.nickname(),
+                base.createdAt(), base.identitySource());
         return new SessionResponse(session.token(), session.expiresAt(), dto);
     }
 
@@ -123,9 +131,56 @@ public class SiteLoginService {
             identityRepository.updateSiteToken(mapping.userPk(), tokenHash, tokenExpiresAt, now);
             return mapping.userPk();
         }
+        // 断开过的账号（identity_source 已置空、external_user_id 还在）：接回原账号。
+        // 不接回就会新建一个空账号——用户看到的是「断开一次，收藏全没了」，而那并不是我们做过的操作。
+        var unlinked = identityRepository.findUnlinked(site.externalUserId());
+        if (unlinked.isPresent()) {
+            SiteIdentityRepository.SiteIdentityMapping mapping = unlinked.get();
+            if (!mapping.active()) {
+                // 已注销（deleted_at 置位的同时 status=disabled）或已被站点禁用：
+                // 不能因为「重新授权」就把一个被禁的账号复活。
+                throw new ApiException(ErrorCode.USER_DISABLED,
+                        "该账号已被站点管理员禁用，无法登录客户端");
+            }
+            identityRepository.relink(mapping.userPk(), identitySource, tokenHash, tokenExpiresAt, now);
+            log.info("site identity relinked: source={} user={}", identitySource, site.externalUserId());
+            return mapping.userPk();
+        }
         long created = createSiteUser(identitySource, site, tokenHash, tokenExpiresAt, now);
         log.info("site identity mapped: source={} user={}", identitySource, site.externalUserId());
         return created;
+    }
+
+    /**
+     * 断开与网站的连接（契约 identity-linkup-contract.md §5 三态② 的**本地解绑**）。
+     *
+     * <p>做两件事，且必须是同一事务：
+     * <ol>
+     *   <li>清 `identity_source` / `site_token_hash` / `site_token_expires_at`，
+     *       **账号与全部数据原样保留**；</li>
+     *   <li>撤销该账号**全部**会话——断开后账号没有可用的登录凭据（站点账号的口令是
+     *       随机占位），留着一条活会话等于留了一个谁也续不上的入口。</li>
+     * </ol>
+     *
+     * <p><b>为什么不调站点 `POST /api/auth/revoke`</b>：平台只存站点令牌的 SHA-256
+     * （契约 §7「库里不落原文」），而那个端点要求拿原始 Bearer 去调。所以这里只能丢弃哈希，
+     * 站点令牌在其寿命内（3600 秒、scope 仅 identity 只读）自然过期。要真正做到即时吊销，
+     * 得二选一：站点提供按映射吊销的能力，或平台改为可逆存储令牌——两者都要三人确认，
+     * 不在本次实现范围内。**不要在客户端文案里承诺「已立即吊销」**。
+     *
+     * <p>不做账号删除：`DELETE /api/me` 才是那条路。断开后重新授权会接回原账号，
+     * 这也是「断开」与「注销」在用户视角必须分开的原因。
+     */
+    @Transactional
+    public void unlink(UserRecord user) {
+        String identitySource = identityRepository.findIdentitySource(user.id())
+                .orElseThrow(() -> new ApiException(ErrorCode.NOT_SITE_LINKED,
+                        "当前账号不是站点账号，无需断开"));
+        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
+        int changed = identityRepository.unlink(user.id(), now);
+        int revoked = sessionRepository.revokeAllForUser(user.id(), now);
+        log.info("site unlink: user={} source={} changed={} revokedSessions={}",
+                user.userId(), identitySource, changed, revoked);
     }
 
     /**
