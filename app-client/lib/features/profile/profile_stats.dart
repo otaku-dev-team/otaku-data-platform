@@ -52,7 +52,10 @@ final profileStatsProvider = FutureProvider.autoDispose<ProfileStats>((
         watched++;
       case CollectionStatus.want:
         wanted++;
+      // 抛弃计入「收藏总数」（记录还在，收藏页的「全部」也含它），
+      // 但既不算看过也不算想看——它是「我不看了」（#496）。
       case CollectionStatus.watching:
+      case CollectionStatus.dropped:
       case null:
         break;
     }
