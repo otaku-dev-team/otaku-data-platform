@@ -68,6 +68,14 @@ public class PersonaService {
     static final double COLLECTION_WATCHED = 4.0;
     /** 收藏了但没设状态（契约允许 status 为空）：按「想看」算，不猜。 */
     static final double COLLECTION_UNSET = 2.0;
+    /**
+     * 抛弃（#496）：**负权重**，与点评 1–4 分的 {@link #REVIEW_LOW} 同量级。
+     *
+     * <p>为什么必须为负：把「明确不喜欢」当 0 或当「想看」（+2.0）都会让口味向量
+     * 朝反方向长——用户越讨厌某个题材，系统越以为他喜欢。量级取 -2.0 而不是 -4.0：
+     * 一次「抛弃」有冲动成分（看了两集不合口味），不应压过一部打完 9 分的作品。
+     */
+    static final double COLLECTION_DROPPED = -2.0;
     static final double REVIEW_HIGH = 3.0;
     static final double REVIEW_MID = 1.5;
     static final double REVIEW_LOW = -1.5;
@@ -135,6 +143,9 @@ public class PersonaService {
         java.util.Set<String> ownRatedWorks = new java.util.HashSet<>();
         // 九维的输入按**作品**去重（同一作品可能同时出现在浏览/收藏/点评三路）。
         Map<String, DimAgg> dimWorks = new LinkedHashMap<>();
+        // 被抛弃的作品不进九维（#496）：维度测的是「口味版图」，把明确拒绝的东西画进去
+        // 等于说「你爱看你不爱看的东西」。标签权重仍然记负分，两条路互不影响。
+        java.util.Set<String> droppedWorks = new java.util.HashSet<>();
         LinkedHashSet<String> recentActive = new LinkedHashSet<>();
         LocalDateTime recentCutoff = LocalDateTime.now(clock).minusDays(RECENT_DAYS);
 
@@ -155,11 +166,18 @@ public class PersonaService {
                 }
             }
 
-            DimAgg agg = dimWorks.computeIfAbsent(row.workId(),
-                    id -> new DimAgg(row.tags(), row.releaseYear(), row.ratingCount()));
-            if (row.collectionStatus() != null) {
-                // 只有收藏行带状态；浏览/点评行为 null，不能被它们覆盖成 null。
-                agg.status = row.collectionStatus();
+            boolean dropped = "collection".equals(row.kind())
+                    && "dropped".equals(row.collectionStatus());
+            if (dropped) {
+                // 只记「这部被拒过」，不建 DimWork；若别处（浏览）已建，最后统一剔除。
+                droppedWorks.add(row.workId());
+            } else {
+                DimAgg agg = dimWorks.computeIfAbsent(row.workId(),
+                        id -> new DimAgg(row.tags(), row.releaseYear(), row.ratingCount()));
+                if (row.collectionStatus() != null) {
+                    // 只有收藏行带状态；浏览/点评行为 null，不能被它们覆盖成 null。
+                    agg.status = row.collectionStatus();
+                }
             }
 
             // 自己打的分优先于源站均分：先到的那条可能是浏览行（带的是站内均分），
@@ -184,11 +202,16 @@ public class PersonaService {
         }
 
         List<PersonaDimensions.DimWork> dimInputs = new ArrayList<>(dimWorks.size());
-        dimWorks.forEach((workId, agg) -> dimInputs.add(new PersonaDimensions.DimWork(
-                agg.tags, agg.year, ratingsByWork.get(workId),
-                // work.rating_count 是 INT；DimWork 要 Long（分位锚点按 log10 算，用不上精度）
-                agg.ratingCount == null ? null : agg.ratingCount.longValue(),
-                agg.status)));
+        dimWorks.forEach((workId, agg) -> {
+            if (droppedWorks.contains(workId)) {
+                return;
+            }
+            dimInputs.add(new PersonaDimensions.DimWork(
+                    agg.tags, agg.year, ratingsByWork.get(workId),
+                    // work.rating_count 是 INT；DimWork 要 Long（分位锚点按 log10 算，用不上精度）
+                    agg.ratingCount == null ? null : agg.ratingCount.longValue(),
+                    agg.status));
+        });
         Map<String, Double> dimensions = PersonaDimensions.compute(
                 dimInputs, genreTags, LocalDateTime.now(clock).getYear());
 
@@ -248,6 +271,7 @@ public class PersonaService {
             case "want" -> COLLECTION_WANT;
             case "watching" -> COLLECTION_WATCHING;
             case "watched" -> COLLECTION_WATCHED;
+            case "dropped" -> COLLECTION_DROPPED;
             default -> COLLECTION_UNSET;
         };
     }

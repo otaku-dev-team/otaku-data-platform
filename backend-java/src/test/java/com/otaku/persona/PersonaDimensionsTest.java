@@ -197,6 +197,27 @@ class PersonaDimensionsTest {
     }
 
     @Test
+    @DisplayName("完成度：抛弃不进分母——它是「我不看了」，不是「还没看完」")
+    void completionIgnoresDropped() {
+        List<PersonaDimensions.DimWork> works = List.of(
+                work(List.of(), 2015, null, null, "watched"),
+                work(List.of(), 2015, null, null, "watching"),
+                work(List.of(), 2016, null, null, "dropped"),
+                work(List.of(), 2017, null, null, "dropped"));
+
+        // 只数 watched(1) + watching(1)：1/2 = 50%；把抛弃算进分母会变成 25%
+        assertThat(PersonaDimensions.compute(works, GENRES, YEAR).get("completion"))
+                .isEqualTo(50.0);
+
+        // 全是被抛弃的：没有完成度信号 → 中性，不是 0%
+        List<PersonaDimensions.DimWork> allDropped = List.of(
+                work(List.of(), 2015, null, null, "dropped"),
+                work(List.of(), 2016, null, null, "dropped"));
+        assertThat(PersonaDimensions.compute(allDropped, GENRES, YEAR).get("completion"))
+                .isEqualTo(PersonaDimensions.NEUTRAL);
+    }
+
+    @Test
     @DisplayName("没有题材白名单时题材类维度给中性，而不是判成 0")
     void missingGenreWhitelistIsNeutralNotZero() {
         List<PersonaDimensions.DimWork> works = List.of(

@@ -79,6 +79,7 @@ public class ConsoleUserRepository {
                                COALESCE(SUM(c.status = 'want'), 0)        AS want,
                                COALESCE(SUM(c.status = 'watching'), 0)    AS watching,
                                COALESCE(SUM(c.status = 'watched'), 0)     AS watched,
+                               COALESCE(SUM(c.status = 'dropped'), 0)     AS dropped,
                                COALESCE(SUM(c.status IS NULL), 0)         AS none,
                                MAX(c.updated_at)                          AS last_updated_at
                           FROM collection c
@@ -90,6 +91,7 @@ public class ConsoleUserRepository {
                         rs.getLong("want"),
                         rs.getLong("watching"),
                         rs.getLong("watched"),
+                        rs.getLong("dropped"),
                         rs.getLong("none"),
                         toOffset(rs.getObject("last_updated_at", LocalDateTime.class))));
     }

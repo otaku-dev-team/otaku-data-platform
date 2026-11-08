@@ -126,8 +126,9 @@ public final class PersonaDimensions {
      * @param year        发行年，可空
      * @param rating      归一化后的 1–10 分，可空（可空 = 未评分，不参与高分率）
      * @param ratingCount 评价人数，可空（可空 = 不参与热度维度）
-     * @param status      收藏状态：want / watching / watched / null（null 视作「想看」，
-     *                    与 {@code PersonaService} 现有的 COLLECTION_UNSET 口径一致）
+     * @param status      收藏状态：want / watching / watched / dropped / null（null 视作「想看」，
+     *                    与 {@code PersonaService} 现有的 COLLECTION_UNSET 口径一致；
+     *                    {@code dropped} 是「抛弃」，完成度与题材版图都不计它）
      */
     public record DimWork(
             List<String> tags,
@@ -346,11 +347,16 @@ public final class PersonaDimensions {
      * 100 分说明不了任何事。otaku 的 {@code watching} 本身就是「没看完」，直接计入未看。
      */
     static double completion(List<DimWork> works) {
-        if (works.isEmpty()) {
+        // 抛弃的作品不进分母（#496）：它是「我不看了」，不是「还没看完」。
+        // 计入分母会把完播率越拉越低，读起来像「你囤了很多」，其实那些是被否掉的。
+        List<DimWork> counted = works.stream()
+                .filter(w -> !"dropped".equals(w.status()))
+                .toList();
+        if (counted.isEmpty()) {
             return NEUTRAL;
         }
-        long watched = works.stream().filter(w -> "watched".equals(w.status())).count();
-        long unseen = works.stream()
+        long watched = counted.stream().filter(w -> "watched".equals(w.status())).count();
+        long unseen = counted.stream()
                 .filter(w -> w.status() == null
                         || "want".equals(w.status())
                         || "watching".equals(w.status()))
@@ -358,7 +364,7 @@ public final class PersonaDimensions {
         if (unseen == 0) {
             return NEUTRAL;
         }
-        return round((double) watched / works.size() * 100);
+        return round((double) watched / counted.size() * 100);
     }
 
     // ---------------------------------------------------------------- 内部工具

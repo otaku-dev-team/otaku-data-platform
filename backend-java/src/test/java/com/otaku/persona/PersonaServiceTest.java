@@ -259,6 +259,50 @@ class PersonaServiceTest {
     }
 
     // ------------------------------------------------------------------
+    // #496：抛弃（dropped）
+    // ------------------------------------------------------------------
+
+    @Test
+    @DisplayName("抛弃是负权重：-2 对 +4，归一后符号能翻过来（当成「想看」+2 就反了）")
+    void droppedCollectionCarriesNegativeWeight() {
+        when(repository.findSignals(anyLong(), anyInt())).thenReturn(List.of(
+                collection("W-1", "anime", List.of("机战"), "dropped", "2026-11-05T10:00:00"),
+                collection("W-2", "anime", List.of("奇幻"), "watched", "2026-11-05T09:00:00")));
+
+        Map<String, Double> tags = service.build(USER).tagWeights();
+
+        // 奇幻 +4 → 1.0；机战 -2 → -0.5
+        assertThat(tags.get("奇幻")).isEqualTo(1.0);
+        assertThat(tags.get("机战")).isEqualTo(-0.5);
+    }
+
+    @Test
+    @DisplayName("被抛弃的作品不进九维：整柜都是抛弃时画像是空态，不是「你最爱机战」")
+    void droppedWorksDoNotFeedDimensions() {
+        when(repository.findSignals(anyLong(), anyInt())).thenReturn(List.of(
+                collection("W-1", "anime", List.of("机战"), "dropped", "2026-11-05T10:00:00"),
+                collection("W-2", "anime", List.of("机战", "科幻"), "dropped", "2026-11-04T10:00:00")));
+
+        Map<String, Double> dims = service.build(USER).dimensions();
+
+        assertThat(dims.values())
+                .as("维度画的是口味版图，明确拒绝的东西不能算进去")
+                .containsOnly(PersonaDimensions.NEUTRAL);
+    }
+
+    @Test
+    @DisplayName("同一作品既有浏览又被抛弃：仍然不进九维（浏览不能把拒绝洗白）")
+    void viewedThenDroppedStillExcluded() {
+        when(repository.findSignals(anyLong(), anyInt())).thenReturn(List.of(
+                collection("W-1", "anime", List.of("机战"), "dropped", "2026-11-05T10:00:00"),
+                view("W-1", "anime", List.of("机战"), 3, "2026-11-05T09:00:00"),
+                collection("W-2", "anime", List.of("奇幻"), "watched", "2026-11-05T08:00:00")));
+
+        // 只剩 W-2 一部作品：完成度看 1 部（全 watched → 中性），但题材权重里机战仍为负
+        assertThat(service.build(USER).tagWeights().get("机战")).isNegative();
+    }
+
+    // ------------------------------------------------------------------
     // 夹具
     // ------------------------------------------------------------------
 

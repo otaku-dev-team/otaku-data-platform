@@ -312,3 +312,23 @@ W1 登录页给后端的三条输入已全部回齐（细节见 `w1-login-dual-e
   `completion` 的 50 则是「全看过」与「没数据」同值，**必须结合 `sample_size` 一起读**，别单看这一个数；
 - 旧字段（`type_weights` / `tag_weights` / `rating_tendency` / `recent_active` / `sample_size`）
   全部保留，`#498` 切到 `dimensions` 时不必一次性删掉端上六轴派生。
+
+## 13. 收藏第 4 态 `dropped`（抛弃，2026-11-08 上线，#496）
+
+```json
+PUT /api/me/collections/{work_id}   { "status": "dropped" }
+```
+
+- **枚举从 3 个变 4 个**：`want` / `watching` / `watched` / `dropped`。旧的三个取值语义**完全不变**，
+  所以现有 UI 不改也能跑；新增的那一档要自己补入口。
+- **`dropped` 与「取消收藏」不是一回事**：取消收藏是 `DELETE`（删行，负信号消失）；
+  抛弃是保留一条「我看过、但不喜欢」的记录，画像会拿它做**负权重**。
+  产品文案建议写「抛弃 / 不感兴趣」，别写「删除」。
+- **可以随时改回来**：`PATCH` 到 `want`/`watching`/`watched` 都行，不会被锁死（漏斗种子也不锁）。
+  这正是「用过才知道不喜欢」的正常路径。
+- **不进画像分母**：被抛弃的作品不算进九维（口味版图），但会让对应题材的权重变负。
+  所以「抛弃越多，画像越准」，不是「抛弃越多，画像越空」。
+- **站主后台**也加了 `dropped`：用户详情里的收藏聚合多一个 `collections.dropped` 字段
+  （与 `none` 分开统计——否则「被否掉」会被算成「没分类」）。
+- 漏斗（#492）三态映射到我们这边是：看过 → `watched`、在看 → `watching`、抛弃 → `dropped`。
+  （#492 原文写的是网站侧的 `seen/want/drop`，落地时按这张表换。）

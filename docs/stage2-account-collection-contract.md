@@ -117,7 +117,7 @@
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
 | `user_id` + `work_id` | 联合唯一 | 一个用户对一部作品最多一条记录 |
-| `status` | `want` / `watching` / `watched` / `null` | `null` = 已收藏但未设状态；**不是**「未收藏」 |
+| `status` | `want` / `watching` / `watched` / `dropped` / `null` | `null` = 已收藏但未设状态；**不是**「未收藏」；`dropped` = 抛弃（#496，明确不喜欢） |
 | `created_at` | ISO 8601 UTC | 首次收藏时间 |
 | `updated_at` | ISO 8601 UTC | 最后一次状态变更或创建时间，用于对账 |
 
@@ -181,7 +181,7 @@
 | --- | --- | --- |
 | `page` | 1 | 从 1 开始 |
 | `page_size` | 20 | **上限 50**，超过按 50 处理（与阶段 1 一致） |
-| `status` | 不传 = 全部 | `want` / `watching` / `watched`；传 `none` 表示「已收藏但未设状态」 |
+| `status` | 不传 = 全部 | `want` / `watching` / `watched` / `dropped`；传 `none` 表示「已收藏但未设状态」 |
 
 ```json
 // 200

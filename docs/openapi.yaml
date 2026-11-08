@@ -1422,10 +1422,11 @@ paths:
           in: query
           required: false
           description: |
-            按观看状态过滤。省略表示全部；`none` 表示「已收藏但未设状态」。
+            按观看状态过滤。省略表示全部；`none` 表示「已收藏但未设状态」；
+            `dropped` 是「抛弃」（#496，明确不喜欢，画像里记负权重）。
           schema:
             type: string
-            enum: [want, watching, watched, none]
+            enum: [want, watching, watched, dropped, none]
         - name: page
           in: query
           required: false
@@ -1743,9 +1744,10 @@ paths:
         而画像是个人的行为数据。改鉴权器的白名单不如沿用它已有的路径约定。
 
         口径：
-        - 三路信号：浏览（`user_work_view`，强调查看次数）、收藏（`collection`，按
-          `want`/`watching`/`watched` 递增）、点评（`ugc_review.rating`，7 分以上为正面、
-          4 分及以下为**负反馈**）；
+        - 三路信号：浏览（`user_work_view`，强调查看次数）、收藏（`collection`，`want` →
+          `watching` → `watched` 递增，**`dropped` 为负**）、点评（`ugc_review.rating`，
+          7 分以上为正面、4 分及以下为**负反馈**）；被抛弃的作品**不进九维的分母**
+          （维度画的是口味版图，不能把明确拒绝的东西算进去）；
         - **评分倾向有两路来源**（#495）：自己写的点评分优先；没写过点评的作品，回落到
           `work.rating_value`（来源站均分，按 `rating_scale` 归一成 1–10，认不出的量纲不猜）。
           同一作品只算一次——三路 UNION 会让同一部作品出现多次，不去重会把均值变成
@@ -2565,8 +2567,8 @@ paths:
       summary: 本站用户的收藏明细（二期）
       operationId: consoleUserCollections
       description: |
-        按 `updated_at` 降序分页。`status` 可过滤 `want` / `watching` / `watched` / `none`
-        （`none` = 已收藏但未设状态，与客户端契约一致）；非法值 `400`。
+        按 `updated_at` 降序分页。`status` 可过滤 `want` / `watching` / `watched` / `dropped` / `none`
+        （`none` = 已收藏但未设状态，与客户端契约一致；`dropped` = 抛弃）；非法值 `400`。
 
         先校验用户归属、再查收藏：不存在 `404`，属于别站 `403`。
         封面走平台代理地址（与客户端看到的一致），不把来源站暴露给后台页面。
@@ -2577,7 +2579,7 @@ paths:
         - name: status
           in: query
           description: 收藏状态过滤；省略表示全部
-          schema: { type: string, enum: [want, watching, watched, none] }
+          schema: { type: string, enum: [want, watching, watched, dropped, none] }
         - name: page
           in: query
           schema: { type: integer, minimum: 1, default: 1 }
@@ -4601,9 +4603,11 @@ components:
         status:
           type: string
           nullable: true
-          enum: [want, watching, watched]
+          enum: [want, watching, watched, dropped]
           description: |
             `null` / 省略 = 已收藏但不设状态。取值非法返回 `400`，**不会**静默降级为 `null`。
+            `dropped`（抛弃）是 #496 新增的第 4 态：**明确不喜欢**，画像里记负权重；
+            它与「取消收藏」不同——取消收藏删行、负信号消失，抛弃保留记录。
 
     CollectionState:
       type: object
@@ -4619,7 +4623,7 @@ components:
         status:
           type: string
           nullable: true
-          enum: [want, watching, watched]
+          enum: [want, watching, watched, dropped]
           description: "`null` 有两种含义：未收藏，或已收藏但未设状态——由 `collected` 区分"
         created_at:
           type: string
@@ -4651,7 +4655,7 @@ components:
         status:
           type: string
           nullable: true
-          enum: [want, watching, watched]
+          enum: [want, watching, watched, dropped]
         created_at:
           type: string
           format: date-time
@@ -5312,12 +5316,15 @@ components:
 
     ConsoleCollectionStats:
       type: object
-      required: [total, want, watching, watched, none]
+      required: [total, want, watching, watched, dropped, none]
       properties:
         total: { type: integer }
         want: { type: integer }
         watching: { type: integer }
         watched: { type: integer }
+        dropped:
+          type: integer
+          description: 抛弃的条数（#496）。与 `none` 分开统计，否则「被否掉」会被算成「没分类」
         none:
           type: integer
           description: 已收藏但未设状态的条数（对应 status 为 null）
@@ -5333,7 +5340,7 @@ components:
         status:
           type: string
           nullable: true
-          enum: [want, watching, watched]
+          enum: [want, watching, watched, dropped]
           description: null 表示已收藏但未设状态
         cover_url: { type: string, nullable: true }
         updated_at: { type: string, format: date-time }
