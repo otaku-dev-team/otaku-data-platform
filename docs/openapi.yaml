@@ -4896,7 +4896,9 @@ components:
       description: |
         阿宅画像（#401）。权重按维度各自归一化到 -1–1：最强的类型 / 标签恒为 ±1，
         没有行为的维度返回空对象而不是一堆 0。
-      required: [type_weights, tag_weights, rating_tendency, recent_active, sample_size, dimensions, generated_at]
+      required: [type_weights, tag_weights, rating_tendency, recent_active, sample_size, dimensions,
+                 persona_tags, trait_blurbs, hero_title, hero_code, hero_note, final_quip, rarity,
+                 generated_at]
       properties:
         type_weights:
           type: object
@@ -4986,6 +4988,59 @@ components:
               maximum: 100
               description: 完成度——收藏里 `watched` 的占比
         generated_at: { type: string, format: date-time }
+        persona_tags:
+          type: array
+          maxItems: 5
+          description: |
+            人格标签（#494）：`[题材簇 + 「系」, 主身份] + 特征`。
+            **前两位位置固定**——客户端按 `[0]` 取题材簇图标、`[1]` 取身份图标，特征从 `[2]` 开始。
+            只会命中前 3 个特征，所以上限 5 个。
+          items: { type: string }
+          example: [科幻系, 番剧党, 硬核]
+        trait_blurbs:
+          type: object
+          description: |
+            标签 → 一句解读，键序与 `persona_tags` 完全一致；页面按它渲染标签右侧的短文。
+            **随标签一起下发，不要客户端各抄一份**——两百多条文案分两端维护，改一处必漏一处。
+            某个标签没有对应文案时值为空串（不返回 null）。
+          additionalProperties: { type: string }
+        hero_title:
+          type: string
+          description: 称号中文名（例：赛博貔貅）。任何画像都有值，最差落到「宅宅」
+        hero_code:
+          type: string
+          description: 称号代号，分享短链与埋点用（例：PIXIU）；与称号一一对应、跨版本稳定
+        hero_note:
+          type: string
+          description: 称号的一句毒舌；同一用户稳定同一句（按画像指纹轮转，刷新不换）
+        final_quip:
+          type: string
+          description: |
+            收尾冷评，不带数字（长评收尾已带「看了 N 部」，这里再说一遍就是重复）。
+            按用户 id 稳定轮转：同一用户永远同一句。
+        rarity:
+          $ref: "#/components/schemas/PersonaRarity"
+
+    PersonaRarity:
+      type: object
+      description: |
+        称号稀有度。占比可能为 `null`——那是「校准样本未收录」，**不是 0%**：
+        写成 0 会落进最高档（SSR），意思完全反，客户端必须区分处理。
+      required: [tier, label]
+      properties:
+        tier:
+          type: string
+          description: 等级字母（SSR / SR / R / N）；未标定时为 `?`
+        label:
+          type: string
+          description: 等级名号（例：满地都是）
+        note:
+          type: string
+          description: 一句白话说明
+        share:
+          type: number
+          nullable: true
+          description: 该称号在人群中的占比（百分比）；未标定时为 null，**不给 0**
 
     PersonaRatingTendency:
       type: object

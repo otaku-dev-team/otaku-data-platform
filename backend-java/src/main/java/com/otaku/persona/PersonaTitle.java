@@ -174,6 +174,17 @@ public final class PersonaTitle {
         return out;
     }
 
+    /**
+     * 收尾冷评：同一 seed 永远同一句，换人换句。
+     *
+     * <p>与称号毒舌句同一套轮转（{@code md5(salt|seed) % n}），所以不用另存状态：
+     * 只要 seed 稳定（调用方传用户 id），刷新页面不会换句子。
+     */
+    public static String finalQuip(String seed) {
+        List<String> pool = PersonaCopyData.FINAL_QUIPS;
+        return pool.get(pickIndex(pool.size(), "final_quip", seed == null ? "" : seed));
+    }
+
     // ==================== 主身份 ====================
 
     /** 主身份：按媒介占比给出的标签。 */

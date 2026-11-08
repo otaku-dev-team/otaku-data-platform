@@ -36,7 +36,39 @@ public final class PersonaDtos {
              * 键序固定为 {@code PersonaDimensions.KEYS}，客户端雷达图按它画轴。
              */
             Map<String, Double> dimensions,
+            /**
+             * 人格标签全表（#494）：`[题材簇 + 「系」, 主身份] + 特征`，最多 5 个。
+             * 前两项位置固定——网站那边 `persona_tags[0]` 是簇、`[1]` 是身份，客户端据此取图标。
+             */
+            List<String> personaTags,
+            /**
+             * 标签 → 一句解读，键序与 {@link #personaTags} 一致。
+             *
+             * <p>**随标签一起下发，不让客户端各抄一份**：这些文案两百多条，
+             * 分散在两端改一处必然漏一处。
+             */
+            Map<String, String> traitBlurbs,
+            /** 称号：中文名 / 代号（分享短链与埋点用）/ 一句毒舌。 */
+            String heroTitle,
+            String heroCode,
+            String heroNote,
+            /** 收尾冷评；同一用户稳定同一句，刷新不换。 */
+            String finalQuip,
+            /**
+             * 称号稀有度。**占比 `share` 可能为 null**——那是「校准样本未收录」，
+             * 不是 0%：写成 0 会被分档成最高档，意思完全反。
+             */
+            Rarity rarity,
             OffsetDateTime generatedAt
+    ) {
+    }
+
+    /** 称号稀有度：等级字母 / 名号 / 白话说明 / 占比（未标定为 null）。 */
+    public record Rarity(
+            String tier,
+            String label,
+            String note,
+            Double share
     ) {
     }
 

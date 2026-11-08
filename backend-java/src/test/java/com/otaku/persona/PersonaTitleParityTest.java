@@ -172,4 +172,15 @@ class PersonaTitleParityTest {
         Map<String, String> blurbs = PersonaTitle.traitBlurbs(input);
         blurbs.forEach((tag, text) -> assertThat(text).as("标签 %s 缺说明", tag).isNotBlank());
     }
+
+    @Test
+    void finalQuipMatchesSitePick() {
+        // 期望值由网站 _pick(..., salt="final_quip") 跑出来：md5("final_quip|seed") % 3
+        assertThat(PersonaTitle.finalQuip("u1")).isEqualTo("别人的口味是爱好，你的口味是证据。");
+        assertThat(PersonaTitle.finalQuip("u0")).isEqualTo("你不是在挑番，你是在反复确认自己喜欢什么。");
+        assertThat(PersonaTitle.finalQuip("u5")).isEqualTo("这份成分表比你自己诚实——它记得你抛弃过的每一部。");
+        // 同一 seed 稳定（刷新页面不换句子），空 seed 也不抛
+        assertThat(PersonaTitle.finalQuip("u0")).isEqualTo(PersonaTitle.finalQuip("u0"));
+        assertThat(PersonaTitle.finalQuip(null)).isNotBlank();
+    }
 }
