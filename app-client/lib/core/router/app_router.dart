@@ -14,6 +14,7 @@ import '../../features/devices/device_page.dart';
 import '../../features/my_comment/my_comment_page.dart';
 import '../../features/person/person_page.dart';
 import '../../features/persona/persona_page.dart';
+import '../../features/persona/persona_quiz_page.dart';
 import '../../features/profile/profile_edit_page.dart';
 import '../../features/profile/profile_page.dart';
 import '../../features/recent/recent_history_page.dart';
@@ -176,6 +177,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: RoutePaths.personaSegment,
             builder: (context, state) => const PersonaPage(),
+            routes: [
+              // #505 冷启动补标：一部一部点「看过 / 在看 / 抛弃」，
+              // 答案写进 collection，标完回画像页。
+              GoRoute(
+                path: RoutePaths.personaQuizSegment,
+                builder: (context, state) => const PersonaQuizPage(),
+              ),
+            ],
           ),
           // #378 登录设备：同上，账号数据的二级视图。
           GoRoute(

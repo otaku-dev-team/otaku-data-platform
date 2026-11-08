@@ -55,6 +55,10 @@ abstract final class RoutePaths {
   static const String personaSegment = 'persona';
   static const String persona = '$profile/persona';
 
+  /// 冷启动补标（#505）：画像页的下一级。选完直接回画像页。
+  static const String personaQuizSegment = 'quiz';
+  static const String personaQuiz = '$persona/quiz';
+
   /// 登录设备（#378）。与画像同一种形态：挂在 `/me` 下的二级页，
   /// 从个人空间点进来、返回也回个人空间。
   static const String devicesSegment = 'devices';

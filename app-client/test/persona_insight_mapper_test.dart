@@ -3,159 +3,237 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:otaku_app/features/persona/persona_insight_mapper.dart';
 import 'package:otaku_app/features/persona/persona_view_data.dart';
 
-/// #375 画像映射：`PersonaProfile` → `PersonaInsight`。
+/// #375 / #498 画像映射：`PersonaProfile` → `PersonaInsight`。
 ///
-/// 全是纯函数断言，不搭 widget。钉的是「每根轴都能说出从哪来」——
-/// 公式错了雷达图只会画出一个**看不出问题的错形状**，比崩溃更难发现。
+/// 全是纯函数断言，不搭 widget。**这里钉的是「客户端不再自造轴」**：
+/// 九维的值必须与接口一模一样（只除以 100），任何一根轴出现公式，
+/// 两端之间就又分家了。
 void main() {
   PersonaDimension axis(PersonaInsight insight, String label) =>
       insight.dimensions.firstWhere((d) => d.label == label);
 
   Map<String, dynamic> profile({
-    Map<String, dynamic>? typeWeights,
-    Map<String, dynamic>? tagWeights,
-    double? mean = 7.5,
+    Map<String, dynamic>? dimensions,
     int sampleSize = 40,
-    int recentCount = 5,
+    String heroTitle = '赛博貔貅',
+    String heroCode = 'PIXIU',
+    String heroNote = '别人追番看剧情，你追番看注释。',
+    String quip = '你的收藏比简历还整齐。',
+    List<String>? tags,
+    Map<String, String>? blurbs,
+    Map<String, dynamic>? rarity,
   }) => <String, dynamic>{
-    'type_weights': typeWeights ?? <String, dynamic>{'anime': 1.0, 'novel': 0.3},
-    'tag_weights': tagWeights ?? <String, dynamic>{'科幻': 1.0, '群像': 0.5},
+    'type_weights': <String, dynamic>{'anime': 1.0},
+    'tag_weights': <String, dynamic>{'科幻': 1.0},
     'rating_tendency': <String, dynamic>{
-      'mean': mean,
-      'count': mean == null ? 0 : 12,
+      'mean': 7.5,
+      'count': 12,
       'dist': List<int>.filled(10, 0),
     },
-    'recent_active': List<String>.generate(recentCount, (i) => 'w-$i'),
+    'recent_active': <String>['w-1'],
     'sample_size': sampleSize,
-    'generated_at': '2026-11-07T00:00:00Z',
+    'dimensions':
+        dimensions ??
+        <String, dynamic>{
+          'tag_focus': 72,
+          'exploration': 64,
+          'mainstream': 38,
+          'pop_spread': 71,
+          'quality': 83,
+          'era_span': 56,
+          'fresh': 45,
+          'emotion': 31,
+          'completion': 68,
+        },
+    'persona_tags': tags ?? <String>['科幻系', '番剧党', '考据癖'],
+    'trait_blurbs':
+        blurbs ??
+        <String, String>{
+          '科幻系': '设定比剧情更让你上头。',
+          '番剧党': '主要还是看动画。',
+          '考据癖': '看完去补设定集。',
+        },
+    'hero_title': heroTitle,
+    'hero_code': heroCode,
+    'hero_note': heroNote,
+    'final_quip': quip,
+    'rarity':
+        rarity ??
+        <String, dynamic>{
+          'tier': 'SR',
+          'label': '不算常见',
+          'note': '一百个人里只有几个这么挑。',
+          'share': 6.4,
+        },
+    'generated_at': '2026-11-09T00:00:00Z',
   };
 
-  test('没有任何行为：不画六边形，走空态', () {
+  test('没有任何行为：不画九边形，走空态', () {
     final insight = PersonaInsightMapper.fromProfile(profile(sampleSize: 0));
 
-    // 「全是 0 的六边形」看起来像「你的口味是零」，比空态更糟。
+    // 「九边全是 50」看起来像「你各方面都很平均」，比空态更糟。
     expect(insight.dimensions, isEmpty);
     expect(insight.title, isEmpty);
     expect(insight.review, isEmpty);
   });
 
-  test('典型画像：六轴齐全，称号与锐评都能追溯到字段', () {
+  test('九维齐全：顺序固定，值 = 接口 0–100 / 100', () {
     final insight = PersonaInsightMapper.fromProfile(profile());
 
-    expect(insight.dimensions.length, 6);
-    expect(insight.title, '科幻派');
-    expect(insight.review, contains('动画')); // type_weights 的最强项
-    expect(insight.review, contains('科幻')); // tag_weights 的最强正项
-    expect(insight.review, contains('均分 7.5'));
-    expect(insight.topTags, <String>['科幻', '群像']);
-
-    // 类型集中度 = 1.0 / (1.0 + 0.3)
-    expect(axis(insight, '类型集中度').value, closeTo(0.769, 0.001));
-    // 近期活跃 = 5 / 20
-    expect(axis(insight, '近期活跃').value, closeTo(0.25, 0.001));
-  });
-
-  test('没打过分的用户：少一根轴，而不是画一根 0', () {
-    final insight = PersonaInsightMapper.fromProfile(profile(mean: null));
-
-    expect(insight.dimensions.length, 5);
+    expect(insight.dimensions, hasLength(9));
     expect(
-      insight.dimensions.map((d) => d.label),
-      isNot(contains('评分态度')),
+      insight.dimensions.map((d) => d.label).toList(),
+      <String>[
+        '题材垂直',
+        '探索广度',
+        '大众度',
+        '冷热跨度',
+        '高分率',
+        '年代跨度',
+        '追新度',
+        '情绪取向',
+        '完成度',
+      ],
     );
-    expect(insight.review, isNot(contains('均分')));
-    // 少一根必须解释：否则用户看到五边形只会觉得「怪」。
-    expect(insight.hints, hasLength(1));
-    expect(insight.hints.single, contains('评分态度'));
-    // App 没有点评入口（#488），不能说「去打个分」——那是用户做不到的引导。
-    // 评分数据也能来自来源站均分（#516），所以正确说法是收藏/浏览。
-    expect(insight.hints.single, isNot(contains('打个分')));
-    expect(insight.hints.single, contains('收藏或浏览'));
+    // 逐值比对：任何「端上再算一遍」的改动都会在这里露馅。
+    expect(axis(insight, '题材垂直').value, closeTo(0.72, 1e-9));
+    expect(axis(insight, '大众度').value, closeTo(0.38, 1e-9));
+    expect(axis(insight, '完成度').value, closeTo(0.68, 1e-9));
   });
 
-  test('打过分的用户：不需要任何解释', () {
-    expect(PersonaInsightMapper.fromProfile(profile()).hints, isEmpty);
+  test('轴序与契约键序一致（分享参数按下标对应，不能重排）', () {
+    expect(
+      PersonaInsightMapper.axes.map((a) => a.key).toList(),
+      <String>[
+        'tag_focus',
+        'exploration',
+        'mainstream',
+        'pop_spread',
+        'quality',
+        'era_span',
+        'fresh',
+        'emotion',
+        'completion',
+      ],
+    );
   });
 
-  test('权重全零：不除零、不产生 NaN', () {
+  test('缺一维：按中性 50（=0.5）降级，不能画成 0', () {
     final insight = PersonaInsightMapper.fromProfile(
       profile(
-        typeWeights: <String, dynamic>{'anime': 0.0, 'novel': 0.0},
-        tagWeights: <String, dynamic>{'科幻': 0.0},
+        dimensions: <String, dynamic>{
+          'tag_focus': 72,
+          // 其余八个全缺
+        },
       ),
     );
 
-    expect(axis(insight, '类型集中度').value, 0);
-    expect(axis(insight, '口味浓度').value, 0);
-    // NaN 会让 Canvas 静默不画那根轴，看起来像「没数据」，事后极难查。
+    expect(insight.dimensions, hasLength(9));
+    expect(axis(insight, '题材垂直').value, closeTo(0.72, 1e-9));
+    // 0 会是雷达图上的一个凹角，看起来像「你这方面很弱」。
+    expect(axis(insight, '完成度').value, closeTo(0.5, 1e-9));
+  });
+
+  test('值越界 / 类型不对：夹到 0..1，不产生 NaN', () {
+    final insight = PersonaInsightMapper.fromProfile(
+      profile(
+        dimensions: <String, dynamic>{
+          'tag_focus': 130,
+          'exploration': -20,
+          'mainstream': '38', // 字符串数字照解析
+          'quality': 'oops', // 解析不了 → 中性
+        },
+      ),
+    );
+
+    expect(axis(insight, '题材垂直').value, 1.0);
+    expect(axis(insight, '探索广度').value, 0.0);
+    expect(axis(insight, '大众度').value, closeTo(0.38, 1e-9));
+    expect(axis(insight, '高分率').value, closeTo(0.5, 1e-9));
     for (final dimension in insight.dimensions) {
       expect(dimension.value.isFinite, isTrue, reason: '${dimension.label} 出现了 NaN');
     }
   });
 
-  test('只有一个正标签：口味浓度拉满', () {
+  test('称号三件套 + 稀有度原样透传', () {
+    final insight = PersonaInsightMapper.fromProfile(profile());
+
+    expect(insight.title, '赛博貔貅');
+    expect(insight.titleCode, 'PIXIU');
+    expect(insight.review, contains('看注释'));
+    expect(insight.quip, '你的收藏比简历还整齐。');
+    expect(insight.rarity?.tier, 'SR');
+    expect(insight.rarity?.label, '不算常见');
+    expect(insight.rarity?.share, 6.4);
+  });
+
+  test('稀有度 share=null 保留 null——写成 0% 会变成最稀有', () {
     final insight = PersonaInsightMapper.fromProfile(
-      profile(tagWeights: <String, dynamic>{'科幻': 1.0}),
+      profile(
+        rarity: <String, dynamic>{
+          'tier': '?',
+          'label': '未标定',
+          'share': null,
+        },
+      ),
     );
 
-    expect(axis(insight, '口味浓度').value, 1);
+    expect(insight.rarity?.tier, '?');
+    expect(insight.rarity?.share, isNull);
+    expect(insight.rarity?.isCalibrated, isFalse);
   });
 
-  test('负权重是「不喜欢」：不当称号、不进偏好标签、不进锐评', () {
+  test('稀有度缺失：不画徽章，不编一个默认档', () {
     final insight = PersonaInsightMapper.fromProfile(
-      profile(tagWeights: <String, dynamic>{'后宫': -0.9, '科幻': 0.2}),
+      profile(rarity: <String, dynamic>{}),
+    );
+    expect(insight.rarity, isNull);
+  });
+
+  test('标签与解读：最多 5 个、空串剔除、键一一对应', () {
+    final insight = PersonaInsightMapper.fromProfile(
+      profile(
+        tags: <String>['科幻系', '番剧党', '考据癖', '冷门', '慢热', '第六个', '  '],
+        blurbs: <String, String>{
+          '科幻系': '设定党',
+          '番剧党': '  ',
+          '考据癖': '补年表',
+        },
+      ),
     );
 
-    expect(insight.title, '科幻派');
-    expect(insight.topTags, <String>['科幻']);
-    expect(insight.review, isNot(contains('后宫')));
+    expect(insight.topTags, hasLength(5));
+    expect(insight.topTags, isNot(contains('第六个')));
+    // 空串 = 没有文案，不占一行（页面按它决定是否画解读）。
+    expect(insight.traitBlurbs.containsKey('番剧党'), isFalse);
+    expect(insight.traitBlurbs['科幻系'], '设定党');
   });
 
-  test('只有负标签：称号回落到类型，不拿负标签凑', () {
-    final insight = PersonaInsightMapper.fromProfile(
-      profile(tagWeights: <String, dynamic>{'后宫': -0.9}),
-    );
+  test('样本不足 5 条：解释形状为什么靠中间；够 5 条就不解释', () {
+    final few = PersonaInsightMapper.fromProfile(profile(sampleSize: 3));
+    expect(few.hints, hasLength(1));
+    expect(few.hints.single, contains('3 条'));
+    // 有行为照常画轴，只是补一句说明。
+    expect(few.dimensions, hasLength(9));
 
-    expect(insight.title, '动画观众');
-    expect(insight.topTags, isEmpty);
+    expect(PersonaInsightMapper.fromProfile(profile()).hints, isEmpty);
   });
 
-  test('行为太少：不生成称号，锐评只鼓励多看', () {
-    final insight = PersonaInsightMapper.fromProfile(profile(sampleSize: 3));
-
-    expect(insight.title, isEmpty);
-    expect(insight.review, contains('看得还不够多'));
-    // 有行为就照常画轴，只是不下定义。
-    expect(insight.dimensions, isNotEmpty);
-  });
-
-  test('打分很严 / 很宽容都算「有态度」，两端都拉满', () {
-    double attitude(double mean) =>
-        axis(PersonaInsightMapper.fromProfile(profile(mean: mean)), '评分态度')
-            .value;
-
-    expect(attitude(1.0), 1);
-    expect(attitude(10.0), 1);
-    expect(attitude(5.5), 0); // 正好中位 = 没有倾向
-  });
-
-  test('近期活跃按契约上限 20 折算', () {
-    final insight = PersonaInsightMapper.fromProfile(profile(recentCount: 20));
-
-    expect(axis(insight, '近期活跃').value, 1);
-  });
-
-  test('字段类型不对：退化为空态，不抛异常', () {
+  test('字段类型全错：降级但不崩', () {
     final insight = PersonaInsightMapper.fromProfile(<String, dynamic>{
-      'type_weights': 'oops',
-      'tag_weights': <String, dynamic>{'科幻': 'high'},
-      'rating_tendency': 'oops',
-      'recent_active': 'oops',
+      'dimensions': 'oops',
+      'persona_tags': 'oops',
+      'trait_blurbs': <String>['oops'],
+      'rarity': 'oops',
+      'hero_title': 42,
       'sample_size': '40',
     });
 
-    // sample_size 解析不出 → 0 → 空态。契约坏了宁可显示空，也不要画出乱码。
-    expect(insight.dimensions, isEmpty);
+    // sample_size 能解析 → 有画像；其余字段降级，九维按中性补满。
+    expect(insight.dimensions, hasLength(9));
+    expect(insight.dimensions.every((d) => d.value == 0.5), isTrue);
     expect(insight.title, isEmpty);
+    expect(insight.topTags, isEmpty);
+    expect(insight.rarity, isNull);
   });
 }

@@ -102,7 +102,7 @@ void main() {
     expect(find.text('银河边缘的旧书店'), findsNothing);
   });
 
-  testWidgets('画像页渲染六维雷达、锐评与待接口入口', (tester) async {
+  testWidgets('画像页渲染九维雷达、称号与稀有度、标签解读', (tester) async {
     await tester.pumpWidget(
       host(
         const PersonaPage(),
@@ -113,11 +113,19 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(PersonaRadarChart), findsOneWidget);
-    expect(find.text('深夜考据派'), findsOneWidget);
-    expect(find.textContaining('设定集'), findsOneWidget);
+    expect(find.text('赛博貔貅'), findsOneWidget);
+    // 代号与稀有度徽章都在称号卡里；`SR` 是 #490 口径的档位字母。
+    expect(find.text('PIXIU'), findsOneWidget);
+    expect(find.text('SR'), findsOneWidget);
+    expect(find.textContaining('6.4%'), findsOneWidget);
+    // 锐评 + 收尾冷评。「设定集」在两处出现（锐评与标签解读），
+    // 所以用 findsWidgets 而不是 findsOneWidget。
+    expect(find.textContaining('设定集'), findsWidgets);
+    expect(find.textContaining('看注释'), findsOneWidget);
+    // 标签 + 逐条解读（#500）：解读文案来自 trait_blurbs，不是页面自己编的。
+    expect(find.text('考据癖'), findsOneWidget);
+    expect(find.textContaining('补设定集'), findsOneWidget);
     expect(find.text('阿宅画像'), findsOneWidget);
-    // 这里用的是假数据源，验的是「页面能渲染任何 PersonaInsight」——
-    // 真数据下长什么样由 PersonaInsightMapper 决定（见同名 _test 文件）。
     // 「待接口」那一排在 ListView 底部，默认视口里可能还没被 build，
     // 这里不钉它的数量，只钉首屏能看见的内容。
   });

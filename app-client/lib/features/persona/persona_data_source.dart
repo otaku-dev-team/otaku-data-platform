@@ -18,8 +18,8 @@ import 'persona_view_data.dart';
 ///
 /// - #376 推荐位：[PersonaRemoteDataSource.fetchFeed] 消费 `/api/me/recommend`；
 /// - #375 画像页：[PersonaRemoteDataSource.fetchInsight] 消费 `/api/me/profile`，
-///   六轴由 [PersonaInsightMapper] 按固定公式派生（口径见
-///   `docs/persona-mapping-proposal.md` §3A）。
+///   九维由**服务端算好**（`dimensions`），[PersonaInsightMapper] 只做
+///   0–100 → 0–1 的换算与字段改名（#498 起不再自造轴）。
 ///
 /// 换实现只改 [personaDataSourceProvider]；测试用 `overrideWithValue` 注入假数据源。
 abstract interface class PersonaDataSource {
@@ -60,14 +60,12 @@ class PersonaRemoteDataSource implements PersonaDataSource {
   /// 首页横排用 20 条：契约默认 20、上限 50，取默认值即可。
   static const int _limit = 20;
 
-  /// #375 画像页：把 `PersonaProfile` 的权重映射成展示模型。
+  /// #375 画像页：`PersonaProfile` → 展示模型。
   ///
-  /// ⚠️ 这不等于「服务端算了六维」——服务端只给类型 / 标签权重与评分倾向，
-  /// 六根轴是**客户端按固定公式派生**的（[PersonaInsightMapper]，口径见
-  /// `docs/persona-mapping-proposal.md` §3A）。
-  ///
-  /// 代价是轴名与早期设计稿不同：设计稿的「热度」「社交」没有数据源
-  /// （前者要全站基准，后者要拆分的点评条数），已经放弃，换成能追溯来源的六轴。
+  /// 九维（`dimensions`）、称号三件套（`hero_*`）、标签解读（`trait_blurbs`）
+  /// 与稀有度（`rarity`）**全部由服务端下发**，客户端不做任何派生。
+  /// 这里是 2026-11-09 之后唯一的画像口径（#498）——早先客户端自造六轴的
+  /// 那套已删除，见 `PersonaInsightMapper` 的类注释。
   @override
   Future<PersonaInsight> fetchInsight() async {
     final response = await _dio.get<Map<String, dynamic>>(profilePath);
