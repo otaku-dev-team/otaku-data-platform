@@ -118,6 +118,10 @@ class AccountProfileIntegrationTest {
                 com.otaku.common.FeatureFlags.KEY_ACCOUNT_EDIT,
                 com.otaku.common.FeatureFlags.KEY_AVATAR_UPLOAD);
 
+        // `AppConfigService.current()` 是懒加载 + 常驻的快照；直接删库不会让它失效，
+        // 不 reload 的话下面读到的还是 setUp 里打开的 true。
+        configService.reload();
+
         JsonNode putError = body(authedPut("/api/me/account", "{\"bio\":\"x\"}"), 403);
         assertThat(putError.at("/error/code").asText()).isEqualTo("FEATURE_DISABLED");
 
