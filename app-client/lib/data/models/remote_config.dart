@@ -38,6 +38,13 @@ class RemoteConfig {
 
   /// 首页公告。`app.notice` 缺键 / 形状不对 / `enabled=false` 都返回 null。
   RemoteNotice? get notice => RemoteNotice.fromJson(values['app.notice']);
+
+  /// 读一个布尔开关。
+  ///
+  /// **缺键、类型不对、配置没拉到，一律 `false`**：开关的默认值必须是「关」，
+  /// 否则后端从没配过这一项就等于偷偷打开了。契约也明确 `values` 是
+  /// 「客户端只认自己认识的键」——所以读不到不是错误，是常态。
+  bool flag(String key) => values[key] == true;
 }
 
 /// 首页顶部公告条。

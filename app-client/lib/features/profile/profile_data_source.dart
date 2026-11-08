@@ -118,17 +118,16 @@ final profileProvider = FutureProvider<UserProfile>((ref) async {
   // 失败态变成 AsyncLoading(error:…) 一直挂在骨架屏上。
 }, retry: (retryCount, error) => null);
 
-/// 界面上的**显示名**：平台昵称优先，没有则回落账号的 label。
+/// 界面上的**显示名**：**只取站点昵称**。
 ///
-/// 抽成 provider 是因为有**两处**在显示它——个人空间身份卡、桌面账号菜单。
-/// 各写一遍就会出现「一处改了、另一处还是旧名字」：身份卡之前就是这样，
-/// 它只读 `AuthState.user`，于是编辑页保存成功、回到个人空间名字没变。
+/// 平台自设昵称（`PUT /api/me/account` 的 `display_name`）暂时不展示、也不让改——
+/// 口径是「与站点保持一致」：站点能改，App 才跟着变。
 ///
-/// 未登录时返回空串（`AuthState.user` 为 null），显示什么文案由调用方决定
-/// ——「未登录」和「正在读取账号…」是页面语义，不该塞进数据层。
+/// 抽成 provider 是因为有**两处**在显示它（个人空间身份卡、桌面账号菜单），
+/// 各写一遍就会出现「一处改了、另一处还是旧名字」。
+///
+/// 未登录时返回空串（`AuthState.user` 为 null），显示什么文案由调用方决定。
 final profileDisplayNameProvider = Provider<String>((ref) {
-  final nickname = ref.watch(profileProvider).value?.displayName?.trim();
-  if (nickname != null && nickname.isNotEmpty) return nickname;
   final account = ref.watch(
     authControllerProvider.select((state) => state.user?.label),
   );

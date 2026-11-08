@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/network/api_exception.dart';
 import '../../core/theme/design_tokens.dart';
+import '../config/feature_flags.dart';
 import 'ugc_review.dart';
 
 /// 作品详情页的「我的点评」区块：概览 + 打分 / 写评 + 编辑 / 删除。
@@ -38,6 +39,11 @@ class _WorkReviewSectionState extends ConsumerState<WorkReviewSection> {
 
   Future<void> _submit(WorkReview? existing) async {
     if (_busy) return;
+    // 服务端开关（`feature.work_review`，默认关）。关着时不写任何数据。
+    if (!ref.read(featureFlagsProvider).workReview) {
+      _toast('点评功能暂未开放');
+      return;
+    }
     final body = _body.text.trim();
     if (_rating <= 0 && body.isEmpty) {
       _toast('至少打个分或写一句');
@@ -127,6 +133,7 @@ class _WorkReviewSectionState extends ConsumerState<WorkReviewSection> {
     final summary = ref.watch(workReviewSummaryProvider(widget.workId)).value;
     final signedIn = ref.watch(ugcReviewAudienceProvider);
     final mine = ref.watch(myWorkReviewProvider(widget.workId)).value;
+    final reviewEnabled = ref.watch(featureFlagsProvider).workReview;
 
     return Card(
       clipBehavior: Clip.antiAlias,
@@ -156,7 +163,26 @@ class _WorkReviewSectionState extends ConsumerState<WorkReviewSection> {
               ],
             ),
             const SizedBox(height: Space.s3),
-            if (!signedIn)
+            if (!reviewEnabled) ...[
+              // 开关关着（`feature.work_review` 默认 false）：**不展示编辑器**，
+              // 但**保留概览**——那是只读数据，藏起来反而少一层信息。
+              // 若之前在 1.1.7 里发过，仍给「删除」让用户清理自己的数据。
+              if (mine != null && !mine.isDeleted)
+                _MineView(
+                  review: mine,
+                  busy: _busy,
+                  canEdit: false,
+                  onEdit: () {},
+                  onDelete: () => _delete(mine),
+                )
+              else
+                Text(
+                  '点评功能暂未开放。',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+            ] else if (!signedIn)
               Text(
                 '登录后可以打分、写点评。',
                 style: theme.textTheme.bodySmall?.copyWith(
@@ -167,6 +193,7 @@ class _WorkReviewSectionState extends ConsumerState<WorkReviewSection> {
               _MineView(
                 review: mine,
                 busy: _busy,
+                canEdit: true,
                 onEdit: () => _startEdit(mine),
                 onDelete: () => _delete(mine),
               )
@@ -197,12 +224,16 @@ class _MineView extends StatelessWidget {
   const _MineView({
     required this.review,
     required this.busy,
+    required this.canEdit,
     required this.onEdit,
     required this.onDelete,
   });
 
   final WorkReview review;
   final bool busy;
+
+  /// 服务端开关关着时为 `false`：不给「编辑」（改了也不会公开，只会白写一遍）。
+  final bool canEdit;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
 
@@ -254,7 +285,7 @@ class _MineView extends StatelessWidget {
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (review.isEditable)
+                if (review.isEditable && canEdit)
                   TextButton(
                     onPressed: busy ? null : onEdit,
                     child: const Text('编辑'),
