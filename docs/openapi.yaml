@@ -1808,6 +1808,58 @@ paths:
         "429": { $ref: "#/components/responses/RateLimitedWithRetry" }
         "500": { $ref: "#/components/responses/InternalError" }
 
+  /api/persona/quiz:
+    get:
+      tags: [作品]
+      summary: 冷启动选题题面（匿名可读，新增 #492）
+      operationId: getPersonaQuiz
+      description: |
+        新用户冷启动漏斗的题面：一批代表性作品卡片，用户对每部点选「看过 / 在看 / 抛弃」，
+        结果写进收藏（`PUT /api/me/collections/{work_id}`，请求体 `{"status": "watched", "source": "quiz"}`）。
+        漏斗三态对应 `watched`（看过）/ `watching`（在看）/ `dropped`（抛弃，负权重）；
+        `source=quiz` 盖不动用户自己的操作（#506）。
+
+        **鉴权分工**：拿题不鉴权，写答案鉴权。题面只是一批公开作品卡片，不含个人数据；
+        漏斗第一屏就弹 401 是最糟的体验。而写入走 `/api/me/**`，那里有现成的会话校验。
+
+        选题口径（移植网站 `sample_quiz_contents`）：
+        - 只出动画，漫画 / 游戏 / 轻小说折进「附加题」，不占主题面；
+        - 题材保底：8 个常见口味桶各占 40% 题量（100 题 → 每桶 5 部），避免题面被热度洗成
+          少年漫改专场；
+        - 年份分层：剩余名额按 老番（≤2009）20% / 中段（2010–19）35% / 新番（2020+）45%；
+        - 跨热度均匀取样：候选按评分人数降序后等间隔取，一套题里既有全民霸权也有冷门；
+        - 同系列只出一部（多季 / 剧场版只占一个名额）；
+        - 候选门槛：有封面（封面走本服务代理）+ 评分人数 ≥ 800。
+
+        **同 seed 同题面**：客户端每节课生成起始值，换一批用返回的 `seed + 1`。
+        同一份数据下反复请求同一 seed 结果一致——用户选到一半刷新不会换题。
+
+        ⚠️ 与网站同一个 seed **不保证**抽出同一批作品：两边的随机数发生器不同
+        （Python MT19937 vs JVM LCG），对齐的是分层策略不是随机序列。
+
+        `size` 超出 1–200 返回 400，不静默夹取——夹取会让客户端按 100 画进度却只拿到 87 张。
+        库里候选不够时**少给**（`size` 是实际题量），不重复凑数。
+      parameters:
+        - name: seed
+          in: query
+          required: false
+          description: 起始种子，缺省 0。超过 10^6 先取模（与网站 `QUIZ_SEED_MAX` 一致）。
+          schema: { type: integer, format: int64, default: 0 }
+        - name: size
+          in: query
+          required: false
+          description: 题量。客户端用 20（轻量）/ 100（完整）；1–200 之外返回 400。
+          schema: { type: integer, default: 100, minimum: 1, maximum: 200 }
+      responses:
+        "200":
+          description: 成功；候选池为空时 `works` 为空数组（不是 404）
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/QuizPaper" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "429": { $ref: "#/components/responses/RateLimitedWithRetry" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
   /api/me/recommend:
     get:
       tags: [账号]
@@ -5062,6 +5114,30 @@ components:
           minItems: 10
           maxItems: 10
           items: { type: integer }
+
+    QuizPaper:
+      type: object
+      description: |
+        冷启动选题的一份题面（#492）。`works` 的每一项就是列表里那种作品卡片，
+        客户端不用为漏斗另学一套字段——封面、成人词剔除、票数不足不展示评分
+        这三条口径都在卡片里统一处理过。
+      required: [seed, size, works]
+      properties:
+        seed:
+          type: integer
+          format: int64
+          description: |
+            本次题面的种子（已归一到 0–999999）。「换一批」= 这个值 + 1。
+            客户端**应该**用返回值而不是自己传进去的值——传进来超过 10^6 会被取模。
+        size:
+          type: integer
+          description: |
+            **实际**题量，等于 `works` 的长度。库里候选不够时小于请求的 `size`，
+            进度条按它算（按请求值算会永远差最后一格）。
+        works:
+          type: array
+          description: 打乱顺序的题面。同一 seed 下顺序也固定。
+          items: { $ref: "#/components/schemas/WorkSummary" }
 
     MyCommentPage:
       allOf:

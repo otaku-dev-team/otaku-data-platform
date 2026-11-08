@@ -206,6 +206,61 @@ public class WorkRepository {
     }
 
     /**
+     * 冷启动选题的候选池（#492）：动画 + 有封面 + 评分人数过线，按热度降序。
+     *
+     * <p><b>为什么只取七列</b>：候选池是万级行，{@code summary} 最长 7225 字，整行进内存
+     * 只是为了按标签和年份分组、再丢掉 99%——所以这里给一个轻量投影，抽完只把中选的
+     * 100 个 {@code work_id} 交给 {@link WorkService#summariesByWorkIds} 换成对外卡片
+     * （封面代理、成人剔除、票数不足不展示评分那四条口径就都在那一处，不用复制）。
+     *
+     * <p><b>顺序是算法的一部分</b>：分层抽样靠「已按热度降序」做等间隔取样，排序一变
+     * 同 seed 就出不同题面。所以除了热度还要有稳定兜底键 {@code work_id}——同热度同分的
+     * 作品在 MySQL 里本来没有确定次序，缺了它同一份数据两次请求可能换序。
+     *
+     * <p>过滤与列表口径一致（成人 / 已下架 / 未收录）。带 {@code site_listed} 是必须的：
+     * 抽到一部未收录的作品，换卡片时会被安静地丢掉，客户端拿到 87 道题却按 100 算进度。
+     */
+    public List<QuizCandidate> findQuizCandidates(List<String> workTypes, int popFloor, int limit) {
+        return jdbc.query(
+                "SELECT work_id, title, work_type, release_year, rating_count, series_key, tags"
+                        + " FROM work"
+                        + " WHERE work_type IN (:workTypes)"
+                        + " AND cover_source_url IS NOT NULL AND cover_source_url <> ''"
+                        + " AND rating_count >= :popFloor"
+                        + " AND deleted_at IS NULL AND is_adult = 0"
+                        + (siteScopeEnabled ? " AND site_listed = 1" : "")
+                        + " ORDER BY rating_count DESC, rating_value DESC, work_id ASC"
+                        + " LIMIT :limit",
+                new MapSqlParameterSource()
+                        .addValue("workTypes", workTypes)
+                        .addValue("popFloor", popFloor)
+                        .addValue("limit", limit),
+                (rs, rowNum) -> new QuizCandidate(
+                        rs.getString("work_id"),
+                        rs.getString("title"),
+                        rs.getString("work_type"),
+                        (Integer) rs.getObject("release_year"),
+                        (Integer) rs.getObject("rating_count"),
+                        rs.getString("series_key"),
+                        rs.getString("tags")));
+    }
+
+    /**
+     * 选题候选的一行。{@code tagsJson} 保留原始 JSON 字符串——解析放在服务层，
+     * 与 {@code PersonaRepository} 同一处理方式（脏 tags 不该让整个请求 500）。
+     */
+    public record QuizCandidate(
+            String workId,
+            String title,
+            String workType,
+            Integer releaseYear,
+            Integer ratingCount,
+            String seriesKey,
+            String tagsJson
+    ) {
+    }
+
+    /**
      * 只写 series_key（导入专用，见 {@code ImportService}）。
      *
      * <p>为什么不并进 {@link #updateContent}：`series_key` 不是「作品内容」而是数据集的关系列，
