@@ -105,20 +105,33 @@ class WorkReview {
   final String status;
 
   bool get isPending => status == 'pending';
+
+  /// 被站主隐藏（仅自己可见）。还能删，但不该给「编辑」——
+  /// 隐藏状态下的修改不会让它重新出现在公开列表里。
+  bool get isHidden => status == 'hidden';
+
+  /// 自己删过。行还在（占着「一人一条」的唯一键），但内容不该再当成有效点评。
+  bool get isDeleted => status == 'deleted';
+
+  /// 能编辑的只有「还活着」的那两种。
+  bool get isEditable => status == 'published' || status == 'pending';
 }
 
 int _int(Object? raw) => raw is num ? raw.toInt() : 0;
 
 /// 作品点评的读写（`/api/me/reviews` 与 `/api/works/{id}/reviews`）。
 ///
-/// ⚠️ **没有「查我的点评」端点**（#531）：`/api/me/reviews` 只有 POST / PATCH /
-/// DELETE，`UgcReview` 里也只有 `author` 用户名。所以 [fetchMine] 只能拉公开列表
-/// 第一页、按用户名比对——点评超过一页时找不到，此时界面显示「写点评」，
-/// 提交才会拿到 `409 REVIEW_EXISTS`。端点定了以后只改这一个方法。
+/// #531 之后「查我的点评」有了正式端点：`GET /api/me/reviews?work_id=`。
+/// 之前只能拉公开列表按 `author == username` 比对——点评超过一页时自己的那条
+/// 不在第一页，会被误判成「没写过」。现在不再需要用户名。
 abstract interface class UgcReviewDataSource {
   Future<WorkReviewSummary> fetchSummary(String workId);
 
-  Future<WorkReview?> fetchMine(String workId, String username);
+  /// 我在这部作品上的点评；没写过返回 `null`（端点给的是空 `items`）。
+  ///
+  /// `status` 会原样带回来（`published` / `pending` / `hidden` / `deleted`），
+  /// 所以「被隐藏」「删过」与「没写过」在界面上要分开。
+  Future<WorkReview?> fetchMine(String workId);
 
   Future<WorkReview> create({
     required String workId,
@@ -157,25 +170,17 @@ class HttpUgcReviewDataSource implements UgcReviewDataSource {
   }
 
   @override
-  Future<WorkReview?> fetchMine(String workId, String username) async {
-    if (username.isEmpty) return null;
+  Future<WorkReview?> fetchMine(String workId) async {
     final response = await _dio.get<Map<String, dynamic>>(
-      listPath(workId),
-      queryParameters: const <String, dynamic>{'page': 1, 'page_size': 20},
+      myReviewsPath,
+      queryParameters: <String, dynamic>{'work_id': workId},
     );
+    // 没写过是 200 + 空 items，不是 404——与「未收藏也是 200」同一口径。
     final items = response.data?['items'];
-    if (items is! List) return null;
-    for (final raw in items) {
-      if (raw is! Map) continue;
-      try {
-        final review = WorkReview.fromJson(Map<String, dynamic>.from(raw));
-        // `username` 是稳定的：`PUT /api/me/account` 只改 `display_name`。
-        if (review.author == username) return review;
-      } on FormatException {
-        continue;
-      }
-    }
-    return null;
+    if (items is! List || items.isEmpty) return null;
+    final raw = items.first;
+    if (raw is! Map) return null;
+    return WorkReview.fromJson(Map<String, dynamic>.from(raw));
   }
 
   @override
@@ -247,7 +252,7 @@ class MockUgcReviewDataSource implements UgcReviewDataSource {
       );
 
   @override
-  Future<WorkReview?> fetchMine(String workId, String username) async => _mine;
+  Future<WorkReview?> fetchMine(String workId) async => _mine;
 
   @override
   Future<WorkReview> create({
@@ -299,12 +304,6 @@ final ugcReviewAudienceProvider = Provider<bool>(
   (ref) => ref.watch(authControllerProvider).isSignedIn,
 );
 
-/// 当前用户名。点评的「我的」是按用户名比对的，所以这里只取它。
-final ugcReviewUsernameProvider = Provider<String>((ref) {
-  final user = ref.watch(authControllerProvider).user;
-  return user?.username ?? '';
-});
-
 /// 作品评分概览。未登录也能看（公开读）。
 final workReviewSummaryProvider =
     FutureProvider.family<WorkReviewSummary, String>((ref, workId) async {
@@ -317,7 +316,5 @@ final myWorkReviewProvider = FutureProvider.family<WorkReview?, String>((
   workId,
 ) async {
   if (!ref.watch(ugcReviewAudienceProvider)) return null;
-  return ref
-      .watch(ugcReviewDataSourceProvider)
-      .fetchMine(workId, ref.watch(ugcReviewUsernameProvider));
+  return ref.watch(ugcReviewDataSourceProvider).fetchMine(workId);
 }, retry: (retryCount, error) => null);
