@@ -80,6 +80,28 @@ public class UgcReviewService {
     }
 
     /**
+     * 我在这部作品上的点评（#531）：0 或 1 条。
+     *
+     * <p>为什么返回列表而不是单个对象：形状与公开列表完全一致，客户端一套解析；
+     * 「没点评过」= 空 `items`，不是 404——和「未收藏也是 200」同一个口径。
+     * 分页参数不参与（恒 0 或 1 条），`page` / `page_size` 固定 1。
+     *
+     * <p>`status` 原样返回（`published` / `pending` / `hidden` / `deleted`）：
+     * 客户端据此决定显示「已发表 / 审核中 / 被隐藏 / 已删除」，而不是一律当成没写过。
+     */
+    public PageResponse<UgcReviewDto> mine(UserRecord user, String workId) {
+        String id = requireWorkId(workId);
+        WorkRecord work = workRepository.findByWorkId(id)
+                .orElseThrow(ApiException::workNotFound);
+        String siteKey = siteKeyOfWork(work);
+        List<UgcReviewDto> items = repository.findByUserAndWork(siteKey, user.id(), id)
+                .map(UgcReviewService::toDto)
+                .map(List::of)
+                .orElseGet(List::of);
+        return PageResponse.of(1, 1, items.size(), items);
+    }
+
+    /**
      * 评分概览：均分、条数、分布。
      *
      * <p>均分只算打了分的——只写文字的点评若被当成 0 分，会把整部作品的分数拉垮。

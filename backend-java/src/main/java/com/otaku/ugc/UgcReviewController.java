@@ -48,6 +48,21 @@ public class UgcReviewController {
         return service.summary(workId);
     }
 
+    /**
+     * 我在这部作品上的点评（#531）：`?work_id=` 必填，返回 0 或 1 条。
+     *
+     * <p>挂在 `/api/me/**` 而不是给公开列表加 `?mine=true`：`AuthFilter` 只拦
+     * `/api/auth/me`、`/api/me`、`/api/me/**`，公开列表上是匿名可读的，加开关就得
+     * 自己解析令牌（跟 `/api/auth/logout` 一样绕）。路径与「我的评论」`/api/me/comments`
+     * 一致，客户端也少记一个规则。
+     */
+    @GetMapping("/api/me/reviews")
+    public PageResponse<UgcReviewDto> mine(
+            @RequestAttribute(AuthFilter.ATTRIBUTE_USER) UserRecord user,
+            @RequestParam(name = "work_id") String workId) {
+        return service.mine(user, workId);
+    }
+
     @PostMapping("/api/me/reviews")
     @ResponseStatus(HttpStatus.CREATED)
     public UgcReviewDto create(

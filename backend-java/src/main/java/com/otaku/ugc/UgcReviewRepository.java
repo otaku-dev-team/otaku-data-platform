@@ -131,6 +131,31 @@ public class UgcReviewRepository {
                         .addValue("offset", offset), MAPPER);
     }
 
+    /**
+     * 我在这部作品上的那一条点评（#531）。
+     *
+     * <p>**不过滤 status**：自己删掉的（`deleted`）、审核中的（`pending`）、被站主隐藏的
+     * （`hidden`）都要返回。客户端要能看到「我那条现在是什么状态」，否则会以为没写过，
+     * 再去 POST 一次撞 `409 REVIEW_EXISTS`。
+     */
+    public Optional<Row> findByUserAndWork(String siteKey, long userId, String workId) {
+        List<Row> rows = jdbc.query("""
+                        SELECT r.id, r.site_key, r.work_id, r.user_id,
+                               CASE WHEN u.deleted_at IS NULL THEN u.username
+                                    ELSE '已注销用户' END AS username,
+                               r.rating, r.body, r.status, r.created_at, r.edited_at
+                          FROM ugc_review r
+                          JOIN app_user u ON u.id = r.user_id
+                         WHERE r.site_key = :siteKey AND r.user_id = :userId
+                           AND r.work_id = :workId
+                         LIMIT 1
+                        """, new MapSqlParameterSource()
+                        .addValue("siteKey", siteKey)
+                        .addValue("userId", userId)
+                        .addValue("workId", workId), MAPPER);
+        return rows.stream().findFirst();
+    }
+
     /** 已发布的点评条数（含只写文字不打分的）。 */
     public long countPublished(String siteKey, String workId) {
         Long total = jdbc.queryForObject("""
