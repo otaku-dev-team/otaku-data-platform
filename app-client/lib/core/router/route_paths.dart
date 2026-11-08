@@ -59,6 +59,10 @@ abstract final class RoutePaths {
   static const String personaQuizSegment = 'quiz';
   static const String personaQuiz = '$persona/quiz';
 
+  /// 全库搜索补标：预设题面之外，自己搜作品标记。
+  static const String personaQuizSearchSegment = 'search';
+  static const String personaQuizSearch = '$personaQuiz/search';
+
   /// 登录设备（#378）。与画像同一种形态：挂在 `/me` 下的二级页，
   /// 从个人空间点进来、返回也回个人空间。
   static const String devicesSegment = 'devices';

@@ -15,6 +15,7 @@ import '../../features/my_comment/my_comment_page.dart';
 import '../../features/person/person_page.dart';
 import '../../features/persona/persona_page.dart';
 import '../../features/persona/persona_quiz_page.dart';
+import '../../features/persona/persona_quiz_search_page.dart';
 import '../../features/profile/profile_edit_page.dart';
 import '../../features/profile/profile_page.dart';
 import '../../features/recent/recent_history_page.dart';
@@ -183,6 +184,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 path: RoutePaths.personaQuizSegment,
                 builder: (context, state) => const PersonaQuizPage(),
+                routes: [
+                  // #505 的另一半：预设题面之外，自己搜作品补标。
+                  GoRoute(
+                    path: RoutePaths.personaQuizSearchSegment,
+                    builder: (context, state) => const PersonaQuizSearchPage(),
+                  ),
+                ],
               ),
             ],
           ),
