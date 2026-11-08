@@ -117,6 +117,8 @@ public final class ConsoleDtos {
             long want,
             long watching,
             long watched,
+            /** 抛弃（#496）：明确不喜欢，画像里记负权重。 */
+            long dropped,
             long none,
             OffsetDateTime lastUpdatedAt
     ) {

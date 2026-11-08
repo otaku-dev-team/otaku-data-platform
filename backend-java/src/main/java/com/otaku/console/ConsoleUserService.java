@@ -190,8 +190,9 @@ public class ConsoleUserService {
         }
         String status = raw.trim().toLowerCase();
         if (!"want".equals(status) && !"watching".equals(status)
-                && !"watched".equals(status) && !"none".equals(status)) {
-            throw ApiException.badRequest("status 只能是 want / watching / watched / none");
+                && !"watched".equals(status) && !"dropped".equals(status)
+                && !"none".equals(status)) {
+            throw ApiException.badRequest("status 只能是 want / watching / watched / dropped / none");
         }
         return status;
     }
