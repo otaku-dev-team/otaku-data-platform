@@ -60,7 +60,8 @@ public class CollectionController {
             @RequestAttribute(AuthFilter.ATTRIBUTE_USER) UserRecord user,
             @PathVariable("workId") String workId,
             @RequestBody(required = false) CollectionUpdateRequest request) {
-        return service.put(user, workId, request == null ? null : request.status());
+        return service.put(user, workId, request == null ? null : request.status(),
+                request == null ? null : request.source());
     }
 
     @PatchMapping("/{workId}")
@@ -68,7 +69,7 @@ public class CollectionController {
             @RequestAttribute(AuthFilter.ATTRIBUTE_USER) UserRecord user,
             @PathVariable("workId") String workId,
             @RequestBody CollectionUpdateRequest request) {
-        return service.patchStatus(user, workId, request.status());
+        return service.patchStatus(user, workId, request.status(), request.source());
     }
 
     @DeleteMapping("/{workId}")

@@ -182,6 +182,7 @@
 | `page` | 1 | 从 1 开始 |
 | `page_size` | 20 | **上限 50**，超过按 50 处理（与阶段 1 一致） |
 | `status` | 不传 = 全部 | `want` / `watching` / `watched` / `dropped`；传 `none` 表示「已收藏但未设状态」 |
+| `source`（写入时） | 不传 = `user` | `user`（用户操作）/ `quiz`（冷启动漏斗种子，#506）。**种子盖不动 user**；`user` 写入会把种子改成用户操作 |
 
 ```json
 // 200
