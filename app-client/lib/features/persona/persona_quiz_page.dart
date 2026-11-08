@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/network/api_exception.dart';
+import '../../core/router/route_paths.dart';
 import '../../core/theme/app_layout.dart';
 import '../../core/theme/design_tokens.dart';
 import '../../data/models/collection_entry.dart';
@@ -112,6 +113,11 @@ class _PersonaQuizPageState extends ConsumerState<PersonaQuizPage> {
         appBar: AppBar(
           title: const Text('补几部作品'),
           actions: [
+            IconButton(
+              tooltip: '搜作品补标',
+              onPressed: () => context.push(RoutePaths.personaQuizSearch),
+              icon: const Icon(Icons.search_rounded),
+            ),
             TextButton(
               onPressed: () => _restart(seed: _seed + 1),
               child: const Text('换一批'),
