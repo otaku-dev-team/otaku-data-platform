@@ -6,19 +6,18 @@ import '../../core/theme/app_theme.dart';
 import '../../core/theme/design_tokens.dart';
 import '../../shared/widgets/desktop_nav_shell.dart';
 import '../../shared/widgets/section_state_view.dart';
-import '../../shared/widgets/tag_chips.dart';
 import 'persona_data_source.dart';
 import 'persona_radar_chart.dart';
 import 'persona_view_data.dart';
 
 /// #375 阿宅画像。
 ///
-/// 对标网站 `/me/persona`：六维雷达 + 锐评 + 偏好标签 + 生成设置入口。
+/// 对标网站 `/me/persona`：称号 + 稀有度 + 九维雷达 + 标签解读 + 锐评。
 ///
-/// **六根轴是客户端派生的，不是服务端算的**：`GET /api/me/profile` 只给类型 /
-/// 标签权重与评分倾向，轴值由 `PersonaInsightMapper` 按固定公式折算
-/// （口径见 `docs/persona-mapping-proposal.md` §3A）。设计稿里的「热度」
-/// 「社交」没有数据源，已换成每个数字都能追溯来源的轴。
+/// **九维由服务端算**（`GET /api/me/profile` 的 `dimensions`，键序固定），
+/// 客户端只做 0–100 → 0–1 的换算（`PersonaInsightMapper`）。2026-11-09 之前
+/// 这里是客户端自造六轴，与网站口径不一致（#498），已经删掉——**别再往端上
+/// 加公式**，一加就又分家了。
 ///
 /// 生成 / 绑定 / 语气这一排刻意「未开放」：点了没反应比明说更糟，
 /// 沿用个人空间 `_SectionTile` 的口径。
@@ -53,8 +52,8 @@ class PersonaPage extends ConsumerWidget {
                   emptyIcon: Icons.auto_awesome_outlined,
                   emptyTitle: signedIn ? '还没有可展示的画像' : '登录后查看画像',
                   emptyMessage: signedIn
-                      ? '画像来自你的浏览、收藏与打分——攒够一些记录再来看看。'
-                      : '画像由你的浏览、收藏与打分算出来，登录后才会生成。',
+                      ? '画像来自你的浏览、收藏与点评——攒够一些记录再来看看。'
+                      : '画像由你的浏览、收藏与点评算出来，登录后才会生成。',
                   isEmpty: (data) => data.dimensions.isEmpty,
                   builder: (data) => _InsightBody(data: data),
                 ),
@@ -76,24 +75,12 @@ class _InsightBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // 称号。空串不当成「没称号」渲染一个空标题，直接整块不画。
-        if (data.title.isNotEmpty) ...[
-          Text(
-            data.title,
-            textAlign: TextAlign.center,
-            style: theme.textTheme.headlineSmall?.copyWith(
-              fontWeight: FontWeight.w800,
-              color: AppTheme.brandInk(context),
-            ),
-          ),
-          const SizedBox(height: Space.s4),
-        ],
+        _HeroCard(data: data),
+        const SizedBox(height: Space.s3),
         Card(
-          clipBehavior: Clip.antiAlias,
           child: Padding(
             padding: const EdgeInsets.symmetric(
               horizontal: Space.s2,
@@ -102,7 +89,7 @@ class _InsightBody extends StatelessWidget {
             child: PersonaRadarChart(dimensions: data.dimensions),
           ),
         ),
-        // 「为什么少一块」放在图下方而不是图里：图要保持干净，
+        // 「为什么长这样」放在图下方而不是图里：图要保持干净，
         // 这句话是给「觉得图怪但说不上哪里怪」的人看的。
         for (final hint in data.hints) ...[
           const SizedBox(height: Space.s2),
@@ -112,65 +99,266 @@ class _InsightBody extends StatelessWidget {
               Icon(
                 Icons.info_outline_rounded,
                 size: 14,
-                color: theme.colorScheme.onSurfaceVariant,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
               const SizedBox(width: Space.s1),
               Expanded(
                 child: Text(
                   hint,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
                 ),
               ),
             ],
           ),
         ],
-        const SizedBox(height: Space.s3),
-        Card(
-          clipBehavior: Clip.antiAlias,
-          child: Padding(
-            padding: const EdgeInsets.all(Space.s4),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(
-                      Icons.format_quote_rounded,
-                      size: 18,
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                    const SizedBox(width: Space.s1),
-                    Text('锐评', style: theme.textTheme.titleSmall),
-                  ],
-                ),
-                const SizedBox(height: Space.s2),
-                // 文案由服务端生成，客户端一个字都不改。
-                Text(
-                  data.review,
-                  style: theme.textTheme.bodyMedium?.copyWith(height: 1.7),
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: Space.s3),
-        Card(
-          clipBehavior: Clip.antiAlias,
-          child: Padding(
-            padding: const EdgeInsets.all(Space.s4),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('偏好的题材', style: theme.textTheme.titleSmall),
-                const SizedBox(height: Space.s2),
-                TagChips(tags: data.topTags, maxVisible: 8),
-              ],
-            ),
-          ),
-        ),
+        if (data.topTags.isNotEmpty) ...[
+          const SizedBox(height: Space.s3),
+          _TraitCard(tags: data.topTags, blurbs: data.traitBlurbs),
+        ],
+        if (data.review.isNotEmpty) ...[
+          const SizedBox(height: Space.s3),
+          _ReviewCard(review: data.review, quip: data.quip),
+        ],
       ],
+    );
+  }
+}
+
+/// 称号卡：称号 + 代号 + 稀有度徽章。
+///
+/// 稀有度配色按 #490 口径（SSR 金 / SR 蓝 / R 灰 / N 浅灰 / 未标定虚线灰），
+/// **不自行换色换名**——同一个用户在网站与 App 上看到的徽章必须是同一套。
+class _HeroCard extends StatelessWidget {
+  const _HeroCard({required this.data});
+
+  final PersonaInsight data;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final rarity = data.rarity;
+
+    return Card(
+      child: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              scheme.primaryContainer.withValues(alpha: 0.55),
+              scheme.surface.withValues(alpha: 0.0),
+            ],
+          ),
+        ),
+        padding: const EdgeInsets.fromLTRB(Space.s4, Space.s4, Space.s4, Space.s3),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    data.title,
+                    style: theme.textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      color: AppTheme.brandInk(context),
+                    ),
+                  ),
+                ),
+                if (rarity != null) _RarityBadge(rarity: rarity),
+              ],
+            ),
+            if (data.titleCode != null) ...[
+              const SizedBox(height: Space.s1),
+              Text(
+                data.titleCode!,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                  letterSpacing: 1.4,
+                ),
+              ),
+            ],
+            if (rarity != null) ...[
+              const SizedBox(height: Space.s2),
+              Text(
+                _rarityLine(rarity),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 「满地都是 · 12.3% 的人都在这」——`share = null` 时**不写 0%**。
+  static String _rarityLine(PersonaRarity rarity) {
+    final parts = <String>[
+      if (rarity.label.isNotEmpty) rarity.label,
+      if (rarity.share != null)
+        '${rarity.share!.toStringAsFixed(1)}% 的人在这'
+      else
+        '占比未标定',
+      if (rarity.note != null) rarity.note!,
+    ];
+    return parts.join(' · ');
+  }
+}
+
+class _RarityBadge extends StatelessWidget {
+  const _RarityBadge({required this.rarity});
+
+  final PersonaRarity rarity;
+
+  /// #490 口径：SSR 金 / SR 蓝 / R 灰 / N 浅灰 / 未标定虚线灰。
+  static const Map<String, Color> _colors = <String, Color>{
+    'SSR': Color(0xFFE0A800),
+    'SR': Color(0xFF2B9AE0),
+    'R': Color(0xFF7B8896),
+    'N': Color(0xFFAAB4BF),
+    '?': Color(0xFFC3CCD5),
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _colors[rarity.tier] ?? _colors['R']!;
+    final calibrated = rarity.tier != '?';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: Space.s2, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.14),
+        borderRadius: Radii.circularSm(),
+        border: Border.all(
+          color: color.withValues(alpha: calibrated ? 0.55 : 0.4),
+          // 未标定用虚线在 Flutter 里要自绘，这里用低饱和描边表达「不是正式档位」。
+        ),
+      ),
+      child: Text(
+        rarity.tier,
+        style: Theme.of(context).textTheme.labelMedium?.copyWith(
+          color: color,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.6,
+        ),
+      ),
+    );
+  }
+}
+
+/// 标签 + 逐条解读（#500）。文案来自服务端 `trait_blurbs`，客户端不各抄一份。
+class _TraitCard extends StatelessWidget {
+  const _TraitCard({required this.tags, required this.blurbs});
+
+  final List<String> tags;
+  final Map<String, String> blurbs;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(Space.s4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('人格标签', style: theme.textTheme.titleSmall),
+            const SizedBox(height: Space.s2),
+            for (var i = 0; i < tags.length; i++) ...[
+              if (i > 0) const SizedBox(height: Space.s2),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: Space.s2,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: scheme.secondaryContainer,
+                      borderRadius: Radii.circularSm(),
+                    ),
+                    child: Text(
+                      tags[i],
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: scheme.onSecondaryContainer,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: Space.s2),
+                  Expanded(
+                    child: Text(
+                      blurbs[tags[i]] ?? '',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                        height: 1.5,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 锐评（`hero_note`）+ 收尾冷评（`final_quip`）。服务端下发，客户端一个字都不改。
+class _ReviewCard extends StatelessWidget {
+  const _ReviewCard({required this.review, required this.quip});
+
+  final String review;
+  final String? quip;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(Space.s4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.format_quote_rounded,
+                  size: 18,
+                  color: scheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: Space.s1),
+                Text('锐评', style: theme.textTheme.titleSmall),
+              ],
+            ),
+            const SizedBox(height: Space.s2),
+            Text(
+              review,
+              style: theme.textTheme.bodyMedium?.copyWith(height: 1.7),
+            ),
+            if (quip != null && quip!.isNotEmpty) ...[
+              const SizedBox(height: Space.s3),
+              Divider(color: scheme.outlineVariant, height: 1),
+              const SizedBox(height: Space.s2),
+              Text(
+                quip!,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                  fontStyle: FontStyle.italic,
+                  height: 1.6,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }
@@ -184,7 +372,6 @@ class _PendingActions extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Card(
-      clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
           _PendingTile(

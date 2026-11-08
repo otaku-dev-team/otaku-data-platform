@@ -26,10 +26,39 @@ class PersonaDimension {
 
   /// 已归一化的展示比例。**不是接口里的原始权重**，也不参与任何打分
   /// （§6：客户端不自算打分）。
+  ///
+  /// 九维接口给的是 0–100（50 = 中性 / 数据不足），这里除以 100。
   final double value;
 
   /// 轴下方的一句短说明，可空。
   final String? caption;
+}
+
+/// 称号稀有度（契约 `PersonaRarity`）。
+///
+/// ⚠️ `share` 为 `null` 是「校准样本未收录」，**不是 0%**：写成 0 会落进
+/// 最高档 SSR，意思完全反了。所以界面显示「占比未知」而不是「0%」。
+@immutable
+class PersonaRarity {
+  const PersonaRarity({
+    required this.tier,
+    required this.label,
+    this.note,
+    this.share,
+  });
+
+  /// `SSR` / `SR` / `R` / `N` / `?`（未标定）。
+  final String tier;
+
+  /// 等级名号，例「满地都是」。
+  final String label;
+
+  final String? note;
+
+  /// 该称号在人群中的占比（百分比）。`null` = 未标定。
+  final double? share;
+
+  bool get isCalibrated => share != null;
 }
 
 /// 画像页要展示的全部内容。
@@ -39,23 +68,43 @@ class PersonaInsight {
     required this.title,
     required this.review,
     required this.dimensions,
+    this.titleCode,
+    this.quip,
     this.topTags = const <String>[],
+    this.traitBlurbs = const <String, String>{},
+    this.rarity,
     this.tone,
     this.boundAccount,
     this.hints = const <String>[],
   });
 
-  /// 称号，例如「深夜考据派」。
+  /// 称号中文名（契约 `hero_title`），例「赛博貔貅」。
   final String title;
 
-  /// 锐评文案。服务端生成（首站是 LLM 链路），客户端只展示。
+  /// 称号代号（`hero_code`），例 `PIXIU`。分享短链与埋点用，界面当小字标。
+  final String? titleCode;
+
+  /// 锐评（`hero_note`）。服务端按画像指纹轮转同一句，客户端只展示。
+  ///
+  /// ⚠️ 这句是**服务端规则生成**（`PersonaCopyData`），不是 LLM、也不是
+  /// 客户端拼的。早期注释写成「首站是 LLM 链路」，已过时。
   final String review;
 
-  /// 六维。顺序即雷达图的轴顺序；为空时画像页走空态。
+  /// 收尾冷评（`final_quip`），不带数字、同一用户稳定。
+  final String? quip;
+
+  /// 九维。顺序即雷达图的轴顺序（契约固定键序）；为空时画像页走空态。
   final List<PersonaDimension> dimensions;
 
-  /// 偏好标签，纯展示。
+  /// 人格标签（`persona_tags`）。**前两位位置固定**：`[0]` 题材簇、`[1]` 主身份，
+  /// 特征从 `[2]` 开始。
   final List<String> topTags;
+
+  /// 标签 → 一句解读（`trait_blurbs`）。键与 [topTags] 一致，空串表示没文案。
+  final Map<String, String> traitBlurbs;
+
+  /// 稀有度。`null` = 接口没给（旧版后端），界面不画徽章而不是画个假的。
+  final PersonaRarity? rarity;
 
   /// 当前生成语气；`null` = 接口还没给，界面显示「未设置」而不是编一个默认值。
   final String? tone;
@@ -64,11 +113,11 @@ class PersonaInsight {
   /// 客户端**不能**把「取不到」当成「没绑定」，所以 UI 只显示占位说明。
   final String? boundAccount;
 
-  /// 解释「为什么这里少一块」，渲染在雷达图下方。
+  /// 解释「这块为什么长这样」，渲染在雷达图下方。
   ///
-  /// 目前只有一种：还没打过分 → 少了「评分态度」那根轴。**静默少一根是最差的
-  /// 处理**——用户只会觉得雷达图怪怪的，不知道打分之后会多出来。明说一句，
-  /// 「缺」就变成了「可预期的下一步」。
+  /// 九维恒存在（缺数据给 50），所以不再有「少一根轴」的解释；
+  /// 现在只有一种：行为条数太少，形状会偏中间——说清楚，用户就不会
+  /// 把「样本不足」理解成「我很平庸」。
   final List<String> hints;
 }
 
