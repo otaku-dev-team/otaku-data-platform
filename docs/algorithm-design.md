@@ -84,6 +84,10 @@ Authorization: Bearer <token>
 虽然建了 `kind` 列但映射只导了 `name`。白名单通过 `app.persona.genre-tags` 配置（默认空）；
 在它落地前，这两维不参与区分度判断。硬编码一份名单等于替来源定义分类，#467 已否过一次。
 
+**区分度怎么验**：见 [`persona-dimension-diagnostics.md`](persona-dimension-diagnostics.md)（#497）——
+11 类已知口味人群 × 两种收藏规模的构造样本，逐维看能不能分开；结论与优化顺序都在那篇，
+回归断言在 `PersonaDimensionDiagnosticsTest`（无数据库依赖，秒级）。
+
 **两条对草案的修正**：
 
 1. **路径改为 `/api/me/profile`**：`AuthFilter` 只拦 `/api/auth/me`、`/api/me`、`/api/me/**`，
