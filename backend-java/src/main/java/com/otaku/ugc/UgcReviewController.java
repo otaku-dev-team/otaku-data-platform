@@ -1,6 +1,7 @@
 package com.otaku.ugc;
 
 import com.otaku.auth.AuthFilter;
+import com.otaku.common.FeatureFlags;
 import com.otaku.common.PageResponse;
 import com.otaku.ugc.dto.UgcReviewDto;
 import com.otaku.ugc.dto.UgcReviewEditRequest;
@@ -29,9 +30,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class UgcReviewController {
 
     private final UgcReviewService service;
+    private final FeatureFlags flags;
 
-    public UgcReviewController(UgcReviewService service) {
+    public UgcReviewController(UgcReviewService service, FeatureFlags flags) {
         this.service = service;
+        this.flags = flags;
     }
 
     @GetMapping("/api/works/{workId}/reviews")
@@ -68,6 +71,9 @@ public class UgcReviewController {
     public UgcReviewDto create(
             @RequestAttribute(AuthFilter.ATTRIBUTE_USER) UserRecord user,
             @RequestBody UgcReviewRequest request) {
+        // 点评默认不对公众开放（`feature.work_review`，默认关）。
+        // 关闸在服务端：旧版本客户端不认识这个开关，只靠它不展示入口挡不住。
+        flags.requireWorkReview();
         return service.create(user, request);
     }
 
@@ -77,6 +83,7 @@ public class UgcReviewController {
             @RequestAttribute(AuthFilter.ATTRIBUTE_USER) UserRecord user,
             @PathVariable("reviewId") String reviewId,
             @RequestBody UgcReviewEditRequest request) {
+        flags.requireWorkReview();
         return service.edit(user, reviewId, request);
     }
 

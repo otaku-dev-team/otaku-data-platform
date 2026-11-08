@@ -1,6 +1,7 @@
 package com.otaku.profile;
 
 import com.otaku.auth.AuthFilter;
+import com.otaku.common.FeatureFlags;
 import com.otaku.profile.dto.AccountProfileDtos.AccountProfile;
 import com.otaku.profile.dto.AccountProfileDtos.AvatarUpload;
 import com.otaku.profile.dto.AccountProfileDtos.UpdateProfileRequest;
@@ -38,9 +39,11 @@ import org.springframework.web.multipart.MultipartFile;
 public class AccountProfileController {
 
     private final AccountProfileService service;
+    private final FeatureFlags flags;
 
-    public AccountProfileController(AccountProfileService service) {
+    public AccountProfileController(AccountProfileService service, FeatureFlags flags) {
         this.service = service;
+        this.flags = flags;
     }
 
     @GetMapping
@@ -52,6 +55,9 @@ public class AccountProfileController {
     public AccountProfile update(
             @RequestAttribute(AuthFilter.ATTRIBUTE_USER) UserRecord user,
             @RequestBody UpdateProfileRequest request) {
+        // 口径：昵称与站点一致，站点不能改 App 也不能改（`feature.account_edit`，默认关）。
+        // 关闸必须在服务端：旧版本客户端不认识这个开关，光靠它不展示入口挡不住。
+        flags.requireAccountEdit();
         return service.update(user, request.displayName(), request.bio());
     }
 
@@ -64,6 +70,8 @@ public class AccountProfileController {
     public AvatarUpload upload(
             @RequestAttribute(AuthFilter.ATTRIBUTE_USER) UserRecord user,
             @RequestParam("file") MultipartFile file) {
+        // 与站点一致：只有默认头像（`feature.avatar_upload`，默认关）。
+        flags.requireAvatarUpload();
         return service.uploadAvatar(user, file);
     }
 

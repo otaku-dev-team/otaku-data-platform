@@ -62,6 +62,9 @@ class AccountProfileIntegrationTest {
     @Autowired
     private ObjectMapper objectMapper;
 
+    @Autowired
+    private com.otaku.appconfig.AppConfigService configService;
+
     private String prefix;
     private String token;
     private long userId;
@@ -79,6 +82,16 @@ class AccountProfileIntegrationTest {
         jdbc.update("INSERT INTO user_session (token_hash, user_id, created_at, expires_at)"
                         + " VALUES (?, ?, ?, ?)",
                 SessionTokens.hash(token), userId, now, now.plusDays(30));
+
+        // 这个类验的是「功能本身的正确性」，不是「开关是否生效」，所以先把两个开关打开。
+        // 「关着时 403」由 forbidsWhenFeatureDisabled 单独覆盖。
+        enable(com.otaku.common.FeatureFlags.KEY_ACCOUNT_EDIT);
+        enable(com.otaku.common.FeatureFlags.KEY_AVATAR_UPLOAD);
+    }
+
+    /** 运行期开关走 app_config（与运维用 /internal/app/config 改的是同一个键）。 */
+    private void enable(String key) {
+        configService.put(key, objectMapper.getNodeFactory().booleanNode(true), "it");
     }
 
     @AfterEach
@@ -86,6 +99,9 @@ class AccountProfileIntegrationTest {
         deleteAvatarFiles();
         jdbc.update("DELETE FROM user_session WHERE user_id = ?", userId);
         jdbc.update("DELETE FROM app_user WHERE id = ?", userId);
+        jdbc.update("DELETE FROM app_config WHERE config_key IN (?, ?)",
+                com.otaku.common.FeatureFlags.KEY_ACCOUNT_EDIT,
+                com.otaku.common.FeatureFlags.KEY_AVATAR_UPLOAD);
     }
 
     @Test
@@ -93,6 +109,28 @@ class AccountProfileIntegrationTest {
     void requiresAuthentication() throws Exception {
         assertThat(status(get("/api/me/account"))).isEqualTo(401);
         assertThat(status(get("/api/me/account/avatar"))).isEqualTo(401);
+    }
+
+    @Test
+    @DisplayName("开关关着 → 403 FEATURE_DISABLED；删除头像不受限（关着也能清理）")
+    void forbidsWhenFeatureDisabled() throws Exception {
+        jdbc.update("DELETE FROM app_config WHERE config_key IN (?, ?)",
+                com.otaku.common.FeatureFlags.KEY_ACCOUNT_EDIT,
+                com.otaku.common.FeatureFlags.KEY_AVATAR_UPLOAD);
+
+        // `AppConfigService.current()` 是懒加载 + 常驻的快照；直接删库不会让它失效，
+        // 不 reload 的话下面读到的还是 setUp 里打开的 true。
+        configService.reload();
+
+        JsonNode putError = body(authedPut("/api/me/account", "{\"bio\":\"x\"}"), 403);
+        assertThat(putError.at("/error/code").asText()).isEqualTo("FEATURE_DISABLED");
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "a.png", "image/png", png(64, 64));
+        assertThat(status(authedMultipart("/api/me/account/avatar", file))).isEqualTo(403);
+
+        // 关着也要能删——不能上、能下，否则用户传上去的头像就永远清不掉了。
+        assertThat(status(authedDelete("/api/me/account/avatar"))).isEqualTo(204);
     }
 
     @Test

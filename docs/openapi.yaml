@@ -649,7 +649,12 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
         "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
+        "403":
+          description: |
+            两种原因共用 403，客户端按 `code` 区分：
+            ① 站点未开启社区 / 作品不属于当前站点 —— `FORBIDDEN`；
+            ② 点评功能开关关着 —— `FEATURE_DISABLED`（`/api/app/config` 的
+            `feature.work_review`，缺键 = 关）。后者要显示「暂未开放」，不是「没有权限」。
         "404": { $ref: "#/components/responses/NotFound" }
         "409":
           description: 已点评过这部作品（`REVIEW_EXISTS`）
@@ -1717,6 +1722,11 @@ paths:
               schema: { $ref: "#/components/schemas/AccountProfile" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/UnauthorizedSession" }
+        "403":
+          description: |
+            功能开关关着（`FEATURE_DISABLED`）。昵称与简介**需要与站点保持一致**——
+            站点不能改，App 里也不能改。开关是 `/api/app/config` 的
+            `feature.account_edit`（缺键 = 关）。客户端应显示「暂未开放」而不是「没有权限」。
 
   /api/me/account/avatar:
     post:
@@ -1752,6 +1762,11 @@ paths:
               schema: { $ref: "#/components/schemas/AvatarUpload" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/UnauthorizedSession" }
+        "403":
+          description: |
+            功能开关关着（`FEATURE_DISABLED`）。头像**与站点一致，只有默认头像**；
+            开关是 `/api/app/config` 的 `feature.avatar_upload`（缺键 = 关）。
+            `DELETE /api/me/account/avatar` **不受此开关限制**——关着也要让用户能清理已有的头像。
         "429": { $ref: "#/components/responses/RateLimitedWithRetry" }
 
     delete:

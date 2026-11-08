@@ -44,6 +44,16 @@ public enum ErrorCode {
     USER_DISABLED(HttpStatus.FORBIDDEN),
     /** 越权：登录态有效，但目标资源不属于自己的站点。契约要求 403（不是 404）。 */
     FORBIDDEN(HttpStatus.FORBIDDEN),
+    /**
+     * 功能开关关着（{@code app.config} 的 {@code feature.*}，见 {@link FeatureFlags}）。
+     *
+     * <p>与 {@link #FORBIDDEN} 分开：那个是「你不该访问别人的资源」，这个是「谁都不能用」。
+     * 客户端据此显示「暂未开放」而不是「没有权限」。
+     *
+     * <p>用 403 而不是 503：503 会让客户端以为「服务端临时不可用」而去重试，
+     * 而这个状态是<b>确定的</b>，重试没有意义。
+     */
+    FEATURE_DISABLED(HttpStatus.FORBIDDEN),
     /** 站主后台：账号不存在。与"存在但属于别人站点"（403）分开，便于排查。 */
     USER_NOT_FOUND(HttpStatus.NOT_FOUND),
     /** 平台侧：站点不存在（/internal/sites/{key}/... 找不到这个 site_key）。 */
