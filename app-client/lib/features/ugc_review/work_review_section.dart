@@ -210,6 +210,9 @@ class _MineView extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    // 「已删除 / 已被隐藏」不展示分数与正文：它们不再是有效点评，
+    // 但仍占着「一人一条」的位置，所以要给个说明和清理入口。
+    final inactive = review.isDeleted || review.isHidden;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -222,7 +225,14 @@ class _MineView extends StatelessWidget {
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (review.rating != null)
+                if (inactive)
+                  Text(
+                    review.isDeleted ? '这条点评已删除' : '这条点评已被隐藏',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  )
+                else if (review.rating != null)
                   Text(
                     '${review.rating} 分',
                     style: theme.textTheme.titleMedium?.copyWith(
@@ -244,10 +254,11 @@ class _MineView extends StatelessWidget {
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                TextButton(
-                  onPressed: busy ? null : onEdit,
-                  child: const Text('编辑'),
-                ),
+                if (review.isEditable)
+                  TextButton(
+                    onPressed: busy ? null : onEdit,
+                    child: const Text('编辑'),
+                  ),
                 TextButton(
                   onPressed: busy ? null : onDelete,
                   child: const Text('删除'),
@@ -256,7 +267,7 @@ class _MineView extends StatelessWidget {
             ),
           ],
         ),
-        if (review.body != null) ...[
+        if (!inactive && review.body != null) ...[
           const SizedBox(height: Space.s1),
           Text(review.body!, style: theme.textTheme.bodyMedium),
         ],

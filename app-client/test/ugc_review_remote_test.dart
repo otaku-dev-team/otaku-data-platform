@@ -30,25 +30,37 @@ void main() {
     expect(summary.distribution, <int, int>{8: 4, 9: 5});
   });
 
-  test('找「我」：按 author 比对用户名；不在第一页就是 null', () async {
+  test('查我的点评：`GET /api/me/reviews?work_id=`，不再比对作者名', () async {
     final stub = _Stub(
       body: <String, dynamic>{
         'page': 1,
-        'page_size': 20,
-        'total': 40,
-        'total_pages': 2,
-        'items': <dynamic>[
-          _item('R-1', 'alice', 8),
-          _item('R-2', 'bob', 9),
-        ],
+        'page_size': 1,
+        'total': 1,
+        'total_pages': 1,
+        'items': <dynamic>[_item('R-1', 'alice', 8)],
       },
     );
 
-    final source = HttpUgcReviewDataSource(_dio(stub));
+    final mine = await HttpUgcReviewDataSource(_dio(stub)).fetchMine('W-1');
 
-    expect((await source.fetchMine('W-1', 'alice'))?.reviewId, 'R-1');
-    // 不在第一页 → null（契约缺口 #531，见数据源的注释）。
-    expect(await source.fetchMine('W-1', 'carol'), isNull);
+    final request = stub.requests.single;
+    expect(request.path, '/api/me/reviews');
+    expect(request.queryParameters, <String, dynamic>{'work_id': 'W-1'});
+    expect(mine?.reviewId, 'R-1');
+  });
+
+  test('没写过：空 items → null（不是 404，也不抛异常）', () async {
+    final stub = _Stub(
+      body: <String, dynamic>{
+        'page': 1,
+        'page_size': 1,
+        'total': 0,
+        'total_pages': 0,
+        'items': <dynamic>[],
+      },
+    );
+
+    expect(await HttpUgcReviewDataSource(_dio(stub)).fetchMine('W-1'), isNull);
   });
 
   test('发表：POST /api/me/reviews，三个字段都显式传', () async {
