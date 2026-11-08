@@ -96,7 +96,7 @@ void main() {
     );
   });
 
-  test('画像页：#375 消费 /api/me/profile，六轴由 PersonaProfile 派生', () async {
+  test('画像页：#375 消费 /api/me/profile，九维与称号原样透传', () async {
     final stub = _Stub(
       (options) => _ok(options, <String, dynamic>{
         'type_weights': <String, dynamic>{'anime': 1.0},
@@ -108,7 +108,33 @@ void main() {
         },
         'recent_active': <String>['w-1', 'w-2'],
         'sample_size': 42,
-        'generated_at': '2026-11-07T00:00:00Z',
+        // #498 之后这九个键必须原样消费；客户端不再从权重派生。
+        'dimensions': <String, dynamic>{
+          'tag_focus': 70,
+          'exploration': 61,
+          'mainstream': 44,
+          'pop_spread': 58,
+          'quality': 80,
+          'era_span': 52,
+          'fresh': 47,
+          'emotion': 33,
+          'completion': 66,
+        },
+        'persona_tags': <String>['科幻系', '番剧党'],
+        'trait_blurbs': <String, String>{
+          '科幻系': '设定党。',
+          '番剧党': '主要看动画。',
+        },
+        'hero_title': '赛博貔貅',
+        'hero_code': 'PIXIU',
+        'hero_note': '别人追番看剧情，你追番看注释。',
+        'final_quip': '收藏比简历还整齐。',
+        'rarity': <String, dynamic>{
+          'tier': 'SR',
+          'label': '不算常见',
+          'share': 6.4,
+        },
+        'generated_at': '2026-11-09T00:00:00Z',
       }),
     );
 
@@ -116,9 +142,14 @@ void main() {
 
     // 路径错了会打到一个不存在的端点（404），比字段错更难查。
     expect(stub.requests.single.path, '/api/me/profile');
-    expect(insight.title, '科幻派');
-    expect(insight.dimensions, hasLength(6));
-    expect(insight.topTags.first, '科幻');
+    expect(insight.title, '赛博貔貅');
+    expect(insight.titleCode, 'PIXIU');
+    expect(insight.dimensions, hasLength(9));
+    expect(insight.dimensions.first.value, closeTo(0.70, 1e-9));
+    expect(insight.topTags.first, '科幻系');
+    expect(insight.traitBlurbs['科幻系'], '设定党。');
+    expect(insight.rarity?.tier, 'SR');
+    expect(insight.rarity?.share, 6.4);
   });
 
   testWidgets('正常结果：标题「为你推荐」+「按画像」，理由可见', (tester) async {
