@@ -5,12 +5,15 @@ import 'package:flutter/material.dart';
 import '../../core/theme/design_tokens.dart';
 import 'persona_view_data.dart';
 
-/// 六维雷达图。
+/// 九维雷达图。
 ///
 /// 纯绘制、无第三方图表库：这里画的是**已经归一化好的展示比例**，
 /// 不做任何打分或聚合（§6：客户端只渲染）。
 /// 轴数由 [PersonaDimension] 的数量决定，>=3 才画——二维雷达没有形状，
 /// 直接返回空盒子比画一条线更诚实。
+///
+/// 九轴比六轴密：标签按象限选对齐方式（右上往右、左上往左），
+/// 中间那根（正上方 / 正下方）居中，窄屏上也不会互相压住。
 class PersonaRadarChart extends StatelessWidget {
   const PersonaRadarChart({super.key, required this.dimensions});
 
