@@ -63,6 +63,23 @@ class PersonaDimensionsTest {
     }
 
     @Test
+    @DisplayName("探索广度：只碰一个题材是最低档 10，不是中性 50（50 只留给「没有题材数据」）")
+    void singleGenreIsLowestNotNeutral() {
+        List<PersonaDimensions.DimWork> onlyOne = new ArrayList<>();
+        for (int i = 0; i < 12; i++) {
+            onlyOne.add(work(List.of("机战", "TV"), 2015, null, null, "watched"));
+        }
+
+        assertThat(PersonaDimensions.compute(onlyOne, GENRES, YEAR).get("exploration"))
+                .as("只吃机战 = 最偏食的极端")
+                .isEqualTo(10.0);
+        // 一部题材都没有（例如全是公司/角色标签）→ 仍然中性，不能判成偏食
+        assertThat(PersonaDimensions.compute(
+                List.of(work(List.of("TV"), 2015, null, null, "watched")), GENRES, YEAR)
+                .get("exploration")).isEqualTo(50.0);
+    }
+
+    @Test
     @DisplayName("大众度与冷热跨度：样本不足 5 部给中性，够了才按百分位算")
     void heatDimensionsNeedFiveSamples() {
         List<PersonaDimensions.DimWork> four = List.of(
@@ -134,8 +151,8 @@ class PersonaDimensionsTest {
     }
 
     @Test
-    @DisplayName("情绪取向：只有治愈信号时不按情绪样本内占比顶满，按全部有标签作品算浓度")
-    void emotionHandlesOneSidedSignals() {
+    @DisplayName("情绪取向：相对全站配比（治愈:致郁=76:24）算偏离，不按治愈占比直接加分")
+    void emotionIsRelativeToBaseline() {
         List<PersonaDimensions.DimWork> works = new ArrayList<>();
         for (int i = 0; i < 8; i++) {
             works.add(work(List.of("治愈"), 2015, null, null, "watched"));
@@ -144,12 +161,22 @@ class PersonaDimensionsTest {
             works.add(work(List.of("机战"), 2015, null, null, "watched"));
         }
 
-        // 治愈 8 部 / 有标签 10 部 → 50 + 80，夹到 100
-        assertThat(PersonaDimensions.compute(works, GENRES, YEAR).get("emotion")).isEqualTo(100.0);
+        // 8 部治愈 / 8 部情绪标签，收缩 4 部伪计数 → 取向 0.843 → 50 + 33.3
+        assertThat(PersonaDimensions.compute(works, GENRES, YEAR).get("emotion")).isEqualTo(83.3);
 
+        // 5 部全治愈：小样本不敢顶满（77.8），也不再是旧口径的「恒 50」
         List<PersonaDimensions.DimWork> few = works.subList(0, 5);
-        // 情绪样本 5 部 < 8 → 中性，不因为「全是治愈」就给高分
-        assertThat(PersonaDimensions.compute(few, GENRES, YEAR).get("emotion")).isEqualTo(50.0);
+        assertThat(PersonaDimensions.compute(few, GENRES, YEAR).get("emotion")).isEqualTo(77.8);
+
+        // 与全站同配比 → 落在 50 附近：3 治愈 + 1 致郁 = 75:25，与 76:24 差一点 → 49.5
+        List<PersonaDimensions.DimWork> baseline = List.of(
+                work(List.of("治愈"), 2015, null, null, "watched"),
+                work(List.of("治愈"), 2015, null, null, "watched"),
+                work(List.of("治愈"), 2015, null, null, "watched"),
+                work(List.of("致郁"), 2015, null, null, "watched"));
+        assertThat(PersonaDimensions.compute(baseline, GENRES, YEAR).get("emotion"))
+                .as("随手收藏的人必须落在中性附近，不能因为全站偏治愈就自动 70+")
+                .isCloseTo(50.0, org.assertj.core.data.Offset.offset(0.6));
     }
 
     @Test

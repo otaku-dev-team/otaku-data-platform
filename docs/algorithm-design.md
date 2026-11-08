@@ -73,7 +73,7 @@ Authorization: Bearer <token>
 ```
 
 **九维（#494，2026-11-08 接线）**：`dimensions` 由 `PersonaDimensions`（纯函数，口径对齐网站
-`persona.py` / `DIMENSION_VERSION=4`）计算，0–100、50 中性，**数据不足给 50 不给 0**——
+`persona.py` / `DIMENSION_VERSION=4`，本地修正两处后为 **5**）计算，0–100、50 中性，**数据不足给 50 不给 0**——
 0 在雷达图上是一个凹角，看起来像「这方面很弱」，实际是「还没数据」。九个键**恒存在**。
 
 输入按**作品**去重（同一作品可能同时出现在浏览/收藏/点评三路），`status` 从收藏行补全，

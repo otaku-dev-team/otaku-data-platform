@@ -4868,7 +4868,9 @@ components:
         dimensions:
           type: object
           description: |
-            九维画像（#494），口径对齐网站 `persona.py`（`DIMENSION_VERSION=4`）。
+            九维画像（#494）。基线移植自网站 `persona.py`（`DIMENSION_VERSION = 4`），
+            本地修正两处后口径版本为 **5**（`exploration` 单题材边界、`emotion` 基础率归一，
+            见 `docs/persona-dimension-diagnostics.md` §7）。**两个版本号不要直接比数值。**
             **0–100，50 中性；数据不足的维度给 50，绝不给 0**——0 在雷达图上是一个凹角，
             看起来像「你这方面很弱」，实际是「还没数据」。
 
@@ -4890,7 +4892,7 @@ components:
               type: number
               minimum: 0
               maximum: 100
-              description: 探索广度——每百部作品覆盖多少种题材（带平滑，防小样本顶满）
+              description: 探索广度——每百部作品覆盖多少种题材（带平滑，防小样本顶满）；只碰过 1 个题材给 10（最低档），只有「没有题材数据」才是 50
             mainstream:
               type: number
               minimum: 0
@@ -4920,7 +4922,12 @@ components:
               type: number
               minimum: 0
               maximum: 100
-              description: 情绪取向——治愈系 ↔ 致郁系，0 = 全暗、100 = 全治愈、50 = 均衡或无信号
+              description: |
+                情绪取向——治愈系 ↔ 致郁系，0 = 全暗、100 = 全治愈。
+
+                **50 = 与全站配比一致（治愈:致郁 ≈ 76:24）或无信号**，不是「一半一半」：
+                全站本来治愈就比致郁常见，所以「随手收藏」必须落在 50。
+                4 部伪计数平滑，小样本自然回到 50，不设硬门槛。
             completion:
               type: number
               minimum: 0
