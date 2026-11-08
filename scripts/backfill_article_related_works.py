@@ -30,18 +30,24 @@
 
 用法（生产）：
 
-    # 1. 从 MySQL 导出两个输入（这里只列命令，账号在运维手里）
+    # 1. 从 MySQL 导出三个输入（这里只列命令，账号在运维手里）
+    #    article.source_id（全量）
     #    source_id / related_work_ids
     #    work.source_id where source='bangumi'
     # 2. 生成 SQL
     python scripts/backfill_article_related_works.py \\
         --site-db /opt/acgn-test-platform/local_dev.db \\
+        --articles-tsv /root/article_ids.txt \\
         --existing-tsv /root/article_rel.tsv \\
         --work-ids-tsv /root/work_ids.txt \\
         --out /root/backfill_article_related.sql
     # 3. 执行
     docker exec -i otaku-mysql sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" otaku' \\
         < /root/backfill_article_related.sql
+
+**`--articles-tsv` 不是可选项**：首站 `article_content_links` 覆盖 1133 篇，
+我们只收录了 689 篇。少了这道收窄，脚本会生成一批"命中 0 行"的 UPDATE，
+而报表上的篇数看着还更漂亮——那是最糟的一类错：数字自洽，事实不对。
 
 ## 边界
 
@@ -68,10 +74,12 @@ class BackfillReport:
     """一次回填的账面。数字都要能对得上，否则宁可不动生产。"""
 
     def __init__(self) -> None:
+        self.articles_in_db = 0
         self.articles_total = 0
         self.articles_with_site = 0
         self.articles_with_existing = 0
         self.articles_written = 0
+        self.articles_skipped_not_in_db = 0
         self.ids_written = 0
         self.ids_from_site_only = 0
         self.ids_from_existing_only = 0
@@ -81,14 +89,16 @@ class BackfillReport:
 
     def lines(self) -> list[str]:
         return [
-            f"资讯总数（有任一侧关联）  {self.articles_total}",
-            f"  首站 article_content_links  {self.articles_with_site}",
-            f"  现有 related_work_ids       {self.articles_with_existing}",
+            f"我们库里的资讯              {self.articles_in_db}",
+            f"  其中有一侧关联            {self.articles_total}",
+            f"    首站 article_content_links  {self.articles_with_site}",
+            f"    现有 related_work_ids       {self.articles_with_existing}",
             f"将写入                      {self.articles_written} 篇 / {self.ids_written} 个 subject_id",
             f"  仅首站带来的 id            {self.ids_from_site_only}",
             f"  仅现有值带来的 id          {self.ids_from_existing_only}",
             f"丢弃：content_id 无 bangumi  {self.ids_dropped_unmapped}",
             f"丢弃：subject 不在 work 表   {self.ids_dropped_not_listed}",
+            f"跳过：首站有 link 但我们没收录 {self.articles_skipped_not_in_db}",
         ]
 
 
@@ -158,16 +168,36 @@ def load_work_ids(path: Path | None) -> set[str] | None:
         return {line.strip() for line in handle if line.strip()}
 
 
+def load_articles(path: Path) -> set[str]:
+    """我们库里全部 `article.source_id`（含当前没有关联的那些）。"""
+    with path.open(encoding="utf-8") as handle:
+        return {line.strip() for line in handle if line.strip()}
+
+
 def resolve(
     links: dict[str, set[str]],
     existing: dict[str, list[str]],
     content_subjects: dict[str, str],
     work_ids: set[str] | None,
+    articles: set[str] | None = None,
 ) -> tuple[dict[str, list[str]], BackfillReport]:
-    """算出每篇资讯最终该写的 subject_id 列表，以及账面。"""
+    """算出每篇资讯最终该写的 subject_id 列表，以及账面。
+
+    `articles` 是我们库里实际存在的 `article.source_id`。传进来就必须过滤：
+    首站 `article_content_links` 覆盖 1133 篇，我们只收录了 689 篇，
+    不过滤会生成一批「命中 0 行」的 UPDATE，账面数字还好看得让人误判。
+    """
     report = BackfillReport()
     result: dict[str, list[str]] = {}
-    for article_id in sorted(set(links) | set(existing), key=_as_int):
+    candidates = set(links) | set(existing)
+    if articles is not None:
+        report.articles_in_db = len(articles)
+        report.articles_skipped_not_in_db = len(candidates - articles)
+        candidates &= articles
+    else:
+        report.articles_in_db = len(candidates)
+
+    for article_id in sorted(candidates, key=_as_int):
         site_ids = links.get(article_id, set())
         old_ids = existing.get(article_id, [])
         if not site_ids and not old_ids:
@@ -255,6 +285,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--site-db", required=True, type=Path, help="首站 SQLite（只读打开）")
     parser.add_argument(
+        "--articles-tsv",
+        required=True,
+        type=Path,
+        help="我们库里全部 article.source_id（一行一个）；首站覆盖比我们多，必须收窄",
+    )
+    parser.add_argument(
         "--existing-tsv",
         required=True,
         type=Path,
@@ -295,7 +331,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     existing = load_existing(args.existing_tsv)
     work_ids = load_work_ids(args.work_ids_tsv)
-    mapping, report = resolve(links, existing, content_subjects, work_ids)
+    articles = load_articles(args.articles_tsv)
+    mapping, report = resolve(links, existing, content_subjects, work_ids, articles)
 
     for line in report.lines():
         print(line, file=sys.stderr)

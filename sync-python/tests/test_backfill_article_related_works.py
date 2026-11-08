@@ -78,6 +78,24 @@ def test_resolve_skips_article_with_no_surviving_id():
     assert report.unresolved_articles == ["886"]
 
 
+def test_resolve_skips_articles_we_do_not_have():
+    """首站覆盖 1133 篇，我们只收录 689 篇：不在库里的不能生成 UPDATE。"""
+    links = {"886": {"11972"}, "999": {"7534"}}
+    content_subjects = {"11972": "265", "7534": "300"}
+    mapping, report = mod.resolve(links, {}, content_subjects, None, {"886"})
+    assert mapping == {"886": ["265"]}
+    assert report.articles_in_db == 1
+    assert report.articles_skipped_not_in_db == 1
+
+
+def test_resolve_keeps_article_with_no_site_link_but_in_db():
+    links = {"999": {"7534"}}
+    existing = {"886": ["11972"]}
+    content_subjects = {"11972": "265", "7534": "300"}
+    mapping, _ = mod.resolve(links, existing, content_subjects, None, {"886"})
+    assert mapping == {"886": ["265"]}
+
+
 def test_resolve_dedupes_same_subject_across_ids():
     # 两个 content_id 指向同一 bangumi（首站可能有重复条目）
     links = {"886": {"1", "2"}}
@@ -151,8 +169,11 @@ def test_main_refuses_without_work_ids(tmp_path, capsys):
     site.write_bytes(b"")
     existing = tmp_path / "rel.tsv"
     existing.write_text("", encoding="utf-8")
+    articles = tmp_path / "articles.txt"
+    articles.write_text("886\n", encoding="utf-8")
     code = mod.main([
         "--site-db", str(site),
+        "--articles-tsv", str(articles),
         "--existing-tsv", str(existing),
     ])
     assert code == 2
@@ -180,10 +201,13 @@ def test_end_to_end_on_fake_site_db(tmp_path):
     existing.write_text('886\t["11972"]\n', encoding="utf-8")
     works = tmp_path / "works.txt"
     works.write_text("265\n300\n", encoding="utf-8")
+    articles = tmp_path / "articles.txt"
+    articles.write_text("886\n", encoding="utf-8")
     out = tmp_path / "out.sql"
 
     code = mod.main([
         "--site-db", str(site),
+        "--articles-tsv", str(articles),
         "--existing-tsv", str(existing),
         "--work-ids-tsv", str(works),
         "--out", str(out),
