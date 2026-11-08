@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../core/router/route_paths.dart';
 import '../../core/theme/app_layout.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/design_tokens.dart';
@@ -58,6 +60,12 @@ class PersonaPage extends ConsumerWidget {
                   builder: (data) => _InsightBody(data: data),
                 ),
                 const SizedBox(height: Space.s4),
+                // #505 冷启动补标入口。画像数据不够时，这是用户唯一能主动
+                // 「喂数据」的动作——不给入口，空态就只是个死胡同。
+                if (signedIn) ...[
+                  const _QuizEntryCard(),
+                  const SizedBox(height: Space.s3),
+                ],
                 const _PendingActions(),
               ],
             ),
@@ -358,6 +366,26 @@ class _ReviewCard extends StatelessWidget {
             ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// 冷启动补标入口（#505）。点进去一部一部选「看过 / 在看 / 抛弃」，
+/// 答案直接写进收藏，回来画像就有数据了。
+class _QuizEntryCard extends StatelessWidget {
+  const _QuizEntryCard();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      child: ListTile(
+        leading: Icon(Icons.style_outlined, color: theme.colorScheme.primary),
+        title: const Text('补几部作品，画像更准'),
+        subtitle: const Text('20 部快速出形状，100 部更完整'),
+        trailing: const Icon(Icons.chevron_right_rounded),
+        onTap: () => context.push(RoutePaths.personaQuiz),
       ),
     );
   }
