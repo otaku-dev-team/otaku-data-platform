@@ -34,8 +34,15 @@ public final class PersonaDimensions {
     private PersonaDimensions() {
     }
 
-    /** 维度口径版本号：改任一维度的算法或阈值时 +1（与网站的 DIMENSION_VERSION 对齐）。 */
-    public static final int DIMENSION_VERSION = 4;
+    /**
+     * 维度口径版本号：改任一维度的算法或阈值时 +1。
+     *
+     * <p>**5 与网站的 4 不是同一个口径**：这一版在移植基线（4）上修了两处本地缺陷——
+     * 探索广度的单题材边界、情绪取向的基础率归一（见 {@code emotion} 与 {@code exploration}）。
+     * 两处都记在 {@code docs/persona-dimension-diagnostics.md} 的修复记录里，
+     * 网站同步后版本号再合并；在那之前别拿两个 5 / 4 直接对比数值。
+     */
+    public static final int DIMENSION_VERSION = 5;
 
     /** 九维的键序，与 #490 表格、网站 {@code DIMENSION_LABELS} 一致。 */
     public static final List<String> KEYS = List.of(
@@ -47,14 +54,45 @@ public final class PersonaDimensions {
 
     /** 样本门槛：热度、年代、跨度的标准差类维度，少于 5 部说明不了分布。 */
     static final int MIN_SAMPLE = 5;
-    /** 情绪维度门槛：只标两三部治愈番说明不了取向。 */
-    static final int EMOTION_MIN_SAMPLE = 8;
+    /**
+     * 情绪取向的**生产基础配比**（作品级，2026-11-08 实测）。
+     *
+     * <p>分母是「有标签的作品」17,524 部：治愈 1,118（6.4%）、致郁 346（2.0%）、任一 1,445（8.2%）。
+     * 两处口径都要留意：
+     * <ul>
+     *   <li>这是 {@code work.tags} JSON 的实测值——也就是算法真正的输入；
+     *       按 {@code work_tag} 表数「标签行」会得到 22.3%，那是行数不是作品数（一部作品常挂两个治愈标签），
+     *       用它当基础率会把密度高估近三倍；</li>
+     *   <li>比例是 **治愈:致郁 = 76:24**，不是 85:15——平均口味的用户本身就偏治愈，
+     *       所以「全站平均」必须落在 50，不能默认 0。</li>
+     * </ul>
+     */
+    static final double EMOTION_HEALING_SHARE = 0.764;
+    static final double EMOTION_DARK_SHARE = 0.236;
+    /**
+     * 情绪取向的收缩强度：相当于先塞进 4 部「平均口味」的作品再算比例。
+     *
+     * <p>不设硬门槛（原先是「命中 ≥8 部才给分」）：治愈/致郁只占 8.2%，
+     * 12 部收藏命中 8 部的概率约万分之四，轻度用户永远拿中性 50；而 60 部时人人命中 5 部左右，
+     * 又变成「全站配比的镜子」。平滑让小样本自然回到 50、大样本才敢偏离，不需要门槛。
+     */
+    static final double EMOTION_PRIOR_WEIGHT = 4.0;
+    /** 基础取向值：+1 = 全治愈、-1 = 全致郁，0.528 = 与全站同配比。 */
+    static final double EMOTION_BASE_ORIENTATION = EMOTION_HEALING_SHARE - EMOTION_DARK_SHARE;
     /** 追新度门槛：只收藏两三部当季番不能判成「硬核追新党」。 */
     static final int FRESH_MIN_SAMPLE = 8;
 
     /** 题材密度：每百部覆盖 25 种即满分。 */
     static final double EXPLORATION_SMOOTH = 100.0;
     static final double EXPLORATION_DENSITY_REF = 25.0;
+    /**
+     * 只碰过一个题材：探索广度的最低档，给 10 而不是中性 50。
+     *
+     * <p>原先 {@code distinctGenres <= 1} 与「没有题材数据」共用一个中性分支，结果是
+     * 「只吃机战」比「24 个题材各看一点」（约 57）还像博爱——最偏食的极端拿到了最高档。
+     * 50 只能留给「不知道」（没有白名单 / 作品无题材标签）。
+     */
+    static final double EXPLORATION_SINGLE_GENRE = 10.0;
     /** 年代跨度：标准差达到 12 年记满分。 */
     static final double ERA_SPAN_REF = 12.0;
     /** 冷热跨度：百分位标准差达到 25 记满分。 */
@@ -162,8 +200,13 @@ public final class PersonaDimensions {
      * 六个账号全顶满。
      */
     static double exploration(int total, int distinctGenres) {
-        if (distinctGenres <= 1 || total <= 0) {
+        if (total <= 0 || distinctGenres == 0) {
+            // 0 = 没有题材数据（白名单为空、或作品全都没题材标签）→ 「不知道」，给中性。
             return NEUTRAL;
+        }
+        if (distinctGenres == 1) {
+            // 1 = 确实只有一个题材 → 最偏食的极端，不能再和「不知道」共用 50。
+            return EXPLORATION_SINGLE_GENRE;
         }
         double density = distinctGenres / (total + EXPLORATION_SMOOTH) * 100;
         return round(Math.min(100.0, density / EXPLORATION_DENSITY_REF * 100));
@@ -246,11 +289,21 @@ public final class PersonaDimensions {
     }
 
     /**
-     * 情绪取向：有情绪信号的作品里，治愈向 vs 致郁向的净差（50 中性）。
+     * 情绪取向：治愈系 ↔ 致郁系，50 = **与全站配比一致**（治愈:致郁 ≈ 76:24）或无信号。
      *
-     * <p>分母只用「命中过情绪标签的作品」：网站实测 B 站 styles 根本没有致郁类标签，用全量做分母
-     * 会把结果压在 54–62 的窄带里。某一侧完全没有信号时退回「全部有标签作品」做分母，
-     * 否则只有一部治愈番也会算成 100%。
+     * <p>算法是「相对基础率的偏离」，不是「治愈占比」：
+     * <ol>
+     *   <li>取向值 {@code oriented}：在情绪标签内部算 {@code (治愈 - 致郁) / 并集}，
+     *       取值 -1（全暗）… +1（全治愈）；</li>
+     *   <li>用 {@value #EMOTION_PRIOR_WEIGHT} 部「平均口味」的伪计数把它收缩到
+     *       {@link #EMOTION_BASE_ORIENTATION}，小样本自然回到 50；</li>
+     *   <li>再按「偏离基础率多少」映射到 0–100（{@link #emotionScore}）。</li>
+     * </ol>
+     *
+     * <p>两条都是踩过的坑：<b>按治愈占比直接加分</b>会让随手收藏的人拿 70+（测的是全站标签分布）；
+     * <b>设「命中 ≥8 部」的硬门槛</b>会让 12 部收藏的轻度用户永远拿 50（治愈+致郁只占 8.25%，
+     * 命中 8 部的概率约万分之四）。分母也不退回「全部有标签作品」——那会把
+     * 「收藏多但没几部情绪番」压成「偏暗」，读起来像口味，其实只是标签铺得薄。
      */
     static double emotion(List<DimWork> works) {
         List<DimWork> tagged = works.stream().filter(w -> !w.tags().isEmpty()).toList();
@@ -260,16 +313,30 @@ public final class PersonaDimensions {
         long healing = tagged.stream().filter(w -> hits(w, HEALING_TAGS)).count();
         long dark = tagged.stream().filter(w -> hits(w, DARK_TAGS)).count();
         long union = tagged.stream().filter(w -> hits(w, HEALING_TAGS) || hits(w, DARK_TAGS)).count();
-        if (union < EMOTION_MIN_SAMPLE) {
+        if (union == 0) {
+            // 一部情绪标签都没有 → 无从判断取向，中性。
             return NEUTRAL;
         }
-        if (dark == 0) {
-            return round(Math.min(100.0, NEUTRAL + (double) healing / tagged.size() * 100));
-        }
-        if (healing == 0) {
-            return round(Math.max(0.0, NEUTRAL - (double) dark / tagged.size() * 100));
-        }
-        return round(NEUTRAL + (double) (healing - dark) / union * 50);
+        // 先算「在情绪标签内部」的取向（-1 全暗 … +1 全治愈），再用 4 部伪计数收缩到全站配比。
+        // 分母用 union 而不是「有标签的作品数」：后者会把「收藏多但没几部情绪番」的人
+        // 压到 50 以下，读起来像「偏暗」，其实只是标签铺得薄。
+        double oriented = (healing - dark + EMOTION_PRIOR_WEIGHT * EMOTION_BASE_ORIENTATION)
+                / (union + EMOTION_PRIOR_WEIGHT);
+        return round(emotionScore(oriented));
+    }
+
+    /**
+     * 取向值 → 0–100：**与全站同配比 = 50**，全治愈 = 100，全致郁 = 0。
+     *
+     * <p>为什么必须扣掉基础率：治愈标签本来就比致郁常见（76:24），按「治愈占比」
+     * 直接往上加，会让一个随手收藏的用户也拿到 70+——那测的是全站标签分布，不是这个人的选择。
+     */
+    private static double emotionScore(double oriented) {
+        double base = EMOTION_BASE_ORIENTATION;
+        double delta = oriented >= base
+                ? (oriented - base) / (1 - base) * NEUTRAL
+                : (oriented - base) / (base + 1) * NEUTRAL;
+        return Math.max(0.0, Math.min(100.0, NEUTRAL + delta));
     }
 
     /**

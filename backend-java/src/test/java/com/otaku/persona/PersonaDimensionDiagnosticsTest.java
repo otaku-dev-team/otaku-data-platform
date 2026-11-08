@@ -25,8 +25,12 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 反过来，塌缩就只可能来自口径或维度设计。
  *
  * <p>样本不是随手编的：年份按生产 decade 计数配比、评分人数取生产分位
- * （P10=23 / P50=147 / P90=2266）、治愈+致郁标签覆盖率按生产实测 **22.3%**
- * （4,200 / 18,828）撒。所以绝对量级有据可查，不是实验室数据。
+ * （P10=23 / P50=147 / P90=2266）、治愈+致郁标签覆盖率按生产实测 **8.2%**
+ * （作品级 1,445 / 17,524）撒。所以绝对量级有据可查，不是实验室数据。
+ *
+ * <p><b>8.2% 而不是 22.3%</b>：早先那次统计用的是 `work_tag` 的**标签行数**除以作品总数，
+ * 而一部作品常同时挂「治愈」「温馨」「萌」，行数天然是作品数的两三倍。
+ * 算法读的是 `work.tags` 这个 JSON 列，所以基础率必须按作品数算。
  *
  * <h2>读这个测试</h2>
  *
@@ -54,8 +58,10 @@ class PersonaDimensionDiagnosticsTest {
     private static final int[] YEARS = {1986, 1992, 1998, 2004, 2010, 2016, 2022, 2025};
     /** 生产 rating_count 分位：P10=23 / P25=52 / P50=147 / P75=618 / P90=2266。 */
     private static final long[] POPULARITY = {23, 52, 147, 618, 2266, 8000};
-    /** 治愈+致郁覆盖率 22.3%（生产实测 4,200 / 18,828）。 */
-    private static final double HEALING_DARK_SHARE = 0.223;
+    /** 治愈+致郁覆盖率 8.25%（作品级实测：1,445 / 17,524）。 */
+    private static final double HEALING_DARK_SHARE = 0.0825;
+    /** 情绪标签内部配比：治愈 76.4% / 致郁 23.6%（生产 1,118 : 346）。 */
+    private static final double HEALING_WITHIN_EMOTION = 0.764;
 
     private static final int USERS_PER_ARCHETYPE = 10;
     /** 两种规模：12 部（轻度用户 / 刚导入）与 60 部（活跃用户）。 */
@@ -79,6 +85,7 @@ class PersonaDimensionDiagnosticsTest {
         Map<String, Double> archaeology = archetypeMeans(engaged, "考古党");
         Map<String, Double> masterpieces = archetypeMeans(engaged, "神作党");
         Map<String, Double> healing = archetypeMeans(engaged, "治愈系");
+        Map<String, Double> dark = archetypeMeans(engaged, "致郁系");
         Map<String, Double> binge = archetypeMeans(engaged, "完播党");
         Map<String, Double> hamster = archetypeMeans(engaged, "仓鼠党");
 
@@ -97,6 +104,12 @@ class PersonaDimensionDiagnosticsTest {
         assertThat(healing.get("emotion"))
                 .as("情绪取向：治愈系必须明显偏高")
                 .isGreaterThan(average.get("emotion") + 15);
+        assertThat(dark.get("emotion"))
+                .as("情绪取向的另一端：致郁系必须明显偏低（只有基础率归一之后才成立）")
+                .isLessThan(average.get("emotion") - 15);
+        assertThat(average.get("emotion"))
+                .as("与全站配比相近的人必须落在中性附近——修前这里是 76，测的是全站标签分布而非个人口味")
+                .isCloseTo(PersonaDimensions.NEUTRAL, org.assertj.core.data.Offset.offset(10.0));
         assertThat(binge.get("completion"))
                 .as("完成度：完播党必须远高于仓鼠党")
                 .isGreaterThan(hamster.get("completion") + 30);
@@ -105,7 +118,13 @@ class PersonaDimensionDiagnosticsTest {
                 .as("探索广度：偏食必须低于博爱（24 题材、真实标签配比下方向是对的）")
                 .isLessThan(average.get("exploration") - 20);
 
-        // ---- 已知缺陷：用断言钉住现状，修好那天必须改这里 ----
+        // ---- 轻度用户（12 部）：旧口径下情绪维恒 50（命中 ≥8 部的概率 0.04%），现在必须还能分开 ----
+        Map<String, List<Map<String, Double>>> light = bySize.get(12);
+        assertThat(archetypeMeans(light, "治愈系").get("emotion"))
+                .as("12 部也要分得开：这是「门槛 8」最致命的场景")
+                .isGreaterThan(archetypeMeans(light, "博爱·六边形").get("emotion") + 15);
+
+        // ---- 已知取舍：用断言钉住现状，改主意那天必须改这里 ----
         assertThat(binge.get("completion"))
                 .as("**已知取舍**：全「看过」按中性 50 处理（防止数据源天然全 watched 时假装 100），"
                         + "代价是「完美完播」与「没有完成度信号」在界面上同值")
@@ -124,8 +143,8 @@ class PersonaDimensionDiagnosticsTest {
     }
 
     @Test
-    @DisplayName("边界缺陷：只碰一个题材时 exploration 返回中性 50，比博爱还高（钉住现状）")
-    void singleGenreGetsNeutralExploration() {
+    @DisplayName("边界已修：只碰一个题材给最低档 10，不再比博爱还高")
+    void singleGenreGetsLowestExploration() {
         List<PersonaDimensions.DimWork> onlyOneGenre = new ArrayList<>();
         for (int i = 0; i < 12; i++) {
             onlyOneGenre.add(new PersonaDimensions.DimWork(
@@ -134,10 +153,19 @@ class PersonaDimensionDiagnosticsTest {
 
         Map<String, Double> dims = PersonaDimensions.compute(onlyOneGenre, GENRE_SET, CURRENT_YEAR);
 
-        // distinctGenres <= 1 → NEUTRAL。语义上「只碰过一个题材」是最偏食的极端，
-        // 却拿到了中性值，比 24 题材里随便看的人（exploration≈57）还高。
-        // 修法：distinctGenres==1 时给低分（如 10），只有 distinctGenres==0 才给中性。
-        assertThat(dims.get("exploration")).isEqualTo(PersonaDimensions.NEUTRAL);
+        // 修前是 NEUTRAL（50），语义上「只碰一个题材」是最偏食的极端却比 24 题材里
+        // 随便看的人（≈57）还高。现在 distinctGenres==1 → 10，只有 ==0 才给中性。
+        assertThat(dims.get("exploration")).isEqualTo(PersonaDimensions.EXPLORATION_SINGLE_GENRE);
+
+        // 「没有题材数据」仍必须是中性：否则白名单没配的账号会被判成偏食
+        List<PersonaDimensions.DimWork> noGenre = new ArrayList<>();
+        for (int i = 0; i < 12; i++) {
+            noGenre.add(new PersonaDimensions.DimWork(
+                    List.of("TV", "漫画原作"), 2015, null, null, "watched"));
+        }
+        assertThat(PersonaDimensions.compute(noGenre, GENRE_SET, CURRENT_YEAR).get("exploration"))
+                .as("全是公司/媒介标签 → 不知道口味，给中性")
+                .isEqualTo(PersonaDimensions.NEUTRAL);
     }
 
     // ---------------------------------------------------------------- 人群
@@ -159,7 +187,7 @@ class PersonaDimensionDiagnosticsTest {
     }
 
     /**
-     * 虚拟目录：24 题材 × 8 年代 × 6 热度 × 2 口碑 = 2,304 部，另按 22.3% 配比撒治愈/致郁标签。
+     * 虚拟目录：24 题材 × 8 年代 × 6 热度 × 2 口碑 = 2,304 部，另按 8.25% 配比撒治愈/致郁标签。
      *
      * <p>每部只挂 1 个题材 + 1 个噪声标签：真实 `work.tags` 平均 8–12 个，但绝大多数是公司/角色/媒介，
      * 真正算题材的一两个。按「题材 1 + 噪声 1」建，才能让 tag_focus 测的是题材集中而不是标签总数。
@@ -181,13 +209,14 @@ class PersonaDimensionDiagnosticsTest {
                 }
             }
         }
-        // 按生产比例撒「情绪标签」：22.3% 的作品带治愈或致郁（治愈:致郁 ≈ 85:15，同生产 2563:263）
+        // 按生产比例撒「情绪标签」：8.25% 的作品带治愈或致郁（治愈:致郁 ≈ 76:24，同生产 1,118:346）
         Random random = new Random(7L);
         int tagged = (int) Math.round(works.size() * HEALING_DARK_SHARE);
         List<CatalogWork> shuffled = new ArrayList<>(works);
         java.util.Collections.shuffle(shuffled, random);
         for (int k = 0; k < tagged; k++) {
-            shuffled.get(k).tags().add(random.nextDouble() < 0.85 ? "治愈" : "致郁");
+            shuffled.get(k).tags().add(
+                    random.nextDouble() < HEALING_WITHIN_EMOTION ? "治愈" : "致郁");
         }
         return works;
     }
