@@ -2,6 +2,7 @@ package com.otaku.ugc;
 
 import com.otaku.auth.AuthService;
 import com.otaku.common.ApiException;
+import com.otaku.common.ErrorCode;
 import com.otaku.common.PageResponse;
 import com.otaku.importer.ImportService;
 import com.otaku.importer.dto.ImportBatchRequest;
@@ -262,6 +263,63 @@ class UgcReviewIntegrationTest {
     }
 
     // ---- 辅助 ----
+
+    // ------------------------------------------------------------------
+    // #531：查我的点评
+    // ------------------------------------------------------------------
+
+    @Test
+    @DisplayName("没点评过：返回空列表而不是 404（与「未收藏也是 200」同一口径）")
+    void mineIsEmptyWhenNotReviewed() {
+        PageResponse<UgcReviewDto> mine = service.mine(alice, workId);
+
+        assertThat(mine.items()).isEmpty();
+        assertThat(mine.total()).isZero();
+    }
+
+    @Test
+    @DisplayName("点评过：能拿到 review_id——这才是编辑/删除的前提")
+    void mineReturnsReviewId() {
+        UgcReviewDto created = service.create(alice, new UgcReviewRequest(workId, 9, "挺好"));
+
+        PageResponse<UgcReviewDto> mine = service.mine(alice, workId);
+
+        assertThat(mine.items()).hasSize(1);
+        assertThat(mine.items().get(0).reviewId()).isEqualTo(created.reviewId());
+        assertThat(mine.items().get(0).rating()).isEqualTo(9);
+    }
+
+    @Test
+    @DisplayName("按人隔离：别人的点评不会出现在「我的」里")
+    void mineIsPerUser() {
+        service.create(alice, new UgcReviewRequest(workId, 9, null));
+
+        assertThat(service.mine(bob, workId).items()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("自己删掉后仍然返回那一条（status=deleted）——否则客户端会以为没写过、POST 撞 409")
+    void mineKeepsDeletedRowVisible() {
+        UgcReviewDto created = service.create(alice, new UgcReviewRequest(workId, 7, null));
+        service.deleteOwn(alice, created.reviewId());
+
+        PageResponse<UgcReviewDto> mine = service.mine(alice, workId);
+
+        assertThat(mine.items()).hasSize(1);
+        assertThat(mine.items().get(0).status()).isEqualTo("deleted");
+    }
+
+    @Test
+    @DisplayName("作品不存在 404；缺 work_id 400")
+    void mineValidatesWorkId() {
+        assertThatThrownBy(() -> service.mine(alice, "W-not-exist-531"))
+                .isInstanceOfSatisfying(ApiException.class,
+                        e -> assertThat(e.code()).isEqualTo(ErrorCode.WORK_NOT_FOUND));
+
+        assertThatThrownBy(() -> service.mine(alice, "  "))
+                .isInstanceOfSatisfying(ApiException.class,
+                        e -> assertThat(e.code()).isEqualTo(ErrorCode.BAD_REQUEST));
+    }
 
     private UserRecord createUser(String username, String siteKey) {
         LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);

@@ -579,6 +579,41 @@ paths:
         "500": { $ref: "#/components/responses/InternalError" }
 
   /api/me/reviews:
+    get:
+      tags: [社区]
+      summary: 我在这部作品上的点评（需登录，0 或 1 条）
+      operationId: getMyWorkReview
+      description: |
+        #531：客户端要回显、编辑、删除自己的点评，必须先拿到 `review_id`。公开列表只能
+        按作者名比对，而点评超过一页时自己的那条不在第一页，会被误判成「没写过」，
+        点发表才拿到 `409 REVIEW_EXISTS`。
+
+        - `work_id` 必填；作品不存在 → `404`，缺参 → `400`；
+        - **没点评过返回 `200` + 空 `items`**，不是 404（与「未收藏也是 200」同一口径）；
+        - `status` 原样返回（`published` / `pending` / `hidden` / `deleted`）：客户端据此显示
+          「已发表 / 审核中 / 被隐藏 / 已删除」，**别一律当成没写过**；
+        - 分页参数不参与（恒 0 或 1 条），信封里的 `page` / `page_size` 固定 1。
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: work_id
+          in: query
+          required: true
+          description: 作品 id（缺省 `400`，不是「查全部我的点评」）
+          schema: { type: string, maxLength: 32 }
+      responses:
+        "200":
+          description: 我的点评（0 或 1 条）
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UgcReviewPage" }
+        "400":
+          description: 缺 `work_id`（`BAD_REQUEST`）
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
     post:
       tags: [社区]
       summary: 发表点评（需登录，一人一条）

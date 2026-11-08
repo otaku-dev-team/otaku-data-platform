@@ -332,3 +332,25 @@ PUT /api/me/collections/{work_id}   { "status": "dropped" }
   （与 `none` 分开统计——否则「被否掉」会被算成「没分类」）。
 - 漏斗（#492）三态映射到我们这边是：看过 → `watched`、在看 → `watching`、抛弃 → `dropped`。
   （#492 原文写的是网站侧的 `seen/want/drop`，落地时按这张表换。）
+
+## 14. 查「我的点评」：`GET /api/me/reviews?work_id=...`（2026-11-08，#531）
+
+```json
+GET /api/me/reviews?work_id=W-xxx
+→ { "page": 1, "page_size": 1, "total": 1, "total_pages": 1,
+    "items": [ { "review_id": "42", "status": "published", "rating": 8, "body": "…" } ] }
+```
+
+- **没点评过 = `200` + `items: []`**，不是 404。别写「找不到」的错态；
+- 分页参数不用传（恒 0 或 1 条），**信封形状与公开列表一致**，可以复用同一个解析；
+- **`status` 要区分着用**：`published` 正常显示；`pending` 显示「审核中」；`hidden` 显示
+  「已被站点隐藏」；`deleted` 显示「已删除」。**不要一律当成没写过**——否则用户一点「写点评」
+  就会撞 `409 REVIEW_EXISTS`，而他又改不了（那条已删）；
+- 拿到 `review_id` 才能调 `PATCH` / `DELETE /api/me/reviews/{review_id}`，这正是本端点存在的理由：
+  原先只能拉公开列表按作者名比对，**点评超过一页时自己的那条不在第一页**，会误判成没写过；
+- 作品不存在 → `404`；漏传 `work_id` → `400`。
+
+> ⚠️ **已知限制（还没修）**：点评软删后**不能重新发表**——`existsByUserAndWork` 把 `deleted`
+> 也算「已存在」，`POST` 会返回 `409`，而 `PATCH` 又只对 `published`/`pending` 生效。
+> 也就是说「删了就想重写」目前是死路。已在 #531 记录，等定「复活还是硬删」再改。
+> 在那之前建议客户端：`status = deleted` 时不要给「写点评」入口，只显示「你已删除这条点评」。
