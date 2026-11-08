@@ -1,0 +1,463 @@
+[
+ {
+  "kind": "encode",
+  "personaTags": [
+   "科幻系",
+   "番剧党",
+   "冷门挖掘机"
+  ],
+  "dimensions": {
+   "tag_focus": 92.0,
+   "exploration": 76,
+   "mainstream": 41,
+   "pop_spread": 63,
+   "quality": 55.5,
+   "era_span": 80,
+   "fresh": 84,
+   "emotion": 50,
+   "completion": 55
+  },
+  "rarity": {
+   "tier": "SR",
+   "share": 6.4,
+   "ratedTotal": 187
+  },
+  "heroTitle": "专挖空气系",
+  "heroCode": "KUUKI",
+  "quip": "评分 6 分以下的空气系，你一部一部挖，挖完还写短评。",
+  "total": 320,
+  "expectedToken": "eyJ0IjpbIuenkeW5u-ezuyIsIueVquWJp-WFmiIsIuWGt-mXqOaMluaOmOacuiJdLCJkIjpbOTIuMCw3Ni4wLDQxLjAsNjMuMCw1NS41LDgwLjAsODQuMCw1MC4wLDU1LjBdLCJyIjpbIlNSIiw2LjQsMTg3XSwiaCI6WyLkuJPmjJbnqbrmsJTns7siLCJLVVVLSSIsIuivhOWIhiA2IOWIhuS7peS4i-eahOepuuawlOezu--8jOS9oOS4gOmDqOS4gOmDqOaMlu-8jOaMluWujOi_mOWGmeefreivhOOAgiJdLCJuIjozMjB9"
+ },
+ {
+  "kind": "decode",
+  "token": "eyJ0IjpbIuenkeW5u-ezuyIsIueVquWJp-WFmiIsIuWGt-mXqOaMluaOmOacuiJdLCJkIjpbOTIuMCw3Ni4wLDQxLjAsNjMuMCw1NS41LDgwLjAsODQuMCw1MC4wLDU1LjBdLCJyIjpbIlNSIiw2LjQsMTg3XSwiaCI6WyLkuJPmjJbnqbrmsJTns7siLCJLVVVLSSIsIuivhOWIhiA2IOWIhuS7peS4i-eahOepuuawlOezu--8jOS9oOS4gOmDqOS4gOmDqOaMlu-8jOaMluWujOi_mOWGmeefreivhOOAgiJdLCJuIjozMjB9",
+  "expected": {
+   "tags": [
+    "科幻系",
+    "番剧党",
+    "冷门挖掘机"
+   ],
+   "dims": [
+    92.0,
+    76.0,
+    41.0,
+    63.0,
+    55.5,
+    80.0,
+    84.0,
+    50.0,
+    55.0
+   ],
+   "rarity": [
+    "SR",
+    6.4,
+    187
+   ],
+   "hero_title": "专挖空气系",
+   "hero_code": "KUUKI",
+   "quip": "评分 6 分以下的空气系，你一部一部挖，挖完还写短评。",
+   "total": 320
+  }
+ },
+ {
+  "kind": "encode",
+  "personaTags": [
+   "治愈系",
+   "杂食党"
+  ],
+  "dimensions": {},
+  "rarity": null,
+  "heroTitle": "宅宅",
+  "heroCode": "OTAKU",
+  "quip": "",
+  "total": 0,
+  "expectedToken": "eyJ0IjpbIuayu-aEiOezuyIsIuadgumjn-WFmiJdLCJkIjpbNTAuMCw1MC4wLDUwLjAsNTAuMCw1MC4wLDUwLjAsNTAuMCw1MC4wLDUwLjBdLCJoIjpbIuWuheWuhSIsIk9UQUtVIiwiIl19"
+ },
+ {
+  "kind": "decode",
+  "token": "eyJ0IjpbIuayu-aEiOezuyIsIuadgumjn-WFmiJdLCJkIjpbNTAuMCw1MC4wLDUwLjAsNTAuMCw1MC4wLDUwLjAsNTAuMCw1MC4wLDUwLjBdLCJoIjpbIuWuheWuhSIsIk9UQUtVIiwiIl19",
+  "expected": {
+   "tags": [
+    "治愈系",
+    "杂食党"
+   ],
+   "dims": [
+    50.0,
+    50.0,
+    50.0,
+    50.0,
+    50.0,
+    50.0,
+    50.0,
+    50.0,
+    50.0
+   ],
+   "rarity": null,
+   "hero_title": "宅宅",
+   "hero_code": "OTAKU",
+   "quip": "",
+   "total": 0
+  }
+ },
+ {
+  "kind": "encode",
+  "personaTags": [
+   "恋爱系",
+   "番剧党",
+   "偏食",
+   "神作党",
+   "仓鼠"
+  ],
+  "dimensions": {
+   "quality": 88.6,
+   "fresh": 12.4
+  },
+  "rarity": {
+   "tier": "?",
+   "share": null,
+   "ratedTotal": 0
+  },
+  "heroTitle": "白学家",
+  "heroCode": "HAKUGAKU",
+  "quip": "一部恋爱番你能拆出三条感情线，专楼盖到第 3127 楼。",
+  "total": 41,
+  "expectedToken": "eyJ0IjpbIuaBi-eIseezuyIsIueVquWJp-WFmiIsIuWBj-mjnyIsIuelnuS9nOWFmiJdLCJkIjpbNTAuMCw1MC4wLDUwLjAsNTAuMCw4OC42LDUwLjAsMTIuNCw1MC4wLDUwLjBdLCJyIjpbIj8iLG51bGwsMF0sImgiOlsi55m95a2m5a62IiwiSEFLVUdBS1UiLCLkuIDpg6jmgYvniLHnlarkvaDog73mi4blh7rkuInmnaHmhJ_mg4Xnur_vvIzkuJPmpbznm5bliLDnrKwgMzEyNyDmpbzjgIIiXSwibiI6NDF9"
+ },
+ {
+  "kind": "decode",
+  "token": "eyJ0IjpbIuaBi-eIseezuyIsIueVquWJp-WFmiIsIuWBj-mjnyIsIuelnuS9nOWFmiJdLCJkIjpbNTAuMCw1MC4wLDUwLjAsNTAuMCw4OC42LDUwLjAsMTIuNCw1MC4wLDUwLjBdLCJyIjpbIj8iLG51bGwsMF0sImgiOlsi55m95a2m5a62IiwiSEFLVUdBS1UiLCLkuIDpg6jmgYvniLHnlarkvaDog73mi4blh7rkuInmnaHmhJ_mg4Xnur_vvIzkuJPmpbznm5bliLDnrKwgMzEyNyDmpbzjgIIiXSwibiI6NDF9",
+  "expected": {
+   "tags": [
+    "恋爱系",
+    "番剧党",
+    "偏食",
+    "神作党"
+   ],
+   "dims": [
+    50.0,
+    50.0,
+    50.0,
+    50.0,
+    88.6,
+    50.0,
+    12.4,
+    50.0,
+    50.0
+   ],
+   "rarity": [
+    "?",
+    null,
+    0
+   ],
+   "hero_title": "白学家",
+   "hero_code": "HAKUGAKU",
+   "quip": "一部恋爱番你能拆出三条感情线，专楼盖到第 3127 楼。",
+   "total": 41
+  }
+ },
+ {
+  "kind": "encode",
+  "personaTags": [],
+  "dimensions": {
+   "tag_focus": 0,
+   "exploration": 100,
+   "mainstream": 99.95
+  },
+  "rarity": {
+   "tier": "N",
+   "share": 42.0,
+   "ratedTotal": 512
+  },
+  "heroTitle": "真·杂食",
+  "heroCode": "TRUE-OMNI",
+  "quip": "什么类型都点开，什么类型都留不住。",
+  "total": 999,
+  "expectedToken": "eyJ0IjpbXSwiZCI6WzAuMCwxMDAuMCwxMDAuMCw1MC4wLDUwLjAsNTAuMCw1MC4wLDUwLjAsNTAuMF0sInIiOlsiTiIsNDIuMCw1MTJdLCJoIjpbIuecn8K35p2C6aOfIiwiVFJVRS1PTU5JIiwi5LuA5LmI57G75Z6L6YO954K55byA77yM5LuA5LmI57G75Z6L6YO955WZ5LiN5L2P44CCIl0sIm4iOjk5OX0"
+ },
+ {
+  "kind": "decode",
+  "token": "eyJ0IjpbXSwiZCI6WzAuMCwxMDAuMCwxMDAuMCw1MC4wLDUwLjAsNTAuMCw1MC4wLDUwLjAsNTAuMF0sInIiOlsiTiIsNDIuMCw1MTJdLCJoIjpbIuecn8K35p2C6aOfIiwiVFJVRS1PTU5JIiwi5LuA5LmI57G75Z6L6YO954K55byA77yM5LuA5LmI57G75Z6L6YO955WZ5LiN5L2P44CCIl0sIm4iOjk5OX0",
+  "expected": {
+   "tags": [],
+   "dims": [
+    0.0,
+    100.0,
+    100.0,
+    50.0,
+    50.0,
+    50.0,
+    50.0,
+    50.0,
+    50.0
+   ],
+   "rarity": [
+    "N",
+    42.0,
+    512
+   ],
+   "hero_title": "真·杂食",
+   "hero_code": "TRUE-OMNI",
+   "quip": "什么类型都点开，什么类型都留不住。",
+   "total": 999
+  }
+ },
+ {
+  "kind": "encode",
+  "personaTags": [
+   "悬疑系"
+  ],
+  "dimensions": {
+   "tag_focus": 33.333,
+   "exploration": 66.666
+  },
+  "rarity": {
+   "tier": "SSR",
+   "share": 0.3,
+   "ratedTotal": 0
+  },
+  "heroTitle": "先画平面图",
+  "heroCode": "LOCKED-ROOM",
+  "quip": "诡计一出来，进度条就停在那不动了。",
+  "total": 7,
+  "expectedToken": "eyJ0IjpbIuaCrOeWkeezuyJdLCJkIjpbMzMuMyw2Ni43LDUwLjAsNTAuMCw1MC4wLDUwLjAsNTAuMCw1MC4wLDUwLjBdLCJyIjpbIlNTUiIsMC4zLDBdLCJoIjpbIuWFiOeUu-W5s-mdouWbviIsIkxPQ0tFRC1ST09NIiwi6K-h6K6h5LiA5Ye65p2l77yM6L-b5bqm5p2h5bCx5YGc5Zyo6YKj5LiN5Yqo5LqG44CCIl0sIm4iOjd9"
+ },
+ {
+  "kind": "decode",
+  "token": "eyJ0IjpbIuaCrOeWkeezuyJdLCJkIjpbMzMuMyw2Ni43LDUwLjAsNTAuMCw1MC4wLDUwLjAsNTAuMCw1MC4wLDUwLjBdLCJyIjpbIlNTUiIsMC4zLDBdLCJoIjpbIuWFiOeUu-W5s-mdouWbviIsIkxPQ0tFRC1ST09NIiwi6K-h6K6h5LiA5Ye65p2l77yM6L-b5bqm5p2h5bCx5YGc5Zyo6YKj5LiN5Yqo5LqG44CCIl0sIm4iOjd9",
+  "expected": {
+   "tags": [
+    "悬疑系"
+   ],
+   "dims": [
+    33.3,
+    66.7,
+    50.0,
+    50.0,
+    50.0,
+    50.0,
+    50.0,
+    50.0,
+    50.0
+   ],
+   "rarity": [
+    "SSR",
+    0.3,
+    0
+   ],
+   "hero_title": "先画平面图",
+   "hero_code": "LOCKED-ROOM",
+   "quip": "诡计一出来，进度条就停在那不动了。",
+   "total": 7
+  }
+ },
+ {
+  "kind": "decode",
+  "token": "",
+  "expected": null
+ },
+ {
+  "kind": "decode",
+  "token": "   ",
+  "expected": null
+ },
+ {
+  "kind": "decode",
+  "token": "!!!not-base64!!!",
+  "expected": null
+ },
+ {
+  "kind": "decode",
+  "token": "e30",
+  "expected": null
+ },
+ {
+  "kind": "decode",
+  "token": "W10",
+  "expected": null
+ },
+ {
+  "kind": "decode",
+  "token": "eyJ0IjoieCJ9",
+  "expected": null
+ },
+ {
+  "kind": "decode",
+  "token": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+  "expected": null
+ },
+ {
+  "kind": "decode",
+  "token": "eyJ0IjpbXSwidCI6MX0",
+  "expected": null
+ },
+ {
+  "kind": "shareLine",
+  "heroTitle": "专挖空气系",
+  "heroNote": "评分 6 分以下的空气系，你一部一部挖，挖完还写短评。",
+  "total": 320,
+  "seed": "",
+  "expected": "我的御宅成分是【专挖空气系】——评分 6 分以下的空气系，你一部一部挖，挖完还写短评。你呢？来测"
+ },
+ {
+  "kind": "shareLine",
+  "heroTitle": "宅宅",
+  "heroNote": "别人问爱好，憋半天说「看动漫」，然后开始疯狂安利。",
+  "total": 0,
+  "seed": "",
+  "expected": "我的御宅成分是【宅宅】——别人问爱好，憋半天说「看动漫」，然后开始疯狂安利。你呢？来测"
+ },
+ {
+  "kind": "shareLine",
+  "heroTitle": "白学家",
+  "heroNote": "剧里还没告白。",
+  "total": 41,
+  "seed": "",
+  "expected": "我的御宅成分是【白学家】——剧里还没告白。你呢？来测"
+ },
+ {
+  "kind": "shareLine",
+  "heroTitle": "专挖空气系",
+  "heroNote": "评分 6 分以下的空气系，你一部一部挖，挖完还写短评。",
+  "total": 320,
+  "seed": "alice",
+  "expected": "【专挖空气系】，评分 6 分以下的空气系，你一部一部挖，挖完还写短评。不服来测"
+ },
+ {
+  "kind": "shareLine",
+  "heroTitle": "宅宅",
+  "heroNote": "别人问爱好，憋半天说「看动漫」，然后开始疯狂安利。",
+  "total": 0,
+  "seed": "alice",
+  "expected": "【宅宅】，别人问爱好，憋半天说「看动漫」，然后开始疯狂安利。不服来测"
+ },
+ {
+  "kind": "shareLine",
+  "heroTitle": "白学家",
+  "heroNote": "剧里还没告白。",
+  "total": 41,
+  "seed": "alice",
+  "expected": "【白学家】，剧里还没告白。不服来测"
+ },
+ {
+  "kind": "shareLine",
+  "heroTitle": "专挖空气系",
+  "heroNote": "评分 6 分以下的空气系，你一部一部挖，挖完还写短评。",
+  "total": 320,
+  "seed": "user42",
+  "expected": "【专挖空气系】，评分 6 分以下的空气系，你一部一部挖，挖完还写短评。不服来测"
+ },
+ {
+  "kind": "shareLine",
+  "heroTitle": "宅宅",
+  "heroNote": "别人问爱好，憋半天说「看动漫」，然后开始疯狂安利。",
+  "total": 0,
+  "seed": "user42",
+  "expected": "【宅宅】，别人问爱好，憋半天说「看动漫」，然后开始疯狂安利。不服来测"
+ },
+ {
+  "kind": "shareLine",
+  "heroTitle": "白学家",
+  "heroNote": "剧里还没告白。",
+  "total": 41,
+  "seed": "user42",
+  "expected": "【白学家】，剧里还没告白。不服来测"
+ },
+ {
+  "kind": "shareLine",
+  "heroTitle": "专挖空气系",
+  "heroNote": "评分 6 分以下的空气系，你一部一部挖，挖完还写短评。",
+  "total": 320,
+  "seed": "汉字昵称",
+  "expected": "我的御宅成分是【专挖空气系】——评分 6 分以下的空气系，你一部一部挖，挖完还写短评。你呢？来测"
+ },
+ {
+  "kind": "shareLine",
+  "heroTitle": "宅宅",
+  "heroNote": "别人问爱好，憋半天说「看动漫」，然后开始疯狂安利。",
+  "total": 0,
+  "seed": "汉字昵称",
+  "expected": "我的御宅成分是【宅宅】——别人问爱好，憋半天说「看动漫」，然后开始疯狂安利。你呢？来测"
+ },
+ {
+  "kind": "shareLine",
+  "heroTitle": "白学家",
+  "heroNote": "剧里还没告白。",
+  "total": 41,
+  "seed": "汉字昵称",
+  "expected": "我的御宅成分是【白学家】——剧里还没告白。你呢？来测"
+ },
+ {
+  "kind": "shareLine",
+  "heroTitle": "专挖空气系",
+  "heroNote": "评分 6 分以下的空气系，你一部一部挖，挖完还写短评。",
+  "total": 320,
+  "seed": "a",
+  "expected": "我的御宅成分是【专挖空气系】——评分 6 分以下的空气系，你一部一部挖，挖完还写短评。你呢？来测"
+ },
+ {
+  "kind": "shareLine",
+  "heroTitle": "宅宅",
+  "heroNote": "别人问爱好，憋半天说「看动漫」，然后开始疯狂安利。",
+  "total": 0,
+  "seed": "a",
+  "expected": "我的御宅成分是【宅宅】——别人问爱好，憋半天说「看动漫」，然后开始疯狂安利。你呢？来测"
+ },
+ {
+  "kind": "shareLine",
+  "heroTitle": "白学家",
+  "heroNote": "剧里还没告白。",
+  "total": 41,
+  "seed": "a",
+  "expected": "我的御宅成分是【白学家】——剧里还没告白。你呢？来测"
+ },
+ {
+  "kind": "shareText",
+  "share": null,
+  "expected": ""
+ },
+ {
+  "kind": "shareText",
+  "share": 0.0,
+  "expected": "0.0%"
+ },
+ {
+  "kind": "shareText",
+  "share": 0.3,
+  "expected": "0.3%"
+ },
+ {
+  "kind": "shareText",
+  "share": 0.89,
+  "expected": "0.9%"
+ },
+ {
+  "kind": "shareText",
+  "share": 1.0,
+  "expected": "1.0%"
+ },
+ {
+  "kind": "shareText",
+  "share": 6.4,
+  "expected": "6.4%"
+ },
+ {
+  "kind": "shareText",
+  "share": 9.99,
+  "expected": "10.0%"
+ },
+ {
+  "kind": "shareText",
+  "share": 10.0,
+  "expected": "10%"
+ },
+ {
+  "kind": "shareText",
+  "share": 42.0,
+  "expected": "42%"
+ },
+ {
+  "kind": "shareText",
+  "share": 100.0,
+  "expected": "100%"
+ }
+]
