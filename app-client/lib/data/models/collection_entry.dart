@@ -2,12 +2,23 @@ import 'package:flutter/foundation.dart';
 
 import 'work_type.dart';
 
-/// 观看状态。契约（`data-contract.md` §7）只允许这三个值；
+/// 观看状态。契约（`data-contract.md` §7）允许这四个值；
 /// **「未收藏」不是一种状态，而是记录不存在**。
+///
+/// ⚠️ `dropped`（抛弃，#496）与「取消收藏」是两件事：
+/// 取消收藏会删行、信号消失；抛弃保留记录，画像里记**负权重**、
+/// 且不进九维分母（`PersonaDimensions`）。所以它必须是一个真实状态，
+/// 不能折成删除，也不能当成 `null`（未设状态）。
+///
+/// ⚠️ **服务端加取值时客户端必须跟着加**：三态时代的 [parse] 遇到
+/// 未知取值直接抛，一条 `dropped` 会让整个收藏页解析失败（#540 上线后
+/// 的真实故障）。列表接口的枚举已经是 `[want, watching, watched, dropped, none]`，
+/// 契约再扩取值时先查这里。
 enum CollectionStatus {
   want('want', '想看'),
   watching('watching', '在看'),
-  watched('watched', '看过');
+  watched('watched', '看过'),
+  dropped('dropped', '抛弃');
 
   const CollectionStatus(this.value, this.label);
 
