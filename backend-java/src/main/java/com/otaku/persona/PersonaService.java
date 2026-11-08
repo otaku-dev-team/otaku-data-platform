@@ -60,6 +60,9 @@ public class PersonaService {
     static final int RECENT_DAYS = 30;
     static final int RECENT_LIMIT = 20;
 
+    /** 老番分界：2010 年及以前算老番，与网站 {@code early_share} 同口径。 */
+    static final int EARLY_YEAR = 2010;
+
     static final double VIEW_BASE = 1.0;
     static final double VIEW_STEP = 0.25;
     static final double VIEW_CAP = 2.0;
@@ -173,7 +176,8 @@ public class PersonaService {
                 droppedWorks.add(row.workId());
             } else {
                 DimAgg agg = dimWorks.computeIfAbsent(row.workId(),
-                        id -> new DimAgg(row.tags(), row.releaseYear(), row.ratingCount()));
+                        id -> new DimAgg(row.workType(), row.tags(),
+                                row.releaseYear(), row.ratingCount()));
                 if (row.collectionStatus() != null) {
                     // 只有收藏行带状态；浏览/点评行为 null，不能被它们覆盖成 null。
                     agg.status = row.collectionStatus();
@@ -215,6 +219,57 @@ public class PersonaService {
         Map<String, Double> dimensions = PersonaDimensions.compute(
                 dimInputs, genreTags, LocalDateTime.now(clock).getYear());
 
+        // 称号与标签解读要的是「作品数」而不是「行为条数」：同一部作品出现在浏览 / 收藏 /
+        // 点评三路里只算一部，否则刷几次页面就把题材占比刷歪。
+        //
+        // 被抛弃的作品**不算进题材/身份占比**（与九维同一口径：拒绝的东西不是口味），
+        // 但要单独计数——「三集弃之神」这类称号判的就是它（#540 之后才有数据）。
+        int want = 0;
+        int seen = 0;
+        int countedWorks = 0;
+        Map<String, Integer> typeCounts = new LinkedHashMap<>();
+        Map<String, Integer> tagCounts = new LinkedHashMap<>();
+        List<Integer> years = new ArrayList<>();
+        for (Map.Entry<String, DimAgg> entry : dimWorks.entrySet()) {
+            if (droppedWorks.contains(entry.getKey())) {
+                continue;
+            }
+            DimAgg agg = entry.getValue();
+            countedWorks++;
+            if ("want".equals(agg.status)) {
+                want++;
+            } else if ("watched".equals(agg.status)) {
+                seen++;
+            }
+            if (agg.type != null && !agg.type.isBlank()) {
+                typeCounts.merge(agg.type, 1, Integer::sum);
+            }
+            for (String tag : agg.tags) {
+                if (tag != null && !tag.isBlank()) {
+                    tagCounts.merge(tag, 1, Integer::sum);
+                }
+            }
+            if (agg.year != null) {
+                years.add(agg.year);
+            }
+        }
+
+        PersonaTitle.Input titleInput = new PersonaTitle.Input(
+                dimensions,
+                countedWorks,
+                want,
+                seen,
+                // 抛弃数（#540 之后才有真实数据）：原版留的 0 常量在这里接上。
+                droppedWorks.size(),
+                PersonaTitle.cluster(tagCounts),
+                PersonaTitle.identity(shares(typeCounts, countedWorks)),
+                tagCounts,
+                earlyShare(years),
+                // 稀有度占比没有站内校准样本，null 表示「未标定」——不拿别的数凑。
+                null);
+        PersonaTitle.Title title = PersonaTitle.assign(titleInput);
+        PersonaTitle.Rarity rarity = PersonaTitle.rarity(title.code());
+
         return new PersonaDtos.PersonaProfile(
                 normalize(rawTypes),
                 normalize(rawTags),
@@ -222,7 +277,38 @@ public class PersonaService {
                 List.copyOf(recentActive),
                 signals.size(),
                 dimensions,
+                PersonaTitle.personaTags(titleInput),
+                PersonaTitle.traitBlurbs(titleInput),
+                title.title(),
+                title.code(),
+                title.note(),
+                PersonaTitle.finalQuip(Long.toString(user.id())),
+                new PersonaDtos.Rarity(rarity.tier(), rarity.label(), rarity.note(), rarity.share()),
                 OffsetDateTime.now(clock));
+    }
+
+    /** 媒介占比（0–100）：主身份按「单一媒介过半」判定，所以给百分比而不是归一化权重。 */
+    static Map<String, Double> shares(Map<String, Integer> counts, int total) {
+        if (counts.isEmpty() || total <= 0) {
+            return Map.of();
+        }
+        Map<String, Double> out = new LinkedHashMap<>();
+        counts.forEach((key, count) -> out.put(key, round3(count * 100.0 / total)));
+        return out;
+    }
+
+    /**
+     * 老番占比：{@link #EARLY_YEAR} 年及以前的作品占「有年份」作品的比例。
+     *
+     * <p>不看最早那一部——库里必然躺着老番，随手补一部就会被判成老资历
+     * （网站侧实测 18 个账号里 9 个中招，所以才改成占比）。
+     */
+    static double earlyShare(List<Integer> years) {
+        if (years == null || years.isEmpty()) {
+            return 0.0;
+        }
+        long early = years.stream().filter(year -> year <= EARLY_YEAR).count();
+        return round3(early * 100.0 / years.size());
     }
 
     /**
@@ -342,12 +428,14 @@ public class PersonaService {
      * 只有 {@code status} 会在多行之间被补全（收藏行有、浏览/点评行没有）。
      */
     private static final class DimAgg {
+        private final String type;
         private final List<String> tags;
         private final Integer year;
         private final Integer ratingCount;
         private String status;
 
-        private DimAgg(List<String> tags, Integer year, Integer ratingCount) {
+        private DimAgg(String type, List<String> tags, Integer year, Integer ratingCount) {
+            this.type = type;
             this.tags = tags == null ? List.of() : tags;
             this.year = year;
             this.ratingCount = ratingCount;
