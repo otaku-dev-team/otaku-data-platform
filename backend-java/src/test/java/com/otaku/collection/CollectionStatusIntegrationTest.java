@@ -18,6 +18,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -117,6 +118,101 @@ class CollectionStatusIntegrationTest {
         mvc.perform(get("/api/me/collections?status=dropped")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(jsonPath("$.total").value(0));
+    }
+
+    // ------------------------------------------------------------------
+    // #506：source（user / quiz）
+    // ------------------------------------------------------------------
+
+    @Test
+    @DisplayName("source=quiz 能存下；省略 source 默认是 user（老客户端行为不变）")
+    void sourceIsStoredAndDefaultsToUser() throws Exception {
+        mvc.perform(put("/api/me/collections/" + prefix + "w")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"watched\",\"source\":\"quiz\"}"))
+                .andExpect(status().isOk());
+
+        assertThat(sourceOf(prefix + "w")).isEqualTo("quiz");
+
+        // 省略 source → user（复用同一部作品：先删再写，避免再造一个 work）
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .delete("/api/me/collections/" + prefix + "w")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isNoContent());
+        mvc.perform(put("/api/me/collections/" + prefix + "w")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"want\"}"))
+                .andExpect(status().isOk());
+        assertThat(sourceOf(prefix + "w")).as("省略 source 必须是 user").isEqualTo("user");
+    }
+
+    @Test
+    @DisplayName("种子盖不动用户操作：quiz 写入被忽略，返回用户当前状态且不报错")
+    void quizCannotOverwriteUserChoice() throws Exception {
+        mvc.perform(put("/api/me/collections/" + prefix + "w")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"watched\"}"))
+                .andExpect(status().isOk());
+
+        mvc.perform(put("/api/me/collections/" + prefix + "w")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"dropped\",\"source\":\"quiz\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("watched"));
+
+        assertThat(sourceOf(prefix + "w")).isEqualTo("user");
+
+        // PATCH 同样挡：否则漏斗换个方法就绕过了规则
+        mvc.perform(patch("/api/me/collections/" + prefix + "w")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"want\",\"source\":\"quiz\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("watched"));
+    }
+
+    @Test
+    @DisplayName("反向允许：用户改种子 → 变成 user，之后重跑漏斗再也盖不动")
+    void userOverwritesSeed() throws Exception {
+        mvc.perform(put("/api/me/collections/" + prefix + "w")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"watched\",\"source\":\"quiz\"}"))
+                .andExpect(status().isOk());
+
+        mvc.perform(put("/api/me/collections/" + prefix + "w")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"watching\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("watching"));
+        assertThat(sourceOf(prefix + "w")).isEqualTo("user");
+
+        mvc.perform(put("/api/me/collections/" + prefix + "w")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"dropped\",\"source\":\"quiz\"}"))
+                .andExpect(jsonPath("$.status").value("watching"));
+    }
+
+    @Test
+    @DisplayName("source 非法 → 400，不静默降级成 user")
+    void invalidSourceRejected() throws Exception {
+        mvc.perform(put("/api/me/collections/" + prefix + "w")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"want\",\"source\":\"seed\"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    private String sourceOf(String workId) {
+        return jdbc.queryForObject(
+                "SELECT source FROM collection WHERE user_id = ? AND work_id = ?",
+                String.class, userId, workId);
     }
 
     @Test

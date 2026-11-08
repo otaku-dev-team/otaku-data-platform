@@ -23,7 +23,8 @@ public class CollectionRepository {
     /** 契约 §4.4 允许按状态过滤，"none" 表示"已收藏但未设状态"。 */
     static final String STATUS_NONE = "none";
 
-    private static final String COLUMNS = "id, user_id, work_id, status, created_at, updated_at";
+    private static final String COLUMNS =
+            "id, user_id, work_id, status, source, created_at, updated_at";
 
     private static final String JOIN_COLUMNS = """
             c.work_id, c.status, c.created_at, c.updated_at,
@@ -46,31 +47,44 @@ public class CollectionRepository {
         return rows.stream().findFirst();
     }
 
-    public void insert(long userPk, String workId, String status, LocalDateTime now) {
+    public void insert(long userPk, String workId, String status, String source, LocalDateTime now) {
         jdbc.update("""
-                        INSERT INTO collection (user_id, work_id, status, created_at, updated_at)
-                        VALUES (:userId, :workId, :status, :now, :now)
+                        INSERT INTO collection (user_id, work_id, status, source, created_at, updated_at)
+                        VALUES (:userId, :workId, :status, :source, :now, :now)
                         """,
                 new MapSqlParameterSource()
                         .addValue("userId", userPk)
                         .addValue("workId", workId)
                         .addValue("status", status)
+                        .addValue("source", source)
                         .addValue("now", now));
     }
 
-    /** 只改状态；updated_at 同步推进（服务端最后成功提交生效，即 LWW）。 */
-    public void updateStatus(long userPk, String workId, String status, LocalDateTime now) {
-        jdbc.update("""
-                        UPDATE collection SET status = :status, updated_at = :now
+    /**
+     * 写入一条已有收藏（#506）：**种子不能覆盖用户操作**。
+     *
+     * <p>条件 `NOT (source = 'user' AND :source = 'quiz')` 是这条规则的唯一落点——
+     * 放在 SQL 里而不是先查后判，是为了不给并发留窗口：两次请求同时到，
+     * 「先查」都看到 seed，随后都能改。这里由数据库按**当前行**决定要不要改。
+     *
+     * @return 实际更新的行数；0 表示被规则挡下（或行已不存在）
+     */
+    public int applyWrite(long userPk, String workId, String status, String source, LocalDateTime now) {
+        return jdbc.update("""
+                        UPDATE collection
+                           SET status = :status, source = :source, updated_at = :now
                          WHERE user_id = :userId AND work_id = :workId
+                           AND NOT (source = 'user' AND :source = 'quiz')
                         """,
                 new MapSqlParameterSource()
                         .addValue("status", status)
+                        .addValue("source", source)
                         .addValue("now", now)
                         .addValue("userId", userPk)
                         .addValue("workId", workId));
     }
 
+    /** 只改状态；updated_at 同步推进（服务端最后成功提交生效，即 LWW）。 */
     public int delete(long userPk, String workId) {
         return jdbc.update("DELETE FROM collection WHERE user_id = :userId AND work_id = :workId",
                 new MapSqlParameterSource().addValue("userId", userPk).addValue("workId", workId));
@@ -136,6 +150,7 @@ public class CollectionRepository {
                 rs.getLong("user_id"),
                 rs.getString("work_id"),
                 rs.getString("status"),
+                rs.getString("source"),
                 rs.getObject("created_at", LocalDateTime.class),
                 rs.getObject("updated_at", LocalDateTime.class));
     }
