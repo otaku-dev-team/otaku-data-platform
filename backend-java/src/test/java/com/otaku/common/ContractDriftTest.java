@@ -266,6 +266,8 @@ class ContractDriftTest {
         targets.put("PersonaRatingTendency", com.otaku.persona.dto.PersonaDtos.RatingTendency.class);
         // 称号稀有度（#494 接线）：share 可为 null（「未标定」≠ 0%）
         targets.put("PersonaRarity", com.otaku.persona.dto.PersonaDtos.Rarity.class);
+        // 冷启动选题（#492）：题面复用 WorkSummary 卡片，只有外层信封是新形状
+        targets.put("QuizPaper", com.otaku.persona.dto.QuizDtos.QuizPaper.class);
         // 个性化推荐（#402）：score 是组内归一化相对分，reasons 最多 3 条
         targets.put("RecommendationPage", com.otaku.recommend.dto.RecommendDtos.RecommendationPage.class);
         targets.put("Recommendation", com.otaku.recommend.dto.RecommendDtos.Recommendation.class);
