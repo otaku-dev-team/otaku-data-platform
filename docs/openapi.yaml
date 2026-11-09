@@ -3039,6 +3039,44 @@ paths:
         "404": { $ref: "#/components/responses/AdminNotFound" }
         "500": { $ref: "#/components/responses/InternalError" }
 
+  /api/home/posters:
+    get:
+      tags: [作品查询]
+      summary: 首页 hero 海报候选（固定最多 12 条，不翻页）
+      operationId: listHomePosters
+      description: |
+        首页 hero coverflow 的数据源（#561）。**现算，不建名单表**：同一份数据、同一个顺序，
+        不轮转、不定时、不提供手动指定。
+
+        候选口径（照首站 `home_posters.list_candidates`）：
+
+        - 来源是**最新真季度**的档期（与 `/api/schedule` 省略 `season` 时的默认季度同一口径，
+          跳过 `unreleased` / `ova_sp` / `cn_movie` 这些伪季度码）；
+        - 档期条目必须关联到本地作品（`work_id` 非空），且**作品**的 `work_type = anime`。
+          判据落在作品上而不是档期的类型字段——后者的实测值是「TV动画」这类来源原词，
+          用 `anime` 去比一条都不中（生产 202610 季实测 0/69）；
+        - 作品必须**现在就能取到封面**：判据是本地封面缓存可读（回源 + 磁盘缓存那套），
+          不是 `cover_source_url` 非空。URL 有值但回源失败的情况真实存在，那张图会在 hero 上
+          变成一块空白——宁可少一条，也不给空白；
+        - 顺序：评分降序（票数不足 50 的按 0 沉底，与列表的 `rating_sort` 同一口径）
+          → 星期（未定档排最后）→ 标题 → id。**顺序稳定**，客户端刷新不应看到换序；
+        - **最多 12 条**，不足就有几条给几条；一条都没有返回空数组，客户端隐藏 hero
+          （**不要用假数据填充**）。
+
+        明确不做：未关联作品库的档期条目用外链海报、跳转按标题搜索。跳转目标不明确，
+        也没有站内搜索页兜底，容易点出一个搜索无结果。
+
+        性能：单个季度几百条动画，候选查询与封面缓存检查都是毫秒级；
+        不触发任何回源（本接口不会为了凑数去下载封面）。
+      responses:
+        "200":
+          description: 成功；没有候选时 `items` 为空数组
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HomePosters" }
+        "429": { $ref: "#/components/responses/RateLimitedWithRetry" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
 components:
 
   securitySchemes:
@@ -3458,6 +3496,21 @@ components:
         items:
           type: array
           description: 同系列作品，年代升序，**包含当前作品**
+          items: { $ref: "#/components/schemas/WorkSummary" }
+
+    HomePosters:
+      type: object
+      description: |
+        首页 hero 海报候选（#561）。最多 12 条，顺序即展示顺序。
+
+        `items` 为空**不是错误**：当季还没有「有可解析封面」的动画时，客户端隐藏 hero，
+        不要用假数据填充，也不要显示一整块空白。
+      required: [items]
+      properties:
+        items:
+          type: array
+          description: 海报卡片，按展示顺序；最多 12 条，可能是 0 条
+          maxItems: 12
           items: { $ref: "#/components/schemas/WorkSummary" }
 
     Work:
