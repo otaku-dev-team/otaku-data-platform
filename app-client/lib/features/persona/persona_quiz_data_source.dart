@@ -70,8 +70,12 @@ class PersonaQuizRemoteDataSource implements PersonaQuizDataSource {
 
     return QuizPaper(
       seed: _int(data['seed']),
-      // `size` 以服务端为准；缺字段时用实际条数兜底。
-      size: _int(data['size'], fallback: works.length),
+      // ⚠️ 按**解析出来的条数**算，不直接信服务端的 `size`。
+      //
+      // 契约要求 `size == works.length`，但上面会跳过坏卡：一旦跳过，
+      // 服务端仍是 20、这里只有 19，页面按 20 判断「还没做完」，
+      // 翻到第 20 张时 `works[19]` 直接越界崩。进度条也因此会差最后一格。
+      size: works.length,
       works: List<WorkSummary>.unmodifiable(works),
     );
   }

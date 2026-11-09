@@ -44,20 +44,24 @@ void main() {
       expect(paper.works.map((w) => w.workId), <String>['w-1', 'w-2']);
     });
 
-    test('size 以服务端为准——候选不够时进度条不能按请求值画', () async {
+    test('size 按实际条数算——否则坏卡被跳过后最后一张会越界', () async {
       final stub = _Stub(
         body: <String, dynamic>{
           'seed': 0,
-          'size': 1,
+          'size': 20, // 服务端声称 20，但只给了 1 部
           'works': <dynamic>[_work('w-1', '只剩一部')],
         },
       );
 
       final paper = await PersonaQuizRemoteDataSource(
         _dio(stub),
-      ).fetchPaper(seed: 0, size: 100);
+      ).fetchPaper(seed: 0, size: 20);
 
-      expect(paper.size, 1, reason: '服务端只给了 1 部，进度条要按 1 算');
+      expect(
+        paper.size,
+        1,
+        reason: '按 20 判断「没做完」会去取 works[1]，直接越界崩',
+      );
     });
 
     test('单条坏卡不毁整份题面', () async {
@@ -77,6 +81,8 @@ void main() {
       ).fetchPaper(seed: 0, size: 20);
 
       expect(paper.works.map((w) => w.workId), <String>['w-2']);
+      // 服务端写 2，但坏卡被跳过 → 实际只有 1 题，进度条也必须按 1 算。
+      expect(paper.size, 1);
     });
   });
 
