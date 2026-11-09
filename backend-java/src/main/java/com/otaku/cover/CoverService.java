@@ -205,6 +205,31 @@ public class CoverService {
         return Optional.empty();
     }
 
+    /**
+     * 这张封面**现在**能不能取到（只查磁盘，不回源、不发请求）。
+     *
+     * <p>给「必须有图」的位置筛候选用（首页 hero，见 {@code HomePosterService}）。
+     * 判据只能是磁盘：{@code cover_source_url} 有值不代表回源能成功（404 / 超时都见过），
+     * 而回源要 1–2 秒且被限流，放进列表接口就是「首页等封面下载」。
+     *
+     * <p>与 {@link #load} 的命中顺序一致：先认这条作品记着的 key，再按 URL 哈希扫目录。
+     * 少了第二步，同一张图被多条作品引用时（实测多来源并存很常见），
+     * 只有「记着 key 的那一条」算有图，其余会被误判成没图。
+     */
+    public boolean isCached(WorkRecord work) {
+        if (work == null || work.coverSourceUrl() == null) {
+            return false;
+        }
+        String cacheKey = work.coverCacheKey();
+        if (cacheKey != null) {
+            Path cached = resolveSafely(cacheKey);
+            if (cached != null && Files.isReadable(cached)) {
+                return true;
+            }
+        }
+        return findCachedKeyByHash(sha256Hex(work.coverSourceUrl())).isPresent();
+    }
+
     private Optional<CoverPayload> download(WorkRecord work) {
         URI uri;
         try {

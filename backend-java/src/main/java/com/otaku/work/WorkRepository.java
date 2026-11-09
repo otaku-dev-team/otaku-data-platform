@@ -196,6 +196,43 @@ public class WorkRepository {
                 MAPPER);
     }
 
+    /**
+     * 首页 hero 的候选作品（#561）：最新真季度档期里关联到作品的动画，按展示顺序排。
+     *
+     * <p><b>为什么档期表出现在这里</b>：候选的「来源」是档期（一个季度有哪些新番），
+     * 但排序键、可见性和对外卡片全在 {@code work} 上。拆成两个仓储再在 Java 里对齐，
+     * 只会得到「先查 id 再查作品再按原顺序重排」这一串同样要 JOIN 的步骤。
+     * 这与 {@link #findRelated} 直接 JOIN {@code work_tag} 是同一取舍。
+     *
+     * <p><b>类型判据落在 {@code w.work_type}</b>，不是 {@code schedule.work_type}：
+     * 后者的实测值是「TV动画」这类来源原词，用 {@code anime} 去匹配一条都不中
+     * （生产 202610 季 69 条里 0 条）。档期自己的类型列只用于展示。
+     *
+     * <p><b>封面只做「URL 非空」这一道粗筛</b>，真正的「现在能不能取到」由调用方
+     * 逐个验磁盘缓存（{@code CoverService.isCached}）——这里判不了文件是否存在。
+     *
+     * <p>同一个作品在同一季出现多条时取最小星期（一部作品一周只播一次，
+     * 重复行是导入侧的重复档期），避免 JOIN 出重复卡片。
+     */
+    public List<WorkRecord> findPosterCandidates(String seasonCode, int limit) {
+        String sql = "SELECT " + ALIASED_COLUMNS + " FROM work w"
+                + " JOIN (SELECT work_id, MIN(weekday) AS weekday FROM schedule"
+                + "        WHERE season_code = :seasonCode AND work_id IS NOT NULL"
+                + "        GROUP BY work_id) s ON s.work_id = w.work_id"
+                + " WHERE w.work_type = 'anime'"
+                + " AND w.cover_source_url IS NOT NULL AND w.cover_source_url <> ''"
+                + " AND w.deleted_at IS NULL AND w.is_adult = 0"
+                + (siteScopeEnabled ? " AND w.site_listed = 1" : "")
+                // 星期为 NULL（未定档）沉底：MySQL 的 ASC 会把 NULL 排最前。
+                + " ORDER BY w.rating_sort DESC, s.weekday IS NULL, s.weekday, w.title, w.id"
+                + " LIMIT :limit";
+        return jdbc.query(sql,
+                new MapSqlParameterSource()
+                        .addValue("seasonCode", seasonCode)
+                        .addValue("limit", limit),
+                MAPPER);
+    }
+
     /** 作品当前的 series_key；null = 不属于任何系列（列可空，不是「查不到」）。 */
     public String findSeriesKey(long id) {
         List<String> keys = jdbc.query(

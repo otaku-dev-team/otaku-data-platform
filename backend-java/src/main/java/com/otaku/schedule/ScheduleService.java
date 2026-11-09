@@ -96,6 +96,18 @@ public class ScheduleService {
         return repository.findSeasonCodes();
     }
 
+    /**
+     * 当前季度：库内最新的**真季度**编码；一个都没有时退回第一个实际存在的季度。
+     *
+     * <p>给「最新季度的档期」这类跨模块取数用（首页 hero 候选 #561）。
+     * 为什么不复用 {@link #list} 的默认值逻辑又写一遍：那段逻辑必须只有一份，
+     * 否则「/api/schedule 默认哪一季」和「hero 取哪一季」迟早不一致，
+     * 而症状是首页 hero 全是几个月前的番——没人会把它当 bug 报。
+     */
+    public String currentSeason() {
+        return latestSeason(repository.findSeasonCodes());
+    }
+
     private List<ScheduleGroup> groupByWeekday(List<ScheduleRecord> records) {
         // 固定 8 组的顺序：周一…周日 + 待定。空组也保留（items 为空），
         // 客户端不用为"这周没有周三"特殊处理。
