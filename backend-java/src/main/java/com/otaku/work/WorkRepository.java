@@ -893,6 +893,159 @@ public class WorkRepository {
         return total == null ? 0L : total;
     }
 
+    /**
+     * 搜索的**召回**子查询（#560）：多路命中，每路带上它自己的相关度档位。
+     *
+     * <p>为什么是「先召回、再排序」而不是在 work 表上逐行 EXISTS：后者要为主题标签、
+     * 公司、角色声优各做一次相关子查询，20 万作品实测**零命中**时 1.57s；先各自扫一遍再
+     * UNION 只要 0.45s（2026-11-09 生产只读压测，见 PR）。代价是四段 SQL，
+     * 换 3.5 倍延迟，值。
+     *
+     * <p>档位（照首站 `_title_hit` / `_info_recall`）：
+     * <ul>
+     *   <li>3 = 标题组：`title` / `title_original` / `aliases`（JSON 文本按子串匹配，
+     *       与「解包后逐个别名 LIKE」等价：关键词跨元素边界的假命中要求词里带 `","`，实际不可能）；</li>
+     *   <li>2 = 信息组：题材标签名 / 公司名 / 角色名或声优名；</li>
+     *   <li>1 = 兜底：`summary`。</li>
+     * </ul>
+     * <b>取最高档，不叠加算分</b>（`MAX(rel_rank)`）：首站是 `CASE` 取最高档，
+     * 加权求和会让「简介里恰好提到一次」的作品排到「标题就是它」的前面。
+     *
+     * <p>别名与 `rel_rank` 都不是保留字，但 `rank` 在 MySQL 8 是保留字（窗口函数），
+     * 别改回去。
+     */
+    private String searchRecall(MapSqlParameterSource params, String pattern) {
+        params.addValue("kw", pattern);
+        return "SELECT id, MAX(rel_rank) AS rel_rank FROM ("
+                + " SELECT w2.id, CASE WHEN " + titleHit("w2") + " THEN 3 ELSE 1 END AS rel_rank"
+                + " FROM work w2 WHERE " + titleHit("w2") + " OR w2.summary LIKE :kw ESCAPE '!'"
+                + " UNION ALL SELECT t.work_ref, 2 FROM work_tag t WHERE t.tag LIKE :kw ESCAPE '!'"
+                + " UNION ALL SELECT s.work_ref, 2 FROM work_studios s WHERE s.name LIKE :kw ESCAPE '!'"
+                + " UNION ALL SELECT c.work_ref, 2 FROM work_characters c"
+                + " WHERE c.name LIKE :kw ESCAPE '!' OR c.actor LIKE :kw ESCAPE '!'"
+                + ") z GROUP BY id";
+    }
+
+    /** 标题组命中（3 档）的条件；`alias` 是 work 的表别名。 */
+    private static String titleHit(String alias) {
+        return "(" + alias + ".title LIKE :kw ESCAPE '!'"
+                + " OR " + alias + ".title_original LIKE :kw ESCAPE '!'"
+                + " OR " + alias + ".aliases LIKE :kw ESCAPE '!')";
+    }
+
+    /**
+     * 搜索可选的筛选条件（与列表同一套口径，外加季数变体约束）。
+     *
+     * <p>标签用 {@code EXISTS} 而不是 JOIN：搜索的主体已经是「召回结果 JOIN work」，
+     * 再 JOIN 一次 {@code work_tag} 会制造笛卡尔积（一条作品挂 5 个标签就出现 5 行），
+     * `total` 直接算错。EXISTS 是半连接，不放大行数。
+     */
+    private void appendSearchFilters(StringBuilder sql, MapSqlParameterSource params,
+                                     String workType, List<String> tags, BigDecimal minRating,
+                                     Integer year, List<String> titleVariants, boolean includeAdult) {
+        sql.append(" AND w.deleted_at IS NULL");
+        if (siteScopeEnabled) {
+            sql.append(" AND w.site_listed = 1");
+        }
+        if (!includeAdult) {
+            sql.append(" AND w.is_adult = 0");
+        }
+        if (workType != null) {
+            sql.append(" AND w.work_type = :workType");
+            params.addValue("workType", workType);
+        }
+        if (minRating != null) {
+            sql.append(" AND w.rating_value >= :minRating");
+            params.addValue("minRating", minRating);
+        }
+        if (year != null) {
+            sql.append(" AND w.release_year = :year");
+            params.addValue("year", year);
+        }
+        if (tags != null && !tags.isEmpty()) {
+            if (tags.size() == 1) {
+                sql.append(" AND EXISTS (SELECT 1 FROM work_tag ft WHERE ft.work_ref = w.id"
+                        + " AND ft.tag = :tag)");
+                params.addValue("tag", tags.get(0));
+            } else {
+                sql.append(" AND (SELECT COUNT(DISTINCT ft.tag) FROM work_tag ft"
+                        + " WHERE ft.work_ref = w.id AND ft.tag IN (:tags)) = :tagCount");
+                params.addValue("tags", tags);
+                params.addValue("tagCount", tags.size());
+            }
+        }
+        if (titleVariants != null && !titleVariants.isEmpty()) {
+            // 「第2季 / 第二期 / Ⅱ / 2nd / Season 2 任一写法贴在任何标题类字段上」。
+            // 放外层而不是召回里：召回的 1 档（简介命中）同样要满足这个约束，
+            // 只在标题组上加会让「简介里提到第二季」的作品漏进来。
+            sql.append(" AND (");
+            for (int i = 0; i < titleVariants.size(); i++) {
+                String param = "v" + i;
+                if (i > 0) {
+                    sql.append(" OR ");
+                }
+                sql.append("w.title LIKE :").append(param).append(" ESCAPE '!'")
+                        .append(" OR w.title_original LIKE :").append(param).append(" ESCAPE '!'")
+                        .append(" OR w.aliases LIKE :").append(param).append(" ESCAPE '!'");
+                params.addValue(param, "%" + titleVariants.get(i) + "%");
+            }
+            sql.append(")");
+        }
+    }
+
+    /**
+     * 搜索总数：**一次扫描同时给出「可见」与「被成人遮挡」**（#560）。
+     *
+     * <p>为什么不复用 {@code count(..., includeAdult)} 跑两遍：搜索一次要 0.4–0.8s，
+     * 两遍就是 1.6s，而客户端每敲一次搜索都会付。{@code SUM(is_adult = 0/1)} 在同一个
+     * WHERE 上算两个数，语义与「含成人总数 − 不含成人总数」完全一致
+     * （软删、未收录、年份、类型、标签、关键词都已经在 WHERE 里）。
+     *
+     * @return visible = 不含成人的总数；adultHidden = 其中被成人遮挡的条数
+     */
+    public SearchCounts searchCounts(String workType, String pattern, List<String> tags,
+                                     BigDecimal minRating, Integer year, List<String> titleVariants) {
+        MapSqlParameterSource params = new MapSqlParameterSource();
+        StringBuilder sql = new StringBuilder("SELECT SUM(w.is_adult = 0), SUM(w.is_adult = 1)")
+                .append(" FROM work w JOIN (").append(searchRecall(params, pattern)).append(") u ON u.id = w.id")
+                .append(" WHERE 1 = 1");
+        // includeAdult = true：成人这一条交给 SUM 统计，不放进 WHERE。
+        appendSearchFilters(sql, params, workType, tags, minRating, year, titleVariants, true);
+        return jdbc.query(sql.toString(), params, rs -> {
+            if (!rs.next()) {
+                return new SearchCounts(0L, 0L);
+            }
+            return new SearchCounts(rs.getLong(1), rs.getLong(2));
+        });
+    }
+
+    /**
+     * 搜索取一页（#560）。
+     *
+     * @param sort 用户**显式**选的排序；{@code null} 表示按相关度
+     *             （档位 → 有效评分 → id）。显式排序压过相关度：点了 chips 就是用户的意思。
+     */
+    public List<WorkRecord> searchPage(String workType, String pattern, List<String> tags, WorkSort sort,
+                                       BigDecimal minRating, Integer year, List<String> titleVariants,
+                                       int limit, int offset) {
+        MapSqlParameterSource params = new MapSqlParameterSource();
+        String orderBy = sort == null
+                // 相关度优先；同档按有效评分（票数<50 按 0，与列表一致）；id 兜底保证分页稳定。
+                ? "u.rel_rank DESC, w.rating_sort DESC, w.id ASC"
+                : sort.orderBy("w");
+        StringBuilder sql = new StringBuilder("SELECT ").append(ALIASED_COLUMNS)
+                .append(" FROM work w JOIN (").append(searchRecall(params, pattern)).append(") u ON u.id = w.id")
+                .append(" WHERE 1 = 1");
+        appendSearchFilters(sql, params, workType, tags, minRating, year, titleVariants, false);
+        sql.append(" ORDER BY ").append(orderBy).append(" LIMIT :limit OFFSET :offset");
+        params.addValue("limit", limit).addValue("offset", offset);
+        return jdbc.query(sql.toString(), params, MAPPER);
+    }
+
+    /** 搜索结果的两个计数（{@link #searchCounts} 的返回形状）。 */
+    public record SearchCounts(long visible, long adultHidden) {
+    }
+
     /** 列表的公共过滤条件。列统一带 {@code w.} 前缀，因为按标签查时是 JOIN。 */
     private void appendConditions(StringBuilder sql, MapSqlParameterSource params,
                                   String workType, String titlePattern, BigDecimal minRating,

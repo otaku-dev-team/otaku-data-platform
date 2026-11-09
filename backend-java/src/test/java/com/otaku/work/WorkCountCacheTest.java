@@ -41,6 +41,11 @@ class WorkCountCacheTest {
         when(repository.count(any(), any(), any(), any(), any())).thenReturn(total);
         when(repository.findPage(any(), any(), any(), any(), any(), any(), anyInt(), anyInt()))
                 .thenReturn(List.of());
+        // 带关键词的请求 #560 起走搜索路径（searchCounts 一次给出可见数与成人遮挡数）
+        when(repository.searchCounts(any(), any(), any(), any(), any(), any()))
+                .thenReturn(new WorkRepository.SearchCounts(total, 0L));
+        when(repository.searchPage(any(), any(), any(), any(), any(), any(), any(), anyInt(), anyInt()))
+                .thenReturn(List.of());
     }
 
     @Test
@@ -66,7 +71,9 @@ class WorkCountCacheTest {
         service.list("anime", null, "日常", null, null, null, null, 1, 20);
         service.list("anime", null, null, null, null, "7.5", null, 1, 20);
 
-        verify(repository, times(5)).count(any(), any(), any(), any(), any());
+        // 4 组无关键词的筛选各查一次 count；带关键词那次走 searchCounts（同样是「真查库一次」）。
+        verify(repository, times(4)).count(any(), any(), any(), any(), any());
+        verify(repository, times(1)).searchCounts(any(), any(), any(), any(), any(), any());
     }
 
     @Test
