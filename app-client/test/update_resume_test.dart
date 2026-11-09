@@ -188,15 +188,25 @@ void main() {
     addTearDown(server.stop);
 
     final target = '${tmp.path}/update.apk';
+    final part = File('$target.part');
     final container = await containerFor(server.url, target);
     final notifier = container.read(updateControllerProvider.notifier);
 
     final future = notifier.download();
-    await Future<void>.delayed(const Duration(milliseconds: 200));
+    // 等到**真的写进内容**再取消，不用固定 sleep：
+    // ① CI 上服务端起流可能慢于 200ms，固定 sleep 会让取消落在第一个 chunk 之前；
+    // ② `.part` 在下载开始时就被创建（0 字节），只判 `exists()` 会在还没收到数据时
+    //    就取消，续传时没有 Range 可带，后面的断言会红（本地实测）。
+    final deadline = DateTime.now().add(const Duration(seconds: 10));
+    while (DateTime.now().isBefore(deadline)) {
+      final ready =
+          await part.exists() && await part.length() >= 4096; // 一个分片
+      if (ready) break;
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    }
     notifier.cancelDownload();
     await future;
 
-    final part = File('$target.part');
     expect(
       await part.exists(),
       isTrue,
