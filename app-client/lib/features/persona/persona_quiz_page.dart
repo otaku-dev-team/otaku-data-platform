@@ -151,7 +151,9 @@ class _PersonaQuizPageState extends ConsumerState<PersonaQuizPage> {
   }
 
   Widget _buildBody(QuizPaper paper) {
-    final done = _index >= paper.size;
+    // 用 `works.length` 而不是 `paper.size` 判断结束：两者在正常情况下相等，
+    // 但数据源跳过坏卡后就不等了，按 `size` 会在最后一张越界。
+    final done = _index >= paper.works.length;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
