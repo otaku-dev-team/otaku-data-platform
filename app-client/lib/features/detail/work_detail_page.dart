@@ -473,7 +473,8 @@ class _DetailInfo extends StatelessWidget {
         if (work.aliases case final aliases? when aliases.isNotEmpty)
           MetaLine(label: '又名', value: aliases.join(' / ')),
         if (work.studios case final studios? when studios.isNotEmpty)
-          MetaLine(label: '制作公司', value: studios.join(' × ')),
+          // 每个公司名可点进公司页（#558）。别名那行没有跳转目标，保持纯文本。
+          StudioMetaLine(studios: studios),
         Text(
           '简介',
           style: theme.textTheme.titleSmall?.copyWith(

@@ -35,6 +35,7 @@ enum ApiErrorCode {
   /// 资讯不存在。同样是 404，但「作品不存在」与「资讯不存在」提示不同，
   /// 混用一个码会让资讯详情页说出「作品不存在」。
   articleNotFound('ARTICLE_NOT_FOUND'),
+  studioNotFound('STUDIO_NOT_FOUND'),
 
   batchTooLarge('BATCH_TOO_LARGE'),
   rateLimited('RATE_LIMITED'),
@@ -109,6 +110,7 @@ class ApiException implements Exception {
     ApiErrorCode.userDisabled => '账号已被禁用',
     ApiErrorCode.siteUnavailable => '站点登录暂不可用，请稍后再试',
     ApiErrorCode.collectionRequired => '该作品已不在收藏中，请刷新后重试',
+    ApiErrorCode.studioNotFound => '没有找到这家制作公司',
     ApiErrorCode.reviewExists => '你已经点评过这部作品了',
     ApiErrorCode.cancelled => '请求已取消',
     _ => message.isNotEmpty ? message : '出了点问题，请重试',

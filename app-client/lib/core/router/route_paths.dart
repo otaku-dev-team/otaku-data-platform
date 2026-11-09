@@ -30,6 +30,14 @@ abstract final class RoutePaths {
   static String person(String personId) =>
       '$persons/${Uri.encodeComponent(personId)}';
 
+  /// 制作公司页（#557）。公司名**就是主键**，没有 id：`work_studios` 只有名字。
+  /// 整值编码后放路径段，大小写敏感——后端按二进制排序规则精确匹配。
+  static const String studios = '/studios';
+  static const String studioSegment = ':name';
+
+  static String studio(String name) =>
+      '$studios/${Uri.encodeComponent(name)}';
+
   /// 登录页。从收藏页跳来时用 push，登录成功后 pop 回去。
   static const String login = '/login';
 

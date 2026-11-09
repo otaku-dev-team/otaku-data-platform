@@ -16,6 +16,7 @@ import '../../features/person/person_page.dart';
 import '../../features/persona/persona_page.dart';
 import '../../features/persona/persona_quiz_page.dart';
 import '../../features/persona/persona_quiz_search_page.dart';
+import '../../features/studio/studio_page.dart';
 import '../../features/profile/profile_edit_page.dart';
 import '../../features/profile/profile_page.dart';
 import '../../features/recent/recent_history_page.dart';
@@ -169,6 +170,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '${RoutePaths.persons}/${RoutePaths.personSegment}',
         builder: (context, state) =>
             PersonPage(personId: state.pathParameters['personId'] ?? ''),
+      ),
+      GoRoute(
+        // 制作公司页（#557）：公司名是路径段，整值编码、大小写敏感。
+        path: '${RoutePaths.studios}/${RoutePaths.studioSegment}',
+        builder: (context, state) => StudioPageWidget(
+          name: Uri.decodeComponent(state.pathParameters['name'] ?? ''),
+        ),
       ),
       GoRoute(
         path: RoutePaths.profile,
