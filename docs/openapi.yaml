@@ -3074,6 +3074,98 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/HomePosters" }
+  /api/studios/{name}:
+    get:
+      tags: [作品查询]
+      summary: 制作公司页（按公司名反查作品）
+      operationId: getStudio
+      description: |
+        制作公司页（#557）。公司名**就是主键**，没有 id——`work_studios` 只有名字，
+        编一个 id 等于多一层没有第二用途的映射（首站也是 `/studios/{name}`）。
+
+        名字口径（与首站 `crud.list_contents_by_studio` 一致）：
+
+        - **精确等值**，先做 NFKC + strip 归一（全角字母/数字、全角空格、首尾空白会被折平）；
+        - **大小写敏感**：`A-1 Pictures` 与 `a-1 pictures` 是两家公司，服务端用二进制排序规则比对，
+          不是 `LOWER()`、也不是默认的 `ai_ci`；
+        - **不做模糊 / 前缀 / 标签**匹配。
+
+        其它约定：
+
+        - 排序：有效评分降序（票数不足 50 的按 0 沉底，与列表 `sort=rating` 同一口径）→ id 降序。
+          契约原文写的是 `rating_value DESC`；实现取 `rating_sort`，
+          因为直接用原分会让「5 个人打 10 分」的作品顶在公司页第一位（#383 修过的问题）；
+        - 查询不到 → **404 `STUDIO_NOT_FOUND`**，不给空态页（首站就是 404）；
+        - 可见性复用列表口径（成人 / 已下架 / 未收录剔除），`total` 与 `items` 同一套条件；
+        - `limit` 默认 60、上限 200（**超限截断，不报错**），`offset` 负数按 0；
+        - 与首站的一处有意不同：**分页 + `total`**。首站全量不分页，
+          但「动画制作」这类名字下可能几百部，客户端是二级页，一次全给不划算。
+      parameters:
+        - name: name
+          in: path
+          required: true
+          description: 公司名本身（urlencode 后放路径段），大小写敏感
+          schema: { type: string, maxLength: 200, example: "京都アニメーション" }
+        - name: limit
+          in: query
+          description: 一页多少条，默认 60、上限 200（超限截断）
+          schema: { type: integer, minimum: 1, maximum: 200, default: 60 }
+        - name: offset
+          in: query
+          description: 跳过多少条，负数按 0 处理
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        "200":
+          description: 成功；`total` 是该公司可见作品总数，与 `items` 长度无关
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StudioPage" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimitedWithRetry" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /api/series/{key}:
+    get:
+      tags: [作品查询]
+      summary: 系列页（按系列键反查同系列作品）
+      operationId: getSeries
+      description: |
+        系列页（#557）。与详情页的 `/api/works/{work_id}/series` 是两个入口：
+        这里是**目录页**（按评分排、分页、带总数），那里是「当前作品在系列里的位置」
+        （按年代排、带关系标签）。
+
+        约定：
+
+        - 排序：有效评分降序 → id 升序（与首站系列页 `rating DESC, id ASC` 一致）；
+        - `total` 是**可见作品总数**，不是 `items` 的长度——首站把截断后的长度当总数，
+          超过 60 部的系列头部数字就是错的（`creators.html`），这里单独给；
+        - `name` 可能为 `null`：作品先到、系列行后到是常态（数据集两张表分开导入）。
+          客户端应隐藏标题或退化成「系列」二字，**不要拿 key 顶替**——那是来源站内部 id；
+        - **404 只在「系列行与可见作品都没有」时给**。有作品没系列行 → `200` + `name: null`；
+          有系列行但作品全被隐藏 → `200` + `total: 0`；
+        - `key` 是不透明字符串（长度 ≤ 64），客户端不得解析；超长按 404 处理，不截断；
+        - `limit` 默认 60、上限 200（超限截断，不报错），`offset` 负数按 0。
+      parameters:
+        - name: key
+          in: path
+          required: true
+          description: 系列键（来源站内部 id，不透明字符串）
+          schema: { type: string, maxLength: 64, example: "4281" }
+        - name: limit
+          in: query
+          description: 一页多少条，默认 60、上限 200（超限截断）
+          schema: { type: integer, minimum: 1, maximum: 200, default: 60 }
+        - name: offset
+          in: query
+          description: 跳过多少条，负数按 0 处理
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        "200":
+          description: 成功；`name` 可能为 null，`total` 是总数
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SeriesPage" }
+        "404": { $ref: "#/components/responses/NotFound" }
         "429": { $ref: "#/components/responses/RateLimitedWithRetry" }
         "500": { $ref: "#/components/responses/InternalError" }
 
@@ -3495,7 +3587,70 @@ components:
           example: 物语系列
         items:
           type: array
-          description: 同系列作品，年代升序，**包含当前作品**
+          description: 同系列作品，前作/续作 → 衍生作 → 同系列，同档内年代升序，**包含当前作品**
+          items: { $ref: "#/components/schemas/WorkSeriesItem" }
+
+    WorkSeriesItem:
+      type: object
+      description: |
+        系列清单里的一件作品：作品卡 + 关系标签（#557）。
+
+        `relation` 目前**只会是 `same_series`**：前作/续作/衍生作的关系数据还没落库
+        （数据集 schema 里有 `work_relations` 表，但 publisher 不写、后端也没导入）。
+        这不是占位假值——它们确实同系列；关系数据落地后只会多出另外三个取值，形状不变。
+      required: [work, relation]
+      properties:
+        work: { $ref: "#/components/schemas/WorkSummary" }
+        relation:
+          type: string
+          enum: [prequel, sequel, spin_off, same_series]
+          description: |
+            这张卡在本作视角下的身份：`prequel` 前作 / `sequel` 续作 /
+            `spin_off` 衍生作 / `same_series` 同系列（没有明确关系时的兜底）。
+            **中文文案由客户端映射**，不要按标题猜。
+          example: same_series
+
+    StudioPage:
+      type: object
+      description: 制作公司页（#557）。`total` 是该公司可见作品总数，与 `items` 长度无关。
+      required: [name, total, items]
+      properties:
+        name:
+          type: string
+          description: 回显库里存的那个写法（NFKC 归一后精确匹配成功的名字），可直接当页面标题
+          example: 京都アニメーション
+        total:
+          type: integer
+          format: int64
+          description: 该公司可见作品总数（成人 / 已下架 / 未收录剔除后）
+          example: 42
+        items:
+          type: array
+          description: 按有效评分降序 → id 降序；一页最多 200 条
+          items: { $ref: "#/components/schemas/WorkSummary" }
+
+    SeriesPage:
+      type: object
+      description: 系列页（#557）。`name` 可能为 null（作品先到、系列行后到）。
+      required: [key, total, items]
+      properties:
+        key:
+          type: string
+          description: 系列键，原样回传（不透明字符串，客户端不得解析）
+          example: "4281"
+        name:
+          type: string
+          nullable: true
+          description: 系列名；为 null 时客户端应隐藏标题，不要拿 key 顶替
+          example: 物语系列
+        total:
+          type: integer
+          format: int64
+          description: 可见作品总数（**不是** `items` 的长度）
+          example: 16
+        items:
+          type: array
+          description: 按有效评分降序 → id 升序；一页最多 200 条
           items: { $ref: "#/components/schemas/WorkSummary" }
 
     HomePosters:

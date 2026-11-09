@@ -243,6 +243,93 @@ public class WorkRepository {
     }
 
     /**
+     * 系列页的一页（#557）：同系列作品，**按有效评分降序、id 升序**。
+     *
+     * <p>与详情页区块（{@link #findBySeriesKey}，按年代升序）刻意不同：
+     * 目录页是「这个系列里哪几部最好看」，详情页区块是「按观看顺序排」。
+     * 首站系列页也是 `rating DESC, id ASC`。
+     *
+     * <p>评分用 {@code rating_sort}（V30 的生成列：票数 &lt; 50 按 0）而不是
+     * {@code rating_value}：契约里写的是后者，但直接用后者会让「5 个人打 10 分」的
+     * 作品顶在公司/系列页第一位——那正是 #383 修过的问题，两处口径不该打架。
+     *
+     * <p>次级键用 {@code id} 而不是 {@code work_id}：{@code work_id} 是随机串，
+     * 靠它排序只能 filesort；{@code (rating_sort, id)} 上有索引，反向扫描即可。
+     */
+    public List<WorkRecord> findBySeriesKeyPage(String seriesKey, int limit, int offset) {
+        String sql = "SELECT " + ALIASED_COLUMNS + " FROM work w"
+                + " WHERE w.series_key = :seriesKey"
+                + " AND w.deleted_at IS NULL AND w.is_adult = 0"
+                + (siteScopeEnabled ? " AND w.site_listed = 1" : "")
+                + " ORDER BY w.rating_sort DESC, w.id ASC"
+                + " LIMIT :limit OFFSET :offset";
+        return jdbc.query(sql, new MapSqlParameterSource()
+                .addValue("seriesKey", seriesKey)
+                .addValue("limit", limit)
+                .addValue("offset", offset), MAPPER);
+    }
+
+    /** 系列页头部的总数：与 {@link #findBySeriesKeyPage} 同一套可见性条件。 */
+    public long countBySeriesKey(String seriesKey) {
+        String sql = "SELECT COUNT(*) FROM work w WHERE w.series_key = :seriesKey"
+                + " AND w.deleted_at IS NULL AND w.is_adult = 0"
+                + (siteScopeEnabled ? " AND w.site_listed = 1" : "");
+        Long total = jdbc.queryForObject(sql,
+                new MapSqlParameterSource("seriesKey", seriesKey), Long.class);
+        return total == null ? 0L : total;
+    }
+
+    /**
+     * 库里存的制作公司名（#557）。**大小写敏感**：`COLLATE utf8mb4_bin`。
+     *
+     * <p>为什么不能直接 {@code =}：连接与列的默认排序规则是 utf8mb4_0900_ai_ci
+     * （不分大小写、不分重音），`A-1 Pictures` 会匹配到 `a-1 pictures`。
+     * 契约明确这两者是两家公司（来源站 `normalize_entity_name` 之后是精确等值），
+     * 所以比对必须落到二进制层。
+     *
+     * <p>为什么不建索引：{@code work_studios} 只有 4,269 行、1,568 个不同名字，
+     * 一次全表扫描是毫秒级；为它多一个索引不如把这行注释写清楚。
+     *
+     * @return 库里的原始写法（回显给客户端做标题）；查不到返回 empty
+     */
+    public java.util.Optional<String> findStudioName(String name) {
+        List<String> names = jdbc.query(
+                "SELECT s.name FROM work_studios s"
+                        + " WHERE s.name COLLATE utf8mb4_bin = :name LIMIT 1",
+                new MapSqlParameterSource("name", name),
+                (rs, rowNum) -> rs.getString("name"));
+        return names.stream().findFirst();
+    }
+
+    /** 公司页的一页：同公司的作品，按有效评分降序、id 降序（契约的口径，见方法注释）。 */
+    public List<WorkRecord> findByStudioName(String name, int limit, int offset) {
+        String sql = "SELECT " + ALIASED_COLUMNS + " FROM work w"
+                + " JOIN work_studios s ON s.work_ref = w.id"
+                + " WHERE s.name COLLATE utf8mb4_bin = :name"
+                + " AND w.deleted_at IS NULL AND w.is_adult = 0"
+                + (siteScopeEnabled ? " AND w.site_listed = 1" : "")
+                // 契约写的是 rating_value DESC, work_id DESC；评分口径统一走 rating_sort
+                // （理由同 findBySeriesKeyPage），次级键用 id（有索引、且是唯一键）。
+                + " ORDER BY w.rating_sort DESC, w.id DESC"
+                + " LIMIT :limit OFFSET :offset";
+        return jdbc.query(sql, new MapSqlParameterSource()
+                .addValue("name", name)
+                .addValue("limit", limit)
+                .addValue("offset", offset), MAPPER);
+    }
+
+    /** 公司页头部的总数：与 {@link #findByStudioName} 同一套可见性条件。 */
+    public long countByStudioName(String name) {
+        String sql = "SELECT COUNT(*) FROM work w"
+                + " JOIN work_studios s ON s.work_ref = w.id"
+                + " WHERE s.name COLLATE utf8mb4_bin = :name"
+                + " AND w.deleted_at IS NULL AND w.is_adult = 0"
+                + (siteScopeEnabled ? " AND w.site_listed = 1" : "");
+        Long total = jdbc.queryForObject(sql, new MapSqlParameterSource("name", name), Long.class);
+        return total == null ? 0L : total;
+    }
+
+    /**
      * 冷启动选题的候选池（#492）：动画 + 有封面 + 评分人数过线，按热度降序。
      *
      * <p><b>为什么只取七列</b>：候选池是万级行，{@code summary} 最长 7225 字，整行进内存

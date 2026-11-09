@@ -77,12 +77,15 @@ class WorkSeriesIntegrationTest {
 
         assertThat(series.seriesKey()).isEqualTo(SERIES_KEY);
         assertThat(series.seriesName()).isEqualTo("物语系列");
-        assertThat(series.items()).extracting(com.otaku.work.dto.WorkSummaryDto::title)
+        assertThat(series.items()).extracting(item -> item.work().title())
                 .as("年份升序；年份未知的排最后（MySQL 的 ASC 会把 NULL 排最前，必须显式处理）")
                 .containsExactly("第一季", "第二季", "总集篇");
-        assertThat(series.items()).extracting(com.otaku.work.dto.WorkSummaryDto::workId)
+        assertThat(series.items()).extracting(item -> item.work().workId())
                 .as("当前作品也在清单里——系列是完整清单，客户端自己高亮")
                 .contains(workIdOf("b"));
+        assertThat(series.items()).extracting(com.otaku.work.dto.SeriesItemDto::relation)
+                .as("关系数据还没落库，现阶段每一条都只能是 same_series（不是占位假值）")
+                .containsOnly(com.otaku.work.dto.SeriesItemDto.SAME_SERIES);
     }
 
     @Test
@@ -147,7 +150,7 @@ class WorkSeriesIntegrationTest {
 
         // 未收录（site_listed=0）那条不在这里验：IT 配置把 site-scope 关掉了
         // （见 application-it.yml 的说明），规则本身由 WorkSiteScopeIntegrationTest 覆盖。
-        assertThat(series.items()).extracting(com.otaku.work.dto.WorkSummaryDto::title)
+        assertThat(series.items()).extracting(item -> item.work().title())
                 .containsExactly("正片");
     }
 

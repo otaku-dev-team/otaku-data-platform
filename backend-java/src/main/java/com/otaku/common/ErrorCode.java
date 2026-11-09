@@ -21,6 +21,18 @@ public enum ErrorCode {
     REVIEW_NOT_FOUND(HttpStatus.NOT_FOUND),
     /** 人物不存在（B2 人物页 #455）。键是来源侧实体标识，格式非法同样用它。 */
     PERSON_NOT_FOUND(HttpStatus.NOT_FOUND),
+    /**
+     * 制作公司不存在（#557）。公司名就是主键，查不到即 404，不造空态页。
+     *
+     * <p>与 {@link #WORK_NOT_FOUND} 分开：客户端在公司页要显示「这家公司没有收录」，
+     * 而不是「作品不存在」。
+     */
+    STUDIO_NOT_FOUND(HttpStatus.NOT_FOUND),
+    /**
+     * 系列不存在（#557）。**只有「系列行和可见作品都没有」才用它**：
+     * 有作品没系列行是常态（数据集两张表分开导入），那种情况给 200 + `name=null`。
+     */
+    SERIES_NOT_FOUND(HttpStatus.NOT_FOUND),
     /** 同一作品已经点评过（一人一条）。客户端应引导去编辑，而不是重新提交。 */
     REVIEW_EXISTS(HttpStatus.CONFLICT),
     /**
