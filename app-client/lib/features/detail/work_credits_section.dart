@@ -300,3 +300,55 @@ class MetaLine extends StatelessWidget {
     );
   }
 }
+
+/// 「制作公司：A × B」——每个名字都能点进公司页（#558）。
+///
+/// 与 [MetaLine] 的差别只在可点：别名那行没有可跳转的目标，别为了统一
+/// 把它们也做成链接。公司名是**精确匹配的路径段**，原样传，不做模糊化。
+class StudioMetaLine extends StatelessWidget {
+  const StudioMetaLine({super.key, required this.studios});
+
+  final List<String> studios;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Wrap(
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Text(
+            '制作公司：',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+          for (var i = 0; i < studios.length; i++) ...[
+            if (i > 0)
+              Text(
+                ' × ',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+            InkWell(
+              onTap: () => context.push(RoutePaths.studio(studios[i])),
+              borderRadius: BorderRadius.circular(4),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Text(
+                  studios[i],
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: scheme.primary,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
