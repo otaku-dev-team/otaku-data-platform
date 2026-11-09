@@ -444,3 +444,39 @@ squash 合入的那一类。两种直觉都会骗人。
 **两条别再忘的判断**：
 ① 方案进 main ≠ 契约生效（#125 / #126 都是「留档待确认」）；
 ② 契约里新增 schema 必须同时登记进 `ContractDriftTest` 的两张目标表，否则 CI 红（#183 起）。
+
+## 续：11-09 后发包（PR 收口，本会话）
+
+- **#564 红线已解锁**（产品 + 导入@zhengmin486 + 后端@pyxz0 三方确认）：PR **#578** `feat/564-work-infos-import-1109` → main（reviewer pyxz0）。`V39__work_infos.sql` 给 `work` 加 `official_url`/`broadcast_start`/`broadcast_end`/`planning` 四列（全可空、instant DDL 不锁表）；导入侧 `ImportItem` 22 参 / `NormalizedItem` 24 参 / `ImportService` `infosChanged`+`applyInfos`（**per-field 动态 SET，null=不覆盖**）+ `WorkRepository` `findInfos`/`updateInfos` + openapi 4 字段 + sync-python `WorkItem` 4 字段 `to_payload`。sync-python **313 passed**；Java 门禁（mvn / 契约 / 站点隔离）待 CI。
+- **#559 回填脚本收口**：PR **#577** `chore/559-series-backfill-1109` → main（reviewer pyxz0）。脚本与测试收口，数据 11-09 03:46 已落生产（series 941 / `work.series_key` 2,361）。
+- **显式范围外（本 PR 不建）**：`work_facts` ETL（数据真正流转前提，pyxz0 已标缺口）、`infos` 展示响应（空是预期不是 bug）。
+- **#567 投稿红线已解锁并派活**（11-10）：后端签按用户拍板「当做他签了」视作已给，四条写路径 + 首站做法契约全部生效。后端轨道沿用 **#567**（指派 @pyxz0）：V40 `content_submissions` 建表 + 投稿/`edit` 端点（登录）+ 后台审核 + 审核通过写 `work` 第二写入方（四规则：① `work_id` 复用导入生成器 ② 新建 `site_listed` 默认 0 ③ 导入遇同名/同 `source_id` 跳过用户认领、只补缺失绝不整体覆盖 ④ 封面缺失走占位、`cover_source_url` 留空）。客户端轨道拆出 **#582**（指派 @riceyu02）：只做表单（6 字段、评分不放、留空不改、撞名引导修改），不碰后端/不动 `work`。由模块 owner 实现并开 PR，zhengmin486 不写跨模块代码。
+
+## 续：11-10 阶段完结收口（分支清理 + 提案存档 + 派活）
+
+### 分支清理（按「确认已合」标准，blob/merge-tree 逐文件验证，删了不丢）
+- 清除 10 个悬空/已合分支：4 个此前已在远端消失（prune 确认）+ `docs/w1-track-order`、`fix/backfill-rating-cursor`、`fix/rating-count-backfill-resilience`、`docs/release-year-contract-sync`、`docs/fix-backup-cron`、`feat/494-wire-persona-title-1108`。
+- 坑：squash 合入会让 `git cherry` 报 `+`、`merge-base --is-ancestor` 判 false；最终以「blob 直接比对 + 看 main 是否含该逻辑」定死，**未误删任何真独有内容**（尤其 rating 两笔——main 的 230 行新版已含其游标+鲁棒性，分支是被取代的旧版）。
+- 现远端仅 6 个非 main 分支 = 5 个开放 PR 的 head + 1 个无 PR 独特提案（已合入 #581）。
+
+### 提案存档（开 PR）
+- **#581** `feat/docs-408-proposal-1110` → main（reviewer pyxz0）：合入 #408/#409 资讯→作品映射设计提案（203 行，存档不代签；契约字段 + 客户端渲染随 #425 已落 main，映射表/后端解析归 #409）。
+
+### 当前开放 PR（6 个，各对应一个分支，无悬空）
+| PR | 内容 | 状态 |
+|---|---|---|
+| #581 | #408 提案文档存档 | 🟢 新开 |
+| #580 | 采首站收录范围改采两键（站点脚本收口） | 🟢 |
+| #578 | #564 信息卡四字段落库 + 导入 | 🟢 |
+| #577 | #559 系列回填脚本收口 | 🟢 |
+| #554 | #447 资讯关联作品回填 | 🟢 |
+| #552 | 客户端账号与站点一致 | 🟢 |
+
+### 待同事实现的 issue（非 PR，已派活）
+- **#567**（后端，@pyxz0）：见上方「#567 派活」。
+- **#582**（客户端，@riceyu02）：#567 客户端轨道表单。
+
+### 阶段完结判定
+- 除 UI 调整外，本轮代码侧「该开没开」的只有 #580（已开）。其余全合或已开 PR。
+- #567/#582 已实现派活，待同事 PR 进来后合入即可发包。
+- Java 门禁（mvn / 契约 / 站点隔离）待各 PR 的 CI。
