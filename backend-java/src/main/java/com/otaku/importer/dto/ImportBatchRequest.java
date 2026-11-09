@@ -10,10 +10,15 @@ import java.util.List;
  * 接口②请求体。JSON 键名由 SNAKE_CASE 策略转换，与契约完全一致：
  * batch_id / source / fetched_at / items[source_id, work_type, title, summary,
  * cover_url, release_year, tags, main_rating, source_url, title_original, aliases,
- * media, episodes, staff, characters, studios, series_key, series_name]
+ * media, episodes, staff, characters, studios, series_key, series_name,
+ * official_url, broadcast_start, broadcast_end, planning]
  *
  * <p>{@code series_key} / {@code series_name}（#411）只有**数据集通道**会给：
  * 站点 REST 接口没有系列概念。省略或 null = 不覆盖库里已有的系列归属。
+ *
+ * <p>{@code official_url} / {@code broadcast_start} / {@code broadcast_end} / {@code planning}
+ *（#564 信息卡）同理：只有**数据集通道**会给，站点 REST 通道没有这些信息；
+ * 四者各自独立、省略或 null = 本次没拿到该字段，**不覆盖**库里已有值（不置空）。
  */
 public record ImportBatchRequest(
         String batchId,
@@ -40,7 +45,11 @@ public record ImportBatchRequest(
             List<WorkCharacterDto> characters,
             List<String> studios,
             String seriesKey,
-            String seriesName
+            String seriesName,
+            String officialUrl,
+            String broadcastStart,
+            String broadcastEnd,
+            String planning
     ) {
 
         /**
@@ -59,7 +68,7 @@ public record ImportBatchRequest(
                           List<String> studios) {
             this(sourceId, workType, title, summary, coverUrl, releaseYear, tags, mainRating,
                     sourceUrl, titleOriginal, aliases, media, episodes, staff, characters,
-                    studios, null, null);
+                    studios, null, null, null, null, null, null);
         }
     }
 

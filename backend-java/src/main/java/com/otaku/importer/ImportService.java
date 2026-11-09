@@ -101,6 +101,10 @@ public class ImportService {
     /** 系列列宽（#411）：与 V37 迁移、数据集 series_key/name 的实测长度一致。 */
     private static final int MAX_SERIES_KEY_LENGTH = 64;
     private static final int MAX_SERIES_NAME_LENGTH = 255;
+    /** 信息卡列宽（#564）：与 V39 迁移、首站 content_facts 实测取值一致。 */
+    private static final int MAX_OFFICIAL_URL_LENGTH = 1024;
+    private static final int MAX_BROADCAST_LENGTH = 32;
+    private static final int MAX_PLANNING_LENGTH = 500;
 
     private final WorkRepository workRepository;
     private final ImportBatchRepository batchRepository;
@@ -315,6 +319,7 @@ public class ImportService {
             long workRef = workRepository.insert(created);
             applyRelations(source, workRef, item);
             applySeries(workRef, item);
+            applyInfos(workRef, item);
             return new ItemOutcome(ImportItemResult.INSERTED, created.workId());
         });
     }
@@ -326,7 +331,9 @@ public class ImportService {
         boolean relationsChanged = relationsChanged(current.id(), item);
         // 系列同理：它在 work 表上，但只有数据集通道会给；不单独比对就会「只改了系列 → unchanged」。
         boolean seriesChanged = seriesChanged(current.id(), item);
-        if (!merged.changed() && !relationsChanged && !seriesChanged) {
+        // 信息卡四字段同理：同样是 work 表上、只有数据集通道给的字段，不单独比对会「只改了信息 → unchanged」。
+        boolean infosChanged = infosChanged(current.id(), item);
+        if (!merged.changed() && !relationsChanged && !seriesChanged && !infosChanged) {
             return new ItemOutcome(ImportItemResult.UNCHANGED, current.workId());
         }
         if (merged.changed()) {
@@ -338,8 +345,11 @@ public class ImportService {
         if (seriesChanged) {
             applySeries(current.id(), item);
         }
-        if ((relationsChanged || seriesChanged) && !merged.changed()) {
-            // 只有关系/系列数据变了：updated_at 也要推进，否则详情页看不出内容更新过。
+        if (infosChanged) {
+            applyInfos(current.id(), item);
+        }
+        if ((relationsChanged || seriesChanged || infosChanged) && !merged.changed()) {
+            // 只有关系/系列/信息卡数据变了：updated_at 也要推进，否则详情页看不出内容更新过。
             workRepository.touch(current.id(), nowUtc());
         }
         return new ItemOutcome(ImportItemResult.UPDATED, current.workId());
@@ -369,6 +379,44 @@ public class ImportService {
         }
         seriesRepository.upsert(item.seriesKey(), item.seriesName(), nowUtc());
         workRepository.updateSeriesKey(workRef, item.seriesKey());
+    }
+
+    /**
+     * 信息卡四字段（#564）是否与库里不同；四者各自独立，null（未提供）一律视为「不变」（不覆盖）。
+     *
+     * <p>比的是每个字段本身：导入是幂等的，重跑同一份数据集不该产生更新计数。
+     * 与系列共用「null = 没提供 = 不动」的语义，但四字段分开判断——
+     * 这次只给了官网、没给放送日期，就只比官网，不能因为放送日期在库里非 null 而被判 changed。
+     */
+    private boolean infosChanged(long workRef, NormalizedItem item) {
+        // 四个都未提供（站点通道常见）：不查库、直接判不变——省一次查询，与 seriesChanged 同口径。
+        if (item.officialUrl() == null && item.broadcastStart() == null
+                && item.broadcastEnd() == null && item.planning() == null) {
+            return false;
+        }
+        WorkRepository.WorkInfos current = workRepository.findInfos(workRef);
+        return infosDiffer(item.officialUrl(), current.officialUrl())
+                || infosDiffer(item.broadcastStart(), current.broadcastStart())
+                || infosDiffer(item.broadcastEnd(), current.broadcastEnd())
+                || infosDiffer(item.planning(), current.planning());
+    }
+
+    /** 单个字段：incoming 为 null（未提供）一律视为不变；否则与库里值严格比较。 */
+    private static boolean infosDiffer(String incoming, String existing) {
+        if (incoming == null) {
+            return false;
+        }
+        return !incoming.equals(existing);
+    }
+
+    /**
+     * 写信息卡四字段：只写 item 实际提供的（非 null）字段，其余不动——
+     * 否则一次只给官网的导入会把库里已有的放送日期覆盖成 NULL。
+     * 四个全 null（站点通道，未提供）时整条不写。
+     */
+    private void applyInfos(long workRef, NormalizedItem item) {
+        workRepository.updateInfos(workRef, item.officialUrl(), item.broadcastStart(),
+                item.broadcastEnd(), item.planning());
     }
 
     /** 三块关系是否与库里不同；null（未提供）一律视为「不变」。 */
@@ -556,7 +604,11 @@ public class ImportService {
                 ratingValue, ratingScale, ratingSource,
                 normalizeSourceUrl(item.sourceUrl()),
                 normalizeBoundedText(item.seriesKey(), MAX_SERIES_KEY_LENGTH),
-                normalizeBoundedText(item.seriesName(), MAX_SERIES_NAME_LENGTH));
+                normalizeBoundedText(item.seriesName(), MAX_SERIES_NAME_LENGTH),
+                normalizeSourceUrl(item.officialUrl()),
+                normalizeBoundedText(item.broadcastStart(), MAX_BROADCAST_LENGTH),
+                normalizeBoundedText(item.broadcastEnd(), MAX_BROADCAST_LENGTH),
+                normalizeBoundedText(item.planning(), MAX_PLANNING_LENGTH));
     }
 
     /**
