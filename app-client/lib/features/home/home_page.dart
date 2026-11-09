@@ -26,6 +26,7 @@ import '../contents/contents_controller.dart';
 import '../persona/persona_data_source.dart';
 import '../persona/personalized_recommend_section.dart';
 import '../recent/recent_views_controller.dart';
+import 'home_poster_coverflow.dart';
 import 'home_controller.dart';
 
 /// 首页：把站点首页那几块聚合在一起——高分精选 / 本日新番 / 高分作品 / 最新资讯。
@@ -93,6 +94,10 @@ class HomePage extends ConsumerWidget {
                 const ConfigNoticeBar(),
                 const _SearchEntry(),
                 if (PlatformInfo.isDesktop) ...[
+                  // #562 海报 Coverflow：**只接桌面**。手机端已有
+                  // `_FeaturedHero`（自动轮播的单张 hero），两块同时出现会
+                  // 抢同一个位置；要不要用它替换手机端那个，等产品定。
+                  const HomePosterCoverflow(),
                   const _RecentViewsSection(),
                   const _TodayScheduleSection(),
                 ] else ...[
