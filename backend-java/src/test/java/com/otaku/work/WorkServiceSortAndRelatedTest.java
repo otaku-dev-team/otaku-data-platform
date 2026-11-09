@@ -126,15 +126,18 @@ class WorkServiceSortAndRelatedTest {
     }
 
     @Test
-    @DisplayName("tag 与 type / q / sort 可组合，四个条件一起透传")
+    @DisplayName("tag 与 type / q / sort 可组合：搜索路径把四个条件一起透传")
     void tagCombinesWithOtherFilters() {
-        when(repository.count("anime", "%魔法%", List.of("科幻"), null, null)).thenReturn(1L);
-        when(repository.findPage("anime", "%魔法%", List.of("科幻"), WorkSort.YEAR, null, null, 10, 0))
-                .thenReturn(List.of(record(1L, "W-1", "[\"科幻\"]")));
+        // #560 之后带关键词走的是 searchCounts / searchPage（多路召回），不再走 count / findPage。
+        when(repository.searchCounts("anime", "%魔法%", List.of("科幻"), null, null, List.of()))
+                .thenReturn(new WorkRepository.SearchCounts(1L, 0L));
+        when(repository.searchPage("anime", "%魔法%", List.of("科幻"), WorkSort.YEAR, null, null,
+                List.of(), 10, 0)).thenReturn(List.of(record(1L, "W-1", "[\"科幻\"]")));
 
         service.list("anime", "魔法", "科幻", "year", null, 1, 10);
 
-        verify(repository).findPage("anime", "%魔法%", List.of("科幻"), WorkSort.YEAR, null, null, 10, 0);
+        verify(repository).searchPage("anime", "%魔法%", List.of("科幻"), WorkSort.YEAR, null, null,
+                List.of(), 10, 0);
     }
 
     // ------------------------------------------------------- 榜单 min_rating

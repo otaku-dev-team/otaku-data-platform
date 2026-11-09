@@ -138,33 +138,55 @@ public class WorkService {
     public WorkPageResponse list(String typeParam, String qParam, String tagParam,
                                              String tagsParam, String sortParam, String minRatingParam,
                                              String yearParam, int page, int pageSize) {
-        String workType = normalizeType(typeParam);
-        String keyword = normalizeKeyword(qParam);
+        // 查询理解（#560）：类型词 / 年份 / 季数，全是确定性规则。
+        // 识别失败的 token 原样留作关键词，所以最差情况等于从前的纯 LIKE。
+        SearchQuery parsed = SearchQuery.parse(normalizeKeyword(qParam));
+
+        // 显式参数压过 q 里识别出来的：用户已经点了「动画」「2020 年」，
+        // 再被搜索词改写就是抢方向盘。
+        String workType = typeParam != null && !typeParam.isBlank()
+                ? normalizeType(typeParam)
+                : parsed == null ? null : parsed.workType();
+        Integer explicitYear = normalizeYear(yearParam);
+        Integer year = explicitYear != null ? explicitYear : parsed == null ? null : parsed.year();
+        String keyword = parsed == null ? null : parsed.keyword();
         List<String> tags = normalizeTags(tagParam, tagsParam);
+        // 「显式排序」与「默认排序」要分开：parse(null) 给的是 ID（默认），
+        // 但相关度模式要的是「没点过排序」，两者不能都当成 ID。
+        boolean sortExplicit = sortParam != null && !sortParam.isBlank();
         WorkSort sort = WorkSort.parse(sortParam);
         BigDecimal minRating = normalizeMinRating(minRatingParam);
-        Integer year = normalizeYear(yearParam);
 
         int safePage = Math.max(page, 1);
         int safeSize = pageSize <= 0 ? DEFAULT_PAGE_SIZE : Math.min(pageSize, MAX_PAGE_SIZE);
-        String pattern = keyword == null ? null : LikePattern.contains(keyword);
 
+        return keyword == null
+                ? listByFilter(workType, tags, sort, minRating, year, safePage, safeSize)
+                : listBySearch(parsed, keyword, workType, tags, sortExplicit, sort, minRating, year,
+                        safePage, safeSize);
+    }
+
+    /**
+     * 没有关键词的列表：类型 / 标签 / 年份 / 评分下限 / 排序。行为与 #560 之前完全一致。
+     */
+    private WorkPageResponse listByFilter(String workType, List<String> tags, WorkSort sort,
+                                          BigDecimal minRating, Integer year, int safePage, int safeSize) {
         // COUNT(*) 是 76–126 ms，取一页只要 0.4 ms（docs/list-pagination-perf.md）。
         // 同一组筛选只有第一次真查库，导入结束时整体失效——不是靠 TTL 容忍过期。
         // 标签按字典序拼键：tags=a,b 与 b,a 是同一组条件，不该各缓存一份。
         // year 必须进键：它改变总数，漏了会把 A 年的总数串给 B 年。
-        String countKey = CountCache.key(workType, pattern, tagsKey(tags), minRating, year);
+        String countKey = CountCache.key(workType, null, tagsKey(tags), minRating, year);
         Long cachedTotal = countCache.get(countKey);
         long total;
         if (cachedTotal != null) {
             total = cachedTotal;
         } else {
-            total = repository.count(workType, pattern, tags, minRating, year);
+            total = repository.count(workType, null, tags, minRating, year);
             countCache.put(countKey, total);
         }
         List<WorkSummaryDto> items = total == 0
                 ? List.of()
-                : repository.findPage(workType, pattern, tags, sort, minRating, year,
+                : repository.findPage(workType, null, tags, sort, minRating, year,
                         safeSize, (safePage - 1) * safeSize)
                         .stream()
                         .map(this::toSummary)
@@ -187,13 +209,65 @@ public class WorkService {
                 totalIncludingAdult = cachedIncludingAdult;
             } else {
                 totalIncludingAdult =
-                        repository.count(workType, pattern, tags, minRating, year, true);
+                        repository.count(workType, null, tags, minRating, year, true);
                 countCache.put(hiddenKey, totalIncludingAdult);
             }
             // 取 max：理论上含成人 ≥ 不含成人，但导入中途或缓存不同步时别把负数给客户端。
             hidden = Math.max(0L, totalIncludingAdult - total);
         }
 
+        return WorkPageResponse.of(safePage, safeSize, total, items, hidden);
+    }
+
+    /**
+     * 有关键词的列表（#560）：多路召回 + 三档相关度。
+     *
+     * <p>召回与排序都在仓储层一条 SQL 里完成（见 {@code WorkRepository.searchPage}）：
+     * 分成「先查 id 再查详情」两趟，第二趟还要按原顺序重排，并没有更简单。
+     *
+     * <p>排序规则：用户**显式**点了评分/年份/最新 → 按那个排（点了 chips 就是用户的意思）；
+     * 否则按「相关度档位 → 有效评分 → id」。
+     *
+     * <p>成人遮挡数走 {@code searchCounts} 的同一个 SUM：搜索的 COUNT 本来就要 0.4–0.8s，
+     * 跑两遍就是双倍，客户端每敲一次都会付这个钱。
+     */
+    private WorkPageResponse listBySearch(SearchQuery parsed, String keyword, String workType,
+                                          List<String> tags, boolean sortExplicit, WorkSort sort,
+                                          BigDecimal minRating, Integer year, int safePage, int safeSize) {
+        String pattern = LikePattern.contains(keyword);
+        List<String> variants = parsed.titleVariants();
+        // 季数变体会改总数，必须进缓存键——否则「某某 第二季」和「某某」会互相串结果。
+        String countKey = CountCache.key(workType, pattern, tagsKey(tags), minRating, year)
+                + (variants.isEmpty() ? "" : "\u0001season:" + parsed.season());
+        String hiddenKey = countKey + "\u0001adult";
+
+        long total;
+        long hidden;
+        Long cachedTotal = countCache.get(countKey);
+        if (cachedTotal != null) {
+            total = cachedTotal;
+            Long cachedHidden = countCache.get(hiddenKey);
+            hidden = cachedHidden == null ? 0L : cachedHidden;
+        } else {
+            WorkRepository.SearchCounts counts =
+                    repository.searchCounts(workType, pattern, tags, minRating, year, variants);
+            total = counts.visible();
+            hidden = counts.adultHidden();
+            countCache.put(countKey, total);
+            countCache.put(hiddenKey, hidden);
+        }
+        if (total == 0) {
+            // 与列表同一口径：没有结果时不报「隐藏了多少」——那个数字没有解释力。
+            hidden = 0L;
+        }
+
+        List<WorkSummaryDto> items = total == 0
+                ? List.of()
+                : repository.searchPage(workType, pattern, tags, sortExplicit ? sort : null,
+                        minRating, year, variants, safeSize, (safePage - 1) * safeSize)
+                        .stream()
+                        .map(this::toSummary)
+                        .toList();
         return WorkPageResponse.of(safePage, safeSize, total, items, hidden);
     }
 
