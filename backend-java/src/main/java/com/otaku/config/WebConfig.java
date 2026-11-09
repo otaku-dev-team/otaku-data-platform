@@ -64,7 +64,9 @@ public class WebConfig implements WebMvcConfigurer {
                 .addPathPatterns("/api/works/**", "/api/tags/**", "/api/schedule/**",
                         "/api/articles/**", "/api/covers/**", "/api/app/**",
                         // 首页 hero（#561）：公开读、无缓存，与其它公共读同一档限流
-                        "/api/home/**");
+                        "/api/home/**",
+                        // 公司页 / 系列页（#557）：公开读的目录页，与其它公共读同一档限流
+                        "/api/studios/**", "/api/series/**");
     }
 
     private static List<String> parseOrigins(String raw) {

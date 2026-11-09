@@ -188,6 +188,11 @@ class ContractDriftTest {
         targets.put("WorkSeries", com.otaku.work.dto.WorkSeriesDto.class);
         // 首页 hero（#561）：只有 items，最多 12 条
         targets.put("HomePosters", com.otaku.home.dto.HomePosters.class);
+        // 系列区卡片（#557）：作品卡 + 关系标签
+        targets.put("WorkSeriesItem", com.otaku.work.dto.SeriesItemDto.class);
+        // 系列页 / 公司页（#557）
+        targets.put("SeriesPage", com.otaku.series.dto.SeriesPageDto.class);
+        targets.put("StudioPage", com.otaku.studio.dto.StudioPageDto.class);
         // 作品列表的信封（比 Paging 多一个 hidden，见 #355 之后那条 openapi 注释）
         targets.put("WorkPaging", com.otaku.work.dto.WorkPageResponse.class);
         // 档 B 关联数组的元素形状（#254 新增 schema）：数据接线归 #255，此处只钉形状

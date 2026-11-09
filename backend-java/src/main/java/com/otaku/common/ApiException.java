@@ -32,4 +32,14 @@ public class ApiException extends RuntimeException {
     public static ApiException workNotFound() {
         return new ApiException(ErrorCode.WORK_NOT_FOUND, "作品不存在");
     }
+
+    /** 制作公司不存在（#557）：名字查不到就是 404，与首站一致。 */
+    public static ApiException studioNotFound() {
+        return new ApiException(ErrorCode.STUDIO_NOT_FOUND, "制作公司不存在");
+    }
+
+    /** 系列不存在（#557）：系列行与可见作品都没有。 */
+    public static ApiException seriesNotFound() {
+        return new ApiException(ErrorCode.SERIES_NOT_FOUND, "系列不存在");
+    }
 }
