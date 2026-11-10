@@ -138,6 +138,7 @@ filter-links (#130)        ⊃ client-home (#121)
 
 | 批 | 整合 PR / 提交 | 含原 PR | 结果 |
 |---|---|---|---|
+| 第 48 批 · 系列名双编码修复（11-10，1 提交） | #584（#559 衍生） | pyxz0 | 做系列页预览时发现生产 `series.name` **910 / 941** 条是双编码：`机动战士高达` 存成了 `æœºåŠ¨æˆ˜å£«é«˜è¾¾`（`E6`→`C3A6`、`9C`→`C593`），而 `GET /api/series/{key}` 是原样透传，系列页标题会直接乱码。**先修数据**：`mysqldump` 备份 + 备份表 `series_name_backup_20261110`，单事务按 `series_key` + 旧值双条件更新 **910 条**（31 条纯 ASCII 不动），校验「总数 941 不变 / 二进制比较残留 0 / 线上 154 → 机动战士高达」，回滚只需一条 JOIN UPDATE。**再兜根因**：`cleaning.repair_mojibake` 按 MySQL latin1 语义（= cp1252 超集）还原字节再按 UTF-8 解，只在「字节合法 + 结果不同 + 不含 `?`」时认，正常 CJK / `café` / ASCII 都不动；`_series_names_for` 发送前调用并计数，`PublishReport.series_names_repaired` 进报告 + 一条 warning。**关键坑**：MySQL 的 latin1 不是 ISO-8859-1，真实名字里 `œ/Š/–`（cp1252 独有）与 `0x8F/0x90`（cp1252 未定义、按同码位控制字符存）混在一起，纯 cp1252 或纯 latin-1 编码都会抛异常，必须逐字符降级；另外 `name LIKE '%Ã%'` 在 `utf8mb4_0900_ai_ci` 下等于 `LIKE '%a%'`（重音不敏感），数残留必须 `COLLATE utf8mb4_bin` 或直接看 HEX。`sync-python` **319 passed**；**根因仍在产出数据集的上游**，重发数据集前这套兜底会一直生效。 |
 | 第 47 批 · 首站原生级体验 v1 · 后端 P1 三件（11-09，3 提交） | #570（#561 首页海报）/ #571（#557 公司页 + 系列页 + 关系标签）/ #572（#560 搜索） | pyxz0 | **#561** `GET /api/home/posters` 现算 12 条，不建名单表/不轮转/不定时。三个坑写进实现里：① 类型判据必须落在 `work.work_type`——`schedule.work_type` 存的是「TV动画」这类来源原词，生产 202610 季按 `anime` 比 **0/69** 命中，照字面写 hero 永远空；② 封面判据是**磁盘缓存可读**（`CoverService.isCached`）而不是 `cover_source_url` 非空，URL 有值但回源 404 的情况真实存在（生产 66 部当季动画只有 17 部有缓存）；③ 顺序 `rating_sort → weekday（NULL 沉底）→ title → id`，刷新一次换一个排列在端上就是 bug。**#557** 新增 `GET /api/studios/{name}` 与 `GET /api/series/{key}`，给详情页「系列作品」补 `relation`：公司名 NFKC+strip 后 **`COLLATE utf8mb4_bin`** 精确匹配——默认 `ai_ci` 会把 `A-1 Pictures` 与 `a-1 pictures` 并成一家；排序统一走 `rating_sort`（契约原文写 `rating_value`，会让「5 人打 10 分」顶到第一，是 #383 修过的问题）；系列页 404 **只在「系列行与可见作品都没有」时给**——有作品没系列行是常态（两张表分开导入）。系列区 `items` 从裸卡片改成 `{relation, work}`，**关系数据还没落库**（数据集 `work_relations` 只有建表、publisher 不写），所以现在只会给 `same_series`；该接口此前无客户端调用，形状变更无兼容负担。**#560** 搜索多路召回 + 三档：四路各扫一遍再 `UNION`（生产只读压测，零命中 1.57s → 0.45s），`SUM(is_adult = 0/1)` 一次扫描同时出可见数与成人遮挡数；`SearchQuery` 纯函数解析年份/类型/季数（整 token——`游戏王` 不会被拆成「游戏 + 王」；季数只认 ≥2；剥完主体为空就放弃拆分）。**一次请求约 1.6s 上界**（最坏输入），已写进契约与交接文档，客户端建议 ≥400ms 防抖。同批给红线 **#564（信息卡 4 列）** 与 **#567（投稿四条写路径）** 出了后端确认帖：前者把 `official_url` 提到 1024、给了 `infos` 数组形状；后者纠正了「work_id 由 sync-python 生成」的误解（实际是 Java `PublicIdGenerator`），并指出 `site_listed=0` 会让作者看不到自己通过审核的作品。后端 **637 通过 / 0 skipped**；契约 **83 / 142 / 122**，`check-contract.py` 通过。**无迁移**；**未发版**——待 #564 / #567 与客户端 P2 一起联调。 |
 | 第 1 批 · 后端与同步 | #134（`ad07012`） | #102 / #109 / #110（含 #105） | backend 111 / pytest 110 |
 | 第 2 批 · 客户端主链 | #136（`a1f4d1c`） | #116（含 #107 / #103）/ #106 / #112 / #114 | flutter 193 |
@@ -444,52 +445,3 @@ squash 合入的那一类。两种直觉都会骗人。
 **两条别再忘的判断**：
 ① 方案进 main ≠ 契约生效（#125 / #126 都是「留档待确认」）；
 ② 契约里新增 schema 必须同时登记进 `ContractDriftTest` 的两张目标表，否则 CI 红（#183 起）。
-
-## 续：11-09 后发包（PR 收口，本会话）
-
-- **#564 红线已解锁**（产品 + 导入@zhengmin486 + 后端@pyxz0 三方确认）：PR **#578** `feat/564-work-infos-import-1109` → main（reviewer pyxz0）。`V39__work_infos.sql` 给 `work` 加 `official_url`/`broadcast_start`/`broadcast_end`/`planning` 四列（全可空、instant DDL 不锁表）；导入侧 `ImportItem` 22 参 / `NormalizedItem` 24 参 / `ImportService` `infosChanged`+`applyInfos`（**per-field 动态 SET，null=不覆盖**）+ `WorkRepository` `findInfos`/`updateInfos` + openapi 4 字段 + sync-python `WorkItem` 4 字段 `to_payload`。sync-python **313 passed**；Java 门禁（mvn / 契约 / 站点隔离）待 CI。
-- **#559 回填脚本收口**：PR **#577** `chore/559-series-backfill-1109` → main（reviewer pyxz0）。脚本与测试收口，数据 11-09 03:46 已落生产（series 941 / `work.series_key` 2,361）。
-- **显式范围外（本 PR 不建）**：`work_facts` ETL（数据真正流转前提，pyxz0 已标缺口）、`infos` 展示响应（空是预期不是 bug）。
-- **#567 投稿红线已解锁并派活**（11-10）：后端签按用户拍板「当做他签了」视作已给，四条写路径 + 首站做法契约全部生效。后端轨道沿用 **#567**（指派 @pyxz0）：V40 `content_submissions` 建表 + 投稿/`edit` 端点（登录）+ 后台审核 + 审核通过写 `work` 第二写入方（四规则：① `work_id` 复用导入生成器 ② 新建 `site_listed` 默认 0 ③ 导入遇同名/同 `source_id` 跳过用户认领、只补缺失绝不整体覆盖 ④ 封面缺失走占位、`cover_source_url` 留空）。客户端轨道拆出 **#582**（指派 @riceyu02）：只做表单（6 字段、评分不放、留空不改、撞名引导修改），不碰后端/不动 `work`。由模块 owner 实现并开 PR，zhengmin486 不写跨模块代码。
-
-## 续：11-10 阶段完结收口（分支清理 + 提案存档 + 派活）
-
-### 分支清理（按「确认已合」标准，blob/merge-tree 逐文件验证，删了不丢）
-- 清除 10 个悬空/已合分支：4 个此前已在远端消失（prune 确认）+ `docs/w1-track-order`、`fix/backfill-rating-cursor`、`fix/rating-count-backfill-resilience`、`docs/release-year-contract-sync`、`docs/fix-backup-cron`、`feat/494-wire-persona-title-1108`。
-- 坑：squash 合入会让 `git cherry` 报 `+`、`merge-base --is-ancestor` 判 false；最终以「blob 直接比对 + 看 main 是否含该逻辑」定死，**未误删任何真独有内容**（尤其 rating 两笔——main 的 230 行新版已含其游标+鲁棒性，分支是被取代的旧版）。
-- 现远端仅 6 个非 main 分支 = 5 个开放 PR 的 head + 1 个无 PR 独特提案（已合入 #581）。
-
-### 提案存档（开 PR）
-- **#581** `feat/docs-408-proposal-1110` → main（reviewer pyxz0）：合入 #408/#409 资讯→作品映射设计提案（203 行，存档不代签；契约字段 + 客户端渲染随 #425 已落 main，映射表/后端解析归 #409）。
-
-### 当前开放 PR（6 个，各对应一个分支，无悬空）
-| PR | 内容 | 状态 |
-|---|---|---|
-| #581 | #408 提案文档存档 | 🟢 新开 |
-| #580 | 采首站收录范围改采两键（站点脚本收口） | 🟢 |
-| #578 | #564 信息卡四字段落库 + 导入 | 🟢 |
-| #577 | #559 系列回填脚本收口 | 🟢 |
-| #554 | #447 资讯关联作品回填 | 🟢 |
-| #552 | 客户端账号与站点一致 | 🟢 |
-
-### 待同事实现的 issue（非 PR，已派活）
-- **#567**（后端，@pyxz0）：见上方「#567 派活」。
-- **#582**（客户端，@riceyu02）：#567 客户端轨道表单。
-
-### 阶段完结判定
-- 除 UI 调整外，本轮代码侧「该开没开」的只有 #580（已开）。其余全合或已开 PR。
-- Java 门禁（mvn / 契约 / 站点隔离）待各 PR 的 CI。
-
-### 11-10 晚：改为项目完结，范围重新定稿
-- 上面「#567/#582 待同事 PR」那句已作废。这次是**项目完结**，不是阶段收口，范围按
-  **`docs/closeout-scope.md`**（PR #583）走，那份是唯一口径。
-- 判据换成「首站成品 app + 网站，两个端能打开点得动」，不判 roadmap 勾完没勾完。
-- 做完 9 项（含 **UI 调优是三个人一起**）、休眠 11 项（保留 OPEN、结论都在仓库）、
-  明确不做（域名/备案/HTTPS/证书续期/异地备份告警/多站剥离 CI/第二站预建）。
-- 派活已发在 #568（assignee = pyxz0 / riceyu02 / zhengmin486）：
-  @pyxz0 部署 `:8080` + smoke + 信息卡空区块，@riceyu02 出 otaku release 包 + 客户端真机，
-  我这边 7 个 PR 合关 + 19 个 issue 终态 + 网站对照。
-- 核实更正：桶 1 原记 7 个已完结，实核只有 4 个证据硬（#562/#558/#492/#375，已关）；
-  #494 早 CLOSED；#499/#501 客户端渲染未做，不虚报完成，转休眠。
-- #578 的 CI 编译红已修（`17c7e25` 补 18 参 ImportItem 构造器），本地 `devtest.py`
-  Java 598 项 / Python 121 项通过（Dart 本机无 flutter 跳过）。
