@@ -37,6 +37,10 @@ enum ApiErrorCode {
   articleNotFound('ARTICLE_NOT_FOUND'),
   studioNotFound('STUDIO_NOT_FOUND'),
 
+  /// 系列不存在（`GET /api/series/{key}` 的 404，线上实测信封码）。
+  /// 与作品不存在分开：系列页要说「没有找到这个系列」，不是「作品不存在」。
+  seriesNotFound('SERIES_NOT_FOUND'),
+
   batchTooLarge('BATCH_TOO_LARGE'),
   rateLimited('RATE_LIMITED'),
   internal('INTERNAL'),
@@ -111,6 +115,7 @@ class ApiException implements Exception {
     ApiErrorCode.siteUnavailable => '站点登录暂不可用，请稍后再试',
     ApiErrorCode.collectionRequired => '该作品已不在收藏中，请刷新后重试',
     ApiErrorCode.studioNotFound => '没有找到这家制作公司',
+    ApiErrorCode.seriesNotFound => '没有找到这个系列',
     ApiErrorCode.reviewExists => '你已经点评过这部作品了',
     ApiErrorCode.cancelled => '请求已取消',
     _ => message.isNotEmpty ? message : '出了点问题，请重试',

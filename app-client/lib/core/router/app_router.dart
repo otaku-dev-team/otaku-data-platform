@@ -21,6 +21,7 @@ import '../../features/profile/profile_edit_page.dart';
 import '../../features/profile/profile_page.dart';
 import '../../features/recent/recent_history_page.dart';
 import '../../features/schedule/schedule_page.dart';
+import '../../features/series/series_page.dart';
 import '../../features/settings/about_settings_page.dart';
 import '../../features/settings/appearance_settings_page.dart';
 import '../../features/settings/settings_page.dart';
@@ -176,6 +177,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '${RoutePaths.studios}/${RoutePaths.studioSegment}',
         builder: (context, state) => StudioPageWidget(
           name: Uri.decodeComponent(state.pathParameters['name'] ?? ''),
+        ),
+      ),
+      GoRoute(
+        // 系列页（#557 / #568 P2）：key 是来源站内部 id，整值编码、不解析。
+        // 与公司页一样挂在根级：入口可能在作品详情、系列页自身或未来的搜索里。
+        path: '${RoutePaths.series}/${RoutePaths.seriesSegment}',
+        builder: (context, state) => SeriesPageWidget(
+          seriesKey: Uri.decodeComponent(state.pathParameters['key'] ?? ''),
         ),
       ),
       GoRoute(

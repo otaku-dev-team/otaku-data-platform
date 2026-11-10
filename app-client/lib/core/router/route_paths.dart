@@ -38,6 +38,14 @@ abstract final class RoutePaths {
   static String studio(String name) =>
       '$studios/${Uri.encodeComponent(name)}';
 
+  /// 系列页（#557）。`key` 是来源站内部 id：**不透明字符串**，整值编码后当路径段，
+  /// 不解析、不截断、不拿它当标题（没名字时页面退化成「系列」二字）。
+  static const String series = '/series';
+  static const String seriesSegment = ':key';
+
+  static String seriesPage(String key) =>
+      '$series/${Uri.encodeComponent(key)}';
+
   /// 登录页。从收藏页跳来时用 push，登录成功后 pop 回去。
   static const String login = '/login';
 

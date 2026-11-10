@@ -32,6 +32,7 @@ import '../recent/recent_views_controller.dart';
 import '../ugc_review/work_review_section.dart';
 import 'related_works_section.dart';
 import 'work_related_articles_section.dart';
+import 'work_series_section.dart';
 import 'work_collection_controller.dart';
 import 'view_report.dart';
 import 'work_credits_section.dart';
@@ -327,6 +328,9 @@ class _DetailBody extends StatelessWidget {
                   // 它在库里叫什么编号。需要时从接口和日志里查。
                   WorkReviewSection(workId: work.workId),
                   const SizedBox(height: 20),
+                  // 系列区排在相关推荐之前：首站就是这个动线，而且「相关作品」
+                  // 不该重复占系列里已经出现过的作品。没有系列时整块不渲染。
+                  WorkSeriesSection(workId: work.workId),
                   RelatedWorksSection(workId: work.workId),
                   WorkRelatedArticlesSection(workId: work.workId),
                 ],
@@ -379,6 +383,7 @@ class _DetailBody extends StatelessWidget {
           // 那段注释）。拿不到或没标签时组件自己渲染成 SizedBox.shrink()。
           WorkReviewSection(workId: work.workId),
           const SizedBox(height: 24),
+          WorkSeriesSection(workId: work.workId),
           RelatedWorksSection(workId: work.workId),
           WorkRelatedArticlesSection(workId: work.workId),
         ],
