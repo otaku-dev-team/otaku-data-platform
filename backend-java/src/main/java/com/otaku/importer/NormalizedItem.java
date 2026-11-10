@@ -24,6 +24,10 @@ record NormalizedItem(
         String ratingSource,
         String sourceUrl,
         String seriesKey,
-        String seriesName
+        String seriesName,
+        String officialUrl,
+        String broadcastStart,
+        String broadcastEnd,
+        String planning
 ) {
 }

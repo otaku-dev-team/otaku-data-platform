@@ -397,6 +397,76 @@ public class WorkRepository {
                 new MapSqlParameterSource().addValue("id", id).addValue("seriesKey", seriesKey));
     }
 
+    /** 信息卡四字段（#564）的当前值；全 null = 这些字段都还没落到这部作品上。 */
+    public record WorkInfos(String officialUrl, String broadcastStart, String broadcastEnd,
+                            String planning) {
+    }
+
+    /** 作品当前的信息卡四字段；一行都没有时返回全 null 的记录（列可空，不是「查不到」）。 */
+    public WorkInfos findInfos(long id) {
+        List<WorkInfos> rows = jdbc.query(
+                "SELECT official_url, broadcast_start, broadcast_end, planning FROM work WHERE id = :id",
+                new MapSqlParameterSource("id", id),
+                (rs, rowNum) -> new WorkInfos(
+                        rs.getString("official_url"),
+                        rs.getString("broadcast_start"),
+                        rs.getString("broadcast_end"),
+                        rs.getString("planning")));
+        return rows.isEmpty() ? new WorkInfos(null, null, null, null) : rows.get(0);
+    }
+
+    /**
+     * 只写信息卡四字段（导入专用，见 {@code ImportService}）。
+     *
+     * <p>不并进 {@link #updateContent} 的理由同 {@link #updateSeriesKey}：这四个字段只有数据集通道会给，
+     * 并进 updateContent 就要在 {@code WorkMerger} 里再造一套「null 不覆盖」的判断。
+     * 单独一条 UPDATE 语义更直白：调用方只在拿到非空值时才写对应列。
+     *
+     * <p>动态 SET：只写 item 实际提供的（非 null）字段，其余列保持库里原值——
+     * 否则一次只给官网的导入会把已有的放送日期覆盖成 NULL。
+     * 四个全 null 时整条不执行（调用方已保证只在有新值时进来，这里再兜一道）。
+     */
+    public void updateInfos(long id, String officialUrl, String broadcastStart,
+                            String broadcastEnd, String planning) {
+        StringBuilder sql = new StringBuilder("UPDATE work SET ");
+        MapSqlParameterSource params = new MapSqlParameterSource().addValue("id", id);
+        boolean any = false;
+        if (officialUrl != null) {
+            sql.append("official_url = :officialUrl");
+            params.addValue("officialUrl", officialUrl);
+            any = true;
+        }
+        if (broadcastStart != null) {
+            if (any) {
+                sql.append(", ");
+            }
+            sql.append("broadcast_start = :broadcastStart");
+            params.addValue("broadcastStart", broadcastStart);
+            any = true;
+        }
+        if (broadcastEnd != null) {
+            if (any) {
+                sql.append(", ");
+            }
+            sql.append("broadcast_end = :broadcastEnd");
+            params.addValue("broadcastEnd", broadcastEnd);
+            any = true;
+        }
+        if (planning != null) {
+            if (any) {
+                sql.append(", ");
+            }
+            sql.append("planning = :planning");
+            params.addValue("planning", planning);
+            any = true;
+        }
+        if (!any) {
+            return;
+        }
+        sql.append(" WHERE id = :id");
+        jdbc.update(sql.toString(), params);
+    }
+
     /**
      * 推荐候选：某个标签下「评分最高的一批可见作品」（#402）。
      *

@@ -174,7 +174,8 @@ class WorkSeriesIntegrationTest {
     private static ImportItem item(String suffix, String title, Integer year,
                                    String seriesKey, String seriesName) {
         return new ImportItem(ID_PREFIX + suffix, "anime", title, null, null, year, null, null,
-                null, null, null, null, null, null, null, null, seriesKey, seriesName);
+                null, null, null, null, null, null, null, null, seriesKey, seriesName,
+                null, null, null, null);
     }
 
     private String workIdOf(String suffix) {
