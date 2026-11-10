@@ -727,3 +727,133 @@ def test_broken_aliases_json_is_not_sent(tmp_path: Path) -> None:
     conn.close()
 
     assert "aliases" not in _payloads(ds)["W-1"]
+
+
+# ---------------------------------------------------------------- 系列名双编码（#559）
+
+
+def test_series_name_mojibake_is_repaired_before_send(tmp_path: Path) -> None:
+    """数据集里的 `series.name` 是双编码时，发出去的必须是修好的名字。
+
+    真实数据 910/941 条是这样（`机动战士高达` → `æœºåŠ¨æˆ˜å£«é«˜è¾¾`），
+    后端原样透传给客户端 → 系列页标题乱码。这一层是最后能兜住的地方。
+    """
+    ds = make_dataset(
+        tmp_path / "ds.db",
+        [{"source_id": "W-1", "title": "作品 1", "release_year": 2020}],
+    )
+    conn = sqlite3.connect(ds)
+    conn.execute("UPDATE works SET series_key='154' WHERE source_id='W-1'")
+    conn.execute(
+        "INSERT INTO series (series_key, name) VALUES ('154', ?)",
+        ("æœºåŠ¨æˆ˜å£«é«˜è¾¾",),
+    )
+    conn.commit()
+    conn.close()
+
+    report = publish_dataset(ds)
+    assert report.series_names_repaired == 1
+    assert any("双编码" in w for w in report.warnings)
+
+    from sync.dataset.publisher import PublishReport, _connect, _iter_chunks
+
+    conn = _connect(ds)
+    try:
+        items = next(
+            _iter_chunks(
+                conn,
+                500,
+                "otaku_site",
+                PublishReport(dataset_path=str(ds), backend_source="otaku_site",
+                              fetched_at="", dry_run=True),
+            )
+        )
+    finally:
+        conn.close()
+
+    payload = items[0].to_payload()
+    assert payload["series_key"] == "154"
+    assert payload["series_name"] == "机动战士高达"
+
+
+def test_healthy_series_name_is_not_touched(tmp_path: Path) -> None:
+    """本来就是正常的名字（含纯 ASCII）不能被「修」坏。"""
+    ds = make_dataset(
+        tmp_path / "ds.db",
+        [{"source_id": "W-1", "title": "作品 1", "release_year": 2020}],
+    )
+    conn = sqlite3.connect(ds)
+    conn.execute("UPDATE works SET series_key='7' WHERE source_id='W-1'")
+    conn.execute("INSERT INTO series (series_key, name) VALUES ('7', 'fate/zero')")
+    conn.commit()
+    conn.close()
+
+    report = publish_dataset(ds)
+
+    assert report.series_names_repaired == 0
+    assert not any("双编码" in w for w in report.warnings)
+
+
+# ---------------------------------------------------------------- 系列名双编码（#559）
+
+
+def test_series_name_mojibake_is_repaired_before_send(tmp_path: Path) -> None:
+    """数据集里的 `series.name` 是双编码时，发出去的必须是修好的名字。
+
+    真实数据 910/941 条是这样（`机动战士高达` → `æœºåŠ¨æˆ˜å£«é«˜è¾¾`），
+    后端原样透传给客户端 → 系列页标题乱码。这一层是最后能兜住的地方。
+    """
+    ds = make_dataset(
+        tmp_path / "ds.db",
+        [{"source_id": "W-1", "title": "作品 1", "release_year": 2020}],
+    )
+    conn = sqlite3.connect(ds)
+    conn.execute("UPDATE works SET series_key='154' WHERE source_id='W-1'")
+    conn.execute(
+        "INSERT INTO series (series_key, name) VALUES ('154', ?)",
+        ("æœºåŠ¨æˆ˜å£«é«˜è¾¾",),
+    )
+    conn.commit()
+    conn.close()
+
+    report = publish_dataset(ds)
+    assert report.series_names_repaired == 1
+    assert any("双编码" in w for w in report.warnings)
+
+    from sync.dataset.publisher import PublishReport, _connect, _iter_chunks
+
+    conn = _connect(ds)
+    try:
+        items = next(
+            _iter_chunks(
+                conn,
+                500,
+                "otaku_site",
+                PublishReport(dataset_path=str(ds), backend_source="otaku_site",
+                              fetched_at="", dry_run=True),
+            )
+        )
+    finally:
+        conn.close()
+
+    payload = items[0].to_payload()
+    assert payload["series_key"] == "154"
+    assert payload["series_name"] == "机动战士高达"
+
+
+def test_healthy_series_name_is_not_touched(tmp_path: Path) -> None:
+    """本来就是正常的名字（含纯 ASCII）不能被「修」坏。"""
+    ds = make_dataset(
+        tmp_path / "ds.db",
+        [{"source_id": "W-1", "title": "作品 1", "release_year": 2020}],
+    )
+    conn = sqlite3.connect(ds)
+    conn.execute("UPDATE works SET series_key='7' WHERE source_id='W-1'")
+    conn.execute("INSERT INTO series (series_key, name) VALUES ('7', 'fate/zero')")
+    conn.commit()
+    conn.close()
+
+    report = publish_dataset(ds)
+
+    assert report.series_names_repaired == 0
+    assert not any("双编码" in w for w in report.warnings)
