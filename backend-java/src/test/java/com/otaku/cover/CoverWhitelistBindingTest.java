@@ -29,6 +29,20 @@ class CoverWhitelistBindingTest {
                         .containsExactly("154.8.194.198:8000", "bgmimg.anibt.net:443"));
     }
 
+    @Test
+    @DisplayName("快速档名单同样按逗号拆分；不写或空串时是空列表（不分档 = 老行为）")
+    void fastHostsBindLikeWhitelist() {
+        runner.withPropertyValues("app.cover.fast-hosts=bgmimg.anibt.net:443,cdn.example:8443")
+                .run(ctx -> assertThat(ctx.getBean(AppProperties.class).getCover().getFastHosts())
+                        .containsExactly("bgmimg.anibt.net:443", "cdn.example:8443"));
+
+        // application.yml 里写的是 `${OTAKU_COVER_FAST_HOSTS:}`：环境变量没配时是空串，
+        // 此时不能抛转换异常，也不能变成一个"空主机名"把匹配搞乱。
+        runner.withPropertyValues("app.cover.fast-hosts=")
+                .run(ctx -> assertThat(ctx.getBean(AppProperties.class).getCover().getFastHosts())
+                        .allMatch(entry -> entry == null || entry.isBlank()));
+    }
+
     @EnableConfigurationProperties(AppProperties.class)
     static class Config {
     }

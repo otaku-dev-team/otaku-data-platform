@@ -113,6 +113,14 @@ app:
     cache-dir: ${OTAKU_COVER_CACHE_DIR:./data/covers}
     rate-per-second: 2
     max-concurrency: 2
+    # 「快速档」主机（host:port，逗号分隔）：第三方图床/ CDN 不受「来源站 1–2 req/s」的约束。
+    # 留空 = 全部走上面那档，行为与改动前一致；填了才放宽，具体站点由部署配置决定。
+    # 为什么需要：来源站是小站（限流是给它的承诺），但封面地址绝大多数在 CDN 上；
+    # 混成同一档的结果是「一屏 10 张未缓存封面，最后一张 21.6 秒」（2026-11-11 生产实测），
+    # 而同一批地址直连上游 6 路并发只要 5.1 秒。这里对齐浏览器「同主机 6 并发」的口径。
+    fast-hosts: ${OTAKU_COVER_FAST_HOSTS:}
+    fast-rate-per-second: ${OTAKU_COVER_FAST_RATE_PER_SECOND:6}
+    fast-max-concurrency: ${OTAKU_COVER_FAST_MAX_CONCURRENCY:6}
     timeout: 10s
     max-bytes: 5242880
     # 封面回源白名单（host:port）。**留空 = 全部拒绝**（fail-closed），不是"不限"。
