@@ -58,7 +58,7 @@ public record ImportBatchRequest(
          * <p>站点接口没有系列概念，构造出来的条目两个字段都是 null = 「本次没有系列信息」，
          * 导入层据此不覆盖库里已有归属。保留这个重载是为了不让「加了一个只有数据集通道
          * 才有的字段」变成 29 处调用点的机械改动——那些调用点本来就不该关心系列。
-         * Jackson 反序列化走的是规范构造器（18 参），不受这个重载影响。
+         * Jackson 反序列化走的是规范构造器（22 参），不受这个重载影响。
          */
         public ImportItem(String sourceId, String workType, String title, String summary,
                           String coverUrl, Integer releaseYear, List<String> tags,
@@ -69,6 +69,23 @@ public record ImportBatchRequest(
             this(sourceId, workType, title, summary, coverUrl, releaseYear, tags, mainRating,
                     sourceUrl, titleOriginal, aliases, media, episodes, staff, characters,
                     studios, null, null, null, null, null, null);
+        }
+
+        /**
+         * 带系列、不带信息卡四字段的构造器：系列/搜索相关的集成测试用它。
+         *
+         * <p>V39 加列后规范构造器变 22 参，这些测试只关心系列归属，不该被迫补四个
+         * 与它们无关的 null。信息卡四字段一律 null = 本次不提供，导入层不覆盖库里已有值。
+         */
+        public ImportItem(String sourceId, String workType, String title, String summary,
+                          String coverUrl, Integer releaseYear, List<String> tags,
+                          SourceRating mainRating, String sourceUrl, String titleOriginal,
+                          List<String> aliases, String media, Integer episodes,
+                          List<WorkStaffDto> staff, List<WorkCharacterDto> characters,
+                          List<String> studios, String seriesKey, String seriesName) {
+            this(sourceId, workType, title, summary, coverUrl, releaseYear, tags, mainRating,
+                    sourceUrl, titleOriginal, aliases, media, episodes, staff, characters,
+                    studios, seriesKey, seriesName, null, null, null, null);
         }
     }
 
