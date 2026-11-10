@@ -1,0 +1,416 @@
+{
+  "version": 1,
+  "saved_at": "2026-11-10T22:02:05",
+  "endpoints": {
+    "GET /api/app/config": {
+      "status": 200,
+      "keys": [
+        "values",
+        "values.adult.hidden",
+        "values.adult.tags",
+        "values.adult.tags[]",
+        "values.adult.title_markers",
+        "values.adult.title_markers[]",
+        "values.app.notice",
+        "values.app.notice.dismissible",
+        "values.app.notice.enabled",
+        "values.app.notice.text",
+        "values.article.related_ids_semantic",
+        "version"
+      ]
+    },
+    "GET /api/articles": {
+      "status": 200,
+      "keys": [
+        "items",
+        "items[]",
+        "items[].article_id",
+        "items[].category",
+        "items[].cover_url",
+        "items[].published_at",
+        "items[].source_name",
+        "items[].source_url",
+        "items[].summary",
+        "items[].tags",
+        "items[].tags[]",
+        "items[].title",
+        "page",
+        "page_size",
+        "total",
+        "total_pages"
+      ]
+    },
+    "GET /api/articles/categories": {
+      "status": 200,
+      "keys": [
+        "[]",
+        "[].count",
+        "[].name"
+      ]
+    },
+    "GET /api/auth/me": {
+      "status": 401,
+      "keys": [
+        "error",
+        "error.code",
+        "error.message"
+      ]
+    },
+    "GET /api/console/admins": {
+      "status": 401,
+      "keys": [
+        "error",
+        "error.code",
+        "error.message"
+      ]
+    },
+    "GET /api/console/auth/me": {
+      "status": 401,
+      "keys": [
+        "error",
+        "error.code",
+        "error.message"
+      ]
+    },
+    "GET /api/console/overview": {
+      "status": 401,
+      "keys": [
+        "error",
+        "error.code",
+        "error.message"
+      ]
+    },
+    "GET /api/console/site/ugc": {
+      "status": 401,
+      "keys": [
+        "error",
+        "error.code",
+        "error.message"
+      ]
+    },
+    "GET /api/console/sync": {
+      "status": 401,
+      "keys": [
+        "error",
+        "error.code",
+        "error.message"
+      ]
+    },
+    "GET /api/console/ugc": {
+      "status": 401,
+      "keys": [
+        "error",
+        "error.code",
+        "error.message"
+      ]
+    },
+    "GET /api/console/ugc/export": {
+      "status": 401,
+      "keys": [
+        "error",
+        "error.code",
+        "error.message"
+      ]
+    },
+    "GET /api/console/ugc/reports": {
+      "status": 401,
+      "keys": [
+        "error",
+        "error.code",
+        "error.message"
+      ]
+    },
+    "GET /api/console/users": {
+      "status": 401,
+      "keys": [
+        "error",
+        "error.code",
+        "error.message"
+      ]
+    },
+    "GET /api/home/posters": {
+      "status": 200,
+      "keys": [
+        "items",
+        "items[]",
+        "items[].cover_url",
+        "items[].main_rating",
+        "items[].main_rating.scale",
+        "items[].main_rating.source",
+        "items[].main_rating.value",
+        "items[].release_year",
+        "items[].source",
+        "items[].tags",
+        "items[].tags[]",
+        "items[].title",
+        "items[].work_id",
+        "items[].work_type"
+      ]
+    },
+    "GET /api/me/account": {
+      "status": 401,
+      "keys": [
+        "error",
+        "error.code",
+        "error.message"
+      ]
+    },
+    "GET /api/me/article-favorites": {
+      "status": 401,
+      "keys": [
+        "error",
+        "error.code",
+        "error.message"
+      ]
+    },
+    "GET /api/me/collections": {
+      "status": 401,
+      "keys": [
+        "error",
+        "error.code",
+        "error.message"
+      ]
+    },
+    "GET /api/me/comments": {
+      "status": 401,
+      "keys": [
+        "error",
+        "error.code",
+        "error.message"
+      ]
+    },
+    "GET /api/me/devices": {
+      "status": 401,
+      "keys": [
+        "error",
+        "error.code",
+        "error.message"
+      ]
+    },
+    "GET /api/me/profile": {
+      "status": 401,
+      "keys": [
+        "error",
+        "error.code",
+        "error.message"
+      ]
+    },
+    "GET /api/me/recommend": {
+      "status": 401,
+      "keys": [
+        "error",
+        "error.code",
+        "error.message"
+      ]
+    },
+    "GET /api/me/reviews": {
+      "status": 401,
+      "keys": [
+        "error",
+        "error.code",
+        "error.message"
+      ]
+    },
+    "GET /api/persona/quiz": {
+      "status": 200,
+      "keys": [
+        "seed",
+        "size",
+        "works",
+        "works[]",
+        "works[].cover_url",
+        "works[].main_rating",
+        "works[].main_rating.scale",
+        "works[].main_rating.source",
+        "works[].main_rating.value",
+        "works[].release_year",
+        "works[].source",
+        "works[].tags",
+        "works[].tags[]",
+        "works[].title",
+        "works[].work_id",
+        "works[].work_type"
+      ]
+    },
+    "GET /api/schedule": {
+      "status": 200,
+      "keys": [
+        "groups",
+        "groups[]",
+        "groups[].items",
+        "groups[].items[]",
+        "groups[].items[].broadcast_note",
+        "groups[].items[].broadcast_time",
+        "groups[].items[].image_url",
+        "groups[].items[].platforms",
+        "groups[].items[].platforms[]",
+        "groups[].items[].platforms[].name",
+        "groups[].items[].platforms[].url",
+        "groups[].items[].schedule_id",
+        "groups[].items[].season_code",
+        "groups[].items[].source_url",
+        "groups[].items[].title_cn",
+        "groups[].items[].title_jp",
+        "groups[].items[].title_main",
+        "groups[].items[].weekday",
+        "groups[].items[].work_id",
+        "groups[].items[].work_tags",
+        "groups[].items[].work_tags[]",
+        "groups[].items[].work_type",
+        "groups[].label",
+        "groups[].weekday",
+        "season",
+        "seasons",
+        "seasons[]"
+      ]
+    },
+    "GET /api/schedule/seasons": {
+      "status": 200,
+      "keys": [
+        "[]"
+      ]
+    },
+    "GET /api/site/features": {
+      "status": 200,
+      "keys": [
+        "ugc_enabled",
+        "ugc_moderation"
+      ]
+    },
+    "GET /api/tags": {
+      "status": 200,
+      "keys": [
+        "items",
+        "items[]",
+        "items[].count",
+        "items[].name",
+        "total",
+        "type"
+      ]
+    },
+    "GET /api/works": {
+      "status": 200,
+      "keys": [
+        "hidden",
+        "items",
+        "items[]",
+        "items[].cover_url",
+        "items[].main_rating",
+        "items[].main_rating.scale",
+        "items[].main_rating.source",
+        "items[].main_rating.value",
+        "items[].release_year",
+        "items[].source",
+        "items[].tags",
+        "items[].tags[]",
+        "items[].title",
+        "items[].work_id",
+        "items[].work_type",
+        "page",
+        "page_size",
+        "total",
+        "total_pages"
+      ]
+    },
+    "GET /api/articles/{articleId}": {
+      "status": null,
+      "keys": [],
+      "note": "缺样本（列表接口没取到 id）"
+    },
+    "GET /api/articles/{articleId}/related": {
+      "status": null,
+      "keys": [],
+      "note": "缺样本（列表接口没取到 id）"
+    },
+    "GET /api/console/users/{user_id}": {
+      "status": null,
+      "keys": [],
+      "note": "缺样本（列表接口没取到 id）"
+    },
+    "GET /api/console/users/{user_id}/collections": {
+      "status": null,
+      "keys": [],
+      "note": "缺样本（列表接口没取到 id）"
+    },
+    "GET /api/covers/{work_id}": {
+      "status": null,
+      "keys": [],
+      "note": "缺样本（列表接口没取到 id）"
+    },
+    "GET /api/me/article-favorites/{article_id}": {
+      "status": null,
+      "keys": [],
+      "note": "缺样本（列表接口没取到 id）"
+    },
+    "GET /api/me/collections/{work_id}": {
+      "status": null,
+      "keys": [],
+      "note": "缺样本（列表接口没取到 id）"
+    },
+    "GET /api/persons/{person_id}": {
+      "status": null,
+      "keys": [],
+      "note": "缺样本（列表接口没取到 id）"
+    },
+    "GET /api/series/{key}": {
+      "status": null,
+      "keys": [],
+      "note": "缺样本（列表接口没取到 id）"
+    },
+    "GET /api/studios/{name}": {
+      "status": null,
+      "keys": [],
+      "note": "缺样本（列表接口没取到 id）"
+    },
+    "GET /api/works/{work_id}": {
+      "status": null,
+      "keys": [],
+      "note": "缺样本（列表接口没取到 id）"
+    },
+    "GET /api/works/{work_id}/articles": {
+      "status": null,
+      "keys": [],
+      "note": "缺样本（列表接口没取到 id）"
+    },
+    "GET /api/works/{work_id}/comments": {
+      "status": null,
+      "keys": [],
+      "note": "缺样本（列表接口没取到 id）"
+    },
+    "GET /api/works/{work_id}/comments/{comment_id}/replies": {
+      "status": null,
+      "keys": [],
+      "note": "缺样本（列表接口没取到 id）"
+    },
+    "GET /api/works/{work_id}/related": {
+      "status": null,
+      "keys": [],
+      "note": "缺样本（列表接口没取到 id）"
+    },
+    "GET /api/works/{work_id}/reviews": {
+      "status": null,
+      "keys": [],
+      "note": "缺样本（列表接口没取到 id）"
+    },
+    "GET /api/works/{work_id}/reviews/summary": {
+      "status": null,
+      "keys": [],
+      "note": "缺样本（列表接口没取到 id）"
+    },
+    "GET /api/works/{work_id}/series": {
+      "status": null,
+      "keys": [],
+      "note": "缺样本（列表接口没取到 id）"
+    },
+    "GET /avatars/{filename}": {
+      "status": null,
+      "keys": [],
+      "note": "缺样本（列表接口没取到 id）"
+    },
+    "GET /internal/import/batches/{batch_id}": {
+      "status": null,
+      "keys": [],
+      "note": "缺样本（列表接口没取到 id）"
+    }
+  }
+}
