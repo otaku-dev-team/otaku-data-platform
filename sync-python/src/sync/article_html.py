@@ -33,7 +33,20 @@ _DATETIME_RE = re.compile(r"(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})")
 _TAG_HREF_RE = re.compile(r"/contents\?tag=")
 
 # 关联作品：<a class="detail-related-item" href="/contents/7556">
-_RELATED_HREF_RE = re.compile(r"/contents/(\d+)")
+#
+# **必须限定在 `detail-related-item` 这个 class 上，不能全页扫 `/contents/(\d+)`。**
+# 详情页还有一个「作品信息」区，里面是一排
+# `<a class="tag-chip" href="/contents/{id}">译名/作者</a>`——同一篇文章里
+# 那排 chip 讲的是正文提到/归属的作品，不是「关联作品」。全页扫的结果是
+# 一篇只有 1 个关联的资讯被抓成 7 个（实测 /articles/886：6 个 chip + 1 个真关联），
+# 于是详情页的「关联作品」挂上一串完全无关的作品。
+#
+# 分两步而不是写一个大正则：属性顺序由模板决定，但换模板时 `href` 与 `class`
+# 的先后可能变；先取出 `<a …>` 标签本身，再在标签内找 href，两种顺序都吃得下。
+_RELATED_ANCHOR_RE = re.compile(
+    r'<a\b[^>]*\bclass="[^"]*\bdetail-related-item\b[^"]*"[^>]*>'
+)
+_HREF_CONTENT_RE = re.compile(r'href="/contents/(\d+)"')
 
 
 def normalize_text(raw: str | None) -> str | None:
@@ -269,7 +282,10 @@ def parse_article_detail(html_text: str, base_url: str = DEFAULT_BASE_URL) -> di
         out["body"] = body
 
     related = []
-    for match in _RELATED_HREF_RE.finditer(html_text):
+    for anchor in _RELATED_ANCHOR_RE.finditer(html_text):
+        match = _HREF_CONTENT_RE.search(anchor.group(0))
+        if match is None:
+            continue
         wid = match.group(1)
         if wid not in related:
             related.append(wid)

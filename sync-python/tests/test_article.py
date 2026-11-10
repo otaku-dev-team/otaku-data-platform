@@ -191,6 +191,30 @@ class TestParseArticleDetail:
         out = parse_article_detail(DETAIL_PAGE_HTML)
         assert out["related_work_ids"] == ["7556", "7613"]
 
+    def test_ignores_work_info_chips_outside_related_block(self):
+        """「作品信息」区的 tag-chip 也是 /contents/{id}，但那是正文提到的作品，不是关联。
+
+        实测 /articles/886：作品信息区 6 个 chip + 关联区 1 个真关联。按全页扫
+        `/contents/(\\d+)` 会把 1 个关联抓成 7 个，详情页因此挂上一串无关作品。
+        """
+        html = (
+            '<section class="article-tax-row"><div class="article-tax-items">'
+            '<a class="tag-chip" href="/contents/7534">译名</a>'
+            '<a class="tag-chip" href="/contents/609">译名</a>'
+            "</div></section>"
+            '<section class="article-related"><div class="article-related-grid">'
+            '<a class="detail-related-item" href="/contents/11972">人生</a>'
+            "</div></section>"
+        )
+        out = parse_article_detail(html)
+        assert out["related_work_ids"] == ["11972"]
+
+    def test_reads_related_href_when_class_follows_href(self):
+        # 模板换属性顺序时不该静默丢关联
+        html = '<a href="/contents/7556" class="detail-related-item">x</a>'
+        out = parse_article_detail(html)
+        assert out["related_work_ids"] == ["7556"]
+
     def test_missing_fields_are_absent_not_empty_strings(self):
         out = parse_article_detail("<html><body>空页面</body></html>")
         assert out == {}
