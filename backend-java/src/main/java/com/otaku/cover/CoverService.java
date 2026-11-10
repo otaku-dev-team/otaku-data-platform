@@ -26,12 +26,15 @@ import java.time.ZoneOffset;
 import java.util.HexFormat;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.LockSupport;
+import java.util.stream.Collectors;
 
 /**
  * 封面代理 + 本地缓存。
@@ -72,25 +75,37 @@ public class CoverService {
     private final WorkRepository workRepository;
     private final AppProperties properties;
     private final Path cacheDir;
-    private final Semaphore concurrency;
-    private final long minIntervalNanos;
     private final HttpClient httpClient;
+
+    /**
+     * 两档回源闸门。来源站与第三方图床的「礼貌口径」不一样，混在一个闸门里会让图床也按
+     * 1–2 req/s 排队——实测一屏 10 张要 21.6 秒，而直连上游 6 路并发只要 5.1 秒。
+     */
+    private final Limiter defaultLimiter;
+    private final Limiter fastLimiter;
+
+    /** 走快速档的 host:port（小写）。为空 = 全部走默认档，与改动前一致。 */
+    private final Set<String> fastHosts;
 
     /** 单飞表：封面地址 → 正在进行的回源。完成后立刻移除，不占内存。 */
     private final ConcurrentHashMap<String, CompletableFuture<Optional<CoverPayload>>> inflight =
             new ConcurrentHashMap<>();
     private static final long FLIGHT_TIMEOUT_SECONDS = 20;
 
-    private long nextSlotNanos = System.nanoTime();
-
     public CoverService(WorkRepository workRepository, AppProperties properties) {
         this.workRepository = workRepository;
         this.properties = properties;
         AppProperties.Cover cover = properties.getCover();
         this.cacheDir = Path.of(cover.getCacheDir()).toAbsolutePath().normalize();
-        this.concurrency = new Semaphore(Math.max(1, cover.getMaxConcurrency()));
-        int rate = Math.max(1, cover.getRatePerSecond());
-        this.minIntervalNanos = Duration.ofSeconds(1).toNanos() / rate;
+        this.defaultLimiter = new Limiter(cover.getMaxConcurrency(), cover.getRatePerSecond());
+        this.fastLimiter = new Limiter(cover.getFastMaxConcurrency(), cover.getFastRatePerSecond());
+        this.fastHosts = cover.getFastHosts() == null ? Set.of()
+                : cover.getFastHosts().stream()
+                        .filter(Objects::nonNull)
+                        .map(String::trim)
+                        .filter(entry -> !entry.isEmpty())
+                        .map(entry -> entry.toLowerCase(Locale.ROOT))
+                        .collect(Collectors.toUnmodifiableSet());
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(cover.getTimeout())
                 // 不自动跟随：自动跟随只校验起始 URI，一次 302 就能绕出白名单。
@@ -249,10 +264,10 @@ public class CoverService {
         }
 
         boolean acquired = false;
+        Limiter limiter = limiterFor(uri);
         try {
-            concurrency.acquire();
+            limiter.acquire();
             acquired = true;
-            acquireRateSlot();
 
             HttpResponse<InputStream> response = send(uri);
             if (response == null) {
@@ -300,7 +315,7 @@ public class CoverService {
             return Optional.empty();
         } finally {
             if (acquired) {
-                concurrency.release();
+                limiter.release();
             }
         }
     }
@@ -356,15 +371,66 @@ public class CoverService {
         return null;
     }
 
-    /** 令牌桶式的最小间隔限速；来源站要求 1–2 req/s。 */
-    private synchronized void acquireRateSlot() {
-        long now = System.nanoTime();
-        long wait = nextSlotNanos - now;
-        if (wait > 0) {
-            LockSupport.parkNanos(wait);
+    /**
+     * 一个闸门 = 并发许可 + 最小发起间隔。来源站与图床各一档，互不占用对方的额度。
+     *
+     * <p>为什么「间隔」要跟着主机走而不是全局：1–2 req/s 是**对来源站一家**的承诺
+     * （来源站是小站），不该让第三方图床的取图去排队等这个令牌；反过来图床放宽也不该
+     * 让来源站跟着承受更高频率。
+     */
+    private static final class Limiter {
+
+        private final Semaphore permits;
+        private final long minIntervalNanos;
+        private long nextSlotNanos = System.nanoTime();
+
+        Limiter(int concurrency, int ratePerSecond) {
+            this.permits = new Semaphore(Math.max(1, concurrency));
+            this.minIntervalNanos = Duration.ofSeconds(1).toNanos() / Math.max(1, ratePerSecond);
         }
-        long slot = Math.max(now, nextSlotNanos);
-        nextSlotNanos = slot + minIntervalNanos;
+
+        void acquire() throws InterruptedException {
+            permits.acquire();
+            synchronized (this) {
+                long now = System.nanoTime();
+                long wait = nextSlotNanos - now;
+                if (wait > 0) {
+                    LockSupport.parkNanos(wait);
+                }
+                long slot = Math.max(now, nextSlotNanos);
+                nextSlotNanos = slot + minIntervalNanos;
+            }
+        }
+
+        void release() {
+            permits.release();
+        }
+    }
+
+    /**
+     * 这次回源该走哪一档。
+     *
+     * <p>按**起始** URI 判档（与限流「一次取图一个槽位」的口径一致）：重定向跳数由
+     * {@link #MAX_REDIRECTS} 封顶，跨主机的每一跳仍然要过白名单，但不再换闸门。
+     */
+    private Limiter limiterFor(URI uri) {
+        String key = hostPort(uri);
+        return key != null && fastHosts.contains(key) ? fastLimiter : defaultLimiter;
+    }
+
+    /** 归一成小写 {@code host:port}；省略端口按协议补 80/443。取不到 host 返回 {@code null}。 */
+    private static String hostPort(URI uri) {
+        if (uri == null) {
+            return null;
+        }
+        String host = uri.getHost();
+        if (host == null || host.isBlank()) {
+            return null;
+        }
+        int port = uri.getPort();
+        String effectivePort = String.valueOf(port > 0 ? port
+                : ("https".equalsIgnoreCase(uri.getScheme()) ? 443 : 80));
+        return (host + ":" + effectivePort).toLowerCase(Locale.ROOT);
     }
 
     /**
@@ -381,14 +447,10 @@ public class CoverService {
         if (allowed == null || allowed.isEmpty()) {
             return false;
         }
-        String host = uri.getHost();
-        if (host == null || host.isBlank()) {
+        String key = hostPort(uri);
+        if (key == null) {
             return false;
         }
-        int port = uri.getPort();
-        String effectivePort = String.valueOf(port > 0 ? port
-                : ("https".equalsIgnoreCase(uri.getScheme()) ? 443 : 80));
-        String key = host + ":" + effectivePort;
         return allowed.stream().anyMatch(entry -> entry != null && entry.trim().equalsIgnoreCase(key));
     }
 

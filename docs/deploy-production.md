@@ -32,6 +32,7 @@
 | 公共读限流 | `OTAKU_RATE_LIMIT_PUBLIC_PER_MINUTE` / `OTAKU_RATE_LIMIT_COVER_PER_MINUTE` | 被人拿脚本刷列表/封面，带宽与回源全算我们的 |
 | 封面防盗链 | `OTAKU_COVER_ALLOWED_REFERERS` | 任意站点可把封面代理当免费图床（#189 的开关默认关） |
 | 封面回源白名单 | `OTAKU_COVER_ALLOWED_HOSTS` | 不在表里的来源站封面**全部 404**（fail-closed）；接 Bangumi 镜像需加 `bgmimg.anibt.net:443` |
+| 封面回源「快速档」 | `OTAKU_COVER_FAST_HOSTS` | 不配 = 所有主机共用 2 并发 / 2 req/s。**这是给来源站的礼貌约定**，但封面绝大多数在第三方图床；混成一档实测「一屏 10 张未缓存封面，最后一张 21.6 秒」（2026-11-11 生产实测），直连上游 6 路并发只要 5.1 秒。填 `bgmimg.anibt.net:443` 即走 6 并发 / 6 req/s |
 
 上了 Nginx/反代后还要把 `OTAKU_TRUST_FORWARDED_FOR=true`，否则限流会把所有请求都算到反代 IP 上。
 

@@ -144,6 +144,28 @@ public class AppProperties {
          */
         private List<String> allowedReferers = new ArrayList<>();
 
+        /**
+         * 「快速档」主机（host:port，逗号分隔）。命中这些主机的回源走
+         * {@link #fastRatePerSecond} / {@link #fastMaxConcurrency}，其余主机仍用上面那档保守值。
+         *
+         * <p><b>为什么要分档</b>：{@code rate-per-second} / {@code max-concurrency} 的 1–2 req/s
+         * 是**对来源站**的约定（来源站是小站，见 {@code docs/cover-self-hosting-sizing.md}）。
+         * 但封面地址里绝大多数是第三方图床（CDN），把它们也压到 2 req/s，结果就是
+         * 「一屏 10 张未缓存封面，最后一张 21.6 秒才出来」（2026-11-11 生产实测）。
+         * 而同一批地址直连上游 20/20 可取、单张 1.4–8.2s——瓶颈完全在我们这侧的排队。
+         * 浏览器打开一个页面本来就会对同一主机并发 6 个请求，快速档对齐这个口径。
+         *
+         * <p><b>默认为空</b>：不写就还是 2/2，行为与改动前完全一致；哪些主机放宽由部署配置决定，
+         * 不把具体站点焊进代码（与 {@link #allowedHosts} 同一原则）。
+         */
+        private List<String> fastHosts = new ArrayList<>();
+
+        /** 快速档主机的回源速率（req/s）。 */
+        private int fastRatePerSecond = 6;
+
+        /** 快速档主机的回源并发上限。 */
+        private int fastMaxConcurrency = 6;
+
         public String getCacheDir() {
             return cacheDir;
         }
@@ -198,6 +220,30 @@ public class AppProperties {
 
         public void setAllowedReferers(List<String> allowedReferers) {
             this.allowedReferers = allowedReferers == null ? new ArrayList<>() : allowedReferers;
+        }
+
+        public List<String> getFastHosts() {
+            return fastHosts;
+        }
+
+        public void setFastHosts(List<String> fastHosts) {
+            this.fastHosts = fastHosts == null ? new ArrayList<>() : fastHosts;
+        }
+
+        public int getFastRatePerSecond() {
+            return fastRatePerSecond;
+        }
+
+        public void setFastRatePerSecond(int fastRatePerSecond) {
+            this.fastRatePerSecond = fastRatePerSecond;
+        }
+
+        public int getFastMaxConcurrency() {
+            return fastMaxConcurrency;
+        }
+
+        public void setFastMaxConcurrency(int fastMaxConcurrency) {
+            this.fastMaxConcurrency = fastMaxConcurrency;
         }
     }
 
