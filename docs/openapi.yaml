@@ -3481,14 +3481,18 @@ components:
       type: object
       nullable: true
       description: |
-        来源评分。`null` 表示来源没有评分，**不是 0 分**，客户端必须不显示评分区域，
+        来源评分。`null` 表示**不展示评分**，**不是 0 分**，客户端必须不显示评分区域，
         不得显示 `0.0`。
 
-        `null` 还有第二种含义（#383）：**票数不足**。平台按「评分人数 ≥ 50」决定是否展示
-        （与来源站 `rating_shown()` 同口径）——1 个人打 10 分不该显示成 10 分。
-        客户端不需要区分这两种原因，一律按「无评分」处理：默认整块不渲染评分区域，
-        需要占位的场景（如按评分排序）显示「暂无评分」，**不得显示 `0.0`**。
+        `null` 有两种原因（#383）：**来源没有评分**，或**票数不足**（平台按「评分人数 ≥ 50」
+        决定是否展示，与来源站 `rating_shown()` 同口径——1 个人打 10 分不该显示成 10 分）。
         票数未知时不隐藏（按可信处理）。
+
+        这两种原因是否要分开显示，取决于接口：
+        - **详情**（`Work`）：用 `rating_state` 区分（`insufficient` / `none`），
+          首站详情页对二者是不一样的两句话；
+        - **其余视图**（列表项、卡片、关联作品等，没有 `rating_state`）：**不区分**，
+          一律按「无评分」处理——整块不渲染，需要占位的场景显示「暂无评分」，不得显示 `0.0`。
       required: [value, scale, source]
       properties:
         value:
@@ -3707,12 +3711,12 @@ components:
     Work:
       type: object
       description: |
-        详情。**全部 20 个字段**（含本阶段新增的可空 `source_url` 与 `release_year`，
+        详情。**全部 21 个字段**（含本阶段新增的可空 `source_url` 与 `release_year`，
         2026-10-28 扩入的 4 个富字段 `title_original` / `aliases` / `media` / `episodes`，
-        以及 3 个关联数组 `staff` / `characters` / `studios`）。
-        列表项是 7 字段（含 `release_year`），不含
-        `summary` / `source` / `source_id` / `source_url` / `updated_at`、4 个富字段与 3 个关联数组。
-      required: [work_id, work_type, title, source, source_id, updated_at]
+        2026-11-11 为客户端三态评分补的 `rating_state`，以及 3 个关联数组 `staff` / `characters` / `studios`）。
+        列表项是 8 字段（含 `release_year` 与 `source`），不含
+        `summary` / `source_id` / `source_url` / `updated_at` / `rating_state`、4 个富字段与 3 个关联数组。
+      required: [work_id, work_type, title, source, source_id, updated_at, rating_state]
       properties:
         work_id:
           type: string
@@ -3780,6 +3784,27 @@ components:
           nullable: true
           items: { type: string }
         main_rating: { $ref: "#/components/schemas/SourceRating" }
+        rating_state:
+          type: string
+          enum: [rated, insufficient, none]
+          description: |
+            评分展示三态（2026-11-11 增）。`main_rating` 为 `null` 时，光看它分不出原因，
+            用本字段区分：
+
+            | 取值 | 含义 | `main_rating` |
+            | --- | --- | --- |
+            | `rated` | 有评分且票数达标 | 非 `null` |
+            | `insufficient` | 来源有评分，但票数不足（`rating_count < 50`），按口径不展示分数 | `null` |
+            | `none` | 来源没有评分 | `null` |
+
+            **恒存在、不为 `null`**（`required` 里列了）。详情页据此渲染三态：
+            有分 → 分值 + 星级；`insufficient` → 首站同款的「评分人数不足 `/ --`」；
+            `none` → 「暂无评分」。**不得显示 `0.0`**。
+
+            客户端**不要**自己拿 `rating_count` 判 50：阈值是后端口径，库里已经有两份
+            （服务端常量 + 排序生成列），再抄一份到客户端就会出现第三种漂移——所以这里给的是
+            判好的状态，不是原始票数。
+          example: rated
         staff:
           type: array
           nullable: true

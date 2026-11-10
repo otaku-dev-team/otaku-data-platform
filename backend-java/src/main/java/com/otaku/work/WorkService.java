@@ -436,6 +436,7 @@ public class WorkService {
                 coverUrl(record),
                 parseTags(record.tagsJson()),
                 toRating(record),
+                summaryMapper.ratingState(record),
                 emptyToNull(relationRepository.findStaff(record.id())),
                 emptyToNull(relationRepository.findCharacters(record.id())),
                 emptyToNull(relationRepository.findStudios(record.id())),
