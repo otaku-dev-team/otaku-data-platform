@@ -26,6 +26,7 @@ import 'package:otaku_app/features/article/article_card.dart';
 import 'package:otaku_app/features/contents/contents_controller.dart';
 import 'package:otaku_app/features/contents/contents_page.dart';
 import 'package:otaku_app/shared/widgets/compact_work_card.dart';
+import 'package:otaku_app/shared/widgets/cover_image.dart';
 import 'package:otaku_app/features/home/home_controller.dart';
 
 import 'support/test_overrides.dart';
@@ -143,6 +144,8 @@ class _FakeScheduleSource implements ScheduleDataSource {
             weekday: 1,
             broadcastTime: '22:00',
             workType: '小说改编动画',
+            // 首页卡片必须把 `image_url` 画出来（之前取了却没用，只有文字）。
+            imageUrl: 'https://example.com/s-1.jpg',
           ),
         ],
       ),
@@ -505,6 +508,14 @@ void main() {
   testWidgets('本日新番取的是「今天」那一组，不是全部', (tester) async {
     await pumpApp(tester, app(weekday: 1));
     expect(find.text('周一新番甲'), findsOneWidget);
+    // 卡片带封面：URL 来自档期条目的 `image_url`，不是作品封面代理。
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is CoverImage && widget.url == 'https://example.com/s-1.jpg',
+      ),
+      findsOneWidget,
+    );
 
     await pumpApp(tester, app(weekday: 2));
     // 周二那组是空的：说「今天没有排期」，而不是把区块整块藏掉——

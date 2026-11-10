@@ -1041,9 +1041,13 @@ class _TodayScheduleCard extends StatelessWidget {
     final scheme = theme.colorScheme;
     // 放送时间优先，没有就退回备注（备注里常写「10/5周一深夜」这类补偿信息）。
     final time = entry.broadcastTime ?? entry.broadcastNote;
+    final firstChar = entry.title.characters.isEmpty
+        ? null
+        : entry.title.characters.first;
 
     return SizedBox(
-      width: 196,
+      // 加封面后要放下「52 的图 + 10 间距 + 文字」，原来的 196 会把标题挤成两行半。
+      width: 232,
       child: Material(
         // 与作品卡 / 资讯卡同一套容器：白底 + 0.5 描边 + 卡圆角 + 极轻阴影。
         color: AppTheme.cardColor(context),
@@ -1062,39 +1066,59 @@ class _TodayScheduleCard extends StatelessWidget {
               ? () => context.push(RoutePaths.workDetail(entry.workId!))
               : null,
           child: Padding(
-            padding: const EdgeInsets.all(10),
-            child: Column(
+            padding: const EdgeInsets.all(8),
+            child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (time != null)
-                  Text(
-                    time,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.labelMedium?.copyWith(
-                      color: AppTheme.brandInk(context),
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                const SizedBox(height: 4),
-                Expanded(
-                  child: Text(
-                    entry.title,
-                    maxLines: 3,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                      height: 1.3,
-                    ),
-                  ),
+                // 封面是 B 站外链，与档期页同一条路径：没有图、加载失败都走
+                // CoverImage 的首字占位，不出现破图，也不留一块空白。
+                // 之前首页这张卡只排了文字，`image_url` 取了却没用。
+                CoverImage(
+                  url: entry.imageUrl,
+                  width: 52,
+                  height: 78,
+                  radius: 6,
+                  placeholderLabel: firstChar,
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  entry.isLinked ? (entry.workType ?? '已收录') : '本站未收录',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: scheme.onSurfaceVariant,
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (time != null)
+                        Text(
+                          time,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.labelMedium?.copyWith(
+                            color: AppTheme.brandInk(context),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      const SizedBox(height: 4),
+                      Expanded(
+                        child: Text(
+                          entry.title,
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            height: 1.3,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        entry.isLinked
+                            ? (entry.workType ?? '已收录')
+                            : '本站未收录',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
