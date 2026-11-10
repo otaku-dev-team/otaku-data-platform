@@ -151,7 +151,7 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('身份卡显示资料里保存的昵称，而不是登录名', (tester) async {
+  testWidgets('身份卡显示站点昵称，不用平台自设昵称', (tester) async {
     await pumpProfile(
       tester,
       token: signedInToken,
@@ -162,10 +162,10 @@ void main() {
     await tester.tap(find.byTooltip('我的'));
     await tester.pumpAndSettle();
 
-    // 编辑页把昵称写进 UserProfile，身份卡必须读**同一份**；
-    // 只读 AuthState.user 就会出现「提示保存成功、回来名字没变」。
-    expect(find.text('深夜考据派'), findsOneWidget);
-    expect(find.text('alice'), findsNothing);
+    // 口径是「与站点一致」：站点昵称是 `alice`，平台自设的「深夜考据派」不展示
+    // ——昵称只能在站点改，App 里显示的不是另一份数据。
+    expect(find.text('alice'), findsOneWidget);
+    expect(find.text('深夜考据派'), findsNothing);
     await tester.pumpWidget(const SizedBox());
   });
 
@@ -185,7 +185,7 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('头像接上资料的 avatarUrl', (tester) async {
+  testWidgets('头像恒用首字色块，不显示资料里的 avatarUrl（与站点一致）', (tester) async {
     await pumpProfile(
       tester,
       token: signedInToken,
@@ -196,14 +196,14 @@ void main() {
     await tester.tap(find.byTooltip('我的'));
     await tester.pumpAndSettle();
 
-    // 上传接口还没落地，这个字段现在恒为 null；但接缝必须通着，
-    // 否则将来「能上传了、卡片却不显示」还得再查一遍。
+    // 站点用户只有默认头像（契约里 `User` 没有 `avatar_url`），
+    // 所以这里**恒为 null**：不显示平台上传的图，与站点保持一致。
     final avatar = tester.widget<UserAvatar>(find.byType(UserAvatar));
-    expect(avatar.avatarUrl, 'https://example.com/a.png');
+    expect(avatar.avatarUrl, isNull);
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('桌面账号菜单显示的也是资料里的昵称', (tester) async {
+  testWidgets('桌面账号菜单显示的也是站点昵称', (tester) async {
     await pumpProfile(
       tester,
       token: signedInToken,
@@ -218,10 +218,10 @@ void main() {
     await tester.tap(find.byTooltip('账号'));
     await tester.pumpAndSettle();
 
-    // 两处（身份卡 / 菜单）读的是同一个 provider；只改一处，
+    // 两处（身份卡 / 菜单）读同一个 provider，都只认站点昵称；只改一处，
     // 就会剩下「菜单里还是旧名字」这种更难发现的 bug。
-    expect(find.text('深夜考据派'), findsOneWidget);
-    expect(find.text('alice'), findsNothing);
+    expect(find.text('alice'), findsOneWidget);
+    expect(find.text('深夜考据派'), findsNothing);
     await tester.pumpWidget(const SizedBox());
   });
 

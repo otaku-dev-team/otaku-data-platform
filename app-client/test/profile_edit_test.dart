@@ -4,7 +4,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:otaku_app/data/models/account_user.dart';
+import 'package:otaku_app/data/models/remote_config.dart';
 import 'package:otaku_app/features/auth/auth_controller.dart';
+import 'package:otaku_app/features/config/feature_flags.dart';
 import 'package:otaku_app/features/profile/profile_data_source.dart';
 import 'package:otaku_app/features/profile/profile_edit_page.dart';
 import 'package:otaku_app/features/profile/user_profile.dart';
@@ -38,18 +40,31 @@ void main() {
     expect(find.text('A'), findsWidgets);
   });
 
-  testWidgets('保存把空串归一为 null，成功后回退', (tester) async {
+  testWidgets('昵称只读：与站点一致，App 里不能改', (tester) async {
+    await tester.pumpWidget(_host(source: _FakeProfileDataSource()));
+    await tester.pumpAndSettle();
+
+    final nickname = tester.widget<TextField>(
+      find.descendant(
+        of: find.byType(TextFormField).at(0),
+        matching: find.byType(TextField),
+      ),
+    );
+    expect(nickname.readOnly, isTrue);
+    expect(find.text('与站点保持一致，需在站点修改'), findsOneWidget);
+  });
+
+  testWidgets('保存把简介的空串归一为 null，成功后回退', (tester) async {
     final source = _FakeProfileDataSource();
     await tester.pumpWidget(_host(source: source));
     await tester.pumpAndSettle();
 
-    await tester.enterText(find.byType(TextFormField).at(0), '  深夜考据派  ');
+    // 昵称只读（与站点一致），这里只验简介：全空格 → null。
     await tester.enterText(find.byType(TextFormField).at(1), '  ');
     await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
 
     expect(source.saved, isNotNull);
-    expect(source.saved!.displayName, '深夜考据派');
     expect(source.saved!.bio, isNull);
     expect(find.text('资料已保存'), findsOneWidget);
   });
@@ -59,7 +74,7 @@ void main() {
     await tester.pumpWidget(_host(source: source));
     await tester.pumpAndSettle();
 
-    await tester.enterText(find.byType(TextFormField).at(0), '新昵称');
+    await tester.enterText(find.byType(TextFormField).at(1), '写点东西');
     await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
 
@@ -68,15 +83,43 @@ void main() {
     // 表单还在，按钮恢复可点。
     expect(find.text('保存'), findsOneWidget);
   });
+  testWidgets('开关关着（默认）：点保存只弹「暂未开放」，一次写入都没有', (tester) async {
+    final source = _FakeProfileDataSource();
+    await tester.pumpWidget(_host(source: source, enabled: false));
+    await tester.pumpAndSettle();
+
+    // 昵称是只读的（与站点一致），能填的只有简介。
+    await tester.enterText(find.byType(TextFormField).last, '想改的简介');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('暂未开放'), findsOneWidget);
+    expect(source.saved, isNull, reason: '开关关着不该写任何数据');
+
+    await tester.tap(find.text('知道了'));
+    await tester.pumpAndSettle();
+  });
 }
 
 Widget _host({
   required _FakeProfileDataSource source,
   bool signedIn = true,
+  /// `feature.account_edit` 开关。默认**打开**（验「功能可用时」的链路），
+  /// 「默认关」的行为由单独一条用例覆盖。
+  bool enabled = true,
 }) {
   final container = ProviderContainer(
     overrides: [
       profileDataSourceProvider.overrideWithValue(source),
+      featureFlagsProvider.overrideWithValue(
+        FeatureFlags(
+          RemoteConfig(
+            version: 1,
+            values: <String, dynamic>{'feature.account_edit': enabled},
+          ),
+        ),
+      ),
       authControllerProvider.overrideWith(
         signedIn ? _SignedInAuth.new : _SignedOutAuth.new,
       ),

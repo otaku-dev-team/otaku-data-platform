@@ -11,6 +11,7 @@ import '../../core/theme/design_tokens.dart';
 import '../../shared/widgets/desktop_nav_shell.dart';
 import '../../shared/widgets/user_avatar.dart';
 import '../auth/auth_controller.dart';
+import '../config/feature_flags.dart';
 import 'avatar_data_source.dart';
 import 'avatar_picker.dart';
 import 'profile_data_source.dart';
@@ -176,7 +177,9 @@ class _ProfileFormState extends ConsumerState<_ProfileForm> {
   bool _savingAvatar = false;
 
   /// 与 zm 给的 DDL 一致：`display_name VARCHAR(32)` / `bio VARCHAR(200)`。
-  static const int _maxName = 32;
+  ///
+  /// 昵称现在是只读的（与站点一致），所以 `_maxName` 暂时用不上——等
+  /// `feature.account_edit` 打开、昵称可编辑时再一起加回长度校验。
   static const int _maxBio = 200;
 
   @override
@@ -288,19 +291,17 @@ class _ProfileFormState extends ConsumerState<_ProfileForm> {
                 children: [
                   TextFormField(
                     controller: _nameController,
+                    // **与站点一致**：昵称只在站点能改，App 里只读展示。
+                    readOnly: true,
                     decoration: InputDecoration(
                       labelText: '昵称',
                       hintText: widget.displayLabel,
-                      helperText: '留空则显示用户名',
-                      counterText: '${_nameController.text.length}/$_maxName',
+                      helperText: '与站点保持一致，需在站点修改',
+                      suffixIcon: const Icon(
+                        Icons.lock_outline_rounded,
+                        size: 18,
+                      ),
                     ),
-                    maxLength: _maxName,
-                    textInputAction: TextInputAction.next,
-                    onChanged: (_) => setState(() {}),
-                    validator: (value) =>
-                        (value != null && value.trim().length > _maxName)
-                        ? '昵称最多 $_maxName 字'
-                        : null,
                   ),
                   const SizedBox(height: Space.s2),
                   TextFormField(
@@ -373,6 +374,32 @@ class _ProfileFormState extends ConsumerState<_ProfileForm> {
   Future<void> _saveAvatar() async {
     final file = _pendingAvatar;
     if (file == null || _savingAvatar) return;
+
+    // 服务端开关 `feature.avatar_upload`（默认关）。
+    //
+    // 关着时**不写任何数据**，只把「还没开放」说清楚——比假成功好：假成功后
+    // 用户回到个人空间发现头像没变，会以为是自己操作错了。
+    // 开关值来自 `/api/app/config`，改后端配置即生效、不用发版。
+    if (!ref.read(featureFlagsProvider).avatarUpload) {
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('暂时无法设置头像'),
+          content: const Text(
+            '选图和预览已经可以用，但上传还没开放。\n\n'
+            '这张图只在本机预览，没有保存；当前仍使用昵称首字生成的头像。',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('知道了'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
     setState(() => _savingAvatar = true);
 
     try {
@@ -432,8 +459,36 @@ class _ProfileFormState extends ConsumerState<_ProfileForm> {
     ).showSnackBar(const SnackBar(content: Text('头像已移除')));
   }
 
+  /// 保存昵称与简介。
+  ///
+  /// **当前不写任何数据**：口径是「与站点保持一致」——站点不能改昵称，App 里也
+  /// 不能改；简介同理。所以这一步只把「还没开放」说清楚，比假成功好：假成功后
+  /// 用户回个人空间发现没变，会以为是自己操作错了。
+  ///
+  /// 服务端开关 `feature.account_edit` 打开后，把这段换回真正的 `update`。
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
+
+    if (!ref.read(featureFlagsProvider).accountEdit) {
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('暂未开放'),
+          content: const Text(
+            '昵称与简介需要跟站点保持一致。\n\n'
+            '目前只能在站点修改，App 里暂不支持。',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('知道了'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
     setState(() => _saving = true);
 
     final name = _nameController.text.trim();
@@ -454,6 +509,10 @@ class _ProfileFormState extends ConsumerState<_ProfileForm> {
 
     ref.invalidate(profileProvider);
     if (!mounted) return;
+    // **必须显式复位**：`_saving` 原本靠「`profileProvider` 变了 → 表单按新的
+    // `UserProfile` 重建」来复位；但保存结果与当前值相同时 key 不变、不重建，
+    // 按钮就永远转下去（`pumpAndSettle` 会直接卡死，真机上表现为一直转圈）。
+    setState(() => _saving = false);
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(const SnackBar(content: Text('资料已保存')));

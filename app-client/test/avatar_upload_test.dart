@@ -8,7 +8,9 @@ import 'package:go_router/go_router.dart';
 
 import 'package:otaku_app/core/network/api_exception.dart';
 import 'package:otaku_app/data/models/account_user.dart';
+import 'package:otaku_app/data/models/remote_config.dart';
 import 'package:otaku_app/features/auth/auth_controller.dart';
+import 'package:otaku_app/features/config/feature_flags.dart';
 import 'package:otaku_app/features/profile/avatar_data_source.dart';
 import 'package:otaku_app/features/profile/avatar_picker.dart';
 import 'package:otaku_app/features/profile/profile_data_source.dart';
@@ -70,6 +72,31 @@ void main() {
     final avatar = tester.widget<UserAvatar>(find.byType(UserAvatar));
     expect(avatar.previewImage, isNotNull, reason: '选完就该看到新图');
     expect(source.updates, 0, reason: '选图只是本地预览，不该碰资料');
+  });
+
+  testWidgets('开关关着（默认）：点「保存头像」只弹说明，一次上传都不发', (tester) async {
+    final uploader = _FakeAvatarDataSource();
+    await tester.pumpWidget(
+      _host(
+        picker: _FakeAvatarPicker(path: avatarPath),
+        uploader: uploader,
+        enabled: false,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('更换'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('保存头像'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('暂时无法设置头像'), findsOneWidget);
+    expect(uploader.uploads, 0, reason: '开关关着不该写任何数据');
+    // 预览保留：用户仍能看到自己选的那张图。
+    expect(find.text('保存头像'), findsOneWidget);
+
+    await tester.tap(find.text('知道了'));
+    await tester.pumpAndSettle();
   });
 
   testWidgets('点「保存头像」真上传一次，成功后清掉预览', (tester) async {
@@ -185,6 +212,9 @@ Widget _host({
   required AvatarPicker picker,
   ProfileDataSource? source,
   AvatarDataSource? uploader,
+  /// `feature.avatar_upload` 开关。默认**打开**：大部分用例验的是「功能可用时」
+  /// 的行为；「默认关」的那条由 `enabled: false` 单独覆盖。
+  bool enabled = true,
 }) {
   final container = ProviderContainer(
     overrides: [
@@ -196,6 +226,14 @@ Widget _host({
         source ?? _RecordingProfileDataSource(),
       ),
       authControllerProvider.overrideWith(_SignedInAuth.new),
+      featureFlagsProvider.overrideWithValue(
+        FeatureFlags(
+          RemoteConfig(
+            version: 1,
+            values: <String, dynamic>{'feature.avatar_upload': enabled},
+          ),
+        ),
+      ),
     ],
   );
   return UncontrolledProviderScope(

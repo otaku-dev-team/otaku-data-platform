@@ -123,9 +123,8 @@ class _IdentityCard extends ConsumerWidget {
     final signedIn = auth.isSignedIn;
     final checking = auth.status == AuthStatus.checking;
 
-    // 头像 URL 走这份资料；显示名的回落规则在 [profileDisplayNameProvider] 里，
-    // 桌面账号菜单读的是同一个 provider，两处不会各说各话。
-    final profile = ref.watch(profileProvider).value;
+    // 显示名走 [profileDisplayNameProvider]（只取站点昵称）；桌面账号菜单读同一个
+    // provider，两处不会各说各话。
 
     final label = signedIn
         ? ref.watch(profileDisplayNameProvider)
@@ -147,7 +146,9 @@ class _IdentityCard extends ConsumerWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                UserAvatar(label: label, avatarUrl: profile?.avatarUrl),
+                // **与站点一致**：站点用户只有默认头像（契约里 `User` 没有
+                // `avatar_url`），所以这里恒用首字色块，不显示平台上传的图。
+                UserAvatar(label: label, avatarUrl: null),
                 const SizedBox(width: Space.s3),
                 Expanded(
                   child: Column(
