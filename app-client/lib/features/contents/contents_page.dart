@@ -17,7 +17,6 @@ import '../../core/theme/design_tokens.dart';
 import '../../data/models/tag_vocabulary.dart';
 import '../../data/models/work_sort.dart';
 import '../../data/models/work_type.dart';
-import '../../shared/widgets/account_menu.dart';
 import '../../shared/widgets/desktop_nav_shell.dart';
 import '../../shared/widgets/mobile_nav_bar.dart';
 import '../../shared/widgets/desktop_shortcuts.dart';
@@ -336,9 +335,13 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
                 ),
                 // 每日新番入口。与收藏并列而不是塞进筛选栏：筛选栏已经
                 // 被类型 chips 和排序占满，再放一个入口会把 chips 挤没。
+                //
+                // 用 `push` 不用 `go`：这一页已经不是底栏 tab 了（第 5 位换成
+                // 了「我的」），`go` 会把整个栈替换成它，而它自己既没有底栏
+                // 也没有可 pop 的上一层——用户进去就出不来了。
                 IconButton(
                   tooltip: '每日新番',
-                  onPressed: () => context.go(RoutePaths.schedule),
+                  onPressed: () => context.push(RoutePaths.schedule),
                   icon: const Icon(Icons.calendar_today_outlined),
                 ),
               ],
@@ -360,10 +363,6 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
                       .read(contentsFilterProvider.notifier)
                       .selectSort(sort),
                 ),
-              // 账号入口放在这里而不是收藏页：登录是全局动作，用户不该为了
-              // 登录先进「我的收藏」再点右上角。三态（检查中/未登录/已登录）
-              // 由组件自己处理，本页不关心。
-              const AccountMenuButton(),
               const SizedBox(width: 8),
             ],
           ),

@@ -176,7 +176,7 @@ void main() {
   }
 
   group('主导航目的地', () {
-    test('五项顺序：首页 / 作品库 / 资讯 / 收藏 / 新番', () {
+    test('五项顺序不变：首页 / 作品库 / 资讯 / 收藏 / 每日新番（手机第 5 位是「我的」）', () {
       expect(MainNavDestination.values.map((d) => d.path).toList(), [
         RoutePaths.home,
         RoutePaths.contents,
@@ -184,6 +184,30 @@ void main() {
         RoutePaths.collections,
         RoutePaths.schedule,
       ]);
+      // 手机形态只在第 5 位分叉：路径换成 `/me`，且是 push 不是切 tab。
+      expect(
+        MainNavDestination.values.map((d) => d.mobilePath).toList(),
+        [
+          RoutePaths.home,
+          RoutePaths.contents,
+          RoutePaths.articles,
+          RoutePaths.collections,
+          RoutePaths.profile,
+        ],
+      );
+      expect(MainNavDestination.schedule.mobilePushes, isTrue);
+      expect(MainNavDestination.collections.mobilePushes, isFalse);
+    });
+
+    test('手机端判定跳过 push 型项：站在 /schedule 或 /me 上都不算命中某个 tab', () {
+      // 这两页都不挂底栏。若第 5 项参与匹配，底栏会挂出来并把「我的」
+      // 点亮在每日新番的内容上。
+      expect(MainNavDestination.fromMobileLocation(RoutePaths.schedule), isNull);
+      expect(MainNavDestination.fromMobileLocation(RoutePaths.profile), isNull);
+      expect(
+        MainNavDestination.fromMobileLocation(RoutePaths.contents),
+        MainNavDestination.contents,
+      );
     });
 
     test('首页按精确相等判定，不被其它路径误命中', () {
@@ -241,7 +265,8 @@ void main() {
         Icons.grid_view_outlined,
         Icons.newspaper_outlined,
         Icons.bookmark_border_rounded,
-        Icons.calendar_today_outlined,
+        // 第 5 位在手机上是「我的」（push 出去的独立页），不是每日新番。
+        Icons.person_outline_rounded,
       ]) {
         expect(
           find.descendant(of: nav, matching: find.byIcon(icon)),
@@ -270,8 +295,15 @@ void main() {
       await tester.pumpWidget(appAt(RoutePaths.home));
       await tester.pumpAndSettle();
 
-      // 首页大改后 AppBar 不再写「首页」，换成品牌抬头（Otaku + 日期）。
-      expect(find.widgetWithText(AppBar, 'Otaku'), findsOneWidget);
+      // 手机首页 AppBar 改成了 [我的] + 搜索框：品牌行与日期已撤掉，
+      // 搜索从 body 第一行挪到了顶上。
+      expect(
+        find.descendant(
+          of: find.byType(AppBar),
+          matching: find.text('搜索感兴趣的作品'),
+        ),
+        findsOneWidget,
+      );
 
       // 收藏页此前在手机上**完全没有入口**（首页上没有，作品库 AppBar 里有个
       // 书签图标）——这条钉的就是「从首页一步能到收藏」。

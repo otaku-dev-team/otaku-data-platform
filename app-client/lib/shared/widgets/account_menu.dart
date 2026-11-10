@@ -8,11 +8,15 @@ import '../../features/auth/auth_controller.dart';
 import '../../features/auth/site_unlink_dialog.dart';
 import '../../features/profile/profile_data_source.dart';
 
-/// 账号入口。
+/// 账号入口（「我的」）。
 ///
-/// **放在作品库的 AppBar 上**，不能只挂在收藏页里：账号是全局状态，登录
-/// 不该藏在「先点收藏、再点右上角」两个跳转之后。收藏页同一个组件复用，
-/// 两处的三态表现也就不会各写一套。
+/// **只挂在首页 AppBar 上**：手机端在搜索栏左侧（纯图标），桌面端在右侧
+/// actions 里。手机底栏第 5 位的「我的」不经过本组件——那一项走的是
+/// `MobileNavBar` 的 push 分支，直接进 `/me`。
+///
+/// 作品库 / 资讯 / 收藏 / 每日新番四页**不再挂它**：入口收敛到
+/// 「首页 + 手机底栏」两处。之前为了「登录是全局动作」在四页各挂一份，
+/// 结果是同一个头像出现在五个 AppBar 里，打开任何一页都先看到它。
 ///
 /// 三态与 [AuthStatus] 一一对应：
 /// - `checking`：小转圈——既不能先说「已登录」，也不该闪一下「登录」按钮；
@@ -26,13 +30,13 @@ class AccountMenuButton extends ConsumerWidget {
     final auth = ref.watch(authControllerProvider);
 
     if (!PlatformInfo.isDesktop) {
-      return Tooltip(
-        message: '我的',
-        child: TextButton.icon(
-          onPressed: () => context.push(RoutePaths.profile),
-          icon: const Icon(Icons.account_circle_outlined),
-          label: const Text('我的'),
-        ),
+      // 手机：只出现在首页 AppBar 的 leading 位。必须是纯图标——带文字的
+      // 按钮放 leading 会占掉一个半图标宽，把右侧搜索框挤窄。
+      // 未登录时同样进 `/me`，那一页里有登录按钮。
+      return IconButton(
+        tooltip: '我的',
+        onPressed: () => context.push(RoutePaths.profile),
+        icon: const Icon(Icons.account_circle_outlined),
       );
     }
 

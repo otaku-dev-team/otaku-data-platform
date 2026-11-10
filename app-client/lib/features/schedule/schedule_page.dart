@@ -9,9 +9,7 @@ import '../../core/theme/app_layout.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/design_tokens.dart';
 import '../../data/models/schedule.dart';
-import '../../shared/widgets/account_menu.dart';
 import '../../shared/widgets/desktop_nav_shell.dart';
-import '../../shared/widgets/mobile_nav_bar.dart';
 import '../../shared/widgets/empty_state.dart';
 import '../../shared/widgets/error_state.dart';
 import '../../shared/widgets/scroll_edge_fade.dart';
@@ -53,7 +51,11 @@ class SchedulePage extends ConsumerWidget {
     // 进来后侧栏直接消失——外壳是每页自己套的，不是路由级的。
     return DesktopNavShell(
       child: Scaffold(
-        bottomNavigationBar: MobileNavBar.forScaffold(context),
+        // 手机端不挂底栏：这一页现在只能从首页「每日新番 · 查看全部」push
+        // 进来（底栏第 5 位换成了「我的」）。留着底栏会有两个问题：一是
+        // 这页没有对应的 tab 可高亮，`currentConfiguration` 在 push 场景下
+        // 取到的是上一层路径，底栏会把「首页」点亮；二是它与左上角的返回键
+        // 语义重复。返回上一层的动作统一交给 AppBar 的返回键。
         appBar: AppBar(
           title: const Text('每日新番'),
           actions: [
@@ -76,7 +78,6 @@ class SchedulePage extends ConsumerWidget {
                     ),
                 ],
               ),
-            if (!PlatformInfo.isDesktop) const AccountMenuButton(),
             const SizedBox(width: 8),
           ],
         ),

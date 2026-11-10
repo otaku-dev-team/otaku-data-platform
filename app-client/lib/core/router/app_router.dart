@@ -49,6 +49,11 @@ import 'route_paths.dart';
 ///
 /// **branches 的顺序必须与 [MainNavDestination] 一致**——底栏和侧栏都是
 /// 用枚举下标去调 `goBranch(index)` 的，顺序一错就是「点 A 跳 B」。
+///
+/// 唯一的例外是第 5 位：桌面侧栏第 5 项是「每日新番」，走 `goBranch(4)`，
+/// 对应的就是这里的 `/schedule` 分支；手机底栏第 5 项是「我的」，它**不切
+/// 分支**，而是 `push` 一个独立页（`/me` 在本次 shell 之外）。所以这一位
+/// 仍然要留着 `/schedule` 分支——桌面还在用。
 /// 起始路由。
 ///
 /// 抽成 provider 而不是写死进 [GoRouter]：测试要能指定落点——

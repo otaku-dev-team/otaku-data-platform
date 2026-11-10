@@ -19,6 +19,8 @@ import 'main_nav_destination.dart';
 ///    手机上详情整页 push，底下再挂一条底栏会把正文压掉一大截。
 /// 3. **五项与侧栏同序**：首页 / 作品库 / 资讯 / 收藏 / 新番。
 ///    两端共用 [MainNavDestination]，改一处不会只改一头。
+///    唯一的差异在第 5 位：桌面是「每日新番」（切 tab），手机是「我的」
+///    ——它是 push 出来的独立页（带返回、无底栏），所以点它不切 tab。
 ///
 /// **为什么是 `Scaffold.bottomNavigationBar` 而不是自己再套一层 Scaffold**：
 /// 页面自己的 `Scaffold` 在里面，外壳再套一个就成了「Scaffold 套 Scaffold」——
@@ -41,7 +43,7 @@ class MobileNavBar extends StatelessWidget {
     final router = GoRouter.maybeOf(context);
     final location =
         router?.routerDelegate.currentConfiguration.uri.path ?? '';
-    final current = MainNavDestination.fromLocation(location);
+    final current = MainNavDestination.fromMobileLocation(location);
 
     // `NavigationBar` 的 `selectedIndex` 被断言死在 `0 <= i < destinations.length`，
     // 没有「一个都不选中」的状态。匹配不到主导航项时（设置页、详情页），
@@ -60,6 +62,13 @@ class MobileNavBar extends StatelessWidget {
         Haptics.tap();
         // 切换主页面时结束输入，键盘不跟着旧分支留在下一页上。
         FocusManager.instance.primaryFocus?.unfocus();
+        final destination = MainNavDestination.values[index];
+        // 第 5 位（手机＝我的）不是 tab：push 一个独立页。
+        // 它带返回箭头、不挂底栏，所以不进 `goBranch`——那个是切显隐用的。
+        if (destination.mobilePushes) {
+          GoRouter.maybeOf(context)?.push(destination.mobilePath);
+          return;
+        }
         // 走 goBranch 而不是 go(path)：切 tab 只换显隐，页面不被销毁，
         // 作品库翻到第几页、滚到哪里都还在。`go(path)` 会整棵替换，
         // 切回来等于重开。
@@ -69,17 +78,20 @@ class MobileNavBar extends StatelessWidget {
           return;
         }
         // 不在 shell 里（页面被单独 pump 的测试、或以后挪出主壳）时退回 go。
-        GoRouter.maybeOf(context)?.go(MainNavDestination.values[index].path);
+        GoRouter.maybeOf(context)?.go(destination.path);
       },
       destinations: [
         for (final d in MainNavDestination.values)
           NavigationDestination(
-            icon: Tooltip(message: d.tooltip, child: _NavIcon(d.icon)),
-            selectedIcon: Tooltip(
-              message: d.tooltip,
-              child: _NavIcon(d.selectedIcon),
+            icon: Tooltip(
+              message: d.mobileTooltip,
+              child: _NavIcon(d.mobileIcon),
             ),
-            label: d.label,
+            selectedIcon: Tooltip(
+              message: d.mobileTooltip,
+              child: _NavIcon(d.mobileSelectedIcon),
+            ),
+            label: d.mobileLabel,
           ),
       ],
     );

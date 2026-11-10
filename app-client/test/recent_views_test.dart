@@ -346,14 +346,14 @@ void main() {
       final container = await pumpApp(tester);
       await goHome(tester, container);
 
-      expect(find.text('本日新番'), findsOneWidget);
+      expect(find.text('每日新番'), findsOneWidget);
       // 首页也套着桌面外壳：侧栏在，落地页才出得去。
       expect(find.byType(NavigationRail), findsOneWidget);
       // 新用户的第一屏不该顶着一行空的「最近浏览」。
       expect(find.text('最近浏览'), findsNothing);
     });
 
-    testWidgets('首页只露最近几条；从「全部」进列表页清空后这一块整体消失', (tester) async {
+    testWidgets('浏览记录不再上首页，但仍记录、可在浏览记录页清空', (tester) async {
       final container = await pumpApp(tester);
 
       // 列表页 → 详情
@@ -367,13 +367,13 @@ void main() {
 
       await goHome(tester, container);
 
-      expect(find.text('最近浏览'), findsOneWidget);
-      // 高分作品本来就有一张卡，加上最近浏览这一张。
-      expect(find.byType(CompactWorkCard), findsNWidgets(2));
-      expect(find.text('详情里的甲'), findsOneWidget);
+      // 首页不再有这一块：只剩「高分作品」那一张卡。
+      expect(find.text('最近浏览'), findsNothing);
+      expect(find.byType(CompactWorkCard), findsOneWidget);
+      expect(find.text('详情里的甲'), findsNothing);
 
-      // 首页不再直接放「清空」——改成进「全部」列表页，清空在那一页的右上角。
-      await tester.tap(find.text('全部'));
+      // 记录仍在，只是入口挪到了「我的 → 浏览记录」。
+      container.read(appRouterProvider).push(RoutePaths.recentHistory);
       await tester.pumpAndSettle();
 
       expect(find.byType(RecentHistoryPage), findsOneWidget);
@@ -390,11 +390,6 @@ void main() {
 
       expect(container.read(recentViewsProvider), isEmpty);
       expect(find.text('还没有浏览记录'), findsOneWidget);
-
-      await tester.pageBack();
-      await tester.pumpAndSettle();
-      expect(find.text('最近浏览'), findsNothing);
-      expect(find.byType(CompactWorkCard), findsOneWidget);
     });
 
     testWidgets('详情打不开时不留记录', (tester) async {

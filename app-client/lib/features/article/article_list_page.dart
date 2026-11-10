@@ -9,7 +9,6 @@ import '../../core/theme/app_layout.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/design_tokens.dart';
 import '../../data/models/article.dart';
-import '../../shared/widgets/account_menu.dart';
 import '../../shared/widgets/desktop_nav_shell.dart';
 import '../../shared/widgets/mobile_nav_bar.dart';
 import '../../shared/widgets/empty_state.dart';
@@ -79,7 +78,6 @@ class _ArticleListPageState extends ConsumerState<ArticleListPage> {
                 onPressed: () => context.go(RoutePaths.contents),
                 icon: const Icon(Icons.video_library_outlined),
               ),
-            if (!PlatformInfo.isDesktop) const AccountMenuButton(),
           ],
         ),
         body: Center(

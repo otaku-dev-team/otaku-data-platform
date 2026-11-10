@@ -25,7 +25,6 @@ import '../article/article_card.dart';
 import '../contents/contents_controller.dart';
 import '../persona/persona_data_source.dart';
 import '../persona/personalized_recommend_section.dart';
-import '../recent/recent_views_controller.dart';
 import 'home_poster_coverflow.dart';
 import 'home_controller.dart';
 
@@ -57,29 +56,35 @@ class HomePage extends ConsumerWidget {
         child: Scaffold(
           bottomNavigationBar: MobileNavBar.forScaffold(context),
           appBar: AppBar(
-            // 标题不再是「首页」两个字：底部导航已经写着首页，AppBar 再写
-            // 一遍只是重复；换成品牌行 + 日期，首屏才有落地页的样子。
-            toolbarHeight: 66,
-            titleSpacing: AppLayout.pagePadding,
-            title: const _HomeBrand(),
-            actions: [
-              // 桌面端没有下拉手势，刷新得有个按钮（与列表页同一处理）。
-              if (PlatformInfo.isDesktop)
-                IconButton(
-                  tooltip: '刷新',
-                  onPressed: () => _refresh(ref),
-                  icon: const Icon(Icons.refresh_rounded),
-                ),
-              // 手机设置集中到各主页面共用的「我的」，桌面保留直接入口。
-              if (PlatformInfo.isDesktop)
-                IconButton(
-                  tooltip: '设置',
-                  onPressed: () => context.push(RoutePaths.settings),
-                  icon: const Icon(Icons.settings_outlined),
-                ),
-              const AccountMenuButton(),
-              const SizedBox(width: 8),
-            ],
+            // 手机与桌面是两种页头：
+            // - 手机：[我的] + 搜索框，顶部不再有品牌行与日期。
+            // - 桌面：品牌行 + 日期，右侧刷新 / 设置 / 账号三件套（不变）。
+            toolbarHeight: PlatformInfo.isDesktop ? 66 : 56,
+            titleSpacing: PlatformInfo.isDesktop ? AppLayout.pagePadding : 4,
+            leading: PlatformInfo.isDesktop
+                ? null
+                : const AccountMenuButton(),
+            title: PlatformInfo.isDesktop
+                ? const _HomeBrand()
+                : const _SearchEntry(compact: true),
+            actions: PlatformInfo.isDesktop
+                ? [
+                    // 桌面端没有下拉手势，刷新得有个按钮（与列表页同一处理）。
+                    IconButton(
+                      tooltip: '刷新',
+                      onPressed: () => _refresh(ref),
+                      icon: const Icon(Icons.refresh_rounded),
+                    ),
+                    // 手机设置集中到「我的」，桌面保留直接入口。
+                    IconButton(
+                      tooltip: '设置',
+                      onPressed: () => context.push(RoutePaths.settings),
+                      icon: const Icon(Icons.settings_outlined),
+                    ),
+                    const AccountMenuButton(),
+                    const SizedBox(width: 8),
+                  ]
+                : null,
           ),
           body: RefreshIndicator(
             color: AppTheme.brandStrong,
@@ -92,18 +97,18 @@ class HomePage extends ConsumerWidget {
                 // 公告条自己判有没有公告：没有时渲染 SizedBox.shrink()，
                 // 所以这里可以无条件放着，不用在页面里读一次配置
                 const ConfigNoticeBar(),
-                const _SearchEntry(),
                 if (PlatformInfo.isDesktop) ...[
+                  // 桌面：搜索是 body 里的整宽入口，页头留给品牌行。
+                  // 手机：搜索已经在 AppBar.title 里，这里不再重复一条。
+                  const _SearchEntry(),
                   // #562 海报 Coverflow：**只接桌面**。手机端已有
                   // `_FeaturedHero`（自动轮播的单张 hero），两块同时出现会
                   // 抢同一个位置；要不要用它替换手机端那个，等产品定。
                   const HomePosterCoverflow(),
-                  const _RecentViewsSection(),
                   const _TodayScheduleSection(),
                 ] else ...[
                   const _FeaturedHero(),
                   const _TodayScheduleSection(),
-                  const _RecentViewsSection(),
                 ],
                 // #376 个性化推荐：放在固定榜之前，登录用户先看自己的；
                 // 游客态这个区块只给一张登录引导卡，默认榜仍是下面这几块。
@@ -166,51 +171,63 @@ class _HomeBrand extends StatelessWidget {
 ///
 /// 搜索本身在作品库里（那边有输入框和筛选），这里只做「一眼能看到入口」：
 /// 资讯/番剧类 App 的首屏几乎都在顶部放一条搜索框，缺了它首页像一个静态目录。
+///
+/// 两种形态：
+/// - `compact = false`（桌面）：body 里的整宽卡片，带描边与「去搜索」角标。
+/// - `compact = true`（手机）：塞进 `AppBar.title` 的一条 pill，无外边距、
+///   无描边、无角标——那里只有 56 高，任何装饰都会把输入提示挤掉。
 class _SearchEntry extends StatelessWidget {
-  const _SearchEntry();
+  const _SearchEntry({this.compact = false});
+
+  /// 是否塞进 AppBar。见类注释。
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        AppLayout.pagePadding,
-        8,
-        AppLayout.pagePadding,
-        2,
-      ),
-      child: Material(
-        color: AppTheme.cardColor(context),
-        clipBehavior: Clip.antiAlias,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppLayout.cardRadius),
-          side: BorderSide(color: AppTheme.borderColor(context), width: 0.5),
+    final bar = Material(
+      // 两种形态都要「比背景深一点」才看得出是个可点的框：桌面是白卡压在
+      // 浅蓝底上，手机在 AppBar 上则用容器色。
+      color: compact
+          ? scheme.surfaceContainerHighest
+          : AppTheme.cardColor(context),
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(
+          compact ? 18 : AppLayout.cardRadius,
         ),
-        child: InkWell(
-          onTap: () => context.go(RoutePaths.contentsSearch),
-          child: SizedBox(
-            height: Space.s12 + Space.s2,
-            child: Row(
-              children: [
-                const SizedBox(width: 14),
-                Icon(
-                  Icons.search_rounded,
-                  size: 20,
-                  color: scheme.onSurfaceVariant,
+        side: compact
+            ? BorderSide.none
+            : BorderSide(color: AppTheme.borderColor(context), width: 0.5),
+      ),
+      child: InkWell(
+        onTap: () => context.go(RoutePaths.contentsSearch),
+        child: SizedBox(
+          height: compact ? 36 : Space.s12 + Space.s2,
+          child: Row(
+            children: [
+              SizedBox(width: compact ? 12 : 14),
+              Icon(
+                Icons.search_rounded,
+                size: compact ? 18 : 20,
+                color: scheme.onSurfaceVariant,
+              ),
+              SizedBox(width: compact ? 8 : 10),
+              Expanded(
+                child: Text(
+                  '搜索感兴趣的作品',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style:
+                      (compact
+                              ? theme.textTheme.bodySmall
+                              : theme.textTheme.bodyMedium)
+                          ?.copyWith(color: scheme.onSurfaceVariant),
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    '搜索感兴趣的作品',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: scheme.onSurfaceVariant,
-                    ),
-                  ),
-                ),
+              ),
+              if (!compact)
                 Container(
                   margin: const EdgeInsets.symmetric(
                     horizontal: 8,
@@ -230,11 +247,21 @@ class _SearchEntry extends StatelessWidget {
                     ),
                   ),
                 ),
-              ],
-            ),
+            ],
           ),
         ),
       ),
+    );
+
+    if (compact) return bar;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppLayout.pagePadding,
+        8,
+        AppLayout.pagePadding,
+        2,
+      ),
+      child: bar,
     );
   }
 }
@@ -265,15 +292,12 @@ class _Section extends StatelessWidget {
 }
 
 class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({required this.title, this.onMore, this.trailing});
+  const _SectionHeader({required this.title, this.onMore});
 
   final String title;
 
   /// 为 null 时不给「查看全部」——没有下一页可看的区块不该有个死按钮。
   final VoidCallback? onMore;
-
-  /// 标题右侧的附加操作（如「清空」），排在「查看全部」之前。
-  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -302,7 +326,6 @@ class _SectionHeader extends StatelessWidget {
               ),
             ),
           ),
-          ?trailing,
           if (onMore != null)
             TextButton(
               onPressed: onMore,
@@ -482,67 +505,6 @@ class _SkeletonBlock extends StatelessWidget {
       decoration: BoxDecoration(
         color: scheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(AppLayout.cardRadius),
-      ),
-    );
-  }
-}
-
-/// 最近浏览：本地历史，断网也能看见自己看过什么。
-///
-/// **空的时候整块不渲染**：首页给新用户看的第一屏不该有一行「最近浏览（空）」。
-/// 这与「本日新番」空着也要说一句不同——「今天没有排期」是事实，
-/// 而「你还没看过任何作品」对刚装上 App 的人是句废话，只占地方。
-class _RecentViewsSection extends ConsumerWidget {
-  const _RecentViewsSection();
-
-  /// 比「高分作品」的 148 窄一档：这一块是自己的足迹，不该比推荐更抢眼。
-  static const double _cardWidth = 116;
-
-  /// 首页横排露几条。再多也没人横向翻到底——完整列表在「全部」里。
-  static const int _previewCount = 10;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final items = ref.watch(recentViewsProvider);
-    if (items.isEmpty) return const SizedBox.shrink();
-
-    // 首页只露最近这几部，其余进「全部」列表页看。横排滑到第 11 张之后
-    // 没人还记得自己在找哪一部，而列表页有分组、能按日期往回找。
-    final preview = items.take(_previewCount).toList();
-    final textScale = MediaQuery.textScalerOf(context).scale(1);
-    final stripHeight = CompactWorkCard.heightFor(_cardWidth, textScale);
-
-    return _Section(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _SectionHeader(
-            title: '最近浏览',
-            trailing: TextButton(
-              onPressed: () => context.push(RoutePaths.recentHistory),
-              style: TextButton.styleFrom(
-                minimumSize: const Size(0, Space.s12),
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
-              child: Text('全部', style: Theme.of(context).textTheme.labelMedium),
-            ),
-          ),
-          SizedBox(
-            height: stripHeight,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: preview.length,
-              separatorBuilder: (_, _) => const SizedBox(width: 12),
-              itemBuilder: (context, index) => CompactWorkCard(
-                work: preview[index].work,
-                width: _cardWidth,
-                heroTag: 'home-preview-$index',
-              ),
-            ),
-          ),
-          const SizedBox(height: 20),
-        ],
       ),
     );
   }
@@ -998,8 +960,8 @@ class _TodayScheduleSection extends ConsumerWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _SectionHeader(
-            title: '本日新番',
-            onMore: () => context.go(RoutePaths.schedule),
+            title: '每日新番',
+            onMore: () => context.push(RoutePaths.schedule),
           ),
           _SectionBody(
             hasValue: schedule.hasValue,

@@ -119,6 +119,7 @@ app-client/
 | 项 | Android / 手机 | Windows / 桌面 |
 | --- | --- | --- |
 | 主导航 | `NavigationBar`（底部） | `NavigationRail`（≥600px 宽） |
+| 主导航第 5 位 | **「我的」**：`push` 到 `/me`，独立页（带返回、无底栏），不切分支 | **「每日新番」**：`goBranch(4)` 切到 `/schedule` 分支 |
 | 列表布局 | 单列无限滚动 | 自适应网格 2–4 列 |
 | 详情 | 整页 push | ≥900px 时左右双栏（列表 + 详情） |
 | 刷新 | 下拉刷新 | 刷新按钮 + `Ctrl+R` |

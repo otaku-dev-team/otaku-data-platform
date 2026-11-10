@@ -128,7 +128,7 @@ class _FakeScheduleSource implements ScheduleDataSource {
 
   final ApiException? error;
 
-  /// 只在周一放一条、其余天留空：首页「本日新番」按星期取组的语义
+  /// 只在周一放一条、其余天留空：首页「每日新番」按星期取组的语义
   /// 靠这两条数据就能验出来（周一有内容、周二空）。
   static const _page = SchedulePageData(
     season: '202610',
@@ -260,7 +260,7 @@ void main() {
     expect(find.text('Otaku'), findsOneWidget);
     // 搜索入口：看作品要能一眼找到入口，不能只藏在作品库里。
     expect(find.text('搜索感兴趣的作品'), findsOneWidget);
-    expect(find.text('本日新番'), findsOneWidget);
+    expect(find.text('每日新番'), findsOneWidget);
     expect(find.text('高分作品'), findsOneWidget);
     expect(find.text('最新资讯'), findsOneWidget);
 
@@ -280,7 +280,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
 
-    expect(find.text('本日新番'), findsOneWidget);
+    expect(find.text('每日新番'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -347,33 +347,51 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('手机五个主页面都有我的入口，设置返回保留原页面', (tester) async {
+  testWidgets('手机「我的」只在首页与底栏，其余主页面没有入口', (tester) async {
     PlatformInfo.desktopOverride = false;
     addTearDown(PlatformInfo.resetOverride);
     await tester.binding.setSurfaceSize(const Size(390, 844));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(app());
     await tester.pumpAndSettle();
-    for (final label in ['浏览', '资讯', '收藏', '新番', '首页']) {
+
+    // 首页 AppBar 左侧是「我的」纯图标（原来在右上角、带文字）。
+    expect(
+      find.descendant(
+        of: find.byType(AppBar),
+        matching: find.byIcon(Icons.account_circle_outlined),
+      ),
+      findsOneWidget,
+    );
+
+    // 底栏第 5 项也叫「我的」：点它是 push 一个独立页——有返回、没有底栏。
+    await tester.tap(find.byIcon(Icons.person_outline_rounded));
+    await tester.pumpAndSettle();
+    expect(find.text('个人空间'), findsOneWidget);
+    expect(find.byType(NavigationBar), findsNothing);
+
+    // 我的 → 设置 → 返回 → 我的 → 返回 → 回首页（仍是第 0 项）。
+    await tester.tap(find.text('设置'));
+    await tester.pumpAndSettle();
+    expect(find.text('离线缓存'), findsOneWidget);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.text('个人空间'), findsOneWidget);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex,
+      0,
+    );
+
+    // 其余三个主页面不再挂账号入口。
+    for (final label in ['浏览', '资讯', '收藏']) {
       await tester.tap(find.text(label));
       await tester.pumpAndSettle();
-      final index = tester
-          .widget<NavigationBar>(find.byType(NavigationBar))
-          .selectedIndex;
-      await tester.tap(find.byTooltip('我的'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('设置'));
-      await tester.pumpAndSettle();
-      expect(find.text('离线缓存'), findsOneWidget);
-      await tester.pageBack();
-      await tester.pumpAndSettle();
-      // 设置是从个人空间进去的：退回一层先回个人空间，再退一层才回到原 tab。
-      expect(find.text('个人空间'), findsOneWidget);
-      await tester.pageBack();
-      await tester.pumpAndSettle();
       expect(
-        tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex,
-        index,
+        find.byIcon(Icons.account_circle_outlined),
+        findsNothing,
+        reason: '$label 页不该再有「我的」入口',
       );
     }
     expect(tester.takeException(), isNull);
@@ -505,7 +523,7 @@ void main() {
     );
   }
 
-  testWidgets('本日新番取的是「今天」那一组，不是全部', (tester) async {
+  testWidgets('每日新番取的是「今天」那一组，不是全部', (tester) async {
     await pumpApp(tester, app(weekday: 1));
     expect(find.text('周一新番甲'), findsOneWidget);
     // 卡片带封面：URL 来自档期条目的 `image_url`，不是作品封面代理。
@@ -532,7 +550,7 @@ void main() {
 
     // 失败的是档期：区块内给一条重试，页面不变成整页错误态。
     expect(find.text('重试'), findsOneWidget);
-    expect(find.text('本日新番'), findsOneWidget);
+    expect(find.text('每日新番'), findsOneWidget);
     expect(find.text('高分作品'), findsOneWidget);
     expect(find.byType(CompactWorkCard), findsNWidgets(2));
     expect(find.byType(ArticleCard), findsNWidgets(3));
@@ -550,7 +568,7 @@ void main() {
   testWidgets('「高分作品 · 查看全部」带着评分排序进列表', (tester) async {
     await pumpApp(tester, app());
 
-    // 三个区块都有「查看全部」，顺序是 本日新番 / 高分作品 / 最新资讯。
+    // 三个区块都有「查看全部」，顺序是 每日新番 / 高分作品 / 最新资讯。
     final moreButtons = find.text('查看全部');
     expect(moreButtons, findsNWidgets(3));
     await tester.tap(moreButtons.at(1));

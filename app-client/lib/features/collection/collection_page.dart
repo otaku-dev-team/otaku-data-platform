@@ -11,7 +11,6 @@ import '../../core/theme/app_theme.dart';
 import '../../core/theme/design_tokens.dart';
 import '../../data/models/collection_entry.dart';
 import '../../data/repositories/work_repository.dart' show Fetched;
-import '../../shared/widgets/account_menu.dart';
 import '../../shared/widgets/desktop_nav_shell.dart';
 import '../../shared/widgets/mobile_nav_bar.dart';
 import '../../shared/widgets/desktop_shortcuts.dart';
@@ -70,9 +69,6 @@ class CollectionPage extends ConsumerWidget {
                   },
                   icon: const Icon(Icons.refresh),
                 ),
-              // 登录/账号入口与作品库共用同一个组件，未登录时也要能看到「登录」，
-              // 否则这一页只剩一句提示，用户还得退出去找入口。
-              const AccountMenuButton(),
             ],
           ),
           body: Center(
