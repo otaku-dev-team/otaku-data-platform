@@ -320,21 +320,25 @@ class _ContentsPageState extends ConsumerState<ContentsPage> {
                       ref.read(contentsControllerProvider.notifier).refresh(),
                   icon: const Icon(Icons.refresh_rounded),
                 ),
+                // 三个都是**主导航 tab**（StatefulShellRoute 的 branch），
+                // 必须用 `go` 切分支：`push` 会推出一份重复的 shell，
+                // 里面的页面 `canPop=false`、AppBar 连返回箭头都没有
+                // （与个人空间收藏入口同一个坑，2026-11-10 一起修）。
                 IconButton(
                   tooltip: '最新资讯',
-                  onPressed: () => context.push(RoutePaths.articles),
+                  onPressed: () => context.go(RoutePaths.articles),
                   icon: const Icon(Icons.newspaper_outlined),
                 ),
                 IconButton(
                   tooltip: '我的收藏',
-                  onPressed: () => context.push(RoutePaths.collections),
+                  onPressed: () => context.go(RoutePaths.collections),
                   icon: const Icon(Icons.bookmark_border_rounded),
                 ),
                 // 每日新番入口。与收藏并列而不是塞进筛选栏：筛选栏已经
                 // 被类型 chips 和排序占满，再放一个入口会把 chips 挤没。
                 IconButton(
                   tooltip: '每日新番',
-                  onPressed: () => context.push(RoutePaths.schedule),
+                  onPressed: () => context.go(RoutePaths.schedule),
                   icon: const Icon(Icons.calendar_today_outlined),
                 ),
               ],
