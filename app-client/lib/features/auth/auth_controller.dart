@@ -224,6 +224,54 @@ class AuthController extends Notifier<AuthState> {
     return null;
   }
 
+  /// 断开与网站的连接（`POST /api/auth/site-unlink`，W1 三态②）。
+  ///
+  /// 返回 `null` 表示成功；失败返回异常给页面提示，**登录态保持不变**——
+  /// 失败说明连接还在，此时把人登出反而更糟。
+  ///
+  /// 成功后服务端已**撤销全部会话（含当前这条）**，所以清收藏缓存与本地令牌、
+  /// 回未登录；账号与收藏/评论/浏览数据都还在，同一个站点身份重新授权会
+  /// 接回原账号（`user_id` 不变）。文案不许写「已立即吊销」——平台只存站点
+  /// 令牌哈希，调不动站点 `revoke`，最长 1 小时自然过期。
+  Future<ApiException?> unlinkSite() async {
+    if (!state.isSignedIn) {
+      return const ApiException(
+        code: ApiErrorCode.unauthorized,
+        message: '登录状态已失效，请重新登录',
+      );
+    }
+    if (state.user?.isSiteIdentity != true) {
+      // 入口本来就不该显示；真点到也不打服务端——409 是给外部调用者的，
+      // 客户端本地就能判断，少一次往返也少一次「请求有误」的误导。
+      return const ApiException(
+        code: ApiErrorCode.notSiteLinked,
+        message: '当前账号不是站点账号，无需断开',
+      );
+    }
+
+    state = state.copyWith(submitting: true, clearError: true);
+    try {
+      await ref.read(authRepositoryProvider).unlinkSite();
+    } on ApiException catch (error) {
+      if (!ref.mounted) return error;
+      state = state.copyWith(submitting: false, error: error);
+      return error;
+    } on Object {
+      if (!ref.mounted) return null;
+      const failure = ApiException(
+        code: ApiErrorCode.unknown,
+        message: '断开失败，请稍后重试',
+      );
+      state = state.copyWith(submitting: false, error: failure);
+      return failure;
+    }
+
+    await _clearCollectionCache();
+    if (!ref.mounted) return null;
+    state = const AuthState(status: AuthStatus.signedOut);
+    return null;
+  }
+
   // ---- 站点授权登录（W1 账号绑定，方案见 docs/w1-login-dual-entry.md）----
 
   /// 开始授权：生成 state、落盘、打开系统浏览器。

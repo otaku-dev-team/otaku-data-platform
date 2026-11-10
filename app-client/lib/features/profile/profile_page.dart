@@ -9,6 +9,7 @@ import '../../core/theme/design_tokens.dart';
 import '../../shared/widgets/desktop_nav_shell.dart';
 import '../../shared/widgets/user_avatar.dart';
 import '../auth/auth_controller.dart';
+import '../auth/site_unlink_dialog.dart';
 import '../collection/collection_controller.dart';
 import '../recent/recent_views_controller.dart';
 import 'profile_data_source.dart';
@@ -502,6 +503,19 @@ class _SessionFooter extends ConsumerWidget {
                 foregroundColor: theme.colorScheme.error,
               ),
             ),
+            // W1 三态②：只有站点授权建的账号才有连接可断。平台账号不显示
+            // （后端会回 409 NOT_SITE_LINKED，但入口本来就不该出现）。
+            if (auth.user?.isSiteIdentity == true)
+              TextButton(
+                onPressed: auth.submitting
+                    ? null
+                    : () => performSiteUnlink(context, ref),
+                style: TextButton.styleFrom(
+                  foregroundColor: theme.colorScheme.primary,
+                  textStyle: theme.textTheme.bodySmall,
+                ),
+                child: const Text('断开与网站的连接'),
+              ),
             TextButton(
               onPressed: auth.submitting
                   ? null

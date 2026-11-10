@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/router/route_paths.dart';
 import '../../core/platform_info.dart';
 import '../../features/auth/auth_controller.dart';
+import '../../features/auth/site_unlink_dialog.dart';
 import '../../features/profile/profile_data_source.dart';
 
 /// 账号入口。
@@ -70,6 +71,9 @@ class _SignedInMenu extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final auth = ref.watch(authControllerProvider);
+    // W1 三态②：只有站点授权建的账号才有连接可断；平台账号不显示这一项。
+    final isSiteIdentity = auth.user?.isSiteIdentity == true;
 
     return PopupMenuButton<String>(
       tooltip: '账号',
@@ -77,6 +81,10 @@ class _SignedInMenu extends ConsumerWidget {
       onSelected: (value) async {
         if (value == 'profile') {
           context.push(RoutePaths.profile);
+          return;
+        }
+        if (value == 'unlink') {
+          await performSiteUnlink(context, ref);
           return;
         }
         if (value != 'logout') return;
@@ -102,6 +110,11 @@ class _SignedInMenu extends ConsumerWidget {
           value: 'profile',
           child: Text('个人空间'),
         ),
+        if (isSiteIdentity)
+          const PopupMenuItem<String>(
+            value: 'unlink',
+            child: Text('断开与网站的连接'),
+          ),
         const PopupMenuItem<String>(value: 'logout', child: Text('退出登录')),
       ],
     );

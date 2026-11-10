@@ -64,6 +64,13 @@ abstract class AuthDataSource {
   /// 与 [logout] 不同，**失败必须抛给调用方**——注销是用户明确表达的意图，
   /// 吞掉错误会让人以为账号已经注销。
   Future<void> deleteAccount(String token);
+
+  /// 断开与网站的连接（`POST /api/auth/site-unlink`，无请求体）。
+  ///
+  /// 服务端会清身份映射并**撤销该账号全部会话（含当前这条）**，
+  /// **账号与收藏/评论/浏览数据原样保留**；同一个站点身份重新授权会接回原账号。
+  /// 成功后调用方必须清本地令牌，不要再打 `/me`（会 401）。
+  Future<void> unlinkSite(String token);
 }
 
 /// 401 有两层含义，客户端必须按 `code` 区分：

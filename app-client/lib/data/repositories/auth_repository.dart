@@ -99,6 +99,24 @@ class AuthRepository {
     await _dataSource.deleteAccount(token);
     await _tokenStore.clear();
   }
+
+  /// 断开与网站的连接（`POST /api/auth/site-unlink`，无请求体）。
+  ///
+  /// 与 [deleteAccount] 同构：**失败不吞**（连接还在，用户还能重试），
+  /// 只有服务端确认 `204` 才清本地令牌——服务端在同一事务里已撤销全部会话，
+  /// 本地留着令牌只会让下一次请求拿一个 401。
+  Future<void> unlinkSite() async {
+    final token = await _tokenStore.read();
+    if (token == null || token.isEmpty) {
+      throw const ApiException(
+        code: ApiErrorCode.unauthorized,
+        message: '登录状态已失效，请重新登录后再断开',
+        statusCode: 401,
+      );
+    }
+    await _dataSource.unlinkSite(token);
+    await _tokenStore.clear();
+  }
 }
 
 /// 默认走 Mock；联调时加 `--dart-define=USE_MOCK=false` 切真实接口。

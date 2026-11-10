@@ -14,6 +14,7 @@ class RemoteAuthDataSource implements AuthDataSource {
   static const String _mePath = '/api/auth/me';
   static const String _logoutPath = '/api/auth/logout';
   static const String _siteLoginPath = '/api/auth/site-login';
+  static const String _siteUnlinkPath = '/api/auth/site-unlink';
 
   @override
   Future<AuthSession> login({
@@ -94,6 +95,23 @@ class RemoteAuthDataSource implements AuthDataSource {
     await _call(
       () => _dio.delete<void>(
         '/api/me',
+        options: Options(
+          headers: <String, dynamic>{'Authorization': 'Bearer $token'},
+        ),
+      ),
+    );
+  }
+
+  /// 断开与网站的连接（`identity-linkup-contract.md` §5 三态② 的本地解绑）。
+  ///
+  /// 无请求体；成功后服务端**连当前会话一起撤销**，所以调用方拿到 204
+  /// 就要清本地令牌，不要再打 `/me`。409 `NOT_SITE_LINKED` 是平台账号误调，
+  /// 401 是没登录/重复点第二次——都按普通异常交给上层。
+  @override
+  Future<void> unlinkSite(String token) async {
+    await _call(
+      () => _dio.post<void>(
+        _siteUnlinkPath,
         options: Options(
           headers: <String, dynamic>{'Authorization': 'Bearer $token'},
         ),

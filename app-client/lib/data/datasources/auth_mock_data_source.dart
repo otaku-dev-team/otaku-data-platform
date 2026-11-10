@@ -82,6 +82,12 @@ class AuthMockDataSource implements AuthDataSource {
     await Future<void>.delayed(delay);
   }
 
+  @override
+  Future<void> unlinkSite(String token) async {
+    // Mock 里没有真实站点连接可清，只模拟一次往返让按钮能被点通。
+    await Future<void>.delayed(delay);
+  }
+
   /// 站点授权登录的假实现。
   ///
   /// 五条可驱动的分支，对应真实链路上最常见的失败：

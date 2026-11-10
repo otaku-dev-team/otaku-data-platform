@@ -41,6 +41,10 @@ enum ApiErrorCode {
   /// 与作品不存在分开：系列页要说「没有找到这个系列」，不是「作品不存在」。
   seriesNotFound('SERIES_NOT_FOUND'),
 
+  /// 当前账号是平台账号，没有站点连接可断（`POST /api/auth/site-unlink` 的 409）。
+  /// 客户端据此把入口藏掉，而不是弹一个「请求有误」。
+  notSiteLinked('NOT_SITE_LINKED'),
+
   batchTooLarge('BATCH_TOO_LARGE'),
   rateLimited('RATE_LIMITED'),
   internal('INTERNAL'),
@@ -116,6 +120,7 @@ class ApiException implements Exception {
     ApiErrorCode.collectionRequired => '该作品已不在收藏中，请刷新后重试',
     ApiErrorCode.studioNotFound => '没有找到这家制作公司',
     ApiErrorCode.seriesNotFound => '没有找到这个系列',
+    ApiErrorCode.notSiteLinked => '当前账号不是站点账号，无需断开',
     ApiErrorCode.reviewExists => '你已经点评过这部作品了',
     ApiErrorCode.cancelled => '请求已取消',
     _ => message.isNotEmpty ? message : '出了点问题，请重试',
