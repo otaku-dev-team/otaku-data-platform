@@ -1,6 +1,12 @@
 """清洗与校验规则，对应验收 D5 / D8 / D9。"""
 
-from sync.cleaning import clean_rating, clean_summary, clean_title, validate
+from sync.cleaning import (
+    clean_rating,
+    clean_summary,
+    clean_title,
+    repair_mojibake,
+    validate,
+)
 from sync.models import Rating, SourceRecord, WorkItem
 
 
@@ -67,3 +73,33 @@ def test_unknown_type_is_rejected():
 def test_rating_out_of_scale_is_rejected():
     problems = validate(make_item(rating=99.0))
     assert [code for code, _ in problems] == ["RATING_OUT_OF_SCALE"]
+
+
+# ---------------------------------------------------------------- 双编码修复
+
+
+def test_repair_mojibake_restores_cjk():
+    """#559：数据集里的系列名是「UTF-8 被当 cp1252 解了一遍」。"""
+    assert repair_mojibake("æœºåŠ¨æˆ˜å£«é«˜è¾¾") == "机动战士高达"
+    assert repair_mojibake("æ–°ä¸–çºªç¦éŸ³æˆ˜å£«") == "新世纪福音战士"
+
+
+def test_repair_mojibake_handles_cp1252_only_bytes():
+    """真实数据里还混着 0x8F/0x90 这类 cp1252 未定义字节，纯 latin-1 或纯 cp1252 都会炸。"""
+    broken = "è‹¥æ‰‹ã‚¢ãƒ‹ãƒ¡ãƒ¼ã‚¿ãƒ¼è‚²æˆ\x90ãƒ—ãƒ\xadã‚¸ã‚§ã‚¯ãƒˆ"
+    assert repair_mojibake(broken) == "若手アニメーター育成プロジェクト"
+
+
+def test_repair_mojibake_leaves_good_names_alone():
+    """不能把好名字改坏：正常 CJK / Latin-1 / ASCII 一律返回 None。"""
+    assert repair_mojibake("机动战士高达") is None
+    assert repair_mojibake("café") is None
+    assert repair_mojibake("air") is None
+    assert repair_mojibake("fate/zero") is None
+    assert repair_mojibake("") is None
+    assert repair_mojibake(None) is None
+
+
+def test_repair_mojibake_gives_up_on_lost_bytes():
+    """上游已经丢过字节（`?`）就不猜，原样返回 None。"""
+    assert repair_mojibake("æœº?åŠ¨") is None

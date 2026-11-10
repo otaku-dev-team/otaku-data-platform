@@ -43,7 +43,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator, Sequence
 
-from ..cleaning import clean_cover_url
+from ..cleaning import clean_cover_url, repair_mojibake
 from ..config import RATING_SCALE, SOURCE_NAME
 from ..importer import ImportDeliveryError, InternalImportError
 from ..models import (
@@ -100,6 +100,8 @@ class PublishReport:
     covers_resolved: int = 0
     covers_dropped: int = 0
     covers_empty: int = 0
+    #: 系列名是「UTF-8 被当 cp1252 解了一遍」的双编码，已在发送前修回的条数（#559）。
+    series_names_repaired: int = 0
     aborted: str | None = None
     warnings: list[str] = field(default_factory=list)
 
@@ -138,6 +140,7 @@ class PublishReport:
                 "dropped": self.covers_dropped,
                 "empty": self.covers_empty,
             },
+            "series_names_repaired": self.series_names_repaired,
             "aborted": self.aborted,
             "warnings": self.warnings,
         }
@@ -284,12 +287,19 @@ def _studios_for(conn: sqlite3.Connection, ids: Sequence[str]) -> dict[str, list
     return out
 
 
-def _series_names_for(conn: sqlite3.Connection, keys: Sequence[str]) -> dict[str, str]:
+def _series_names_for(
+    conn: sqlite3.Connection, keys: Sequence[str], report: PublishReport | None = None
+) -> dict[str, str]:
     """一次取整批的系列名（#411）。
 
     `series` 在数据集里是独立实体（只有 series_key / name），`works.series_key` 是它的外键。
     名字可能缺失（来源站没填），缺失时返回的字典里就没有这个键——上层用 `.get()`
     得到 None，后端据此保留已有名字而不是清空。
+
+    **双编码兜底**（#559）：数据集里的 `series.name` 实测 910/941 条是
+    「UTF-8 被当 cp1252 解了一遍」（`机动战士高达` → `æœºåŠ¨æˆ˜å£«é«˜è¾¾`），
+    而后端是原样透传给客户端的。这里在**发送前**还原，并把条数记进报告；
+    源数据与后端都不动——修数据是另一件事，这一层只保证「发出去的是对的」。
     """
     if not keys:
         return {}
@@ -299,7 +309,18 @@ def _series_names_for(conn: sqlite3.Connection, keys: Sequence[str]) -> dict[str
         f" WHERE series_key IN ({placeholders})",
         list(keys),
     )
-    return {row["series_key"]: row["name"] for row in rows if row["name"]}
+    names: dict[str, str] = {}
+    for row in rows:
+        name = row["name"]
+        if not name:
+            continue
+        fixed = repair_mojibake(name)
+        if fixed is not None:
+            name = fixed
+            if report is not None:
+                report.series_names_repaired += 1
+        names[row["series_key"]] = name
+    return names
 
 
 def _resolve_cover(
@@ -456,7 +477,7 @@ def _iter_chunks(
             characters = _characters_for(conn, ids)
             studios = _studios_for(conn, ids)
             series_names = _series_names_for(
-                conn, [r["series_key"] for r in kept if r["series_key"]]
+                conn, [r["series_key"] for r in kept if r["series_key"]], report
             )
             batch.extend(
                 _to_work_item(
@@ -588,6 +609,12 @@ def publish_dataset(
     if not apply and report.items_built:
         report.warnings.append(
             "这是预演，没有向任何后端发请求。确认无误后加 --apply 才真正写入。"
+        )
+    if report.series_names_repaired:
+        report.warnings.append(
+            f"{report.series_names_repaired} 条系列名在数据集里是双编码"
+            f"（UTF-8 被当 cp1252 解过，如 `æœºåŠ¨…`），已在发送前还原成正常中文。"
+            f"根因在产出数据集的上游，重发数据集不会自愈——见 #559。"
         )
     if report.covers_dropped:
         report.warnings.append(

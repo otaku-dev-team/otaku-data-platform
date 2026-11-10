@@ -283,3 +283,64 @@ def validate_article(item) -> list[tuple[str, str]]:
     if not item.title:
         problems.append((REASON_TITLE_REQUIRED, "title 为空"))
     return problems
+
+
+# ---------------------------------------------------------------- 编码修复
+
+def _as_mysql_latin1(text: str) -> bytes | None:
+    """把字符串按 MySQL 的 latin1 语义还原成字节；做不到就返回 None。
+
+    MySQL 的 `CONVERT(x USING latin1)` 用的是 cp1252（不是 ISO-8859-1）：
+    `œ`(0x9C) / `Š`(0x8A) / `–`(0x96) 都是单字节，而 0x81/0x8D/0x8F/0x90/0x9D
+    这几个 cp1252 未定义的位置会被原样保留成同码位控制字符。
+    两种混在同一个字符串里，纯 `cp1252` 或纯 `latin-1` 都会抛异常——
+    必须逐字符：先 cp1252，失败且码位 < 256 就按字节原样带走。
+    """
+    raw = bytearray()
+    for ch in text:
+        try:
+            raw += ch.encode("cp1252")
+        except UnicodeEncodeError:
+            code = ord(ch)
+            if code > 0xFF:
+                return None
+            raw.append(code)
+    return bytes(raw)
+
+
+def repair_mojibake(text: str | None) -> str | None:
+    """还原「UTF-8 被当成 cp1252 解了一遍」的字符串；不像 mojibake 就返回 None。
+
+    ## 为什么需要它
+
+    2026-11-10 在生产发现：数据集 `series.name` 有 **910 / 941** 条是双编码的，
+    比如 `机动战士高达` 存成了 `æœºåŠ¨æˆ˜å£«é«˜è¾¾`（`E6` → `C3A6`，`9C` → `C593`…）。
+    后端的 `GET /api/series/{key}` 是原样透传的，于是系列页标题直接显示乱码。
+
+    数据集由仓库外的同步作业产出，我们只能在这一层兜住；**不改源数据、不改后端**，
+    在发给后端之前把名字修回来，并在报告里记一笔。
+
+    ## 为什么不会把好名字改坏
+
+    只有「能按 cp1252 还原成字节、且这些字节恰好是合法 UTF-8、且结果与原文不同」
+    才认为是 mojibake。正常的 CJK 名字过不了第一步（字符 > 0xFF），
+    `café` 这类 Latin-1 名字过不了第二步（`E9` 不是合法 UTF-8 起始字节），
+    纯 ASCII 会得到与原文相同的结果而被跳过。
+
+    ## 已知边界
+
+    - `?` / U+FFFD 出现在还原结果里就放弃：那说明上游已经丢过字节，修不回来；
+    - 只处理「整串都是 cp1252 字节」的情况，混编（一半正常一半坏）不猜。
+    """
+    if not text:
+        return None
+    raw = _as_mysql_latin1(text)
+    if raw is None:
+        return None
+    try:
+        fixed = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+    if fixed == text or "?" in fixed or "\ufffd" in fixed:
+        return None
+    return fixed
