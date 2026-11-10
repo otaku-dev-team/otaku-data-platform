@@ -337,7 +337,13 @@ class _SectionCard extends ConsumerWidget {
             subtitle: signedIn ? '收藏过的作品与观看状态' : '登录后可以查看',
             count: signedIn ? stats?.collected : null,
             // 未登录也放行：收藏页自己会显示登录引导，别在两处各写一套。
-            onTap: () => context.push(RoutePaths.collections),
+            //
+            // `go` 而不是 `push`：收藏是**主导航的一个 tab**（`/collections` 在
+            // StatefulShellRoute 的 branch 里）。push 它会推出一份重复的 shell，
+            // 里面的收藏页 `canPop` 为 false → AppBar 连返回箭头都没有（实测
+            // `BackButton=0`），底栏却已经高亮「收藏」，看起来就像卡死。
+            // 与资讯收藏空态跳 `/articles` 同一口径。
+            onTap: () => context.go(RoutePaths.collections),
           ),
           const Divider(height: 1),
           _SectionTile(
@@ -369,11 +375,13 @@ class _SectionCard extends ConsumerWidget {
             title: '资讯收藏',
             subtitle: signedIn ? '收藏的资讯文章' : '登录后可以查看',
             // 打开收藏页的「资讯」分段，而不是让用户进去再点一次分段。
+            // 同样用 `go`：见上面「作品收藏」那段注释（push shell branch 会
+            // 推出一个没有返回按钮的重复 shell）。
             onTap: () {
               ref
                   .read(collectionSegmentProvider.notifier)
                   .select(CollectionSegment.articles);
-              context.push(RoutePaths.collections);
+              context.go(RoutePaths.collections);
             },
           ),
           const Divider(height: 1),

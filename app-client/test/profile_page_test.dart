@@ -234,7 +234,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('收藏目的页'), findsOneWidget);
 
-    await tester.tap(find.byType(BackButton));
+    // 收藏是主导航 tab，入口用 `go` 切换（不是 push），所以没有返回栈；
+    // 用路由回个人空间，不能按 BackButton。
+    GoRouter.of(tester.element(find.text('收藏目的页'))).go(RoutePaths.profile);
     await tester.pumpAndSettle();
     await tester.tap(find.text('浏览记录'));
     await tester.pumpAndSettle();
@@ -256,7 +258,8 @@ void main() {
     expect(find.text('收藏目的页'), findsOneWidget);
 
     // 「我的评论」在首屏下方：滚回个人空间再点，确认点不动。
-    await tester.pageBack();
+    // 同上：go 切换没有返回栈。
+    GoRouter.of(tester.element(find.text('收藏目的页'))).go(RoutePaths.profile);
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('我的评论'));
     await tester.pumpAndSettle();
