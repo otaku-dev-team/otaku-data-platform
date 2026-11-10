@@ -4,15 +4,20 @@ import java.time.Instant;
 import java.util.List;
 
 /**
- * 详情：契约 2.1 的全部 20 个字段
+ * 详情：契约 2.1 的全部 21 个字段
  * （含 summary、release_year、title_original、aliases、media、episodes、
- * source、source_id、source_url、updated_at，以及关联数组 staff / characters / studios）。
+ * source、source_id、source_url、updated_at、rating_state，以及关联数组 staff / characters / studios）。
  * 列表接口是 7 字段（含 release_year），不含本类的
  * summary / title_original / aliases / media / episodes / source / source_id /
- * source_url / updated_at / staff / characters / studios / deleted。
+ * source_url / updated_at / rating_state / staff / characters / studios / deleted。
  *
  * <p>staff / characters / studios 三者的数据接线归后端档 B 实现（#255）；
  * 此处字段先占位（{@code WorkService.detail} 目前传 {@code null}），契约侧均为 {@code nullable}。
+ *
+ * <p>{@code ratingState} 是评分三态（#588）：{@code mainRating} 为 {@code null} 时，
+ * 光看它分不出「来源没有评分」还是「有评分但票数不足被口径藏掉」。三态语义见
+ * {@link com.otaku.work.WorkSummaryMapper#ratingState}；客户端只管渲染，**不要**自己判 50 票阈值
+ * ——那个数在库里还有一份（排序生成列），再抄一份到 Dart 就是第三种漂移。
  *
  * <p>{@code deleted} 是软删标记（#249）：已下架的作品**不再返回 404**，而是
  * {@code 200 + deleted:true}，客户端据此显示「已下架」占位——否则收藏里的条目会变成死链，
@@ -31,6 +36,7 @@ public record WorkDto(
         String coverUrl,
         List<String> tags,
         SourceRatingDto mainRating,
+        String ratingState,
         List<WorkStaffDto> staff,
         List<WorkCharacterDto> characters,
         List<String> studios,

@@ -60,20 +60,23 @@ class ContractJsonShapeTest {
     }
 
     @Test
-    @DisplayName("详情是 20 个字段（含可空 source_url 与 release_year），空值以 null 出现而不是被省略")
+    @DisplayName("详情是 21 个字段（含可空 source_url 与 release_year），空值以 null 出现而不是被省略")
     void detailShape() {
         WorkDto dto = new WorkDto("W-abc123", "anime", "标题", null, null,
-                null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, "none",
                 null, null, null, "otaku_site", "476", null, UPDATED_AT, false);
 
         JsonNode json = objectMapper.valueToTree(dto);
 
-        assertThat(json.size()).as("19 个字段 + 软删标记 deleted（#249）").isEqualTo(20);
+        assertThat(json.size()).as("19 个字段 + deleted（#249）+ rating_state（#588）").isEqualTo(21);
         assertThat(json.has("source_url")).isTrue();
         assertThat(json.get("source_url").isNull()).isTrue();
         assertThat(json.get("summary").isNull()).isTrue();
         assertThat(json.get("release_year").isNull()).as("没有年份必须是 null，不是 0").isTrue();
         assertThat(json.get("cover_url").isNull()).isTrue();
+        assertThat(json.get("rating_state").asText())
+                .as("main_rating 为 null 时靠它区分「没有评分」与「票数不足」，不能是 null")
+                .isEqualTo("none");
         assertThat(json.get("updated_at").asText()).isEqualTo("2026-10-20T06:00:00Z");
     }
 
@@ -81,7 +84,7 @@ class ContractJsonShapeTest {
     @DisplayName("source_url 有值时原样输出，列表结构不受影响（8 字段）")
     void sourceUrlIsPassedThrough() {
         WorkDto dto = new WorkDto("W-abc123", "anime", "标题", null, 2022,
-                null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, "rated",
                 null, null, null, "otaku_site", "476", "http://154.8.194.198:8000/contents/476", UPDATED_AT, false);
 
         JsonNode json = objectMapper.valueToTree(dto);

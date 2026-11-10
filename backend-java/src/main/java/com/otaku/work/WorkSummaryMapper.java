@@ -86,6 +86,34 @@ public class WorkSummaryMapper {
         return new SourceRatingDto(record.ratingValue(), record.ratingScale(), record.ratingSource());
     }
 
+    /** 有评分且票数达标——{@code main_rating} 非 {@code null}。 */
+    public static final String RATING_RATED = "rated";
+    /** 来源有评分，但票数不足被口径藏掉——{@code main_rating} 为 {@code null}。 */
+    public static final String RATING_INSUFFICIENT = "insufficient";
+    /** 来源没有评分——{@code main_rating} 为 {@code null}。 */
+    public static final String RATING_NONE = "none";
+
+    /**
+     * 评分三态（#588）：给详情页用，区分 {@code main_rating} 为 {@code null} 的两种原因。
+     *
+     * <p>为什么要加：契约里 {@code main_rating} 的 {@code null} 一码两义（来源没有 / 票数不足），
+     * 首站详情页对这两种是**分开显示**的（「暂无评分」vs「评分人数不足」显示 {@code --}）。
+     * 端上要还原这个区别，只靠 {@code null} 做不到，只能由后端给状态。
+     *
+     * <p>为什么不直接透出 {@code rating_count}：那样阈值 50 会跟着流到客户端，
+     * 而这个数在库里已经有两份（{@code WorkService} 常量 + 排序生成列），
+     * 第三份抄到 Dart 里，改口径时必然漏一处。状态由后端算，口径永远只有一处。
+     *
+     * <p>实现上刻意**从 {@link #rating} 反推**而不是再写一遍阈值判断：
+     * 两者一旦分头写，就会出现「分数展示了、状态却说不达标」这种自相矛盾的响应。
+     */
+    public String ratingState(WorkRecord record) {
+        if (rating(record) != null) {
+            return RATING_RATED;
+        }
+        return record.ratingValue() == null ? RATING_NONE : RATING_INSUFFICIENT;
+    }
+
     /**
      * 标签数组。成人词一律剔除（{@link AdultPolicy}，词表可热改）：成人作品本身已经在
      * 仓储层挡掉了，这里是第二道——任何一处露出 {@code R18} 都等于把口径写在了用户脸上。

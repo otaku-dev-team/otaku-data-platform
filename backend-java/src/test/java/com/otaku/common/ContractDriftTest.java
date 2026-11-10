@@ -75,6 +75,7 @@ class ContractDriftTest {
                 "http://localhost:8080/api/covers/W-abc123",
                 List.of("日常"),
                 new SourceRatingDto(new BigDecimal("7.80"), "0-10", "otaku_site"),
+                "rated", // ratingState（#588）：main_rating 非空时恒为 rated
                 null, // staff
                 null, // characters
                 null, // studios
